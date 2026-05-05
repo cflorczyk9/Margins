@@ -29,11 +29,15 @@ npm run dev
 
 Open `http://localhost:5173`.
 
-The default UI is a guided flow:
+The default UI is an inbox-style local vault flow:
 
 1. Choose a vault folder.
-2. Drop or add documents.
-3. Click the single `Next Step` button until the wiki is saved.
+2. Drop or upload documents into the inbox.
+3. Click `Save and organize`.
+4. Answer quick filing questions or add freeform notes.
+5. Click `Write local vault` to save the raw sources, generated wiki, graph, and operating layer.
+
+The left rail keeps the local vault, temporary API settings, and generated file structure visible. The main app tabs are Inbox, Wiki, Graph, Review, and Operating Layer. There is intentionally no Margins-owned chat tab.
 
 Until API mode exists, the language-model step is still copy/paste: Margins copies the ingest prompt, you paste it into Claude/ChatGPT, then paste the returned `margins-file` blocks back into Margins. Advanced controls are available under `Advanced tools`.
 
@@ -52,6 +56,7 @@ The browser app has two compile paths:
 - `Create vault` scaffolds the selected folder with the expected vault structure. `Open vault` selects an existing local vault and loads its existing wiki files back into the app. `Save changes` writes the accepted wiki plus original raw sources directly into the selected vault using the browser File System Access API.
 - Incremental ingest keeps the loaded vault as context, sends only the new source batch to the language model, and merges returned `margins-file` blocks into the existing wiki.
 - `Review Mode` controls how many material judgment questions Margins asks: Auto-file, Suggested review, or Strict review. You can answer those questions in plain English and copy a review response prompt back to the language model for revised files.
+- Optional API settings are local-only browser settings used for model-generated filing questions. If a direct browser API call fails, Margins falls back to local review rules.
 
 ## Compile the sample vault
 

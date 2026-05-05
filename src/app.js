@@ -1,4 +1,6 @@
 import { compileVault, vaultToFiles } from "./compiler.js";
+import { clearApiSettings, loadApiSettings, maskSecret, saveApiSettings } from "./apiSettingsStore.js";
+import { hasFileSystemAccess, loadVaultHandle, saveVaultHandle } from "./vaultHandleStore.js";
 import * as pdfjsLib from "../node_modules/pdfjs-dist/build/pdf.mjs";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
@@ -8,6 +10,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
 
 const initialTheme = localStorage.getItem("margins-theme") || "dark";
 document.documentElement.dataset.theme = initialTheme;
+const API_SECRET_STORAGE_KEY = "margins.apiSecret.v1";
 
 const state = {
   files: [],
@@ -25,11 +28,23 @@ const state = {
   hasSavedCurrent: false,
   pendingSave: false,
   vaultHandle: null,
-  vaultName: ""
+  rememberedVaultHandle: null,
+  vaultName: "",
+  apiSettings: loadApiSettings(),
+  apiSecret: localStorage.getItem(API_SECRET_STORAGE_KEY) || "",
+  apiQuestionSource: ""
 };
 
 const els = {
   themeToggle: document.getElementById("theme-toggle"),
+  vaultStatus: document.getElementById("vault-status"),
+  vaultTree: document.getElementById("vault-tree"),
+  apiProvider: document.getElementById("api-provider"),
+  apiModel: document.getElementById("api-model"),
+  apiKey: document.getElementById("api-key"),
+  saveApiKeyBtn: document.getElementById("save-api-key-btn"),
+  clearApiKeyBtn: document.getElementById("clear-api-key-btn"),
+  apiKeyStatus: document.getElementById("api-key-status"),
   workflowGuidance: document.getElementById("workflow-guidance"),
   workflowBtn: document.getElementById("workflow-btn"),
   sourceDropZone: document.getElementById("source-drop-zone"),
@@ -69,11 +84,11 @@ const els = {
   editList: document.getElementById("edit-list")
 };
 
-els.workflowPanel = document.querySelector(".workflow-panel");
+els.workflowPanel = document.querySelector(".workflow-panel") || document.querySelector(".vault-card");
 els.changeSummary = document.createElement("div");
 els.changeSummary.id = "change-summary";
 els.changeSummary.className = "mini-list";
-els.workflowPanel.appendChild(els.changeSummary);
+if (els.workflowPanel) els.workflowPanel.appendChild(els.changeSummary);
 
 els.changePreview = document.createElement("div");
 els.changePreview.id = "change-preview";
@@ -81,11 +96,14 @@ els.changePreview.className = "mini-list";
 els.llmStatus.after(els.changePreview);
 
 els.themeToggle.checked = state.theme === "dark";
+hydrateApiControls();
 els.folderInput.addEventListener("change", handleSourceSelection);
 els.fileInput.addEventListener("change", handleSourceSelection);
 els.reviewMode.value = state.reviewMode;
 updateReviewModeHelp();
 updateWorkflowState();
+renderVaultTree();
+restoreRememberedVault();
 
 els.themeToggle.addEventListener("change", () => {
   state.theme = els.themeToggle.checked ? "dark" : "light";
@@ -94,6 +112,12 @@ els.themeToggle.addEventListener("change", () => {
 });
 
 els.workflowBtn.addEventListener("click", runWorkflowStep);
+els.saveApiKeyBtn.addEventListener("click", saveApiControls);
+els.clearApiKeyBtn.addEventListener("click", clearApiControls);
+els.apiProvider.addEventListener("change", () => {
+  els.apiModel.value = defaultModelForProvider(els.apiProvider.value);
+  renderApiStatus();
+});
 
 els.sourceDropZone.addEventListener("dragover", (event) => {
   event.preventDefault();
@@ -112,6 +136,116 @@ els.sourceDropZone.addEventListener("drop", async (event) => {
 
 async function handleSourceSelection(event) {
   await setSourceFiles([...event.target.files]);
+}
+
+async function restoreRememberedVault() {
+  if (!hasFileSystemAccess()) {
+    updateVaultStatus("Local vault persistence needs Chrome or Edge on localhost.");
+    return;
+  }
+
+  try {
+    const handle = await loadVaultHandle();
+    if (!handle) {
+      updateVaultStatus("No local vault connected.");
+      return;
+    }
+
+    state.rememberedVaultHandle = handle;
+    updateVaultStatus(`Last vault: ${handle.name}. Click Reconnect to open it.`);
+    const permission = await queryVaultPermission(handle);
+    if (permission === "granted") {
+      setActiveVault(handle, handle.name);
+      await scaffoldVault(handle);
+      await loadExistingVault(handle);
+    } else {
+      updateWorkflowState();
+    }
+  } catch (error) {
+    updateVaultStatus(`Could not restore last vault: ${error.message || "unknown error"}`);
+  }
+}
+
+function hydrateApiControls() {
+  if (!els.apiProvider) return;
+  const settings = state.apiSettings;
+  els.apiProvider.value = providerValue(settings.providerLabel) || "openai";
+  els.apiModel.value = settings.model || defaultModelForProvider(els.apiProvider.value);
+  els.apiKey.value = "";
+  renderApiStatus();
+}
+
+function saveApiControls() {
+  const provider = els.apiProvider.value;
+  const apiKey = els.apiKey.value.trim();
+  const model = els.apiModel.value.trim() || defaultModelForProvider(provider);
+  const settings = saveApiSettings({
+    providerLabel: providerLabel(provider),
+    endpointUrl: defaultEndpointForProvider(provider),
+    model,
+    apiKey: apiKey || state.apiSecret || ""
+  });
+
+  state.apiSettings = settings || loadApiSettings();
+  if (apiKey) {
+    state.apiSecret = apiKey;
+    localStorage.setItem(API_SECRET_STORAGE_KEY, apiKey);
+    els.apiKey.value = "";
+  }
+  renderApiStatus("API key saved locally for this browser.");
+}
+
+function clearApiControls() {
+  clearApiSettings();
+  localStorage.removeItem(API_SECRET_STORAGE_KEY);
+  state.apiSettings = loadApiSettings();
+  state.apiSecret = "";
+  els.apiKey.value = "";
+  els.apiModel.value = defaultModelForProvider(els.apiProvider.value);
+  renderApiStatus("API key cleared.");
+}
+
+function renderApiStatus(message = "") {
+  if (!els.apiKeyStatus) return;
+  const secret = state.apiSecret;
+  const settings = state.apiSettings;
+  const provider = providerLabel(els.apiProvider?.value || providerValue(settings.providerLabel) || "openai");
+  const model = els.apiModel?.value || settings.model || defaultModelForProvider(providerValue(settings.providerLabel));
+  els.apiKeyStatus.textContent = message || (secret || settings.hasApiKey
+    ? `${provider} · ${model} · ${maskSecret(secret) || settings.maskedApiKey}`
+    : "Optional. Stored only in this browser for model-generated filing questions.");
+}
+
+function providerValue(label) {
+  const value = String(label || "").toLowerCase();
+  if (value.includes("anthropic")) return "anthropic";
+  if (value.includes("local")) return "local";
+  if (value.includes("openai")) return "openai";
+  return value;
+}
+
+function providerLabel(value) {
+  return {
+    openai: "OpenAI",
+    anthropic: "Anthropic",
+    local: "Local model"
+  }[value] || "OpenAI";
+}
+
+function defaultModelForProvider(provider) {
+  return {
+    openai: "gpt-5-mini",
+    anthropic: "claude-3-5-haiku-latest",
+    local: "local-filing-helper"
+  }[provider] || "gpt-5-mini";
+}
+
+function defaultEndpointForProvider(provider) {
+  return {
+    openai: "https://api.openai.com/v1/chat/completions",
+    anthropic: "https://api.anthropic.com/v1/messages",
+    local: "http://localhost:11434/v1/chat/completions"
+  }[provider] || "https://api.openai.com/v1/chat/completions";
 }
 
 async function setSourceFiles(files) {
@@ -134,9 +268,10 @@ async function setSourceFiles(files) {
   renderLlmReview();
   renderChangePreview();
   renderSources();
+  renderVaultTree();
   updateActionState();
   els.exportBtn.disabled = !state.currentFileMap;
-  els.saveVaultBtn.disabled = !state.currentFileMap;
+  updateSaveButtonState();
   els.copyBtn.disabled = true;
   els.stats.textContent = state.currentFileMap
     ? `${state.files.length} new source${state.files.length === 1 ? "" : "s"} loaded · existing wiki retained`
@@ -149,13 +284,14 @@ async function setSourceFiles(files) {
 
 els.extractBtn.addEventListener("click", extractPdfSources);
 
-els.compileBtn.addEventListener("click", () => {
+els.compileBtn.addEventListener("click", async () => {
   state.vault = compileVault(state.files, { name: "Karpathy Original" });
   state.selectedPath = null;
   state.currentFileMap = null;
   state.hasSavedCurrent = false;
   state.pendingSave = true;
   renderVault();
+  await prepareReviewForCurrentFileMap("Local compile ready. Review the filing questions, then save to your vault.");
   updateWorkflowState();
 });
 
@@ -183,7 +319,7 @@ els.exportBtn.addEventListener("click", () => {
 
 els.createVaultBtn.addEventListener("click", createVault);
 els.openVaultBtn.addEventListener("click", openVault);
-els.saveVaultBtn.addEventListener("click", saveCurrentVault);
+els.saveVaultBtn.addEventListener("click", handleSaveAndOrganize);
 
 els.copyBtn.addEventListener("click", async () => {
   if (!state.vault) return;
@@ -204,6 +340,7 @@ async function createVault() {
     setActiveVault(handle, handle.name);
     state.loadedFileMap = await readVaultFileMap(handle);
     renderChangePreview();
+    renderVaultTree();
     els.stats.textContent = `Created vault structure in: ${handle.name}`;
     return handle;
   } catch (error) {
@@ -236,11 +373,53 @@ async function openVault() {
 
 function setActiveVault(handle, name) {
   state.vaultHandle = handle;
+  state.rememberedVaultHandle = handle;
   state.vaultName = name;
   els.createVaultBtn.textContent = `Vault: ${shortLabel(name)}`;
   els.openVaultBtn.textContent = "Open another vault";
-  els.saveVaultBtn.disabled = !state.currentFileMap;
+  updateSaveButtonState();
+  updateVaultStatus(`Connected: ${name}`);
+  saveVaultHandle(handle).catch(() => {});
   updateWorkflowState();
+}
+
+function updateVaultStatus(message) {
+  if (els.vaultStatus) els.vaultStatus.textContent = message;
+}
+
+async function queryVaultPermission(handle) {
+  if (!handle || typeof handle.queryPermission !== "function") return "prompt";
+  try {
+    return await handle.queryPermission({ mode: "readwrite" });
+  } catch {
+    return "prompt";
+  }
+}
+
+async function requestVaultPermission(handle) {
+  if (!handle) return false;
+  const current = await queryVaultPermission(handle);
+  if (current === "granted") return true;
+  if (typeof handle.requestPermission !== "function") return false;
+  try {
+    return await handle.requestPermission({ mode: "readwrite" }) === "granted";
+  } catch {
+    return false;
+  }
+}
+
+async function reconnectRememberedVault() {
+  const handle = state.rememberedVaultHandle;
+  if (!handle) return false;
+  const granted = await requestVaultPermission(handle);
+  if (!granted) {
+    updateVaultStatus("Reconnect was not granted. Open a vault folder to continue.");
+    return false;
+  }
+  await scaffoldVault(handle);
+  setActiveVault(handle, handle.name);
+  await loadExistingVault(handle);
+  return true;
 }
 
 async function loadExistingVault(handle) {
@@ -253,6 +432,7 @@ async function loadExistingVault(handle) {
   state.loadedFileMap = new Map(fileMap);
   state.files = [];
   renderSources();
+  renderVaultTree(fileMap);
   updateActionState();
 
   if (hasVaultWikiContent(fileMap)) {
@@ -271,7 +451,7 @@ async function loadExistingVault(handle) {
     drawGraph(graphFromFileMap(fileMap));
     renderChangePreview();
     els.exportBtn.disabled = false;
-    els.saveVaultBtn.disabled = false;
+    updateSaveButtonState();
     els.copyBtn.disabled = true;
     els.stats.textContent = `Opened ${state.vaultName}: ${fileMap.size} wiki/operating file${fileMap.size === 1 ? "" : "s"} loaded`;
     updateWorkflowState();
@@ -280,6 +460,7 @@ async function loadExistingVault(handle) {
 
   clearLoadedWiki();
   renderChangePreview();
+  renderVaultTree(fileMap);
   els.stats.textContent = rawFiles.length
     ? `Opened ${state.vaultName}: ${rawFiles.length} raw source${rawFiles.length === 1 ? "" : "s"} loaded`
     : `Opened vault: ${state.vaultName}`;
@@ -296,11 +477,12 @@ function clearLoadedWiki() {
   state.pendingSave = false;
   renderWikiFiles(new Map());
   renderOperatingLayer(new Map());
+  renderVaultTree(new Map());
   els.editList.className = "edit-list empty";
   els.editList.textContent = "Open or accept wiki files to see edit proposals.";
   drawGraph({ nodes: [], edges: [] });
   els.exportBtn.disabled = true;
-  els.saveVaultBtn.disabled = true;
+  updateSaveButtonState();
   els.copyBtn.disabled = true;
   renderChangePreview();
   updateWorkflowState();
@@ -308,6 +490,50 @@ function clearLoadedWiki() {
 
 function hasVaultWikiContent(fileMap) {
   return [...fileMap.keys()].some((path) => /^wiki\/(sources|concepts|entities|synthesis)\/[^/]+\.md$/.test(path));
+}
+
+async function handleSaveAndOrganize() {
+  if (state.pendingSave && state.currentFileMap) {
+    await saveCurrentVault();
+    return;
+  }
+
+  if (state.files.length > 0) {
+    await prepareInboxSave();
+    return;
+  }
+
+  if (state.currentFileMap) {
+    await saveCurrentVault();
+  }
+}
+
+async function prepareInboxSave() {
+  if (!state.vaultHandle) {
+    const reconnected = await reconnectRememberedVault();
+    if (!reconnected && !await openVault()) return;
+  }
+
+  if (state.files.some((file) => file.type === "pdf" && file.extractionStatus === "needed")) {
+    await extractPdfSources();
+  }
+
+  state.vault = compileVault(state.files, { name: state.vaultName || "Karpathy Original" });
+  state.selectedPath = null;
+  state.currentFileMap = mergeFileMaps(state.currentFileMap, vaultToFiles(state.vault));
+  state.hasSavedCurrent = false;
+  state.pendingSave = true;
+  renderWikiFiles(state.currentFileMap);
+  renderOperatingLayer(state.currentFileMap);
+  renderAcceptedLlmEditState();
+  drawGraph(graphFromFileMap(state.currentFileMap));
+  renderSources();
+  renderVaultTree(state.currentFileMap);
+  renderChangePreview();
+  els.exportBtn.disabled = false;
+  updateSaveButtonState();
+  els.copyBtn.disabled = false;
+  await prepareReviewForCurrentFileMap("Margins organized the queue. Answer the quick checks, then click Save and organize again to write the vault.");
 }
 
 async function saveCurrentVault() {
@@ -323,6 +549,10 @@ async function saveCurrentVault() {
     const pendingRaw = state.files;
     const sourceCount = allSourceFiles().length;
     const writtenRaw = pendingRaw.length ? await writeRawSources(vault, pendingRaw) : 0;
+    const reviewNotes = els.reviewReply.value.trim();
+    if (reviewNotes) {
+      state.currentFileMap.set("wiki/.margins/review-decisions.md", buildReviewDecisionLog(reviewNotes));
+    }
     const writtenFiles = await writeFileMap(vault, state.currentFileMap);
     await writeTextFile(vault, "wiki/.margins/export-summary.json", JSON.stringify({
       saved_at: new Date().toISOString(),
@@ -341,24 +571,37 @@ async function saveCurrentVault() {
     state.files = [];
     state.loadedFileMap = new Map(state.currentFileMap);
     renderSources();
+    renderVaultTree(state.currentFileMap);
     state.hasSavedCurrent = true;
     state.pendingSave = false;
     state.llmPromptCopied = false;
+    els.reviewReply.value = "";
     els.stats.textContent = pendingRaw.length === 0
       ? `Saved ${writtenFiles} wiki/operating files to ${state.vaultName}`
       : `Saved ${writtenFiles} wiki/operating file${writtenFiles === 1 ? "" : "s"} + ${writtenRaw} new raw source${writtenRaw === 1 ? "" : "s"} to ${state.vaultName}`;
     els.saveVaultBtn.textContent = "Saved";
     renderChangePreview();
-    setTimeout(() => { els.saveVaultBtn.textContent = originalText; }, 1500);
+    setTimeout(updateSaveButtonState, 1500);
   } catch (error) {
     if (error.name !== "AbortError") {
       els.stats.textContent = `Vault save failed: ${error.message || "unknown error"}`;
     }
     els.saveVaultBtn.textContent = originalText;
   } finally {
-    els.saveVaultBtn.disabled = !state.currentFileMap;
+    updateSaveButtonState();
     updateWorkflowState();
   }
+}
+
+function buildReviewDecisionLog(notes) {
+  return `# Review Decisions
+
+Updated: ${new Date().toISOString()}
+
+These are the user-facing filing decisions captured before the latest local save.
+
+${notes}
+`;
 }
 
 document.querySelectorAll(".tab").forEach((tab) => {
@@ -372,6 +615,9 @@ els.reviewMode.addEventListener("change", () => {
   localStorage.setItem("margins-review-mode", state.reviewMode);
   updateReviewModeHelp();
   if (state.llmFiles.size > 0) renderLlmReview();
+  else if (state.pendingSave && state.currentFileMap) {
+    prepareReviewForCurrentFileMap("Review mode changed.");
+  }
   updateWorkflowState();
 });
 
@@ -387,7 +633,7 @@ els.llmInput.addEventListener("input", () => {
   state.llmFiles = parsed;
   state.hasSavedCurrent = false;
   state.pendingSave = false;
-  els.saveVaultBtn.disabled = true;
+  updateSaveButtonState();
   els.exportBtn.disabled = true;
   renderLlmReview();
   renderChangePreview();
@@ -398,7 +644,7 @@ els.parseLlmBtn.addEventListener("click", () => {
   els.reviewReply.value = "";
   state.hasSavedCurrent = false;
   state.pendingSave = false;
-  els.saveVaultBtn.disabled = true;
+  updateSaveButtonState();
   els.exportBtn.disabled = true;
   renderLlmReview();
   renderChangePreview();
@@ -472,7 +718,7 @@ function acceptLlmFiles() {
   drawGraph(graphFromFileMap(state.currentFileMap));
   renderChangePreview();
   els.exportBtn.disabled = false;
-  els.saveVaultBtn.disabled = false;
+  updateSaveButtonState();
   els.acceptLlmBtn.disabled = true;
   els.repairLlmBtn.disabled = true;
   els.copyBtn.disabled = true;
@@ -480,6 +726,129 @@ function acceptLlmFiles() {
   activateTab("wiki");
   updateWorkflowState();
   return true;
+}
+
+async function prepareReviewForCurrentFileMap(statusText) {
+  if (!state.currentFileMap) return;
+  const warningsByPath = validateLlmFiles(state.currentFileMap);
+  let questions = buildMaterialQuestions(state.currentFileMap, warningsByPath, state.reviewMode);
+  state.apiQuestionSource = "heuristic";
+
+  if (state.apiSecret) {
+    els.llmStatus.textContent = "Asking the configured model for filing questions...";
+    try {
+      const apiQuestions = await generateApiReviewQuestions(state.currentFileMap, state.files);
+      if (apiQuestions.length > 0) {
+        questions = apiQuestions;
+        state.apiQuestionSource = "api";
+      }
+    } catch (error) {
+      els.llmStatus.textContent = `API question generation failed, using local questions: ${error.message || "unknown error"}`;
+    }
+  }
+
+  state.currentMaterialQuestions = dedupeQuestions(questions).slice(0, state.reviewMode === "strict" ? 12 : 6);
+  renderMaterialQuestions(state.currentMaterialQuestions);
+  els.llmStatus.textContent = `${statusText} ${state.currentMaterialQuestions.length} quick check${state.currentMaterialQuestions.length === 1 ? "" : "s"} generated by ${state.apiQuestionSource === "api" ? "the configured model" : "local review rules"}.`;
+  activateTab("llm");
+  updateWorkflowState();
+}
+
+async function generateApiReviewQuestions(fileMap, files) {
+  const provider = els.apiProvider?.value || providerValue(state.apiSettings.providerLabel) || "openai";
+  if (provider !== "openai" && provider !== "local") {
+    throw new Error("Direct browser calls are only wired for OpenAI-compatible endpoints right now.");
+  }
+
+  const endpoint = defaultEndpointForProvider(provider);
+  const model = els.apiModel?.value.trim() || defaultModelForProvider(provider);
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${state.apiSecret}`
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0.2,
+      messages: [
+        {
+          role: "system",
+          content: "You generate concise filing review questions for a local-first personal wiki. Return JSON only."
+        },
+        {
+          role: "user",
+          content: buildApiQuestionPrompt(fileMap, files)
+        }
+      ]
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+  const json = await response.json();
+  const content = json.choices?.[0]?.message?.content || "";
+  return parseApiQuestions(content);
+}
+
+function buildApiQuestionPrompt(fileMap, files) {
+  const sourceNames = files.map((file) => `- ${file.name}: ${excerptForQuestion(file.text || file.extractionError || "", 600)}`).join("\n") || "- No new source text available.";
+  const changedPaths = [...fileMap.keys()]
+    .filter((path) => isWikiPagePath(path) || path.startsWith("wiki/.margins/"))
+    .slice(0, 28)
+    .join("\n");
+  return `Create 2-5 quick filing questions before Margins saves this local vault.
+
+Rules:
+- Ask only durable questions that affect where files/pages go or whether a node should exist.
+- Prefer yes/no or short option buttons.
+- Include a default recommendation.
+- Do not ask generic approval questions.
+
+Return JSON:
+{"questions":[{"kind":"Quick check","path":"wiki/...","question":"...","reason":"...","recommendation":"My take: ...","options":["Yes","No","Use default"]}]}
+
+New sources:
+${sourceNames}
+
+Changed paths:
+${changedPaths}`;
+}
+
+function parseApiQuestions(content) {
+  const parsed = parseJsonObject(content);
+  const questions = Array.isArray(parsed?.questions) ? parsed.questions : [];
+  return questions
+    .map((question) => reviewQuestion(
+      "suggest",
+      question.kind || "Quick check",
+      question.path || "vault",
+      question.question || "",
+      question.reason || "The model flagged this as a filing decision.",
+      question.recommendation || "My take: use the default unless it looks wrong.",
+      Array.isArray(question.options) && question.options.length ? question.options.slice(0, 4) : ["Yes", "No", "Use default"]
+    ))
+    .filter((question) => question.question);
+}
+
+function parseJsonObject(content) {
+  try {
+    return JSON.parse(content);
+  } catch {
+    const match = String(content || "").match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    try {
+      return JSON.parse(match[0]);
+    } catch {
+      return null;
+    }
+  }
+}
+
+function excerptForQuestion(text, max) {
+  const clean = String(text || "").replace(/\s+/g, " ").trim();
+  return clean.length <= max ? clean : `${clean.slice(0, max).trim()}...`;
 }
 
 function renderChangePreview() {
@@ -618,6 +987,50 @@ function renderSources() {
   `).join("");
 }
 
+function renderVaultTree(fileMap = state.currentFileMap) {
+  if (!els.vaultTree) return;
+  const rawFiles = allSourceFiles();
+  const entries = fileMap ? [...fileMap.keys()].sort() : [];
+  const groups = [
+    ["raw_sources/", rawFiles.map((file) => rawSourceOutputPath(file.name))],
+    ["wiki/sources/", entries.filter((path) => path.startsWith("wiki/sources/"))],
+    ["wiki/concepts/", entries.filter((path) => path.startsWith("wiki/concepts/"))],
+    ["wiki/entities/", entries.filter((path) => path.startsWith("wiki/entities/"))],
+    ["wiki/synthesis/", entries.filter((path) => path.startsWith("wiki/synthesis/"))],
+    ["commands/", entries.filter((path) => path.startsWith("commands/"))],
+    ["agents/", entries.filter((path) => path.startsWith("agents/"))],
+    ["wiki/.margins/", entries.filter((path) => path.startsWith("wiki/.margins/"))]
+  ];
+  const rootFiles = entries.filter((path) => path === "operator-manual.md" || path === "query-cookbook.md" || path === "wiki/index.md");
+
+  els.vaultTree.innerHTML = [
+    `<div class="vault-tree-root"><strong>${escapeHtml(state.vaultName || "local vault")}</strong></div>`,
+    ...groups.map(([label, paths]) => `
+      <div class="vault-tree-folder">
+        <span>${escapeHtml(label)}</span>
+        <em>${paths.length}</em>
+      </div>
+      ${paths.slice(0, 6).map((path) => `<button class="vault-tree-file" type="button" data-path="${escapeHtml(normalizeMarginsPath(path))}">${escapeHtml(basename(path))}</button>`).join("")}
+      ${paths.length > 6 ? `<div class="vault-tree-more">${paths.length - 6} more</div>` : ""}
+    `),
+    ...rootFiles.map((path) => `<button class="vault-tree-file root-file" type="button" data-path="${escapeHtml(path)}">${escapeHtml(path)}</button>`)
+  ].join("");
+
+  els.vaultTree.querySelectorAll(".vault-tree-file").forEach((item) => {
+    item.addEventListener("click", () => {
+      const path = item.dataset.path;
+      if (state.currentFileMap?.has(path) && isWikiPagePath(path)) {
+        activateTab("wiki");
+        state.selectedPath = path;
+        els.docTitle.textContent = path;
+        els.docBody.textContent = state.currentFileMap.get(path);
+      } else if (state.currentFileMap?.has(path)) {
+        activateTab("ops");
+      }
+    });
+  });
+}
+
 function allSourceFiles() {
   const byName = new Map();
   for (const file of state.vaultFiles) byName.set(file.name, file);
@@ -646,6 +1059,8 @@ async function runWorkflowStep() {
 
   if (step.action === "vault") {
     await openVault();
+  } else if (step.action === "reconnectVault") {
+    await reconnectRememberedVault();
   } else if (step.action === "sources") {
     els.fileInput.value = "";
     els.fileInput.click();
@@ -662,6 +1077,8 @@ async function runWorkflowStep() {
     await copyReviewResponsePrompt();
   } else if (step.action === "acceptSave") {
     if (acceptLlmFiles()) await saveCurrentVault();
+  } else if (step.action === "prepareInboxSave") {
+    await prepareInboxSave();
   } else if (step.action === "save") {
     await saveCurrentVault();
   }
@@ -678,6 +1095,13 @@ function updateWorkflowState() {
 
 function workflowStep() {
   if (!state.vaultHandle) {
+    if (state.rememberedVaultHandle) {
+      return {
+        action: "reconnectVault",
+        label: "Reconnect vault",
+        guidance: `Reconnect ${state.rememberedVaultHandle.name} to keep using your local vault.`
+      };
+    }
     return {
       action: "vault",
       label: "Choose vault folder",
@@ -688,8 +1112,8 @@ function workflowStep() {
   if (state.pendingSave) {
     return {
       action: "save",
-      label: "Save to vault",
-      guidance: `The wiki is accepted. Save it into ${state.vaultName}.`
+      label: "Write local vault",
+      guidance: `Review is ready. Write these files into ${state.vaultName}.`
     };
   }
 
@@ -768,13 +1192,13 @@ function workflowStep() {
 
   const failedPdfCount = state.files.filter((file) => file.type === "pdf" && !file.text).length;
   return {
-    action: "copyPrompt",
-    label: state.currentFileMap ? "Update vault with LLM" : "Organize with LLM",
+    action: "prepareInboxSave",
+    label: "Save and organize",
     guidance: failedPdfCount
       ? `${failedPdfCount} PDF${failedPdfCount === 1 ? "" : "s"} need to be attached in the LLM chat. The copied prompt will list them.`
       : state.currentFileMap
-        ? "Copy one prompt with the existing vault context plus the new source. The returned files will merge into the vault."
-        : "Copy one prompt for the language model. When API mode exists, this step becomes automatic."
+        ? "Organize the new source against the existing vault, then review the proposed changes."
+        : "Organize the uploaded files, ask a few filing questions, then save the local vault."
   };
 }
 
@@ -790,12 +1214,12 @@ function renderVault() {
   const fileMap = vaultToFiles(vault);
 
   els.exportBtn.disabled = false;
-  els.saveVaultBtn.disabled = false;
   els.copyBtn.disabled = false;
   els.stats.textContent = `${vault.manifest.counts.raw_sources} sources · ${vault.wiki.graph.nodes.length} nodes · ${vault.wiki.graph.edges.length} edges`;
   state.currentFileMap = fileMap;
   state.hasSavedCurrent = false;
   state.pendingSave = true;
+  updateSaveButtonState();
   renderWikiFiles(fileMap);
 
   renderOperatingLayer(fileMap);
@@ -964,14 +1388,38 @@ function renderMaterialQuestions(questions) {
 
   els.reviewQuestions.className = "review-list";
   els.reviewQuestions.innerHTML = questions.map((question) => `
-    <div class="review-card ${question.severity}">
+    <div class="review-card ${question.severity}" data-question="${escapeHtml(question.question)}">
       <div class="review-meta">${escapeHtml(question.kind)}</div>
       <strong>${escapeHtml(question.question)}</strong>
       <p>${escapeHtml(question.reason)}</p>
       <div class="recommendation">${escapeHtml(question.recommendation)}</div>
+      <div class="quick-actions">
+        ${(question.options || ["Yes", "No", "Use default"]).map((option, index) => `
+          <button class="quick-answer ${index === 0 ? "primary" : ""}" type="button" data-answer="${escapeHtml(option)}">${escapeHtml(option)}</button>
+        `).join("")}
+      </div>
       <div class="review-path">${escapeHtml(question.path || "vault")}</div>
     </div>
   `).join("");
+
+  els.reviewQuestions.querySelectorAll(".quick-answer").forEach((button) => {
+    button.addEventListener("click", () => {
+      const card = button.closest(".review-card");
+      appendReviewAnswer(card.dataset.question, button.dataset.answer);
+      card.classList.add("answered");
+      card.querySelectorAll(".quick-answer").forEach((item) => {
+        item.classList.toggle("selected", item === button);
+      });
+    });
+  });
+}
+
+function appendReviewAnswer(question, answer) {
+  const line = `- ${question}: ${answer}`;
+  const current = els.reviewReply.value.trim();
+  els.reviewReply.value = current ? `${current}\n${line}` : line;
+  updateReviewResponseState();
+  updateWorkflowState();
 }
 
 function updateReviewResponseState() {
@@ -1113,8 +1561,8 @@ function strictReviewQuestions(fileMap) {
   )];
 }
 
-function reviewQuestion(severity, kind, path, question, reason, recommendation) {
-  return { severity, kind, path, question, reason, recommendation };
+function reviewQuestion(severity, kind, path, question, reason, recommendation, options = ["Yes", "No", "Use default"]) {
+  return { severity, kind, path, question, reason, recommendation, options };
 }
 
 function dedupeQuestions(questions) {
@@ -1379,7 +1827,16 @@ function updateActionState() {
   els.extractBtn.disabled = !hasPendingPdf;
   els.compileBtn.disabled = !hasFiles;
   els.llmBtn.disabled = !hasFiles;
+  updateSaveButtonState();
   updateWorkflowState();
+}
+
+function updateSaveButtonState() {
+  if (!els.saveVaultBtn) return;
+  const canPrepare = state.files.length > 0 && !state.pendingSave;
+  const canSave = state.pendingSave && state.currentFileMap;
+  els.saveVaultBtn.disabled = !(canPrepare || canSave);
+  els.saveVaultBtn.textContent = canSave ? "Write local vault" : "Save and organize";
 }
 
 function sourceClass(file) {

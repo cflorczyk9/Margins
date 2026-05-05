@@ -15,10 +15,12 @@
   <div class="app-shell">
     <aside class="sidebar">
       <div class="brand">
-        <div class="mark"></div>
-        <div>
-          <h1>Margins</h1>
-          <p>raw sources to wiki to operating layer</p>
+        <div class="brand-lockup">
+          <div class="mark"></div>
+          <div>
+            <h1>Margins</h1>
+            <p>Local vault, durable wiki, operating layer.</p>
+          </div>
         </div>
         <label class="theme-toggle" title="Toggle dark mode">
           <input id="theme-toggle" type="checkbox">
@@ -26,91 +28,110 @@
         </label>
       </div>
 
-      <section class="panel workflow-panel">
-        <h2>Next Step</h2>
+      <section class="rail-section vault-card">
+        <div class="section-kicker">Vault</div>
+        <p id="vault-status" class="vault-status">No local vault connected.</p>
         <p id="workflow-guidance">Choose where Margins should save your vault.</p>
+        <div class="rail-actions two">
+          <button id="create-vault-btn">Create</button>
+          <button id="open-vault-btn">Open</button>
+        </div>
         <button id="workflow-btn" class="primary">Choose vault folder</button>
       </section>
 
-      <section id="source-drop-zone" class="panel source-drop-zone">
-        <h2>Sources</h2>
-        <p>Drop documents here, or add files. Margins keeps originals in raw_sources and writes the wiki into the selected vault.</p>
-        <label class="file-picker">
-          <input id="file-input" type="file" multiple>
-          <span>Add documents</span>
-        </label>
-        <label class="file-picker">
-          <input id="folder-input" type="file" webkitdirectory directory multiple>
-          <span>Add source folder</span>
-        </label>
-        <div id="source-list" class="source-list empty">No sources loaded.</div>
+      <section class="rail-section api-card">
+        <div class="section-kicker">API</div>
+        <select id="api-provider" class="select-control" aria-label="API provider">
+          <option value="openai" selected>OpenAI</option>
+          <option value="anthropic">Anthropic</option>
+          <option value="local">Local model</option>
+        </select>
+        <input id="api-model" class="text-control" type="text" value="gpt-5" aria-label="API model">
+        <input id="api-key" class="text-control" type="password" placeholder="API key" aria-label="API key">
+        <div class="rail-actions two">
+          <button id="save-api-key-btn">Save key</button>
+          <button id="clear-api-key-btn">Clear</button>
+        </div>
+        <p id="api-key-status" class="status-line">Key is stored locally when configured.</p>
       </section>
 
-      <details class="panel advanced-panel">
-        <summary>Advanced tools</summary>
+      <section class="rail-section">
+        <div class="section-kicker">Structure</div>
+        <div id="vault-tree" class="vault-tree">
+          <div><span>raw_sources/</span></div>
+          <div><span>wiki/</span></div>
+          <div><span>commands/</span></div>
+          <div><span>agents/</span></div>
+          <div><span>operator-manual.md</span></div>
+        </div>
+      </section>
+
+      <details class="rail-section advanced-panel">
+        <summary>Controls</summary>
         <button id="extract-btn" disabled>Extract PDF text</button>
-        <button id="compile-btn" class="primary" disabled>Local compile</button>
+        <button id="compile-btn" disabled>Local compile</button>
         <button id="llm-btn" disabled>Copy LLM ingest prompt</button>
-        <button id="create-vault-btn">Create vault</button>
-        <button id="open-vault-btn">Open vault</button>
-        <button id="save-vault-btn" disabled>Save changes</button>
         <button id="export-btn" disabled>Download vault JSON</button>
         <button id="copy-btn" disabled>Copy operator manual</button>
       </details>
-
-      <section class="panel">
-        <h2>Review Mode</h2>
-        <select id="review-mode" class="select-control">
-          <option value="suggested" selected>Suggested review</option>
-          <option value="auto">Auto-file</option>
-          <option value="strict">Strict review</option>
-        </select>
-        <p id="review-mode-help">Ask only about durable wiki decisions, with a recommended default.</p>
-      </section>
-
     </aside>
 
     <main class="workspace">
       <header class="topbar">
         <div>
-          <h2>Karpathy Original</h2>
-          <p>Evidence stays raw. The wiki compounds. The operating layer constrains model behavior.</p>
+          <h2>Inbox</h2>
+          <p>Drop sources first. Margins turns raw context into a local wiki, then asks only for durable decisions.</p>
         </div>
         <div id="stats" class="stats">0 sources · 0 nodes · 0 edges</div>
       </header>
 
-      <nav class="tabs">
-        <button class="tab active" data-view="llm">LLM Review</button>
+      <nav class="tabs" aria-label="Primary views">
+        <button class="tab active" data-view="inbox">Inbox</button>
         <button class="tab" data-view="wiki">Wiki</button>
         <button class="tab" data-view="graph">Graph</button>
+        <button class="tab" data-view="llm">Review</button>
         <button class="tab" data-view="ops">Operating Layer</button>
-        <button class="tab" data-view="edits">Edit Proposals</button>
       </nav>
 
-      <section id="llm-view" class="view active">
-        <div class="llm-grid">
-          <article class="document">
-            <h3>Paste LLM Output</h3>
-            <textarea id="llm-input" class="llm-input" spellcheck="false" placeholder="Paste Claude/ChatGPT output here. Expected format: fenced blocks starting with ```margins-file path=&quot;wiki/sources/source-example.md&quot;."></textarea>
-            <div class="button-row">
-              <button id="parse-llm-btn">Parse LLM files</button>
-              <button id="repair-llm-btn" disabled>Copy repair prompt</button>
-              <button id="accept-llm-btn" class="primary" disabled>Accept as current wiki</button>
-            </div>
-            <div id="llm-status" class="status-line">No LLM output parsed yet.</div>
-            <div id="review-questions" class="review-list empty">Parse LLM output to see material review questions.</div>
-            <textarea id="review-reply" class="review-reply" spellcheck="true" placeholder="Reply normally. Example: Keep the synthesis as a draft, but don't make demo clients or sample companies their own pages."></textarea>
-            <button id="review-response-btn" disabled>Copy review response prompt</button>
-          </article>
-          <div class="tree">
-            <h3>Parsed files</h3>
-            <div id="llm-file-list" class="tree-list empty">Paste output and parse to review files.</div>
+      <section id="inbox-view" class="view active">
+        <section id="source-drop-zone" class="source-drop-zone inbox-drop">
+          <div class="drop-mark"></div>
+          <h3>Drop anything worth remembering.</h3>
+          <p>PDFs, notes, transcripts, exports, folders. Originals stay in raw_sources; organized knowledge lands in the vault.</p>
+          <div class="drop-actions">
+            <label class="file-picker primary-picker">
+              <input id="file-input" type="file" multiple>
+              <span>Upload files</span>
+            </label>
+            <label class="file-picker">
+              <input id="folder-input" type="file" webkitdirectory directory multiple>
+              <span>Upload folder</span>
+            </label>
           </div>
-          <article class="document">
-            <div id="llm-preview-title" class="doc-title">No LLM file selected</div>
-            <pre id="llm-preview-body" class="doc-body">Paste model output, then click Parse LLM files.</pre>
-          </article>
-        </div>
+        </section>
+
+        <section class="inbox-bottom">
+          <div class="queue-panel">
+            <div class="section-head">
+              <div>
+                <span class="section-kicker">Queue</span>
+                <h3>Uploaded sources</h3>
+              </div>
+              <button id="save-vault-btn" class="primary shadow-action" disabled>Save and organize</button>
+            </div>
+            <div id="source-list" class="source-list empty">No sources loaded.</div>
+          </div>
+
+          <div class="review-mode-card">
+            <div class="section-kicker">Review mode</div>
+            <select id="review-mode" class="select-control">
+              <option value="suggested" selected>Suggested review</option>
+              <option value="auto">Auto-file</option>
+              <option value="strict">Strict review</option>
+            </select>
+            <p id="review-mode-help">Ask only about durable wiki decisions, with a recommended default.</p>
+          </div>
+        </section>
       </section>
 
       <section id="wiki-view" class="view">
@@ -127,8 +148,51 @@
       </section>
 
       <section id="graph-view" class="view">
-        <div class="graph-wrap">
-          <svg id="graph-svg" viewBox="0 0 980 560" role="img" aria-label="Generated wiki graph"></svg>
+        <div class="graph-shell">
+          <div class="graph-header">
+            <div>
+              <h3>Knowledge graph</h3>
+              <p>Nodes and cited links generated from the current vault.</p>
+            </div>
+          </div>
+          <div class="graph-wrap">
+            <svg id="graph-svg" viewBox="0 0 980 560" role="img" aria-label="Generated wiki graph"></svg>
+          </div>
+        </div>
+      </section>
+
+      <section id="llm-view" class="view">
+        <div id="review-view" class="review-layout">
+          <article class="review-compose">
+            <div class="section-head">
+              <div>
+                <span class="section-kicker">Model return</span>
+                <h3>Review incoming files</h3>
+              </div>
+            </div>
+            <textarea id="llm-input" class="llm-input" spellcheck="false" placeholder="Paste model output here. Expected format: fenced blocks starting with ```margins-file path=&quot;wiki/sources/source-example.md&quot;."></textarea>
+            <div class="button-row">
+              <button id="parse-llm-btn">Parse files</button>
+              <button id="repair-llm-btn" disabled>Copy repair prompt</button>
+              <button id="accept-llm-btn" class="primary" disabled>Accept wiki</button>
+            </div>
+            <div id="llm-status" class="status-line">No LLM output parsed yet.</div>
+            <div class="quick-review">
+              <div id="review-questions" class="review-list empty">Parse LLM output to see material review questions.</div>
+              <textarea id="review-reply" class="review-reply" spellcheck="true" placeholder="Answer quickly: yes, no, accept defaults, or add a short correction."></textarea>
+              <button id="review-response-btn" disabled>Copy review response prompt</button>
+            </div>
+          </article>
+
+          <div class="tree parsed-tree">
+            <h3>Returned files</h3>
+            <div id="llm-file-list" class="tree-list empty">Paste output and parse to review files.</div>
+          </div>
+
+          <article class="document preview-document">
+            <div id="llm-preview-title" class="doc-title">No LLM file selected</div>
+            <pre id="llm-preview-body" class="doc-body">Paste model output, then click Parse files.</pre>
+          </article>
         </div>
       </section>
 
@@ -150,11 +214,11 @@
             <h3>agents/</h3>
             <div id="agents-list" class="mini-list"></div>
           </article>
+          <article class="edit-proposals">
+            <h3>Edit proposals</h3>
+            <div id="edit-list" class="edit-list empty">Compile sources to generate edit proposals.</div>
+          </article>
         </div>
-      </section>
-
-      <section id="edits-view" class="view">
-        <div id="edit-list" class="edit-list empty">Compile sources to generate edit proposals.</div>
       </section>
     </main>
   </div>
