@@ -93,8 +93,8 @@ export function vaultToFiles(vault) {
   files.set("wiki/graph.json", JSON.stringify(vault.wiki.graph, null, 2));
   files.set("operator-manual.md", vault.operatingLayer.operatorManual);
   files.set("query-cookbook.md", vault.operatingLayer.queryCookbook);
-  files.set(".margins/manifest.json", JSON.stringify(vault.manifest, null, 2));
-  files.set(".margins/edit-log.jsonl", vault.editProposals.map((p) => JSON.stringify(p)).join("\n") + "\n");
+  files.set("wiki/.margins/manifest.json", JSON.stringify(vault.manifest, null, 2));
+  files.set("wiki/.margins/edit-log.jsonl", vault.editProposals.map((p) => JSON.stringify(p)).join("\n") + "\n");
 
   for (const [name, body] of Object.entries(vault.operatingLayer.commands)) {
     files.set(`commands/${name}.md`, body);
@@ -451,7 +451,7 @@ Find supporting source nodes. If none exist, say "not supported by the current w
       "query": command("query", "Answer from wiki nodes with citations and optional synthesis filing."),
       "lint": command("lint", "Check stale pages, orphan nodes, missing citations, and operator-manual violations."),
       "propose-edit": command("propose-edit", "Return a structured wiki edit proposal. Never apply silently."),
-      "apply-edit": command("apply-edit", "Apply a user-approved edit and append the result to .margins/edit-log.jsonl."),
+      "apply-edit": command("apply-edit", "Apply a user-approved edit and append the result to wiki/.margins/edit-log.jsonl."),
       "export": command("export", "Package raw sources, wiki, operating layer, graph, and manifest for migration.")
     },
     agents: {

@@ -188,10 +188,6 @@ h1, h2, h3, p {
   margin-bottom: 8px;
 }
 
-.muted-panel {
-  background: var(--soft);
-}
-
 .workflow-panel p {
   line-height: 1.35;
 }
@@ -203,13 +199,6 @@ h1, h2, h3, p {
 .source-drop-zone.dragging {
   border-color: var(--accent);
   background: var(--soft);
-}
-
-.muted-panel ul {
-  margin: 8px 0 0;
-  padding-left: 18px;
-  color: var(--muted);
-  font-size: 13px;
 }
 
 .file-picker {
@@ -515,57 +504,6 @@ button.primary:not(:disabled):hover {
 
 .graph-wrap {
   height: calc(100vh - 144px);
-}
-
-.checklist-grid {
-  display: grid;
-  gap: 16px;
-  max-width: 980px;
-}
-
-.checklist-card {
-  background: var(--paper);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 14px;
-}
-
-.checklist-card h3 {
-  font-size: 13px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--muted);
-  margin-bottom: 10px;
-}
-
-.check-row {
-  display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
-  gap: 10px;
-  align-items: start;
-  padding: 10px 0;
-  border-top: 1px solid var(--line);
-  font-size: 14px;
-  line-height: 1.4;
-}
-
-.check-row:first-of-type {
-  border-top: 0;
-}
-
-.check-row input {
-  width: 16px;
-  height: 16px;
-  margin-top: 2px;
-  accent-color: var(--accent);
-}
-
-.check-row span {
-  color: var(--muted);
-}
-
-.check-row strong {
-  color: var(--ink);
 }
 
 #graph-svg {

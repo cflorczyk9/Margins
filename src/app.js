@@ -71,7 +71,6 @@ els.folderInput.addEventListener("change", handleSourceSelection);
 els.fileInput.addEventListener("change", handleSourceSelection);
 els.reviewMode.value = state.reviewMode;
 updateReviewModeHelp();
-hydrateChecklist();
 updateWorkflowState();
 
 els.themeToggle.addEventListener("change", () => {
@@ -225,7 +224,7 @@ async function saveCurrentVault() {
   try {
     const writtenRaw = await writeRawSources(vault, state.files);
     const writtenFiles = await writeFileMap(vault, state.currentFileMap);
-    await writeTextFile(vault, ".margins/export-summary.json", JSON.stringify({
+    await writeTextFile(vault, "wiki/.margins/export-summary.json", JSON.stringify({
       saved_at: new Date().toISOString(),
       vault: state.vaultName,
       raw_sources: writtenRaw,
@@ -257,12 +256,6 @@ async function saveCurrentVault() {
 document.querySelectorAll(".tab").forEach((tab) => {
   tab.addEventListener("click", () => {
     activateTab(tab.dataset.view);
-  });
-});
-
-document.querySelectorAll("[data-check-id]").forEach((checkbox) => {
-  checkbox.addEventListener("change", () => {
-    localStorage.setItem(`margins-check-${checkbox.dataset.checkId}`, checkbox.checked ? "1" : "0");
   });
 });
 
@@ -384,12 +377,6 @@ function renderSources() {
       <span>${escapeHtml(sourceStatus(file))}</span>
     </div>
   `).join("");
-}
-
-function hydrateChecklist() {
-  document.querySelectorAll("[data-check-id]").forEach((checkbox) => {
-    checkbox.checked = localStorage.getItem(`margins-check-${checkbox.dataset.checkId}`) === "1";
-  });
 }
 
 function updateReviewModeHelp() {
@@ -601,7 +588,9 @@ function renderOperatingLayer(fileMap) {
 }
 
 function renderAcceptedLlmEditState() {
-  const editLog = state.currentFileMap.get(".margins/edit-log.jsonl") || "";
+  const editLog = state.currentFileMap.get("wiki/.margins/edit-log.jsonl") ||
+    state.currentFileMap.get(".margins/edit-log.jsonl") ||
+    "";
   const proposals = editLog
     .split("\n")
     .map((line) => line.trim())
@@ -898,7 +887,7 @@ function validateLlmFiles(fileMap) {
 
   for (const [path, body] of entries) {
     const warnings = [];
-    if (path.startsWith("wiki/") && path.endsWith(".md") && !hasYamlFrontmatter(body)) {
+    if (isWikiPagePath(path) && !hasYamlFrontmatter(body)) {
       warnings.push("Missing YAML frontmatter.");
     }
     if (/:contentReference\[|oaicite:/i.test(body)) {
@@ -917,7 +906,7 @@ function validateLlmFiles(fileMap) {
     if (path.startsWith("wiki/entities/") && /\bfictional\b|\bdemo\b|\bis this a real\b/i.test(body)) {
       warnings.push("Entity may be fictional or demo-only. Review before keeping it as a first-class entity.");
     }
-    if (path === ".margins/edit-log.jsonl") {
+    if (path === "wiki/.margins/edit-log.jsonl" || path === ".margins/edit-log.jsonl") {
       const invalidLines = body.split("\n").filter((line) => line.trim() && !parseJsonLine(line));
       if (invalidLines.length > 0) warnings.push(`${invalidLines.length} edit-log line${invalidLines.length === 1 ? "" : "s"} are not valid JSON.`);
     }
@@ -929,6 +918,10 @@ function validateLlmFiles(fileMap) {
 
 function hasYamlFrontmatter(body) {
   return /^---\n[\s\S]+?\n---\n/.test(body);
+}
+
+function isWikiPagePath(path) {
+  return (/^wiki\/(sources|concepts|entities|synthesis)\/[^/]+\.md$/.test(path) || path === "wiki/index.md");
 }
 
 function warningLabel(warnings) {
@@ -1237,11 +1230,11 @@ Use one fenced block per file. Return files in this structure:
 - commands/compile.md
 - commands/lint.md
 - agents/wiki-ingest.md
-- .margins/ingest-report.md
-- .margins/edit-log.jsonl
+- wiki/.margins/ingest-report.md
+- wiki/.margins/edit-log.jsonl
 
 Page rules:
-- Every wiki Markdown file must start with YAML frontmatter.
+- Every source, concept, entity, synthesis, and index Markdown page under wiki/ must start with YAML frontmatter. Operational files under wiki/.margins/ do not need page frontmatter.
 - Every factual claim needs a durable source citation. Do not use ChatGPT-only citation tokens such as :contentReference, oaicite, turn references, or hidden attachment ids. Cite with source page links and plain file/section references that will still make sense after export.
 - Synthesis is allowed, but label it as synthesis.
 - Do not invent account balances, transaction details, dates, roles, or relationships.
@@ -1276,7 +1269,7 @@ Operating-layer files:
 - query-cookbook.md should include practical lookup patterns.
 - commands/*.md should be short executable workflow specs.
 - agents/wiki-ingest.md should describe the conservative ingest workflow: source page first, direct-read propagation, inference refusal, and review before promotion.
-- .margins/ingest-report.md should summarize files created, links made, inferences refused, mentioned-but-missing candidates, and anything that needs user review.
+- wiki/.margins/ingest-report.md should summarize files created, links made, inferences refused, mentioned-but-missing candidates, and anything that needs user review.
 
 Extracted text sources:
 
@@ -1289,9 +1282,9 @@ function wikiSchemaPack() {
 Architecture:
 - raw_sources/ stores immutable evidence.
 - wiki/ stores LLM-operable Markdown: source pages, concept pages, entity pages, synthesis pages, and index pages.
-- operator-manual.md, query-cookbook.md, commands/, agents/, and .margins/ tell future models how to operate the wiki.
+- operator-manual.md, query-cookbook.md, commands/, agents/, and wiki/.margins/ tell future models how to operate the wiki.
 
-Required frontmatter for every wiki/*.md file:
+Required frontmatter for wiki source, concept, entity, synthesis, and index pages:
 ---
 type: source | concept | entity | synthesis | index
 bucket: sources | concepts | entities | synthesis | index
@@ -1356,7 +1349,7 @@ Good ingest report shape:
 ## Needs Review
 
 Self-check before returning:
-1. Every wiki/*.md file has YAML frontmatter.
+1. Every wiki source, concept, entity, synthesis, and index page has YAML frontmatter.
 2. No ChatGPT-only citation artifacts remain.
 3. Every source page has Mentioned but missing and Inferences refused.
 4. Every promoted page links back to a source page.
@@ -1382,7 +1375,7 @@ Your task:
 2. Keep the exact \`\`\`margins-file path="..."\`\`\` fenced block format.
 3. Fix every warning listed below.
 4. Remove all :contentReference, oaicite, hidden attachment ids, and turn references.
-5. Add YAML frontmatter to every wiki/*.md file.
+5. Add YAML frontmatter to every wiki source, concept, entity, synthesis, and index page.
 6. Use durable citations only: source page links, raw filenames, and plain section names.
 7. Add source-page backlinks to promoted pages where supported.
 8. Demote fictional/demo-only entity pages into Mentioned but missing or Needs Review unless they are useful durable entities.
@@ -1424,7 +1417,7 @@ Task:
 5. Demote nodes the user does not want into source-page sections, "Mentioned but missing", or draft synthesis notes as appropriate.
 6. Preserve source pages and concrete facts unless the user explicitly says they are wrong.
 7. Keep all synthesis labeled. Do not turn guesses into facts.
-8. If the user's reply contains a stable preference for future ingests, create or update .margins/preferences.json with a concise machine-readable preference.
+8. If the user's reply contains a stable preference for future ingests, create or update wiki/.margins/preferences.json with a concise machine-readable preference.
 9. Only add a follow-up question if the user's answer is needed to avoid a wrong durable wiki decision.
 
 Current file set:
@@ -1458,7 +1451,7 @@ function parseLlmFiles(value) {
   let match;
 
   while ((match = pattern.exec(value)) !== null) {
-    const path = match[1].trim();
+    const path = normalizeMarginsPath(match[1].trim());
     const body = match[2].trim();
     if (path && body) files.set(path, body);
   }
@@ -1511,7 +1504,7 @@ async function scaffoldVault(rootHandle) {
   await ensureDirectory(rootHandle, "wiki/synthesis");
   await ensureDirectory(rootHandle, "commands");
   await ensureDirectory(rootHandle, "agents");
-  await ensureDirectory(rootHandle, ".margins");
+  await ensureDirectory(rootHandle, "wiki/.margins");
   await writeTextFileIfMissing(rootHandle, "raw_sources/README.md", `# Raw Sources
 
 Drop original source files here. Margins treats this folder as evidence and writes generated knowledge into wiki/.
@@ -1532,7 +1525,7 @@ Save generated wiki files from Margins to populate this vault.
 `);
   await writeTextFileIfMissing(rootHandle, "operator-manual.md", "# Operator Manual\n\nMargins will write model operating instructions here.\n");
   await writeTextFileIfMissing(rootHandle, "query-cookbook.md", "# Query Cookbook\n\nMargins will write query recipes here.\n");
-  await writeTextFileIfMissing(rootHandle, ".margins/manifest.json", JSON.stringify({
+  await writeTextFileIfMissing(rootHandle, "wiki/.margins/manifest.json", JSON.stringify({
     name: "Margins Vault",
     template: "karpathy-original",
     version: "0.1.0",
@@ -1584,7 +1577,7 @@ function rawSourceOutputPath(path) {
 async function writeFileMap(rootHandle, fileMap) {
   let count = 0;
   for (const [path, body] of fileMap.entries()) {
-    await writeTextFile(rootHandle, safeRelativePath(path), body);
+    await writeTextFile(rootHandle, safeRelativePath(normalizeMarginsPath(path)), body);
     count += 1;
   }
   return count;
@@ -1630,6 +1623,10 @@ function safeRelativePath(path) {
     .filter((part) => part && part !== "." && part !== "..")
     .map((part) => part.replace(/[<>:"|?*\u0000-\u001F]/g, "-"))
     .join("/");
+}
+
+function normalizeMarginsPath(path) {
+  return String(path).replace(/^\.margins\//, "wiki/.margins/");
 }
 
 function wordCount(text) {

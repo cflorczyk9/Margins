@@ -63,14 +63,6 @@
         <p id="review-mode-help">Ask only about durable wiki decisions, with a recommended default.</p>
       </section>
 
-      <details class="panel muted-panel">
-        <summary>Build notes</summary>
-        <ul>
-          <li>Can Margins create the vault folder for the user?</li>
-          <li>Does clean LLM output save into the selected vault?</li>
-          <li>Can repeated saves update the same vault?</li>
-        </ul>
-      </details>
     </aside>
 
     <main class="workspace">
@@ -83,83 +75,14 @@
       </header>
 
       <nav class="tabs">
-        <button class="tab active" data-view="checklist">Checklist</button>
-        <button class="tab" data-view="llm">LLM Review</button>
+        <button class="tab active" data-view="llm">LLM Review</button>
         <button class="tab" data-view="wiki">Wiki</button>
         <button class="tab" data-view="graph">Graph</button>
         <button class="tab" data-view="ops">Operating Layer</button>
         <button class="tab" data-view="edits">Edit Proposals</button>
       </nav>
 
-      <section id="checklist-view" class="view active">
-        <div class="checklist-grid">
-          <article class="checklist-card">
-            <h3>Phase 4 goal</h3>
-            <label class="check-row">
-              <input type="checkbox" data-check-id="phase4-goal-memory">
-              <span><strong>Accepted wiki exists in memory.</strong> Clean LLM output can become the current Margins wiki.</span>
-            </label>
-            <label class="check-row">
-              <input type="checkbox" data-check-id="phase4-goal-folder">
-              <span><strong>Create a real vault.</strong> Margins creates raw_sources, wiki, commands, agents, and .margins files on disk.</span>
-            </label>
-            <label class="check-row">
-              <input type="checkbox" data-check-id="phase4-goal-raw">
-              <span><strong>Preserve raw evidence.</strong> Original uploaded files are written under raw_sources without relying on JSON.</span>
-            </label>
-            <label class="check-row">
-              <input type="checkbox" data-check-id="phase4-goal-open">
-              <span><strong>Folder is inspectable.</strong> The output can be opened in Finder, Obsidian, or a code editor as Markdown files.</span>
-            </label>
-          </article>
-
-          <article class="checklist-card">
-            <h3>Current test</h3>
-            <label class="check-row">
-              <input type="checkbox" data-check-id="phase4-test-loaded">
-              <span><strong>1. Create or open vault.</strong> Expected: Margins creates or selects the folder it will save into repeatedly.</span>
-            </label>
-            <label class="check-row">
-              <input type="checkbox" data-check-id="phase4-test-clean">
-              <span><strong>2. Keep raw files loaded.</strong> Expected: left sidebar still shows the original source files before writing.</span>
-            </label>
-            <label class="check-row">
-              <input type="checkbox" data-check-id="phase4-test-write">
-              <span><strong>3. Accept clean LLM output.</strong> Expected: LLM Review shows low or zero warnings, then Wiki tab shows accepted files.</span>
-            </label>
-            <label class="check-row">
-              <input type="checkbox" data-check-id="phase4-test-dest">
-              <span><strong>4. Click Save changes.</strong> Expected: files are written directly into the selected vault folder.</span>
-            </label>
-            <label class="check-row">
-              <input type="checkbox" data-check-id="phase4-test-contents">
-              <span><strong>5. Inspect contents.</strong> Expected: raw_sources, wiki, commands, agents, operator-manual.md, query-cookbook.md, and .margins exist.</span>
-            </label>
-            <label class="check-row">
-              <input type="checkbox" data-check-id="phase4-test-open">
-              <span><strong>6. Open a Markdown file.</strong> Expected: frontmatter and wiki links are preserved on disk.</span>
-            </label>
-          </article>
-
-          <article class="checklist-card">
-            <h3>Next checklist after folder writing passes</h3>
-            <label class="check-row">
-              <input type="checkbox" disabled>
-              <span><strong>Review generated wiki edits.</strong> Expected: accept, reject, or edit individual files before writing.</span>
-            </label>
-            <label class="check-row">
-              <input type="checkbox" disabled>
-              <span><strong>Clean stale files.</strong> Expected: remove or flag files that no longer exist in the current accepted wiki.</span>
-            </label>
-            <label class="check-row">
-              <input type="checkbox" disabled>
-              <span><strong>Optional API mode.</strong> Expected: run the same ingest without copy/paste when an API key is available.</span>
-            </label>
-          </article>
-        </div>
-      </section>
-
-      <section id="llm-view" class="view">
+      <section id="llm-view" class="view active">
         <div class="llm-grid">
           <article class="document">
             <h3>Paste LLM Output</h3>

@@ -12,11 +12,11 @@ into:
 
 ```text
 wiki/
+  .margins/
 operator-manual.md
 query-cookbook.md
 commands/
 agents/
-.margins/
 ```
 
 The goal is not file organization. The goal is an LLM-operable wiki: source nodes, concept nodes, entity nodes, synthesis nodes, citations, commands, agents, and an edit log that Claude or ChatGPT can read from and write back into through MCP.
