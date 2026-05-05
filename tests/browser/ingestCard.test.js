@@ -46,13 +46,64 @@ test("ingest card expands summaries and persists question answers", {
     }, fullSummary);
 
     await page.getByRole("button", { name: "Show more" }).click();
-    const expandedSummary = await page.locator(".run-summary p").innerText();
-    assert.equal(expandedSummary, fullSummary);
+    const expandedSummary = normalizeText(await page.locator(".run-summary").innerText());
+    assert.match(expandedSummary, /This uploaded source summarizes a phone call/);
+    assert.match(expandedSummary, /The full summary should be visible/);
     assert.equal(expandedSummary.endsWith("..."), false);
 
     await page.locator(".run-question .quick-answer", { hasText: "Yes" }).click();
     await assertSelected(page, "Yes");
     await assertAnswered(page, "Answered: Yes");
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("process button processes only the selected pending source", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => window.__marginsTest.seedSourceStatusCards());
+    await page.locator(".source-item", { hasText: "script/build.py" }).getByRole("button", { name: "Process" }).click();
+    await page.locator(".source-item.ready-to-write", { hasText: "script/build.py" }).waitFor();
+
+    assert.deepEqual(await page.evaluate(() => window.__marginsTest.processedReviewNames()), ["script/build.py"]);
+    assert.equal(await page.locator(".source-item.ready-to-write").count(), 1);
+    assert.match(await page.locator(".source-item", { hasText: "pending-word.docx" }).innerText(), /Process/);
+    assert.match(await page.locator(".source-item", { hasText: "pending-statement.pdf" }).innerText(), /Process/);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("bulk ingest processes the whole pending queue", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => window.__marginsTest.seedSourceStatusCards());
+    await page.getByRole("button", { name: "Bulk ingest" }).click();
+    await page.waitForFunction(() => window.__marginsTest.processedReviewNames().length === 3);
+
+    assert.deepEqual(await page.evaluate(() => window.__marginsTest.processedReviewNames()), [
+      "pending-statement.pdf",
+      "pending-word.docx",
+      "script/build.py"
+    ]);
+    await page.waitForFunction(() => document.querySelector("#source-list")?.classList.contains("empty"));
   } finally {
     await browser.close();
     await server.close();
@@ -129,7 +180,7 @@ test("pending source cards can be removed after confirmation", {
     assert.doesNotMatch(pendingText, /pending-word\.docx/);
     assert.match(pendingText, /pending-statement\.pdf/);
     assert.equal((pendingText.match(/Process/g) || []).length, 2);
-    assert.deepEqual(await page.evaluate(() => window.__confirmMessages), ["Delete pending-word.docx from raw_sources?"]);
+    assert.deepEqual(await page.evaluate(() => window.__confirmMessages), ["Remove pending-word.docx from pending?"]);
   } finally {
     await browser.close();
     await server.close();
@@ -143,6 +194,10 @@ async function assertSelected(page, label) {
 
 async function assertAnswered(page, text) {
   await page.getByText(text).waitFor();
+}
+
+function normalizeText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
 }
 
 async function startStaticServer() {
@@ -179,5 +234,8 @@ function contentType(filePath) {
   if (filePath.endsWith(".js")) return "text/javascript";
   if (filePath.endsWith(".mjs")) return "text/javascript";
   if (filePath.endsWith(".json")) return "application/json";
+  if (filePath.endsWith(".wasm")) return "application/wasm";
+  if (filePath.endsWith(".bcmap")) return "application/octet-stream";
+  if (filePath.endsWith(".ttf")) return "font/ttf";
   return "application/octet-stream";
 }

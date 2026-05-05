@@ -32,6 +32,7 @@ const state = {
   hasUnsavedEdits: false,
   pendingSave: false,
   processingInbox: false,
+  processingFileName: "",
   vaultHandle: null,
   rememberedVaultHandle: null,
   vaultName: "",
@@ -40,6 +41,7 @@ const state = {
   apiQuestionSource: "",
   ingestReviews: new Map(),
   ingestAnswers: new Map(),
+  lastProcessedReviewNames: [],
   expandedSummaries: new Set()
 };
 
@@ -82,6 +84,7 @@ const els = {
   createVaultBtn: document.getElementById("create-vault-btn"),
   openVaultBtn: document.getElementById("open-vault-btn"),
   saveVaultBtn: document.getElementById("save-vault-btn"),
+  bulkIngestBtn: document.getElementById("bulk-ingest-btn"),
   reviewMode: document.getElementById("review-mode"),
   reviewModeHelp: document.getElementById("review-mode-help"),
   exportBtn: document.getElementById("export-btn"),
@@ -145,6 +148,7 @@ ensureApiSecretReady();
 els.folderInput.addEventListener("change", handleSourceSelection);
 els.fileInput.addEventListener("change", handleSourceSelection);
 els.sourceList?.addEventListener("click", handleSourceActionClick);
+els.bulkIngestBtn?.addEventListener("click", bulkIngestPendingSources);
 els.docBody?.addEventListener("input", handleVaultDocumentEdit);
 els.docBody?.addEventListener("scroll", syncDocHighlightScroll);
 els.docSaveBtn?.addEventListener("click", saveCurrentVault);
@@ -655,7 +659,7 @@ async function handleSourceActionClick(event) {
 
   const button = event.target.closest("[data-source-action]");
   if (!button || state.processingInbox) return;
-  await processPendingSource();
+  await processPendingSource(button.dataset.sourceFile);
 }
 
 async function removePendingSource(fileName) {
@@ -727,36 +731,56 @@ function syncIngestAnswersToReviewReply() {
   updateReviewResponseState();
 }
 
-async function processPendingSource() {
+async function processPendingSource(fileName = "") {
   state.processingInbox = true;
+  state.processingFileName = fileName || "";
   renderSources();
   updateSaveButtonState();
   try {
-    if (state.pendingSave && state.currentFileMap) {
+    const file = fileName ? state.files.find((entry) => entry.name === fileName) : null;
+    if (file && isSourceReviewReady(file)) {
+      await saveCurrentVault();
+    } else if (!fileName && state.pendingSave && state.currentFileMap) {
       await saveCurrentVault();
     } else {
-      await prepareInboxSave();
+      await prepareInboxSave(fileName);
     }
   } finally {
     state.processingInbox = false;
+    state.processingFileName = "";
     renderSources();
     updateSaveButtonState();
   }
 }
 
-async function prepareInboxSave() {
+async function bulkIngestPendingSources() {
+  if (state.processingInbox || state.files.length === 0) return;
+  state.processingInbox = true;
+  state.processingFileName = "";
+  renderSources();
+  updateSaveButtonState();
+  try {
+    await prepareInboxSave("", { autoFile: true });
+  } finally {
+    state.processingInbox = false;
+    state.processingFileName = "";
+    renderSources();
+    updateSaveButtonState();
+  }
+}
+
+async function prepareInboxSave(fileName = "", options = {}) {
   if (!state.vaultHandle) {
     const reconnected = await reconnectRememberedVault();
     if (!reconnected && !await openVault()) return;
   }
 
-  await savePendingRawSourcesImmediately();
+  const targetFiles = filesForInboxProcess(fileName);
+  if (targetFiles.length === 0) return;
 
-  if (state.files.some((file) => file.type === "pdf" && file.extractionStatus === "needed")) {
-    await extractPdfSources();
-  }
+  await savePendingRawSourcesImmediately(targetFiles);
 
-  state.vault = compileVault(state.files, { name: state.vaultName || "Karpathy Original" });
+  state.vault = compileVault(targetFiles, { name: state.vaultName || "Karpathy Original" });
   state.selectedPath = null;
   state.currentFileMap = mergeFileMaps(state.currentFileMap, vaultToFiles(state.vault));
   state.hasSavedCurrent = false;
@@ -771,12 +795,28 @@ async function prepareInboxSave() {
   els.exportBtn.disabled = false;
   updateSaveButtonState();
   els.copyBtn.disabled = false;
-  await prepareReviewForCurrentFileMap("Margins prepared this document. Answer any quick checks, then approve it.");
+  await prepareReviewForCurrentFileMap(
+    options.autoFile ? "Margins reviewed and filed the pending documents." : "Margins prepared this document. Answer any quick checks, then approve it.",
+    targetFiles,
+    options
+  );
+  if (options.autoFile) {
+    await saveCurrentVault();
+  }
 }
 
-async function savePendingRawSourcesImmediately() {
-  if (!state.vaultHandle || state.files.length === 0) return 0;
-  const pendingRaw = state.files.map((file) => ({ ...file, sourceScope: "vault" }));
+function filesForInboxProcess(fileName = "") {
+  if (!fileName) {
+    const unprocessed = state.files.filter((file) => !isSourceReviewReady(file));
+    return unprocessed.length ? unprocessed : state.files;
+  }
+  const file = state.files.find((entry) => entry.name === fileName);
+  return file ? [file] : [];
+}
+
+async function savePendingRawSourcesImmediately(files = state.files) {
+  if (!state.vaultHandle || files.length === 0) return 0;
+  const pendingRaw = files.map((file) => ({ ...file, sourceScope: "vault" }));
   const written = await writeRawSources(state.vaultHandle, pendingRaw);
   state.vaultFiles = mergeSourceFiles(state.vaultFiles, pendingRaw);
   renderVaultTree(state.currentFileMap);
@@ -990,10 +1030,10 @@ function acceptLlmFiles() {
   return true;
 }
 
-async function prepareReviewForCurrentFileMap(statusText) {
+async function prepareReviewForCurrentFileMap(statusText, files = state.files, options = {}) {
   if (!state.currentFileMap) return;
-  if (state.files.length > 0) {
-    await prepareIngestReviews(statusText);
+  if (files.length > 0) {
+    await prepareIngestReviews(statusText, files, options);
     return;
   }
 
@@ -1023,17 +1063,18 @@ async function prepareReviewForCurrentFileMap(statusText) {
   updateWorkflowState();
 }
 
-async function prepareIngestReviews(statusText) {
+async function prepareIngestReviews(statusText, files = state.files, options = {}) {
   await ensureApiSecretReady();
-  const reviewMap = new Map();
+  const reviewMap = new Map(state.ingestReviews);
   const allQuestions = [];
+  const reviewMode = options.autoFile ? "auto" : state.reviewMode;
 
-  for (const file of state.files) {
-    let review = localIngestReview(file, state.currentFileMap, state.reviewMode);
-    if (state.apiSecret && file.text && state.reviewMode !== "auto") {
+  for (const file of files) {
+    let review = localIngestReview(file, state.currentFileMap, reviewMode);
+    if (state.apiSecret && canSendSourceToModel(file)) {
       els.llmStatus.textContent = `Sending ${file.name} to the configured model with vault context...`;
       try {
-        const apiReview = await generateApiIngestReview(file, state.currentFileMap, state.reviewMode);
+        const apiReview = await generateApiIngestReview(file, state.currentFileMap, reviewMode);
         review = mergeIngestReview(review, apiReview, "api");
         state.apiQuestionSource = "api";
       } catch (error) {
@@ -1047,7 +1088,8 @@ async function prepareIngestReviews(statusText) {
   }
 
   state.ingestReviews = reviewMap;
-  state.currentMaterialQuestions = limitMaterialQuestions(allQuestions, state.reviewMode);
+  state.lastProcessedReviewNames = files.map((file) => file.name);
+  state.currentMaterialQuestions = options.autoFile ? [] : limitMaterialQuestions(allQuestions, state.reviewMode);
   renderMaterialQuestions(state.currentMaterialQuestions);
   renderWikiFiles(state.currentFileMap);
   renderOperatingLayer(state.currentFileMap);
@@ -1064,14 +1106,21 @@ function localIngestReview(file, fileMap, mode) {
   return {
     source: "local",
     status: needsTextExtraction(file)
-      ? "Raw source saved. Text extraction is needed before Margins can summarize it well."
+      ? "Raw source saved. Margins will use the model when the source needs visual or document review."
       : "Raw source saved. Local summary prepared while the model review runs.",
     summary: needsTextExtraction(file)
-      ? "Margins saved the original file in raw_sources, but it could not extract readable text yet."
+      ? "Margins saved the original source and is ready to review it with the model."
       : localSourceSummary(file),
     connections: [],
     questions: mode === "auto" ? [] : currentIngestQuestionsForFile(file, fileMap, mode)
   };
+}
+
+function canSendSourceToModel(file) {
+  if (!file) return false;
+  if (file.text) return true;
+  const provider = els.apiProvider?.value || providerValue(state.apiSettings.providerLabel) || "gemini";
+  return provider === "gemini" && file.type === "pdf" && Boolean(file.browserFile);
 }
 
 function localSourceSummary(file) {
@@ -1211,7 +1260,7 @@ async function generateApiIngestReview(file, fileMap, mode) {
   let content = "";
 
   if (provider === "gemini") {
-    content = await generateGeminiJsonContent(model, prompt);
+    content = await generateGeminiJsonContent(model, prompt, await geminiSourceParts(file));
   } else if (provider === "openai" || provider === "local") {
     content = await generateOpenAiCompatibleJsonContent(provider, model, prompt);
   } else {
@@ -1257,7 +1306,7 @@ async function generateGeminiReviewQuestions(model, prompt) {
   return parseApiQuestions(content).slice(0, 3);
 }
 
-async function generateGeminiJsonContent(model, prompt) {
+async function generateGeminiJsonContent(model, prompt, extraParts = []) {
   const endpoint = defaultEndpointForProvider("gemini").replace("{model}", encodeURIComponent(normalizeGeminiModel(model)));
   const response = await fetch(endpoint, {
     method: "POST",
@@ -1272,7 +1321,8 @@ async function generateGeminiJsonContent(model, prompt) {
           parts: [
             {
               text: prompt
-            }
+            },
+            ...extraParts
           ]
         }
       ],
@@ -1288,6 +1338,28 @@ async function generateGeminiJsonContent(model, prompt) {
   }
   const json = await response.json();
   return json.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("\n") || "";
+}
+
+async function geminiSourceParts(file) {
+  if (!file?.browserFile || file.type !== "pdf" || file.text) return [];
+  return [{
+    inline_data: {
+      mime_type: file.browserFile.type || "application/pdf",
+      data: await blobToBase64(file.browserFile)
+    }
+  }];
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error || new Error("Could not read file."));
+    reader.onload = () => {
+      const result = String(reader.result || "");
+      resolve(result.includes(",") ? result.split(",").pop() : result);
+    };
+    reader.readAsDataURL(blob);
+  });
 }
 
 function normalizeGeminiModel(model) {
@@ -1331,13 +1403,21 @@ Name: ${file.name}
 Type: ${file.type}
 Words: ${wordCount(file.text || "")}
 Text:
-${excerptForQuestion(file.text || file.extractionError || "", 12000)}
+${sourceTextForModelPrompt(file)}
 
 Current wiki context:
 ${wikiContextForIngestPrompt(fileMap)}
 
 Operating guardrails:
 ${operatingContextForPrompt(fileMap)}`;
+}
+
+function sourceTextForModelPrompt(file) {
+  if (file.text) return excerptForQuestion(file.text, 12000);
+  if (file.type === "pdf" && file.browserFile) {
+    return "[PDF attached in this request. Read the attached PDF directly and summarize only what it supports.]";
+  }
+  return excerptForQuestion(file.extractionError || "", 12000);
 }
 
 function questionBudgetForMode(mode) {
@@ -1631,8 +1711,8 @@ function renderSources() {
         <strong>${escapeHtml(file.name)}</strong>
         ${renderSourceTimestamp(file)}
       </div>
-      <button class="source-process-btn" type="button" data-source-action="process" ${sourceProcessDisabled() ? "disabled" : ""}>
-        ${escapeHtml(sourceProcessLabel())}
+      <button class="source-process-btn" type="button" data-source-action="process" data-source-file="${escapeHtml(file.name)}" ${sourceProcessDisabled(file) ? "disabled" : ""}>
+        ${escapeHtml(sourceProcessLabel(file))}
       </button>
       ${renderSourceIngestRun(file)}
     </div>
@@ -1683,14 +1763,15 @@ function bindSourceListControls() {
 }
 
 function renderSourceIngestRun(file) {
-  if (!state.processingInbox && !(state.pendingSave && state.currentFileMap)) return "";
-  const isReady = state.pendingSave && state.currentFileMap && !state.processingInbox;
+  const processingThis = state.processingInbox && (!state.processingFileName || state.processingFileName === file.name);
+  const isReady = isSourceReviewReady(file) && !processingThis;
+  if (!processingThis && !isReady) return "";
   const review = state.ingestReviews.get(file.name);
   return `
     <div class="source-ingest-run">
       <div class="run-steps">
-        ${runStep("Raw source saved", isReady || rawSourceAlreadySaved(file), state.processingInbox && !rawSourceAlreadySaved(file))}
-        ${runStep(isReady ? modelReviewStepLabel(review) : pendingReviewStepLabel(file), isReady, state.processingInbox && rawSourceAlreadySaved(file))}
+        ${runStep("Raw source saved", isReady || rawSourceAlreadySaved(file), processingThis && !rawSourceAlreadySaved(file))}
+        ${runStep(isReady ? modelReviewStepLabel(review) : pendingReviewStepLabel(file), isReady, processingThis && rawSourceAlreadySaved(file))}
         ${runStep(isReady ? "Questions ready" : "Checking what to ask", isReady, false)}
       </div>
       ${isReady && state.reviewMode !== "auto" ? `
@@ -1752,12 +1833,12 @@ function renderSourceRunQuestions(file) {
     return `<div class="run-note">No questions needed. Approve when you're ready.</div>`;
   }
   return `
-    <div class="run-conversation">
+    <div class="run-conversation run-dialogue">
       ${questions.map((question, questionIndex) => `
-        <div class="run-question ${ingestAnswerFor(file.name, question.question) ? "answered" : ""}" data-question="${escapeHtml(question.question)}">
-          <span>${escapeHtml(question.kind || `Question ${questionIndex + 1}`)}</span>
-          <p>${escapeHtml(question.question)}</p>
-          ${question.recommendation ? `<div class="recommendation">${escapeHtml(question.recommendation)}</div>` : ""}
+        <div class="run-question run-prompt ${ingestAnswerFor(file.name, question.question) ? "answered" : ""}" data-question="${escapeHtml(question.question)}">
+          <span class="run-prompt-meta">${escapeHtml(question.kind || `Question ${questionIndex + 1}`)}</span>
+          <p class="run-prompt-question">${escapeHtml(question.question)}</p>
+          ${question.recommendation ? `<div class="recommendation run-prompt-take">${escapeHtml(question.recommendation)}</div>` : ""}
           <div class="quick-actions">
             ${questionOptionsWithSkip(question).map((option, index) => {
               const selected = ingestAnswerFor(file.name, question.question) === option;
@@ -1779,28 +1860,50 @@ function renderSourceSummary(file) {
   const canExpand = fullSummary.length > 240;
   const visibleSummary = expanded || !canExpand ? fullSummary : clampSentence(fullSummary, 240);
   return `
-    <div class="run-summary ${expanded ? "expanded" : ""}">
-      <div class="run-summary-head">
-        <span>Summary</span>
+    <div class="run-summary run-brief ${expanded ? "expanded" : ""}">
+      <div class="run-summary-head run-brief-head">
+        <span class="run-kicker">Summary</span>
         ${canExpand ? `<button class="text-toggle" type="button" data-summary-toggle="${escapeHtml(file.name)}">${expanded ? "Show less" : "Show more"}</button>` : ""}
       </div>
-      <p>${escapeHtml(visibleSummary)}</p>
+      ${renderSummaryBrief(visibleSummary)}
     </div>
   `;
+}
+
+function renderSummaryBrief(summary) {
+  const parts = summarySentences(summary);
+  if (parts.length <= 1) return `<p class="run-brief-copy">${escapeHtml(summary)}</p>`;
+  return `
+    <p class="run-brief-copy">${escapeHtml(parts[0])}</p>
+    <ul class="run-brief-points">
+      ${parts.slice(1).map((part) => `<li>${escapeHtml(part)}</li>`).join("")}
+    </ul>
+  `;
+}
+
+function summarySentences(summary) {
+  const clean = cleanSummary(summary);
+  const matches = clean.match(/[^.!?]+[.!?]+(?:\s|$)/g);
+  if (!matches || matches.length < 2) return clean ? [clean] : [];
+  const consumed = matches.join("").trim();
+  const tail = clean.slice(consumed.length).trim();
+  return [...matches.map((part) => part.trim()), ...(tail ? [tail] : [])].filter(Boolean);
 }
 
 function renderSourceConnections(file) {
   const connections = state.ingestReviews.get(file.name)?.connections || [];
   if (connections.length === 0) return "";
   return `
-    <div class="run-connections">
-      <span>Connections</span>
-      ${connections.map((connection) => `
-        <div>
+    <div class="run-connections run-links">
+      <span class="run-kicker">Connections</span>
+      <div class="run-link-list">
+        ${connections.map((connection) => `
+        <div class="run-link">
           <strong>${escapeHtml(connection.title || connection.path || "Suggested connection")}</strong>
           <p>${escapeHtml(connection.reason || connection.path || "Useful context for this source.")}</p>
         </div>
       `).join("")}
+      </div>
     </div>
   `;
 }
@@ -1984,24 +2087,87 @@ raw_file: raw_sources/filed-note.md
           extractionError: ""
         }
       ];
-      state.vaultFiles = state.files;
+      state.vaultFiles = [];
+      state.vaultHandle = createMemoryVaultHandle();
+      state.vaultName = "Browser Test Vault";
       state.currentFileMap = new Map([["wiki/index.md", "# Index\n"]]);
       state.pendingSave = false;
       state.processingInbox = false;
       renderSources();
+      updateActionState();
       return document.querySelector("#source-list")?.innerText || "";
+    },
+    processedReviewNames() {
+      return (state.ingestReviews.size ? [...state.ingestReviews.keys()] : state.lastProcessedReviewNames).sort();
     }
   };
 }
 
-function sourceProcessLabel() {
-  if (state.processingInbox) return "Processing...";
-  if (state.pendingSave && state.currentFileMap) return "Approve";
+function createMemoryVaultHandle() {
+  const root = memoryDirectory("Browser Test Vault");
+  return root;
+}
+
+function memoryDirectory(name) {
+  const entries = new Map();
+  return {
+    kind: "directory",
+    name,
+    async getDirectoryHandle(childName, options = {}) {
+      if (!entries.has(childName)) {
+        if (!options.create) throw new Error(`Missing directory: ${childName}`);
+        entries.set(childName, memoryDirectory(childName));
+      }
+      const entry = entries.get(childName);
+      if (entry.kind !== "directory") throw new Error(`${childName} is not a directory`);
+      return entry;
+    },
+    async getFileHandle(childName, options = {}) {
+      if (!entries.has(childName)) {
+        if (!options.create) throw new Error(`Missing file: ${childName}`);
+        entries.set(childName, memoryFile(childName));
+      }
+      const entry = entries.get(childName);
+      if (entry.kind !== "file") throw new Error(`${childName} is not a file`);
+      return entry;
+    },
+    async removeEntry(childName) {
+      entries.delete(childName);
+    }
+  };
+}
+
+function memoryFile(name) {
+  let body = "";
+  return {
+    kind: "file",
+    name,
+    async getFile() {
+      return new File([body], name, { lastModified: Date.now() });
+    },
+    async createWritable() {
+      return {
+        async write(value) {
+          body = value instanceof Blob ? await value.text() : String(value || "");
+        },
+        async close() {}
+      };
+    }
+  };
+}
+
+function sourceProcessLabel(file) {
+  if (state.processingInbox && (!state.processingFileName || state.processingFileName === file?.name)) return "Processing...";
+  if (isSourceReviewReady(file)) return "Approve";
   return "Process";
 }
 
-function sourceProcessDisabled() {
+function sourceProcessDisabled(file) {
   return state.processingInbox || state.files.some((file) => file.extractionStatus === "extracting");
+}
+
+function isSourceReviewReady(file) {
+  return Boolean(file?.name && state.pendingSave && state.currentFileMap && state.ingestReviews.has(file.name));
 }
 
 function renderVaultTree(fileMap = state.currentFileMap) {
@@ -2775,15 +2941,7 @@ function currentIngestQuestionsForFile(file, fileMap, mode) {
   if (mode === "auto") return [];
 
   if (needsTextExtraction(file)) {
-    return [reviewQuestion(
-      "warn",
-      "Needs extraction",
-      `raw_sources/${file.name}`,
-      `I could not extract readable text from ${file.name}. Save the raw source only for now?`,
-      "Margins preserved the original file, but a useful wiki note needs readable text.",
-      "My take: save the raw source, then retry with a PDF/text export or pasted transcript.",
-      ["Save raw only", "Skip", "Use default"]
-    )];
+    return [];
   }
 
   const currentSourceMap = currentSourceNoteMap(fileMap, file);
@@ -3606,7 +3764,13 @@ async function extractPdfSources() {
 
 async function extractPdfText(file) {
   const data = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data }).promise;
+  const pdf = await pdfjsLib.getDocument({
+    data,
+    cMapPacked: true,
+    cMapUrl: new URL("../node_modules/pdfjs-dist/cmaps/", import.meta.url).toString(),
+    standardFontDataUrl: new URL("../node_modules/pdfjs-dist/standard_fonts/", import.meta.url).toString(),
+    wasmUrl: new URL("../node_modules/pdfjs-dist/wasm/", import.meta.url).toString()
+  }).promise;
   const pages = [];
 
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
@@ -3634,11 +3798,16 @@ function updateActionState() {
 }
 
 function updateSaveButtonState() {
-  if (!els.saveVaultBtn) return;
   const canPrepare = state.files.length > 0 && !state.pendingSave;
   const canSave = (state.pendingSave || state.hasUnsavedEdits) && state.currentFileMap;
-  els.saveVaultBtn.disabled = !(canPrepare || canSave);
-  els.saveVaultBtn.textContent = state.processingInbox ? "Processing..." : canSave ? "Write vault" : "Process";
+  if (els.saveVaultBtn) {
+    els.saveVaultBtn.disabled = !(canPrepare || canSave);
+    els.saveVaultBtn.textContent = state.processingInbox ? "Processing..." : canSave ? "Write vault" : "Process";
+  }
+  if (els.bulkIngestBtn) {
+    els.bulkIngestBtn.disabled = state.processingInbox || state.files.length === 0;
+    els.bulkIngestBtn.textContent = state.processingInbox && !state.processingFileName ? "Ingesting..." : "Bulk ingest";
+  }
   if (els.docSaveBtn) {
     els.docSaveBtn.disabled = !canSave;
     if (els.docSaveBtn.textContent !== "Saving..." && els.docSaveBtn.textContent !== "Saved") {
@@ -3649,8 +3818,8 @@ function updateSaveButtonState() {
 
 function sourceClass(file) {
   const classes = [];
-  if (state.processingInbox) classes.push("processing");
-  else if (state.pendingSave && state.currentFileMap) classes.push("ready-to-write");
+  if (state.processingInbox && (!state.processingFileName || state.processingFileName === file.name)) classes.push("processing");
+  else if (isSourceReviewReady(file)) classes.push("ready-to-write");
   return classes.join(" ");
 }
 
