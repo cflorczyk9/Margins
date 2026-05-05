@@ -461,10 +461,11 @@ function renderMaterialQuestions(questions) {
   els.reviewQuestions.className = "review-list";
   els.reviewQuestions.innerHTML = questions.map((question) => `
     <div class="review-card ${question.severity}">
-      <div class="review-meta">${escapeHtml(question.kind)} · ${escapeHtml(question.path || "vault")}</div>
+      <div class="review-meta">${escapeHtml(question.kind)}</div>
       <strong>${escapeHtml(question.question)}</strong>
       <p>${escapeHtml(question.reason)}</p>
       <div class="recommendation">${escapeHtml(question.recommendation)}</div>
+      <div class="review-path">${escapeHtml(question.path || "vault")}</div>
     </div>
   `).join("");
 }
@@ -493,7 +494,14 @@ function buildAutoFileQuestions(fileMap, warningsByPath) {
   for (const [path, warnings] of warningsByPath.entries()) {
     for (const warning of warnings) {
       if (/contentReference|Missing YAML|not valid JSON|raw source/i.test(warning)) {
-        warningQuestions.push(reviewQuestion("blocker", "Warning", path, warning, "Repair before saving."));
+        warningQuestions.push(reviewQuestion(
+          "blocker",
+          "I need to fix this first",
+          path,
+          "I found a formatting issue I should clean up before saving this.",
+          warning,
+          "My take: use the repair prompt first, then we can file the cleaned version."
+        ));
       }
     }
   }
@@ -508,26 +516,26 @@ function promotionQuestions(fileMap) {
       const demoLike = /\bdemo\b|\bfictional\b|\bplaceholder\b|\bnot an actual\b|\bexample\b/i.test(body);
       questions.push(reviewQuestion(
         demoLike ? "warn" : "suggest",
-        "New page",
+        "Quick check",
         path,
         demoLike
-          ? `Margins thinks "${title}" might just be demo data. Save it as its own page?`
-          : `Margins found "${title}". Save it as its own page?`,
+          ? `I found "${title}", but it looks like sample/demo data. Should I keep it tucked inside the source note instead of making it a main page?`
+          : `I found "${title}" and I can make a page for it. Is this something you'll probably want to find again later?`,
         demoLike
-          ? "If this name only exists inside fake/sample files, it probably should stay inside the source notes instead of becoming part of the main wiki."
-          : "Use a separate page when this is a real person, company, account, project, tool, or place you may search for later.",
-        demoLike ? "Suggested answer: keep it in the source notes unless you expect it to come up again." : "Suggested answer: save it as a page if it is real and likely to come up again."
+          ? "I don't want to clutter your graph with fake clients, sample advisors, or placeholder companies."
+          : "I usually make separate pages for real people, companies, projects, tools, accounts, or places that will matter again.",
+        demoLike ? "My take: keep it in the source note unless you expect this name to come up again." : "My take: save it as a page if it's real and likely to come up again."
       ));
     }
     if (path.startsWith("wiki/concepts/")) {
       const title = markdownTitle(body) || titleFromSlug(basename(path).replace(/\.md$/, ""));
       questions.push(reviewQuestion(
         "suggest",
-        "New topic",
+        "Quick check",
         path,
-        `Margins found a topic called "${title}". Save it as its own page?`,
-        "Use a separate topic page when this idea will help connect future files. If it is just a label from one document, it can stay inside that source note.",
-        "Suggested answer: save it if you would want to ask about this topic later."
+        `I found the theme "${title}". Do you want that to become a page I can connect future files to?`,
+        "If this is just a label from one document, I can leave it inside the source note. If it's a recurring idea, a page will make future search and linking better.",
+        "My take: save it if you can imagine asking about this topic later."
       ));
     }
   }
@@ -539,13 +547,13 @@ function synthesisQuestions(fileMap) {
     .filter(([path]) => path.startsWith("wiki/synthesis/"))
     .map(([path, body]) => reviewQuestion(
       "suggest",
-      "Connection",
+      "Quick check",
       path,
-      `Margins connected multiple notes into a summary. Save that connection?`,
-      "Connection pages are useful when they explain why files relate to each other. They are less useful when they only repeat one source.",
+      "I connected a few notes into a bigger-picture summary. Does that connection feel useful to keep?",
+      "This is where the wiki becomes more than file summaries, but I only want to keep connections that actually help you think or retrieve later.",
       /\bnot directly stated\b|\bhypothesis\b|\bnot stated\b/i.test(body)
-        ? "Suggested answer: save it as a draft if the connection is useful, but do not treat it as fact."
-        : "Suggested answer: save it if it connects more than one source or topic."
+        ? "My take: keep it as a draft if the connection is useful, but don't treat it as fact yet."
+        : "My take: keep it if it explains a real connection across files."
     ));
 }
 
@@ -556,11 +564,11 @@ function riskQuestions(fileMap) {
     if (/\b(account number|ssn|social security|medical|diagnosis|legal|attorney|customer|client|salary|tax|bank|routing)\b/i.test(body)) {
       sensitive.push(reviewQuestion(
         "warn",
-        "Sensitive info",
+        "Careful",
         path,
-        "This source looks sensitive. Review it before saving?",
-        "Financial, legal, medical, customer, and work data need a higher bar because a wrong note can create real confusion.",
-        "Suggested answer: use Strict review or save only the source note if you are unsure."
+        "This file looks sensitive. Do you want me to slow down and review it more carefully before saving?",
+        "I saw terms that often show up in financial, legal, medical, customer, or work files. A bad summary in those areas is more costly.",
+        "My take: use Strict review here, or save only the source note if you're unsure."
       ));
     }
   }
@@ -571,11 +579,11 @@ function rawSourceQuestions() {
   if (state.files.length > 0) return [];
   return [reviewQuestion(
     "warn",
-    "Original files",
+    "Before saving",
     "raw_sources/",
-    "Your original files are not loaded. Save only the generated notes?",
-    "Margins works best when the vault keeps both the original files and the generated wiki notes.",
-    "Suggested answer: reload the original files before saving."
+    "I don't have the original files loaded right now. Should I pause before saving the generated notes?",
+    "The vault is much more trustworthy when it keeps the original files next to the notes I generated from them.",
+    "My take: reload the original files first so I can save both."
   )];
 }
 
@@ -589,11 +597,11 @@ function strictReviewQuestions(fileMap) {
   if (sourceCount === 0 || promotedCount === 0) return [];
   return [reviewQuestion(
     "suggest",
-    "Extra review",
+    "Careful",
     "wiki/",
-    "Review each new page before saving?",
-    "Strict review is for cases where every new page should be intentionally approved.",
-    "Suggested answer: approve new pages one by one."
+    "Since Strict review is on, do you want to approve the new pages one at a time before I save them?",
+    "This is useful when the files are important enough that every new page should be intentional.",
+    "My take: approve the new pages one by one."
   )];
 }
 
