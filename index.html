@@ -36,7 +36,8 @@
         <button id="extract-btn" disabled>Extract PDF text</button>
         <button id="compile-btn" class="primary" disabled>Local compile</button>
         <button id="llm-btn" disabled>Copy LLM ingest prompt</button>
-        <button id="write-folder-btn" disabled>Write local folder</button>
+        <button id="workspace-btn">Select workspace folder</button>
+        <button id="write-folder-btn" disabled>Write to workspace</button>
         <button id="export-btn" disabled>Download vault JSON</button>
         <button id="copy-btn" disabled>Copy operator manual</button>
       </section>
@@ -46,7 +47,7 @@
         <ul>
           <li>Does clean LLM output write to a real folder?</li>
           <li>Does the folder contain raw_sources plus wiki files?</li>
-          <li>Can the generated Markdown open as a usable vault?</li>
+          <li>Can repeated writes update the same workspace folder?</li>
         </ul>
       </section>
     </aside>
@@ -95,19 +96,19 @@
             <h3>Current test</h3>
             <label class="check-row">
               <input type="checkbox" data-check-id="phase4-test-loaded">
-              <span><strong>1. Keep raw files loaded.</strong> Expected: left sidebar still shows the original source files before writing.</span>
+              <span><strong>1. Select workspace folder.</strong> Expected: choose the folder Margins should write into repeatedly.</span>
             </label>
             <label class="check-row">
               <input type="checkbox" data-check-id="phase4-test-clean">
-              <span><strong>2. Accept clean LLM output.</strong> Expected: LLM Review shows low or zero warnings, then Wiki tab shows accepted files.</span>
+              <span><strong>2. Keep raw files loaded.</strong> Expected: left sidebar still shows the original source files before writing.</span>
             </label>
             <label class="check-row">
               <input type="checkbox" data-check-id="phase4-test-write">
-              <span><strong>3. Click Write local folder.</strong> Expected: browser asks for a destination folder.</span>
+              <span><strong>3. Accept clean LLM output.</strong> Expected: LLM Review shows low or zero warnings, then Wiki tab shows accepted files.</span>
             </label>
             <label class="check-row">
               <input type="checkbox" data-check-id="phase4-test-dest">
-              <span><strong>4. Choose a destination.</strong> Expected: Margins creates a timestamped export folder inside it.</span>
+              <span><strong>4. Click Write to workspace.</strong> Expected: files are written directly into the selected workspace folder.</span>
             </label>
             <label class="check-row">
               <input type="checkbox" data-check-id="phase4-test-contents">
@@ -127,7 +128,7 @@
             </label>
             <label class="check-row">
               <input type="checkbox" disabled>
-              <span><strong>Choose output naming.</strong> Expected: user controls export folder name instead of timestamp only.</span>
+              <span><strong>Clean stale files.</strong> Expected: remove or flag files that no longer exist in the current accepted wiki.</span>
             </label>
             <label class="check-row">
               <input type="checkbox" disabled>

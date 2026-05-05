@@ -12,7 +12,9 @@ const state = {
   selectedPath: null,
   currentFileMap: null,
   llmFiles: new Map(),
-  llmSelectedPath: null
+  llmSelectedPath: null,
+  workspaceHandle: null,
+  workspaceName: ""
 };
 
 const els = {
@@ -22,6 +24,7 @@ const els = {
   extractBtn: document.getElementById("extract-btn"),
   compileBtn: document.getElementById("compile-btn"),
   llmBtn: document.getElementById("llm-btn"),
+  workspaceBtn: document.getElementById("workspace-btn"),
   writeFolderBtn: document.getElementById("write-folder-btn"),
   exportBtn: document.getElementById("export-btn"),
   copyBtn: document.getElementById("copy-btn"),
@@ -96,6 +99,7 @@ els.exportBtn.addEventListener("click", () => {
   }
 });
 
+els.workspaceBtn.addEventListener("click", selectWorkspaceFolder);
 els.writeFolderBtn.addEventListener("click", writeCurrentFolder);
 
 els.copyBtn.addEventListener("click", async () => {
@@ -105,37 +109,55 @@ els.copyBtn.addEventListener("click", async () => {
   setTimeout(() => { els.copyBtn.textContent = "Copy operator manual"; }, 1100);
 });
 
+async function selectWorkspaceFolder() {
+  if (!("showDirectoryPicker" in window)) {
+    els.stats.textContent = "Workspace folders need Chrome or Edge on localhost. Use Download vault JSON for now.";
+    return null;
+  }
+
+  try {
+    const handle = await window.showDirectoryPicker({ mode: "readwrite" });
+    state.workspaceHandle = handle;
+    state.workspaceName = handle.name;
+    els.workspaceBtn.textContent = `Workspace: ${shortLabel(handle.name)}`;
+    els.stats.textContent = `Workspace selected: ${handle.name}`;
+    return handle;
+  } catch (error) {
+    if (error.name !== "AbortError") {
+      els.stats.textContent = `Workspace selection failed: ${error.message || "unknown error"}`;
+    }
+    return null;
+  }
+}
+
 async function writeCurrentFolder() {
   if (!state.currentFileMap) return;
-  if (!("showDirectoryPicker" in window)) {
-    els.stats.textContent = "Local folder writing needs Chrome or Edge on localhost. Use Download vault JSON for now.";
-    return;
-  }
+  const workspace = state.workspaceHandle || await selectWorkspaceFolder();
+  if (!workspace) return;
 
   els.writeFolderBtn.disabled = true;
   const originalText = els.writeFolderBtn.textContent;
   els.writeFolderBtn.textContent = "Writing...";
 
   try {
-    const destination = await window.showDirectoryPicker({ mode: "readwrite" });
-    const exportName = `margins-wiki-${timestampSlug(new Date())}`;
-    const exportDir = await destination.getDirectoryHandle(exportName, { create: true });
-    const writtenRaw = await writeRawSources(exportDir, state.files);
-    const writtenFiles = await writeFileMap(exportDir, state.currentFileMap);
-    await writeTextFile(exportDir, ".margins/export-summary.json", JSON.stringify({
+    const writtenRaw = await writeRawSources(workspace, state.files);
+    const writtenFiles = await writeFileMap(workspace, state.currentFileMap);
+    await writeTextFile(workspace, ".margins/export-summary.json", JSON.stringify({
       exported_at: new Date().toISOString(),
+      workspace: state.workspaceName,
       raw_sources: writtenRaw,
       generated_files: writtenFiles,
       source_count: state.files.length,
       file_count: state.currentFileMap.size,
+      write_mode: "direct-workspace-write",
       warning: state.files.length === 0
         ? "No raw source files were loaded in the browser when this folder was written."
         : ""
     }, null, 2));
     els.stats.textContent = state.files.length === 0
-      ? `Wrote ${writtenFiles} wiki/operating files to ${exportName}, but no raw sources were loaded.`
-      : `Wrote ${writtenFiles} wiki/operating file${writtenFiles === 1 ? "" : "s"} + ${writtenRaw} raw source${writtenRaw === 1 ? "" : "s"} to ${exportName}`;
-    els.writeFolderBtn.textContent = "Wrote folder";
+      ? `Wrote ${writtenFiles} wiki/operating files to ${state.workspaceName}, but no raw sources were loaded.`
+      : `Wrote ${writtenFiles} wiki/operating file${writtenFiles === 1 ? "" : "s"} + ${writtenRaw} raw source${writtenRaw === 1 ? "" : "s"} to ${state.workspaceName}`;
+    els.writeFolderBtn.textContent = "Wrote workspace";
     setTimeout(() => { els.writeFolderBtn.textContent = originalText; }, 1500);
   } catch (error) {
     if (error.name !== "AbortError") {
@@ -927,7 +949,7 @@ async function writeRawSources(rootHandle, files) {
 
 No raw source files were loaded in the browser when this Margins folder was written.
 
-To preserve raw evidence, reload the original files in Margins before clicking "Write local folder." Browsers clear selected file handles after refresh for security.
+To preserve raw evidence, reload the original files in Margins before clicking "Write to workspace." Browsers clear selected file handles after refresh for security.
 `);
     return 0;
   }
@@ -993,10 +1015,6 @@ function safeRelativePath(path) {
     .filter((part) => part && part !== "." && part !== "..")
     .map((part) => part.replace(/[<>:"|?*\u0000-\u001F]/g, "-"))
     .join("/");
-}
-
-function timestampSlug(date) {
-  return date.toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "-");
 }
 
 function wordCount(text) {
