@@ -149,6 +149,7 @@ els.exportBtn.addEventListener("click", () => {
       raw_sources: state.files.map(({ name, text }) => ({ name, text })),
       files: Object.fromEntries(state.currentFileMap)
     }, null, 2));
+    return;
   }
 });
 
@@ -193,7 +194,7 @@ async function openVault() {
     const handle = await window.showDirectoryPicker({ mode: "readwrite" });
     await scaffoldVault(handle);
     setActiveVault(handle, handle.name);
-    els.stats.textContent = `Opened vault: ${handle.name}`;
+    await loadExistingVault(handle);
     return handle;
   } catch (error) {
     if (error.name !== "AbortError") {
@@ -210,6 +211,66 @@ function setActiveVault(handle, name) {
   els.openVaultBtn.textContent = "Open another vault";
   els.saveVaultBtn.disabled = !state.currentFileMap;
   updateWorkflowState();
+}
+
+async function loadExistingVault(handle) {
+  const [fileMap, rawFiles] = await Promise.all([
+    readVaultFileMap(handle),
+    readRawSourcesFromVault(handle)
+  ]);
+
+  state.files = rawFiles;
+  renderSources();
+  updateActionState();
+
+  if (hasVaultWikiContent(fileMap)) {
+    state.vault = null;
+    state.currentFileMap = fileMap;
+    state.selectedPath = null;
+    state.llmFiles = new Map();
+    state.llmSelectedPath = null;
+    state.currentMaterialQuestions = [];
+    state.llmPromptCopied = false;
+    state.hasSavedCurrent = true;
+    renderWikiFiles(fileMap);
+    renderOperatingLayer(fileMap);
+    renderAcceptedLlmEditState();
+    drawGraph(graphFromFileMap(fileMap));
+    els.exportBtn.disabled = false;
+    els.saveVaultBtn.disabled = false;
+    els.copyBtn.disabled = true;
+    els.stats.textContent = `Opened ${state.vaultName}: ${fileMap.size} wiki/operating file${fileMap.size === 1 ? "" : "s"} loaded`;
+    updateWorkflowState();
+    return;
+  }
+
+  clearLoadedWiki();
+  els.stats.textContent = rawFiles.length
+    ? `Opened ${state.vaultName}: ${rawFiles.length} raw source${rawFiles.length === 1 ? "" : "s"} loaded`
+    : `Opened vault: ${state.vaultName}`;
+}
+
+function clearLoadedWiki() {
+  state.vault = null;
+  state.currentFileMap = null;
+  state.selectedPath = null;
+  state.llmFiles = new Map();
+  state.llmSelectedPath = null;
+  state.currentMaterialQuestions = [];
+  state.hasSavedCurrent = false;
+  renderWikiFiles(new Map());
+  renderOperatingLayer(new Map());
+  els.editList.className = "edit-list empty";
+  els.editList.textContent = "Open or accept wiki files to see edit proposals.";
+  drawGraph({ nodes: [], edges: [] });
+  els.exportBtn.disabled = true;
+  els.saveVaultBtn.disabled = true;
+  els.copyBtn.disabled = true;
+  updateWorkflowState();
+}
+
+function hasVaultWikiContent(fileMap) {
+  return [...fileMap.keys()].some((path) => /^wiki\/(sources|concepts|entities|synthesis)\/[^/]+\.md$/.test(path));
 }
 
 async function saveCurrentVault() {
@@ -440,6 +501,14 @@ function workflowStep() {
     };
   }
 
+  if (state.hasSavedCurrent) {
+    return {
+      action: "sources",
+      label: "Add more documents",
+      guidance: `Loaded ${state.vaultName}. You can add another document whenever you're ready.`
+    };
+  }
+
   if (state.files.some((file) => file.extractionStatus === "extracting")) {
     return {
       action: "extracting",
@@ -454,14 +523,6 @@ function workflowStep() {
       action: "extract",
       label: "Extract PDF text",
       guidance: "Some PDFs still need readable text before the language model can organize them."
-    };
-  }
-
-  if (state.hasSavedCurrent) {
-    return {
-      action: "sources",
-      label: "Add more documents",
-      guidance: `Saved to ${state.vaultName}. You can add another document whenever you're ready.`
     };
   }
 
@@ -615,7 +676,7 @@ function renderAcceptedLlmEditState() {
 }
 
 function renderWikiFiles(fileMap) {
-  const entries = [...fileMap.entries()].filter(([path]) => path.startsWith("wiki/") && path.endsWith(".md"));
+  const entries = [...fileMap.entries()].filter(([path]) => isWikiPagePath(path));
   els.wikiTree.className = "tree-list";
   els.wikiTree.innerHTML = entries.map(([path, body]) => `
     <div class="tree-item" data-path="${escapeHtml(path)}">
@@ -1541,6 +1602,108 @@ async function ensureDirectory(rootHandle, path) {
     dir = await dir.getDirectoryHandle(part, { create: true });
   }
   return dir;
+}
+
+async function directoryHandleForPath(rootHandle, path, create = true) {
+  const parts = safeRelativePath(path).split("/").filter(Boolean);
+  let dir = rootHandle;
+  for (const part of parts) {
+    dir = await dir.getDirectoryHandle(part, { create });
+  }
+  return dir;
+}
+
+async function readVaultFileMap(rootHandle) {
+  const fileMap = new Map();
+  await readDirectoryTextFiles(rootHandle, ".margins", fileMap);
+  await readDirectoryTextFiles(rootHandle, "wiki", fileMap);
+  await readDirectoryTextFiles(rootHandle, "commands", fileMap);
+  await readDirectoryTextFiles(rootHandle, "agents", fileMap);
+  await readRootTextFile(rootHandle, "operator-manual.md", fileMap);
+  await readRootTextFile(rootHandle, "query-cookbook.md", fileMap);
+  return fileMap;
+}
+
+async function readRawSourcesFromVault(rootHandle) {
+  const files = [];
+  await readRawSourceDirectory(rootHandle, "raw_sources", files);
+  return files;
+}
+
+async function readDirectoryTextFiles(rootHandle, path, fileMap) {
+  let dir;
+  try {
+    dir = await directoryHandleForPath(rootHandle, path, false);
+  } catch {
+    return;
+  }
+
+  for await (const [name, handle] of dir.entries()) {
+    const childPath = `${path}/${name}`;
+    if (handle.kind === "directory") {
+      await readDirectoryTextFiles(rootHandle, childPath, fileMap);
+    } else if (isVaultTextPath(childPath)) {
+      const normalizedPath = normalizeMarginsPath(childPath);
+      fileMap.set(normalizedPath, await readTextHandle(handle));
+    }
+  }
+}
+
+async function readRootTextFile(rootHandle, path, fileMap) {
+  try {
+    const fileHandle = await fileHandleForPath(rootHandle, path, false);
+    fileMap.set(path, await readTextHandle(fileHandle));
+  } catch {
+    // Missing operating files are allowed for partially created vaults.
+  }
+}
+
+async function readRawSourceDirectory(rootHandle, path, files) {
+  let dir;
+  try {
+    dir = await directoryHandleForPath(rootHandle, path, false);
+  } catch {
+    return;
+  }
+
+  for await (const [name, handle] of dir.entries()) {
+    const childPath = `${path}/${name}`;
+    if (handle.kind === "directory") {
+      await readRawSourceDirectory(rootHandle, childPath, files);
+    } else if (name !== "README.md") {
+      files.push(await rawSourceFromFileHandle(handle, childPath.replace(/^raw_sources\//, "")));
+    }
+  }
+}
+
+async function rawSourceFromFileHandle(fileHandle, name) {
+  const file = await fileHandle.getFile();
+  const isPdf = /\.pdf$/i.test(name);
+  let text = "";
+  if (!isPdf && isVaultTextPath(name)) {
+    try {
+      text = await file.text();
+    } catch {
+      text = "";
+    }
+  }
+  return {
+    name,
+    text,
+    browserFile: file,
+    type: isPdf ? "pdf" : "text",
+    extractionStatus: isPdf ? "needed" : "ready",
+    extractionError: ""
+  };
+}
+
+async function readTextHandle(fileHandle) {
+  const file = await fileHandle.getFile();
+  return file.text();
+}
+
+function isVaultTextPath(path) {
+  return /\.(md|txt|json|jsonl)$/i.test(path);
 }
 
 async function writeRawSources(rootHandle, files) {
