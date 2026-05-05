@@ -199,6 +199,72 @@ test("vault PDF review refreshes the saved raw file before model attachment", {
   }
 });
 
+test("readable PDFs fall back to local review when Gemini is rate limited", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => {
+      window.fetch = async () => new Response(JSON.stringify({
+        error: { message: "Quota exceeded", status: "RESOURCE_EXHAUSTED" }
+      }), {
+        status: 429,
+        headers: { "Content-Type": "application/json" }
+      });
+      window.__marginsTest.seedReadablePdfSource();
+    });
+
+    await page.locator(".source-item", { hasText: "text-layer-report.pdf" }).getByRole("button", { name: "Process" }).click();
+    await page.locator(".source-item.ready-to-write", { hasText: "text-layer-report.pdf" }).waitFor();
+
+    const pendingText = await page.locator("#source-list").innerText();
+    assert.doesNotMatch(pendingText, /Review did not finish/);
+    assert.match(pendingText, /Gemini is rate-limited right now/);
+    await page.locator(".run-action-row").getByRole("button", { name: "Approve" }).waitFor();
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("image-only PDFs show a friendly Gemini rate-limit retry state", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => {
+      window.fetch = async () => new Response(JSON.stringify({
+        error: { message: "Quota exceeded", status: "RESOURCE_EXHAUSTED" }
+      }), {
+        status: 429,
+        headers: { "Content-Type": "application/json" }
+      });
+      window.__marginsTest.seedVaultPdfAttachmentSource();
+    });
+
+    await page.locator(".source-item", { hasText: "saved-report.pdf" }).getByRole("button", { name: "Process" }).click();
+    await page.getByText("Review did not finish").waitFor();
+
+    const pendingText = await page.locator("#source-list").innerText();
+    assert.match(pendingText, /Gemini free-tier limit reached/);
+    assert.match(pendingText, /Retry/);
+    assert.doesNotMatch(pendingText, /HTTP 429/);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
 test("bulk ingest processes the whole pending queue", {
   skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
 }, async () => {

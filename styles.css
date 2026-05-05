@@ -1968,6 +1968,18 @@ button,
   color: var(--paper);
 }
 
+.run-warning {
+  max-width: 62ch;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--amber) 34%, var(--line));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--amber) 8%, var(--paper));
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 560;
+  line-height: 1.45;
+}
+
 .run-error {
   padding: 12px 0 2px;
   border-top: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line));

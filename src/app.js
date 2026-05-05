@@ -782,6 +782,7 @@ async function prepareInboxSave(fileName = "", options = {}) {
   if (targetFiles.length === 0) return;
 
   await savePendingRawSourcesImmediately(targetFiles);
+  await prepareSourcesForProcessing(targetFiles);
 
   state.vault = compileVault(targetFiles, { name: state.vaultName || "Karpathy Original" });
   state.selectedPath = null;
@@ -830,6 +831,18 @@ async function savePendingRawSourcesImmediately(files = state.files) {
   state.vaultFiles = mergeSourceFiles(state.vaultFiles, files.map((file) => ({ ...file, sourceScope: "vault", dirtyRaw: false })));
   renderVaultTree(state.currentFileMap);
   return written;
+}
+
+async function prepareSourcesForProcessing(files) {
+  for (const file of files) {
+    if (file.text) continue;
+
+    if (file.type === "pdf") {
+      await extractPdfTextForSource(file);
+    } else if (file.type === "docx") {
+      await extractDocxTextForSource(file);
+    }
+  }
 }
 
 async function saveCurrentVault() {
@@ -1100,12 +1113,12 @@ async function prepareIngestReviews(statusText, files = state.files, options = {
         state.apiQuestionSource = "api";
       } catch (error) {
         if (requiresModelReview(file)) {
-          state.ingestErrors.set(file.name, `Model review did not finish: ${error.message || "unknown error"}`);
+          state.ingestErrors.set(file.name, ingestModelErrorMessage(error));
           reviewMap.delete(file.name);
           state.apiQuestionSource = "error";
           continue;
         }
-        review.status = `Model review failed, using local checks: ${error.message || "unknown error"}`;
+        review.status = localFallbackStatusForModelError(error);
         state.apiQuestionSource = "heuristic";
       }
     }
@@ -1138,6 +1151,31 @@ function localIngestReview(file, fileMap, mode) {
     connections: [],
     questions: mode === "auto" ? [] : currentIngestQuestionsForFile(file, fileMap, mode)
   };
+}
+
+function ingestModelErrorMessage(error) {
+  if (isRateLimitError(error)) {
+    return `Gemini free-tier limit reached. The raw source is saved. ${retryAfterText(error)}Retry this file when the limit resets.`;
+  }
+  return `Model review did not finish: ${error.message || "unknown error"}`;
+}
+
+function localFallbackStatusForModelError(error) {
+  if (isRateLimitError(error)) {
+    return `Gemini free-tier limit reached. Local review shown. ${retryAfterText(error)}Retry later if you want model-generated questions.`;
+  }
+  return `Model review failed, using local checks: ${error.message || "unknown error"}`;
+}
+
+function retryAfterText(error) {
+  if (!error?.retryAfter) return "Wait a minute, then ";
+  const seconds = Number(error.retryAfter);
+  if (Number.isFinite(seconds) && seconds > 0) return `Wait about ${Math.ceil(seconds)} seconds, then `;
+  return "";
+}
+
+function isRateLimitError(error) {
+  return Number(error?.status) === 429 || /rate limit|rate-limited|quota|resource exhausted|free-tier limit|limit reached|HTTP 429/i.test(`${error?.message || error || ""}`);
 }
 
 function canSendSourceToModel(file) {
@@ -1278,7 +1316,7 @@ async function generateApiReviewQuestions(fileMap, files) {
   });
 
   if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`);
+    throw await apiErrorFromResponse(response, "model review");
   }
   const json = await response.json();
   const content = json.choices?.[0]?.message?.content || "";
@@ -1327,7 +1365,7 @@ async function generateOpenAiCompatibleJsonContent(provider, model, prompt) {
   });
 
   if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`);
+    throw await apiErrorFromResponse(response, "model review");
   }
   const json = await response.json();
   return json.choices?.[0]?.message?.content || "";
@@ -1366,10 +1404,34 @@ async function generateGeminiJsonContent(model, prompt, extraParts = []) {
   });
 
   if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`);
+    throw await apiErrorFromResponse(response, "Gemini");
   }
   const json = await response.json();
   return json.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("\n") || "";
+}
+
+async function apiErrorFromResponse(response, providerLabel = "API") {
+  const status = response.status;
+  const retryAfter = response.headers?.get?.("retry-after") || "";
+  let detail = "";
+  try {
+    const json = await response.clone().json();
+    detail = cleanSummary(json?.error?.message || json?.message || "");
+  } catch {
+    try {
+      detail = cleanSummary(await response.clone().text());
+    } catch {
+      detail = "";
+    }
+  }
+
+  const message = status === 429
+    ? `${providerLabel} rate limit reached${detail ? `: ${detail}` : "."}`
+    : `${providerLabel} request failed: HTTP ${status}${detail ? `: ${detail}` : ""}`;
+  const error = new Error(message);
+  error.status = status;
+  error.retryAfter = retryAfter;
+  return error;
 }
 
 async function geminiSourceParts(file) {
@@ -1882,6 +1944,7 @@ function renderSourceIngestRun(file) {
         ${runStep(isReady ? modelReviewStepLabel(review) : pendingReviewStepLabel(file), isReady, processingThis && rawSourceAlreadySaved(file))}
         ${runStep(isReady ? "Questions ready" : "Checking what to ask", isReady, false)}
       </div>
+      ${isReady ? renderSourceRunNotice(review) : ""}
       ${isReady && state.reviewMode !== "auto" ? `
         ${renderSourceSummary(file)}
         ${renderSourceConnections(file)}
@@ -1903,6 +1966,11 @@ function renderSourceIngestError(file, error) {
       ${renderSourceActionRow(file, { note: "Try again after reconnecting the vault or re-adding the file." })}
     </div>
   `;
+}
+
+function renderSourceRunNotice(review) {
+  if (!review?.status || !isRateLimitError(review.status)) return "";
+  return `<div class="run-warning">Gemini is rate-limited right now, so Margins is showing the local review. Retry later for model-generated questions.</div>`;
 }
 
 function renderProcessingIndicator(file) {
@@ -2297,6 +2365,32 @@ raw_file: raw_sources/filed-note.md
         rawSourceHandle,
         sourceScope: "vault",
         extractionStatus: "needed",
+        extractionError: ""
+      };
+      state.files = [file];
+      state.vaultFiles = [file];
+      state.vaultHandle = createMemoryVaultHandle();
+      state.vaultName = "Browser Test Vault";
+      state.currentFileMap = new Map([["wiki/index.md", "# Index\n"]]);
+      state.pendingSave = false;
+      state.processingInbox = false;
+      state.apiSecret = "test-gemini-key";
+      state.ingestReviews = new Map();
+      state.ingestErrors = new Map();
+      renderSources();
+      updateActionState();
+      return document.querySelector("#source-list")?.innerText || "";
+    },
+    seedReadablePdfSource() {
+      const file = {
+        name: "text-layer-report.pdf",
+        text: "This readable PDF covers a coding workflow, setup decisions, and follow-up tasks for the current vault.",
+        type: "pdf",
+        size: 42000,
+        lastModified: new Date(2026, 4, 5, 13, 40).getTime(),
+        browserFile: null,
+        sourceScope: "vault",
+        extractionStatus: "extracted",
         extractionError: ""
       };
       state.files = [file];
@@ -3966,17 +4060,7 @@ async function extractPdfSources() {
     file.extractionStatus = "extracting";
     file.extractionError = "";
     renderSources();
-
-    try {
-      const text = await extractPdfText(file.browserFile);
-      file.text = text.trim();
-      file.extractionStatus = file.text ? "extracted" : "failed";
-      if (!file.text) file.extractionError = "No selectable text found.";
-    } catch (error) {
-      file.text = "";
-      file.extractionStatus = "failed";
-      file.extractionError = error.message || "PDF extraction failed.";
-    }
+    await extractPdfTextForSource(file);
   }
 
   els.extractBtn.textContent = "Extract PDF text";
@@ -3986,6 +4070,42 @@ async function extractPdfSources() {
     ? `${state.files.length} new source${state.files.length === 1 ? "" : "s"} ready · existing wiki retained`
     : `${state.files.length} source${state.files.length === 1 ? "" : "s"} loaded · 0 nodes · 0 edges`;
   updateWorkflowState();
+}
+
+async function extractPdfTextForSource(file) {
+  if (!file || file.type !== "pdf" || file.text) return;
+  file.extractionStatus = "extracting";
+  file.extractionError = "";
+  try {
+    const blob = await refreshRawSourceBlobFromVault(file) || file.browserFile;
+    if (!blob) throw new Error("Original PDF is not available.");
+    const text = await extractPdfText(blob);
+    file.text = text.trim();
+    file.extractionStatus = file.text ? "extracted" : "failed";
+    if (!file.text) file.extractionError = "No selectable text found.";
+  } catch (error) {
+    file.text = "";
+    file.extractionStatus = "failed";
+    file.extractionError = error.message || "PDF extraction failed.";
+  }
+}
+
+async function extractDocxTextForSource(file) {
+  if (!file || file.type !== "docx" || file.text) return;
+  file.extractionStatus = "extracting";
+  file.extractionError = "";
+  try {
+    const blob = await refreshRawSourceBlobFromVault(file) || file.browserFile;
+    if (!blob) throw new Error("Original DOCX is not available.");
+    const text = await extractDocxText(blob);
+    file.text = text.trim();
+    file.extractionStatus = file.text ? "extracted" : "failed";
+    if (!file.text) file.extractionError = "No readable text found in DOCX.";
+  } catch (error) {
+    file.text = "";
+    file.extractionStatus = "failed";
+    file.extractionError = error.message || "DOCX extraction failed.";
+  }
 }
 
 async function extractPdfText(file) {
