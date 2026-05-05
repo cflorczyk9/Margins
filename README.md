@@ -29,6 +29,11 @@ npm run dev
 
 Open `http://localhost:5173`.
 
+The browser app has two compile paths:
+
+- `Local compile` uses only local heuristics. It proves the folder -> wiki -> operating layer pipeline.
+- `Copy LLM ingest prompt` creates a Claude/ChatGPT handoff prompt. Use this when PDFs are selected, because browser uploads currently register PDFs but do not extract their text.
+
 ## Compile the sample vault
 
 ```bash
@@ -51,4 +56,3 @@ npm run compile:custom -- /path/to/raw_sources /path/to/output
 - No hosted storage.
 - No Margins-owned chat surface.
 - Write-back is proposal-first, never silent.
-

@@ -204,6 +204,15 @@ button.primary:not(:disabled):hover {
   font-size: 12px;
 }
 
+.source-item.needs-extraction {
+  border-color: #d8a24a;
+  background: #fff8e9;
+}
+
+.source-item.needs-extraction span {
+  color: #8a5700;
+}
+
 .workspace {
   min-width: 0;
   padding: 22px;

@@ -11,6 +11,7 @@ const els = {
   fileInput: document.getElementById("file-input"),
   sourceList: document.getElementById("source-list"),
   compileBtn: document.getElementById("compile-btn"),
+  llmBtn: document.getElementById("llm-btn"),
   exportBtn: document.getElementById("export-btn"),
   copyBtn: document.getElementById("copy-btn"),
   wikiTree: document.getElementById("wiki-tree"),
@@ -35,6 +36,7 @@ async function handleSourceSelection(event) {
   state.selectedPath = null;
   renderSources();
   els.compileBtn.disabled = state.files.length === 0;
+  els.llmBtn.disabled = state.files.length === 0;
   els.exportBtn.disabled = true;
   els.copyBtn.disabled = true;
   els.stats.textContent = `${state.files.length} source${state.files.length === 1 ? "" : "s"} loaded · 0 nodes · 0 edges`;
@@ -44,6 +46,13 @@ els.compileBtn.addEventListener("click", () => {
   state.vault = compileVault(state.files, { name: "Karpathy Original" });
   state.selectedPath = null;
   renderVault();
+});
+
+els.llmBtn.addEventListener("click", async () => {
+  if (state.files.length === 0) return;
+  await navigator.clipboard.writeText(buildLlmIngestPrompt(state.files));
+  els.llmBtn.textContent = "Copied";
+  setTimeout(() => { els.llmBtn.textContent = "Copy LLM ingest prompt"; }, 1100);
 });
 
 els.exportBtn.addEventListener("click", () => {
@@ -79,9 +88,9 @@ function renderSources() {
   }
   els.sourceList.className = "source-list";
   els.sourceList.innerHTML = state.files.map((file) => `
-    <div class="source-item">
+    <div class="source-item ${file.text ? "" : "needs-extraction"}">
       <strong>${escapeHtml(file.name)}</strong>
-      <span>${wordCount(file.text)} words</span>
+      <span>${file.text ? `${wordCount(file.text)} words` : "needs text extraction or LLM attachment"}</span>
     </div>
   `).join("");
 }
@@ -197,6 +206,56 @@ function normalizeSelectedFiles(files) {
     const right = b.webkitRelativePath || b.name;
     return left.localeCompare(right);
   });
+}
+
+function buildLlmIngestPrompt(files) {
+  const textFiles = files.filter((file) => file.text.trim());
+  const attachmentFiles = files.filter((file) => !file.text.trim());
+  const attachmentList = attachmentFiles.map((file) => `- ${file.name}`).join("\n") || "- none";
+  const sourceBlocks = textFiles.map((file) => (
+    `## Source: ${file.name}\n\n${file.text.trim()}`
+  )).join("\n\n---\n\n") || "_No extracted text sources were available._";
+
+  return `You are operating Margins, a local-first personal wiki compiler.
+
+Goal:
+Turn raw sources into a useful wiki, not a chat transcript. Preserve raw sources as evidence. Create source nodes, concept nodes, entity nodes, synthesis nodes, and edit proposals.
+
+Important:
+- The following files did not expose text in the browser and must be attached or extracted before you summarize them:
+${attachmentList}
+- Do not pretend to have read an attachment unless it is actually available in this conversation.
+- If a source is unavailable, create a source placeholder and mark it "needs text extraction".
+
+Output format:
+Return Markdown files in this structure:
+- wiki/sources/source-{slug}.md
+- wiki/concepts/{slug}.md
+- wiki/entities/{slug}.md
+- wiki/synthesis/{slug}.md
+- wiki/index.md
+- .margins/edit-log.jsonl
+
+Page rules:
+- Every factual claim needs a source citation.
+- Synthesis is allowed, but label it as synthesis.
+- Do not invent account balances, transaction details, dates, roles, or relationships.
+- Prefer useful connection-point summaries over generic tags.
+- Make edit proposals before changing important structure.
+
+For each source:
+1. Write a faithful summary.
+2. Extract concrete entities, dates, accounts, projects, decisions, and unresolved questions.
+3. Identify concepts that should become durable wiki pages.
+
+Across sources:
+1. Link related source nodes.
+2. Create synthesis pages that explain why the sources connect.
+3. List open questions and next actions.
+
+Extracted text sources:
+
+${sourceBlocks}`;
 }
 
 function shouldIgnorePath(path) {
