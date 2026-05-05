@@ -333,6 +333,98 @@ test("model throttle spaces bursty Gemini calls", {
   }
 });
 
+test("Gemini review shows concise summary bullets and model questions", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => {
+      window.__geminiCalls = [];
+      window.fetch = async (url, options = {}) => {
+        window.__geminiCalls.push({ url: String(url), body: JSON.parse(options.body || "{}") });
+        return new Response(JSON.stringify({
+          candidates: [{
+            content: {
+              parts: [{
+                text: JSON.stringify({
+                  summary: {
+                    overview: "This call captures a business opportunity and the follow-up context around it.",
+                    bullets: [
+                      "Larry is sharing a possible CFO or chief-of-staff style opportunity.",
+                      "The source includes useful context about timing, compensation, and risk.",
+                      "The next useful step is deciding whether this should become an active follow-up."
+                    ]
+                  },
+                  connections: [
+                    {
+                      path: "wiki/relationships/larry-abrahams.md",
+                      title: "Larry Abrahams",
+                      type: "existing",
+                      reason: "Larry is central to the source."
+                    }
+                  ],
+                  questions: [
+                    {
+                      kind: "Follow-up",
+                      question: "Should Margins treat this as an active opportunity to track?",
+                      reason: "That changes whether the source becomes a task-like follow-up.",
+                      recommendation: "My take: yes if you expect another conversation.",
+                      options: ["Track it", "Just file it", "Skip"]
+                    }
+                  ]
+                })
+              }]
+            }
+          }],
+          usageMetadata: {
+            promptTokenCount: 30,
+            candidatesTokenCount: 20,
+            thoughtsTokenCount: 0,
+            totalTokenCount: 50
+          }
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        });
+      };
+      window.__marginsTest.setApiGuard({
+        enabled: true,
+        maxRequests: 20,
+        maxOutputTokens: 512,
+        maxSessionTokens: 250000,
+        maxSessionUsd: 1,
+        minRequestDelaySeconds: 0,
+        maxRequestsPerWindow: 5,
+        requestWindowSeconds: 1
+      });
+      window.__marginsTest.seedTextModelSources(1);
+    });
+
+    await page.locator(".source-item", { hasText: "model-source-1.txt" }).getByRole("button", { name: "Process" }).click();
+    await page.locator(".source-item.ready-to-write", { hasText: "model-source-1.txt" }).waitFor();
+
+    const calls = await page.evaluate(() => window.__geminiCalls);
+    assert.equal(calls.length, 1);
+    assert.match(calls[0].url, /generativelanguage\.googleapis\.com/);
+    assert.match(calls[0].body.contents[0].parts[0].text, /Return 1-2 high-signal questions/);
+
+    const card = page.locator(".source-item.ready-to-write", { hasText: "model-source-1.txt" });
+    await card.getByText("Gemini reviewed").waitFor();
+    assert.equal(await card.locator(".run-brief-points li").count(), 3);
+    await card.getByText("Should Margins treat this as an active opportunity to track?").waitFor();
+    await card.getByRole("button", { name: "Track it" }).click();
+    await card.getByText("Answered: Track it").waitFor();
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
 test("image-only PDFs show a friendly Gemini rate-limit retry state", {
   skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
 }, async () => {

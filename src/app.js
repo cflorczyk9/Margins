@@ -1283,6 +1283,7 @@ async function prepareIngestReviews(statusText, files = state.files, options = {
   renderOperatingLayer(state.currentFileMap);
   drawGraph(graphFromFileMap(state.currentFileMap));
   renderSources();
+  renderVaultTree(state.currentFileMap);
   els.llmStatus.textContent = state.currentMaterialQuestions.length
     ? `${statusText} ${state.currentMaterialQuestions.length} quick check${state.currentMaterialQuestions.length === 1 ? "" : "s"} need your call.`
     : `${statusText} No questions needed.`;
@@ -1361,9 +1362,14 @@ function mergeIngestReview(localReview, apiReview, source) {
   return {
     source,
     status: apiReview.status || "Model reviewed the source against the current vault.",
+    provider: apiReview.provider || "",
+    reviewedAt: apiReview.reviewedAt || "",
     summary: apiReview.summary || localReview.summary,
+    summaryBullets: apiReview.summaryBullets?.length ? apiReview.summaryBullets : localReview.summaryBullets || [],
     connections: apiReview.connections?.length ? apiReview.connections : localReview.connections,
-    questions: apiReview.questions?.length ? apiReview.questions : localReview.questions
+    questions: source === "api"
+      ? apiReview.questions || []
+      : apiReview.questions?.length ? apiReview.questions : localReview.questions
   };
 }
 
@@ -1510,7 +1516,7 @@ async function generateApiIngestReview(file, fileMap, mode) {
     throw new Error("Direct browser calls are wired for Gemini and OpenAI-compatible endpoints right now.");
   }
 
-  return parseApiIngestReview(content, file, mode);
+  return parseApiIngestReview(content, file, mode, provider);
 }
 
 async function generateOpenAiCompatibleJsonContent(provider, model, prompt) {
@@ -1892,28 +1898,39 @@ function isStaleBrowserFileError(error) {
 
 function buildApiIngestReviewPrompt(file, fileMap, mode) {
   const budget = questionBudgetForMode(mode);
+  const questionInstruction = mode === "auto"
+    ? "Return no questions in auto mode."
+    : `Return 1-${budget} high-signal questions for calls, meetings, interviews, transcripts, emails, or decision notes unless the source is purely archival and no answer would change meaning, follow-up, sensitivity, or priority.`;
   return `Review this uploaded source for Margins, a local-first raw-source-to-wiki compiler.
 
 Pipeline:
 1. The raw file is already saved in raw_sources.
 2. You receive the source text, current wiki context, and guardrails.
-3. Return a short summary, useful vault connections, and ${budget} or fewer user questions.
+3. Return a concise summary, useful vault connections, and ${budget} or fewer user questions.
 4. Margins will show this on the pending card before writing the wiki.
 
 Guardrails:
 - Preserve raw evidence. Never imply the raw file was changed.
 - Do not ask where to file the document. Margins handles filing.
 - Do not ask generic approval questions.
+- ${questionInstruction}
 - Ask only if the answer changes meaning, identity, priority, sensitivity, or a follow-up action.
 - Avoid acronym/initial questions unless the acronym is central.
 - Prefer yes/no or short options, and always include a default recommendation.
 - Connections should point to existing wiki paths when useful. Suggest a new page only if it would be reusable.
-- If the source is clear, return no questions.
+- Do not return a transcript dump. The summary must be skimmable: one short overview and 3-5 short bullets.
 - Review mode is ${reviewModeLabel(mode)}. Question budget: ${budget}.
 
 Return JSON only:
 {
-  "summary": "2-4 plain-English sentences about what this source is and why it matters.",
+  "summary": {
+    "overview": "One plain-English sentence about what this source is.",
+    "bullets": [
+      "Short point about what matters.",
+      "Short point about useful context or decisions.",
+      "Short point about follow-up or risk if present."
+    ]
+  },
   "connections": [
     {"path":"wiki/...", "title":"...", "type":"existing|new", "reason":"why this connection matters"}
   ],
@@ -1975,14 +1992,19 @@ function operatingContextForPrompt(fileMap) {
   return parts.length ? parts.join("\n\n") : "- Local-first. Proposal-first. No silent write-back.";
 }
 
-function parseApiIngestReview(content, file, mode) {
+function parseApiIngestReview(content, file, mode, provider = "gemini") {
   const parsed = parseJsonObject(content) || {};
   const connections = Array.isArray(parsed.connections) ? parsed.connections : [];
   const questions = Array.isArray(parsed.questions) ? parsed.questions : [];
+  const summary = apiSummaryText(parsed.summary, parsed.summaryBullets || parsed.bullets);
+  const summaryBullets = apiSummaryBullets(parsed.summary, parsed.summaryBullets || parsed.bullets);
   return {
     source: "api",
-    status: "Model reviewed the source against the current vault.",
-    summary: cleanSummary(parsed.summary || ""),
+    provider,
+    reviewedAt: new Date().toISOString(),
+    status: `${providerLabel(provider)} reviewed the source against the current vault.`,
+    summary,
+    summaryBullets,
     connections: connections
       .map((connection) => ({
         path: String(connection.path || "").trim(),
@@ -2005,6 +2027,33 @@ function parseApiIngestReview(content, file, mode) {
       .filter((question) => question.question)
       .slice(0, questionBudgetForMode(mode))
   };
+}
+
+function apiSummaryText(summary, extraBullets = []) {
+  if (summary && typeof summary === "object" && !Array.isArray(summary)) {
+    const overview = cleanSummary(summary.overview || summary.title || summary.text || "");
+    const bullets = apiSummaryBullets(summary, extraBullets);
+    return cleanSummary([overview, ...bullets].filter(Boolean).join(" "));
+  }
+  return cleanSummary(summary || "");
+}
+
+function apiSummaryBullets(summary, extraBullets = []) {
+  const values = [];
+  if (summary && typeof summary === "object" && !Array.isArray(summary)) {
+    values.push(...arrayFromUnknown(summary.bullets));
+    values.push(...arrayFromUnknown(summary.points));
+    values.push(...arrayFromUnknown(summary.keyPoints));
+  }
+  values.push(...arrayFromUnknown(extraBullets));
+  return values
+    .map((item) => cleanSummary(item))
+    .filter(Boolean)
+    .slice(0, 5);
+}
+
+function arrayFromUnknown(value) {
+  return Array.isArray(value) ? value : [];
 }
 
 function buildApiQuestionPrompt(fileMap, files) {
@@ -2360,7 +2409,7 @@ function pendingReviewNote(file) {
 }
 
 function modelReviewStepLabel(review) {
-  if (review?.source === "api") return "Model reviewed";
+  if (review?.source === "api") return `${providerLabel(review.provider || "gemini")} reviewed`;
   if (review?.source === "local") return "Local review ready";
   return "Summary ready";
 }
@@ -2434,21 +2483,33 @@ function renderSourceActionButton(file, className = "source-process-btn") {
 
 function renderSourceSummary(file) {
   const fullSummary = sourceIngestFullSummary(file);
+  const summaryBullets = sourceIngestSummaryBullets(file);
   const expanded = state.expandedSummaries.has(file.name);
-  const canExpand = fullSummary.length > 240;
+  const canExpand = fullSummary.length > 240 || summaryBullets.length > 3;
   const visibleSummary = expanded || !canExpand ? fullSummary : clampSentence(fullSummary, 240);
+  const visibleBullets = expanded ? summaryBullets : summaryBullets.slice(0, 3);
   return `
     <div class="run-summary run-brief ${expanded ? "expanded" : ""}">
       <div class="run-summary-head run-brief-head">
         <span class="run-kicker">Summary</span>
         ${canExpand ? `<button class="text-toggle" type="button" data-summary-toggle="${escapeHtml(file.name)}">${expanded ? "Show less" : "Show more"}</button>` : ""}
       </div>
-      ${renderSummaryBrief(visibleSummary)}
+      ${renderSummaryBrief(visibleSummary, visibleBullets)}
     </div>
   `;
 }
 
-function renderSummaryBrief(summary) {
+function renderSummaryBrief(summary, bullets = []) {
+  const cleanBullets = bullets.map((item) => cleanSummary(item)).filter(Boolean).slice(0, 5);
+  if (cleanBullets.length) {
+    const overview = summaryOverview(summary, cleanBullets);
+    return `
+      ${overview ? `<p class="run-brief-copy">${escapeHtml(overview)}</p>` : ""}
+      <ul class="run-brief-points">
+        ${cleanBullets.map((part) => `<li>${escapeHtml(part)}</li>`).join("")}
+      </ul>
+    `;
+  }
   const parts = summarySentences(summary);
   if (parts.length <= 1) return `<p class="run-brief-copy">${escapeHtml(summary)}</p>`;
   return `
@@ -2459,13 +2520,39 @@ function renderSummaryBrief(summary) {
   `;
 }
 
+function summaryOverview(summary, bullets) {
+  const clean = cleanSummary(summary);
+  if (!clean) return "";
+  let overview = clean;
+  for (const bullet of bullets) {
+    overview = overview.replace(bullet, "").trim();
+  }
+  overview = overview.replace(/\s{2,}/g, " ").replace(/^[,.;:\s-]+|[,.;:\s-]+$/g, "");
+  if (!overview) return "";
+  return clampSentence(overview, 220);
+}
+
 function summarySentences(summary) {
   const clean = cleanSummary(summary);
   const matches = clean.match(/[^.!?]+[.!?]+(?:\s|$)/g);
-  if (!matches || matches.length < 2) return clean ? [clean] : [];
+  if (!matches || matches.length < 2) {
+    const sections = summaryLabelSections(clean);
+    return sections.length > 1 ? sections : clean ? [clean] : [];
+  }
   const consumed = matches.join("").trim();
   const tail = clean.slice(consumed.length).trim();
   return [...matches.map((part) => part.trim()), ...(tail ? [tail] : [])].filter(Boolean);
+}
+
+function summaryLabelSections(summary) {
+  const clean = cleanSummary(summary);
+  if (clean.length < 260) return clean ? [clean] : [];
+  return clean
+    .replace(/\s+(Date|Participants|Background|Opportunity|Assessment|Current status|Next steps|Risks|Decision|Follow-up|Context|Transcript)\b/g, "\n$1")
+    .split(/\n+/)
+    .map((part) => cleanSummary(part))
+    .filter(Boolean)
+    .slice(0, 8);
 }
 
 function renderSourceConnections(file) {
@@ -2504,6 +2591,14 @@ function sourceIngestFullSummary(file) {
   if (review?.summary) return stripTrailingEllipsis(cleanSummary(review.summary));
   const sourceNote = sourceNoteForFile(file);
   return stripTrailingEllipsis(cleanSummary(extractSourceSummary(sourceNote) || localSourceSummary(file) || "Margins preserved the raw source and prepared it for filing."));
+}
+
+function sourceIngestSummaryBullets(file) {
+  const review = state.ingestReviews.get(file.name);
+  if (review?.summaryBullets?.length) return review.summaryBullets.map((item) => cleanSummary(item)).filter(Boolean);
+  const summary = sourceIngestFullSummary(file);
+  const parts = summarySentences(summary);
+  return parts.length > 2 ? parts.slice(1, 6) : [];
 }
 
 function stripTrailingEllipsis(value) {
@@ -2888,7 +2983,7 @@ function renderVaultTree(fileMap = state.currentFileMap) {
         ${uploadStat("Words", formatStatNumber(stats.totalWords))}
       </div>
       <div class="upload-detail-list">
-        ${uploadDetail("Model reviewed", stats.reviewedFiles)}
+        ${uploadDetail("Model calls", stats.modelCalls)}
         ${uploadDetail("Wiki notes", stats.wikiFiles)}
         ${uploadDetail("Cited links", stats.graphEdges)}
         ${uploadDetail("Needs extraction", stats.needsExtraction)}
@@ -2906,7 +3001,7 @@ function ingestionStats(fileMap) {
   const ingestedFiles = sources.filter((file) => isRawSourceIngested(file, fileMap)).length;
   const totalWords = sources.reduce((sum, file) => sum + wordCount(file.text || ""), 0);
   const needsExtraction = sources.filter(needsTextExtraction).length;
-  const reviewedFiles = state.ingestReviews.size;
+  const modelCalls = state.apiUsage.requests;
   const wikiFiles = [...fileMap.keys()].filter((path) => path.startsWith("wiki/") && !path.startsWith("wiki/.margins/")).length;
   const graph = fileMap.size
     ? (fileMap === state.currentFileMap && graphView.nodes.length ? graphView : graphFromFileMap(fileMap))
@@ -2922,7 +3017,7 @@ function ingestionStats(fileMap) {
     ingestedFiles,
     totalWords,
     needsExtraction,
-    reviewedFiles,
+    modelCalls,
     wikiFiles,
     graphEdges: graph.edges.length,
     unsavedEdits

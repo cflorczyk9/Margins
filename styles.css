@@ -1838,9 +1838,10 @@ button,
 }
 
 .run-brief {
-  padding: 2px 0 0;
-  border: 0;
-  background: transparent;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--paper), color-mix(in srgb, var(--paper-soft) 72%, var(--paper)));
 }
 
 .run-brief-head,
@@ -1883,19 +1884,37 @@ button,
   margin: 5px 0 0;
   max-width: 68ch;
   color: var(--ink);
-  font-size: 14px;
-  line-height: 1.52;
+  font-size: 13.5px;
+  line-height: 1.55;
 }
 
 .run-brief-points {
   display: grid;
-  gap: 6px;
+  gap: 8px;
   max-width: 68ch;
-  margin: 8px 0 0;
-  padding-left: 18px;
+  margin: 10px 0 0;
+  padding: 0;
   color: color-mix(in srgb, var(--ink) 76%, var(--muted));
   font-size: 13px;
   line-height: 1.48;
+  list-style: none;
+}
+
+.run-brief-points li {
+  position: relative;
+  padding-left: 16px;
+}
+
+.run-brief-points li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.62em;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 .run-links {
