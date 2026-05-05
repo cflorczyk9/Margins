@@ -1935,6 +1935,26 @@ button,
   color: var(--paper);
 }
 
+.run-error {
+  padding: 12px 0 2px;
+  border-top: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line));
+}
+
+.run-error strong {
+  display: block;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.run-error p {
+  max-width: 62ch;
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .answered-note {
   margin-top: 9px;
   color: var(--accent);

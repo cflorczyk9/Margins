@@ -41,6 +41,7 @@ const state = {
   apiQuestionSource: "",
   ingestReviews: new Map(),
   ingestAnswers: new Map(),
+  ingestErrors: new Map(),
   lastProcessedReviewNames: [],
   expandedSummaries: new Set()
 };
@@ -691,6 +692,7 @@ function removeSourceFromState(fileName) {
   state.vaultFiles = state.vaultFiles.filter((file) => file.name !== fileName);
   state.editedRawFiles.delete(fileName);
   state.ingestReviews.delete(fileName);
+  state.ingestErrors.delete(fileName);
   for (const key of [...state.ingestAnswers.keys()]) {
     if (key.startsWith(`${fileName}::`)) state.ingestAnswers.delete(key);
   }
@@ -734,6 +736,7 @@ function syncIngestAnswersToReviewReply() {
 async function processPendingSource(fileName = "") {
   state.processingInbox = true;
   state.processingFileName = fileName || "";
+  if (fileName) state.ingestErrors.delete(fileName);
   renderSources();
   updateSaveButtonState();
   try {
@@ -861,6 +864,7 @@ async function saveCurrentVault() {
     state.editedRawFiles = new Map();
     state.ingestReviews = new Map();
     state.ingestAnswers = new Map();
+    state.ingestErrors = new Map();
     state.expandedSummaries = new Set();
     state.loadedFileMap = new Map(state.currentFileMap);
     renderSources();
@@ -1071,6 +1075,16 @@ async function prepareIngestReviews(statusText, files = state.files, options = {
 
   for (const file of files) {
     let review = localIngestReview(file, state.currentFileMap, reviewMode);
+    if (requiresModelReview(file) && !canSendSourceToModel(file)) {
+      state.ingestErrors.set(file.name, "Model review needs the original file or readable text. Re-add the file, then retry.");
+      reviewMap.delete(file.name);
+      continue;
+    }
+    if (requiresModelReview(file) && !state.apiSecret) {
+      state.ingestErrors.set(file.name, "Model review needs the local Gemini key. Add a key, then retry.");
+      reviewMap.delete(file.name);
+      continue;
+    }
     if (state.apiSecret && canSendSourceToModel(file)) {
       els.llmStatus.textContent = `Sending ${file.name} to the configured model with vault context...`;
       try {
@@ -1078,10 +1092,17 @@ async function prepareIngestReviews(statusText, files = state.files, options = {
         review = mergeIngestReview(review, apiReview, "api");
         state.apiQuestionSource = "api";
       } catch (error) {
+        if (requiresModelReview(file)) {
+          state.ingestErrors.set(file.name, `Model review did not finish: ${error.message || "unknown error"}`);
+          reviewMap.delete(file.name);
+          state.apiQuestionSource = "error";
+          continue;
+        }
         review.status = `Model review failed, using local checks: ${error.message || "unknown error"}`;
         state.apiQuestionSource = "heuristic";
       }
     }
+    state.ingestErrors.delete(file.name);
     reviewMap.set(file.name, review);
     for (const question of review.questions || []) allQuestions.push(question);
     applyIngestReviewToFileMap(file, review);
@@ -1105,12 +1126,8 @@ async function prepareIngestReviews(statusText, files = state.files, options = {
 function localIngestReview(file, fileMap, mode) {
   return {
     source: "local",
-    status: needsTextExtraction(file)
-      ? "Raw source saved. Margins will use the model when the source needs visual or document review."
-      : "Raw source saved. Local summary prepared while the model review runs.",
-    summary: needsTextExtraction(file)
-      ? "Margins saved the original source and is ready to review it with the model."
-      : localSourceSummary(file),
+    status: "Raw source saved. Local summary prepared while the model review runs.",
+    summary: localSourceSummary(file),
     connections: [],
     questions: mode === "auto" ? [] : currentIngestQuestionsForFile(file, fileMap, mode)
   };
@@ -1121,6 +1138,10 @@ function canSendSourceToModel(file) {
   if (file.text) return true;
   const provider = els.apiProvider?.value || providerValue(state.apiSettings.providerLabel) || "gemini";
   return provider === "gemini" && file.type === "pdf" && Boolean(file.browserFile);
+}
+
+function requiresModelReview(file) {
+  return needsTextExtraction(file) && !file.text;
 }
 
 function localSourceSummary(file) {
@@ -1765,7 +1786,9 @@ function bindSourceListControls() {
 function renderSourceIngestRun(file) {
   const processingThis = state.processingInbox && (!state.processingFileName || state.processingFileName === file.name);
   const isReady = isSourceReviewReady(file) && !processingThis;
-  if (!processingThis && !isReady) return "";
+  const error = state.ingestErrors.get(file.name);
+  if (!processingThis && !isReady && !error) return "";
+  if (error && !processingThis) return renderSourceIngestError(file, error);
   const review = state.ingestReviews.get(file.name);
   return `
     <div class="source-ingest-run">
@@ -1785,6 +1808,17 @@ function renderSourceIngestRun(file) {
   `;
 }
 
+function renderSourceIngestError(file, error) {
+  return `
+    <div class="source-ingest-run">
+      <div class="run-error" role="status">
+        <strong>Review did not finish</strong>
+        <p>${escapeHtml(error)}</p>
+      </div>
+    </div>
+  `;
+}
+
 function renderProcessingIndicator(file) {
   return `
     <div class="process-indicator" aria-label="Margins is working">
@@ -1798,11 +1832,11 @@ function renderProcessingIndicator(file) {
 }
 
 function pendingReviewStepLabel(file) {
-  return state.apiSecret && file.text ? "Sending to model" : "Preparing review";
+  return state.apiSecret && canSendSourceToModel(file) ? "Sending to model" : "Preparing review";
 }
 
 function pendingReviewNote(file) {
-  if (state.apiSecret && file.text) {
+  if (state.apiSecret && canSendSourceToModel(file)) {
     return "Saved locally. Reading with vault context.";
   }
   if (needsTextExtraction(file)) {
@@ -1830,7 +1864,7 @@ function renderSourceRunQuestions(file) {
   const review = state.ingestReviews.get(file.name);
   const questions = review?.questions || currentIngestQuestionsForFile(file, state.currentFileMap, state.reviewMode);
   if (questions.length === 0) {
-    return `<div class="run-note">No questions needed. Approve when you're ready.</div>`;
+    return `<div class="run-note">Review complete. Approve to file it.</div>`;
   }
   return `
     <div class="run-conversation run-dialogue">
@@ -2099,6 +2133,32 @@ raw_file: raw_sources/filed-note.md
     },
     processedReviewNames() {
       return (state.ingestReviews.size ? [...state.ingestReviews.keys()] : state.lastProcessedReviewNames).sort();
+    },
+    seedModelRequiredSource() {
+      const file = {
+        name: "scanned-source.pdf",
+        text: "",
+        type: "pdf",
+        size: 32000,
+        lastModified: new Date(2026, 4, 5, 12, 15).getTime(),
+        browserFile: null,
+        sourceScope: "pending",
+        extractionStatus: "failed",
+        extractionError: "No selectable text found."
+      };
+      state.files = [file];
+      state.vaultFiles = [];
+      state.vaultHandle = createMemoryVaultHandle();
+      state.vaultName = "Browser Test Vault";
+      state.currentFileMap = new Map([["wiki/index.md", "# Index\n"]]);
+      state.pendingSave = false;
+      state.processingInbox = false;
+      state.apiSecret = "";
+      state.ingestReviews = new Map();
+      state.ingestErrors = new Map();
+      renderSources();
+      updateActionState();
+      return document.querySelector("#source-list")?.innerText || "";
     }
   };
 }
@@ -2158,6 +2218,7 @@ function memoryFile(name) {
 
 function sourceProcessLabel(file) {
   if (state.processingInbox && (!state.processingFileName || state.processingFileName === file?.name)) return "Processing...";
+  if (state.ingestErrors.has(file?.name)) return "Retry";
   if (isSourceReviewReady(file)) return "Approve";
   return "Process";
 }
@@ -2167,7 +2228,7 @@ function sourceProcessDisabled(file) {
 }
 
 function isSourceReviewReady(file) {
-  return Boolean(file?.name && state.pendingSave && state.currentFileMap && state.ingestReviews.has(file.name));
+  return Boolean(file?.name && state.pendingSave && state.currentFileMap && state.ingestReviews.has(file.name) && !state.ingestErrors.has(file.name));
 }
 
 function renderVaultTree(fileMap = state.currentFileMap) {

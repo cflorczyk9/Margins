@@ -84,6 +84,55 @@ test("process button processes only the selected pending source", {
   }
 });
 
+test("approve files the selected processed source", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => window.__marginsTest.seedSourceStatusCards());
+    await page.locator(".source-item", { hasText: "script/build.py" }).getByRole("button", { name: "Process" }).click();
+    await page.locator(".source-item.ready-to-write", { hasText: "script/build.py" }).getByRole("button", { name: "Approve" }).click();
+
+    await page.waitForFunction(() => !document.querySelector("#source-list")?.innerText.includes("script/build.py"));
+    const pendingText = await page.locator("#source-list").innerText();
+    assert.doesNotMatch(pendingText, /script\/build\.py/);
+    assert.match(pendingText, /pending-word\.docx/);
+    assert.match(pendingText, /pending-statement\.pdf/);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("model-required sources do not show a fake successful summary", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => window.__marginsTest.seedModelRequiredSource());
+    await page.locator(".source-item", { hasText: "scanned-source.pdf" }).getByRole("button", { name: "Process" }).click();
+    await page.getByText("Review did not finish").waitFor();
+
+    const pendingText = await page.locator("#source-list").innerText();
+    assert.match(pendingText, /Retry/);
+    assert.doesNotMatch(pendingText, /Margins saved the original source and is ready to review it with the model/);
+    assert.doesNotMatch(pendingText, /Review complete\. Approve to file it/);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
 test("bulk ingest processes the whole pending queue", {
   skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
 }, async () => {
