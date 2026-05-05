@@ -464,7 +464,7 @@ function renderMaterialQuestions(questions) {
       <div class="review-meta">${escapeHtml(question.kind)} · ${escapeHtml(question.path || "vault")}</div>
       <strong>${escapeHtml(question.question)}</strong>
       <p>${escapeHtml(question.reason)}</p>
-      <div class="recommendation">Recommended: ${escapeHtml(question.recommendation)}</div>
+      <div class="recommendation">${escapeHtml(question.recommendation)}</div>
     </div>
   `).join("");
 }
@@ -508,26 +508,26 @@ function promotionQuestions(fileMap) {
       const demoLike = /\bdemo\b|\bfictional\b|\bplaceholder\b|\bnot an actual\b|\bexample\b/i.test(body);
       questions.push(reviewQuestion(
         demoLike ? "warn" : "suggest",
-        "Entity promotion",
+        "New page",
         path,
         demoLike
-          ? `Should ${title} become a real entity page, or stay inside source notes as demo context?`
-          : `Should ${title} become a durable entity page?`,
+          ? `Margins thinks "${title}" might just be demo data. Save it as its own page?`
+          : `Margins found "${title}". Save it as its own page?`,
         demoLike
-          ? "Demo-only entities usually stay mentioned-but-missing unless they help future retrieval."
-          : "Entity pages are worth keeping when future queries will ask about this person, org, account, project, tool, or place.",
-        demoLike ? "Move to Needs Review unless this entity will recur." : "Keep if this is a real recurring entity."
+          ? "If this name only exists inside fake/sample files, it probably should stay inside the source notes instead of becoming part of the main wiki."
+          : "Use a separate page when this is a real person, company, account, project, tool, or place you may search for later.",
+        demoLike ? "Suggested answer: keep it in the source notes unless you expect it to come up again." : "Suggested answer: save it as a page if it is real and likely to come up again."
       ));
     }
     if (path.startsWith("wiki/concepts/")) {
       const title = markdownTitle(body) || titleFromSlug(basename(path).replace(/\.md$/, ""));
       questions.push(reviewQuestion(
         "suggest",
-        "Concept promotion",
+        "New topic",
         path,
-        `Is ${title} a reusable concept, or should it stay inside the source pages?`,
-        "Concept pages should be durable connection points, not keywords extracted from one file.",
-        "Keep if it will help connect future sources."
+        `Margins found a topic called "${title}". Save it as its own page?`,
+        "Use a separate topic page when this idea will help connect future files. If it is just a label from one document, it can stay inside that source note.",
+        "Suggested answer: save it if you would want to ask about this topic later."
       ));
     }
   }
@@ -539,13 +539,13 @@ function synthesisQuestions(fileMap) {
     .filter(([path]) => path.startsWith("wiki/synthesis/"))
     .map(([path, body]) => reviewQuestion(
       "suggest",
-      "Synthesis",
+      "Connection",
       path,
-      `Should this synthesis node be saved as a durable connection?`,
-      "Synthesis pages are the product wedge, but they should preserve useful cross-source reasoning rather than restating a source.",
+      `Margins connected multiple notes into a summary. Save that connection?`,
+      "Connection pages are useful when they explain why files relate to each other. They are less useful when they only repeat one source.",
       /\bnot directly stated\b|\bhypothesis\b|\bnot stated\b/i.test(body)
-        ? "Keep as voice: claude-draft if useful; do not treat as fact."
-        : "Keep if it connects two or more sources or concepts."
+        ? "Suggested answer: save it as a draft if the connection is useful, but do not treat it as fact."
+        : "Suggested answer: save it if it connects more than one source or topic."
     ));
 }
 
@@ -556,11 +556,11 @@ function riskQuestions(fileMap) {
     if (/\b(account number|ssn|social security|medical|diagnosis|legal|attorney|customer|client|salary|tax|bank|routing)\b/i.test(body)) {
       sensitive.push(reviewQuestion(
         "warn",
-        "Sensitive source",
+        "Sensitive info",
         path,
-        "Does this source contain sensitive information that should require stricter review?",
-        "Financial, legal, medical, customer, and employer data raise the cost of a wrong node or unsupported synthesis.",
-        "Use Strict review or save as source-only if unsure."
+        "This source looks sensitive. Review it before saving?",
+        "Financial, legal, medical, customer, and work data need a higher bar because a wrong note can create real confusion.",
+        "Suggested answer: use Strict review or save only the source note if you are unsure."
       ));
     }
   }
@@ -571,11 +571,11 @@ function rawSourceQuestions() {
   if (state.files.length > 0) return [];
   return [reviewQuestion(
     "warn",
-    "Raw evidence",
+    "Original files",
     "raw_sources/",
-    "Raw files are not currently loaded. Save generated wiki without raw evidence?",
-    "The vault is most trustworthy when raw_sources contains the original files.",
-    "Reload raw files before saving."
+    "Your original files are not loaded. Save only the generated notes?",
+    "Margins works best when the vault keeps both the original files and the generated wiki notes.",
+    "Suggested answer: reload the original files before saving."
   )];
 }
 
@@ -589,11 +589,11 @@ function strictReviewQuestions(fileMap) {
   if (sourceCount === 0 || promotedCount === 0) return [];
   return [reviewQuestion(
     "suggest",
-    "Strict review",
+    "Extra review",
     "wiki/",
-    "Do promoted pages have enough source support to save now?",
-    "Strict review treats durable graph changes as user-approved memory decisions.",
-    "Approve promoted pages one by one before saving."
+    "Review each new page before saving?",
+    "Strict review is for cases where every new page should be intentionally approved.",
+    "Suggested answer: approve new pages one by one."
   )];
 }
 
