@@ -6,11 +6,15 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url
 ).toString();
 
+const initialTheme = localStorage.getItem("margins-theme") || "dark";
+document.documentElement.dataset.theme = initialTheme;
+
 const state = {
   files: [],
   vault: null,
   selectedPath: null,
   currentFileMap: null,
+  theme: initialTheme,
   reviewMode: localStorage.getItem("margins-review-mode") || "suggested",
   llmFiles: new Map(),
   llmSelectedPath: null,
@@ -19,6 +23,7 @@ const state = {
 };
 
 const els = {
+  themeToggle: document.getElementById("theme-toggle"),
   folderInput: document.getElementById("folder-input"),
   fileInput: document.getElementById("file-input"),
   sourceList: document.getElementById("source-list"),
@@ -53,11 +58,18 @@ const els = {
   editList: document.getElementById("edit-list")
 };
 
+els.themeToggle.checked = state.theme === "dark";
 els.folderInput.addEventListener("change", handleSourceSelection);
 els.fileInput.addEventListener("change", handleSourceSelection);
 els.reviewMode.value = state.reviewMode;
 updateReviewModeHelp();
 hydrateChecklist();
+
+els.themeToggle.addEventListener("change", () => {
+  state.theme = els.themeToggle.checked ? "dark" : "light";
+  document.documentElement.dataset.theme = state.theme;
+  localStorage.setItem("margins-theme", state.theme);
+});
 
 async function handleSourceSelection(event) {
   const files = normalizeSelectedFiles([...event.target.files]);
