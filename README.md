@@ -37,7 +37,7 @@ The default UI is an inbox-style local vault flow:
 4. Answer quick filing questions or add freeform notes.
 5. Click `Write local vault` to save the raw sources, generated wiki, graph, and operating layer.
 
-The left rail keeps the local vault, temporary API settings, and generated file structure visible. The main app tabs are Inbox, Wiki, Graph, Review, and Operating Layer. There is intentionally no Margins-owned chat tab.
+The left rail keeps the local vault visible and remembers the last selected vault where the browser allows it. The main app tabs are Inbox, Vault, and Graph. Review questions appear inline inside the inbox when needed. There is intentionally no Margins-owned chat tab.
 
 Until API mode exists, the language-model step is still copy/paste: Margins copies the ingest prompt, you paste it into Claude/ChatGPT, then paste the returned `margins-file` blocks back into Margins. Advanced controls are available under `Advanced tools`.
 
@@ -56,7 +56,7 @@ The browser app has two compile paths:
 - `Create vault` scaffolds the selected folder with the expected vault structure. `Open vault` selects an existing local vault and loads its existing wiki files back into the app. `Save changes` writes the accepted wiki plus original raw sources directly into the selected vault using the browser File System Access API.
 - Incremental ingest keeps the loaded vault as context, sends only the new source batch to the language model, and merges returned `margins-file` blocks into the existing wiki.
 - `Review Mode` controls how many material judgment questions Margins asks: Auto-file, Suggested review, or Strict review. You can answer those questions in plain English and copy a review response prompt back to the language model for revised files.
-- Optional API settings are local-only browser settings used for model-generated filing questions. If a direct browser API call fails, Margins falls back to local review rules.
+- Temporary API settings are tucked under developer controls and are local-only browser settings used for model-generated filing questions. They should be hidden in production. If a direct browser API call fails, Margins falls back to local review rules.
 
 ## Compile the sample vault
 

@@ -251,6 +251,18 @@ p {
   margin-bottom: 8px;
 }
 
+.advanced-panel {
+  margin-top: auto;
+  opacity: 0.62;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.advanced-panel .section-kicker {
+  margin-top: 12px;
+}
+
 .vault-status {
   color: var(--ink) !important;
   font-weight: 800;
@@ -571,6 +583,21 @@ button.primary:not(:disabled):hover,
 .queue-panel,
 .review-mode-card {
   padding: 16px;
+}
+
+.inline-review-panel {
+  margin-top: 18px;
+  padding: 18px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow-md);
+}
+
+.inline-review-panel[hidden],
+.utility-view[hidden],
+.structure-card[hidden] {
+  display: none !important;
 }
 
 .section-head {

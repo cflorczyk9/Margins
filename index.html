@@ -19,7 +19,7 @@
           <div class="mark"></div>
           <div>
             <h1>Margins</h1>
-            <p>Local vault, durable wiki, operating layer.</p>
+            <p>Your local AI memory.</p>
           </div>
         </div>
         <label class="theme-toggle" title="Toggle dark mode">
@@ -39,7 +39,8 @@
         <button id="workflow-btn" class="primary">Choose vault folder</button>
       </section>
 
-      <section class="rail-section api-card">
+      <details class="rail-section advanced-panel">
+        <summary>Developer controls</summary>
         <div class="section-kicker">API</div>
         <select id="api-provider" class="select-control" aria-label="API provider">
           <option value="openai" selected>OpenAI</option>
@@ -53,9 +54,14 @@
           <button id="clear-api-key-btn">Clear</button>
         </div>
         <p id="api-key-status" class="status-line">Key is stored locally when configured.</p>
-      </section>
+        <button id="extract-btn" disabled>Extract PDF text</button>
+        <button id="compile-btn" disabled>Local compile</button>
+        <button id="llm-btn" disabled>Copy LLM ingest prompt</button>
+        <button id="export-btn" disabled>Download vault JSON</button>
+        <button id="copy-btn" disabled>Copy operator manual</button>
+      </details>
 
-      <section class="rail-section">
+      <section class="rail-section structure-card" hidden>
         <div class="section-kicker">Structure</div>
         <div id="vault-tree" class="vault-tree">
           <div><span>raw_sources/</span></div>
@@ -65,15 +71,6 @@
           <div><span>operator-manual.md</span></div>
         </div>
       </section>
-
-      <details class="rail-section advanced-panel">
-        <summary>Controls</summary>
-        <button id="extract-btn" disabled>Extract PDF text</button>
-        <button id="compile-btn" disabled>Local compile</button>
-        <button id="llm-btn" disabled>Copy LLM ingest prompt</button>
-        <button id="export-btn" disabled>Download vault JSON</button>
-        <button id="copy-btn" disabled>Copy operator manual</button>
-      </details>
     </aside>
 
     <main class="workspace">
@@ -87,10 +84,8 @@
 
       <nav class="tabs" aria-label="Primary views">
         <button class="tab active" data-view="inbox">Inbox</button>
-        <button class="tab" data-view="wiki">Wiki</button>
+        <button class="tab" data-view="wiki">Vault</button>
         <button class="tab" data-view="graph">Graph</button>
-        <button class="tab" data-view="llm">Review</button>
-        <button class="tab" data-view="ops">Operating Layer</button>
       </nav>
 
       <section id="inbox-view" class="view active">
@@ -132,6 +127,15 @@
             <p id="review-mode-help">Ask only about durable wiki decisions, with a recommended default.</p>
           </div>
         </section>
+
+        <section id="inline-review-panel" class="inline-review-panel" hidden>
+          <div class="section-head">
+            <div>
+              <span class="section-kicker">Questions</span>
+              <h3>Before I file this</h3>
+            </div>
+          </div>
+        </section>
       </section>
 
       <section id="wiki-view" class="view">
@@ -161,7 +165,7 @@
         </div>
       </section>
 
-      <section id="llm-view" class="view">
+      <section id="llm-view" class="view utility-view" hidden>
         <div id="review-view" class="review-layout">
           <article class="review-compose">
             <div class="section-head">
@@ -196,7 +200,7 @@
         </div>
       </section>
 
-      <section id="ops-view" class="view">
+      <section id="ops-view" class="view utility-view" hidden>
         <div class="ops-grid">
           <article>
             <h3>operator-manual.md</h3>
