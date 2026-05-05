@@ -28,6 +28,7 @@ const els = {
 
 els.folderInput.addEventListener("change", handleSourceSelection);
 els.fileInput.addEventListener("change", handleSourceSelection);
+hydrateChecklist();
 
 async function handleSourceSelection(event) {
   const files = normalizeSelectedFiles([...event.target.files]);
@@ -80,6 +81,12 @@ document.querySelectorAll(".tab").forEach((tab) => {
   });
 });
 
+document.querySelectorAll("[data-check-id]").forEach((checkbox) => {
+  checkbox.addEventListener("change", () => {
+    localStorage.setItem(`margins-check-${checkbox.dataset.checkId}`, checkbox.checked ? "1" : "0");
+  });
+});
+
 function renderSources() {
   if (state.files.length === 0) {
     els.sourceList.className = "source-list empty";
@@ -93,6 +100,12 @@ function renderSources() {
       <span>${file.text ? `${wordCount(file.text)} words` : "needs text extraction or LLM attachment"}</span>
     </div>
   `).join("");
+}
+
+function hydrateChecklist() {
+  document.querySelectorAll("[data-check-id]").forEach((checkbox) => {
+    checkbox.checked = localStorage.getItem(`margins-check-${checkbox.dataset.checkId}`) === "1";
+  });
 }
 
 function renderVault() {
