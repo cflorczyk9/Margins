@@ -1566,6 +1566,14 @@ button,
   font-weight: 600;
 }
 
+.source-timestamp {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
 .source-item span {
   font-size: 13px;
 }

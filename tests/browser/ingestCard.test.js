@@ -97,6 +97,7 @@ test("pending source cards stay minimal before processing", {
     assert.match(pendingText, /pending-statement\.pdf/);
     assert.match(pendingText, /script\/build\.py/);
     assert.equal((pendingText.match(/Process/g) || []).length, 3);
+    assert.equal(await page.locator("#source-list .source-timestamp").count(), 3);
     assert.doesNotMatch(pendingText, /LLM attachment|0 words|DOCX text extraction|Word text|PDF text|words ready|raw source saved/i);
   } finally {
     await browser.close();

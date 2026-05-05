@@ -1579,6 +1579,7 @@ function renderSources() {
       <span class="source-badge">${escapeHtml(sourceTypeLabel(file))}</span>
       <div class="source-copy">
         <strong>${escapeHtml(file.name)}</strong>
+        ${renderSourceTimestamp(file)}
       </div>
       <button class="source-process-btn" type="button" data-source-action="process" ${sourceProcessDisabled() ? "disabled" : ""}>
         ${escapeHtml(sourceProcessLabel())}
@@ -1587,6 +1588,31 @@ function renderSources() {
     </div>
   `).join("");
   bindSourceListControls();
+}
+
+function renderSourceTimestamp(file) {
+  const date = sourceTimestampDate(file);
+  if (!date) return "";
+  return `<time class="source-timestamp" datetime="${escapeHtml(date.toISOString())}">${escapeHtml(formatSourceTimestamp(date))}</time>`;
+}
+
+function sourceTimestampDate(file) {
+  const value = Number(file?.lastModified || 0);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatSourceTimestamp(date) {
+  const now = new Date();
+  const includeYear = date.getFullYear() !== now.getFullYear();
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    ...(includeYear ? { year: "numeric" } : {}),
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(date);
 }
 
 function bindSourceListControls() {
@@ -1882,6 +1908,7 @@ raw_file: raw_sources/filed-note.md
           text: "",
           type: "docx",
           size: 12400,
+          lastModified: new Date(2026, 4, 5, 9, 30).getTime(),
           sourceScope: "vault",
           extractionStatus: "failed",
           extractionError: "No readable text found in DOCX."
@@ -1891,6 +1918,7 @@ raw_file: raw_sources/filed-note.md
           text: "",
           type: "pdf",
           size: 88000,
+          lastModified: new Date(2026, 4, 5, 10, 15).getTime(),
           sourceScope: "vault",
           extractionStatus: "needed",
           extractionError: ""
@@ -1900,6 +1928,7 @@ raw_file: raw_sources/filed-note.md
           text: "print('hello margins')\n",
           type: "text",
           size: 23,
+          lastModified: new Date(2026, 4, 5, 11, 0).getTime(),
           sourceScope: "vault",
           extractionStatus: "ready",
           extractionError: ""
@@ -4144,6 +4173,8 @@ async function rawSourceFromFileHandle(fileHandle, name) {
     name,
     text,
     browserFile: file,
+    size: file.size,
+    lastModified: file.lastModified,
     type: isPdf ? "pdf" : isDocx ? "docx" : "text",
     extractionStatus,
     extractionError,
