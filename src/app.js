@@ -259,9 +259,11 @@ function renderWikiFiles(fileMap) {
 
 function renderLlmReview() {
   const entries = [...state.llmFiles.entries()];
+  const warningsByPath = validateLlmFiles(state.llmFiles);
+  const warningCount = [...warningsByPath.values()].reduce((sum, warnings) => sum + warnings.length, 0);
   els.acceptLlmBtn.disabled = entries.length === 0;
   els.llmStatus.textContent = entries.length
-    ? `${entries.length} file${entries.length === 1 ? "" : "s"} parsed. Review them before accepting.`
+    ? `${entries.length} file${entries.length === 1 ? "" : "s"} parsed · ${warningCount} review warning${warningCount === 1 ? "" : "s"}`
     : "No files found. Paste output that uses ```margins-file path=\"...\" fenced blocks.";
 
   if (entries.length === 0) {
@@ -276,21 +278,79 @@ function renderLlmReview() {
   els.llmFileList.innerHTML = entries.map(([path, body]) => `
     <div class="tree-item" data-path="${escapeHtml(path)}">
       <strong>${escapeHtml(path)}</strong>
-      <span>${wordCount(body)} words</span>
+      <span>${wordCount(body)} words${warningLabel(warningsByPath.get(path) || [])}</span>
     </div>
   `).join("");
 
   els.llmFileList.querySelectorAll(".tree-item").forEach((item) => {
     item.addEventListener("click", () => {
       state.llmSelectedPath = item.dataset.path;
-      els.llmPreviewTitle.textContent = state.llmSelectedPath;
-      els.llmPreviewBody.textContent = state.llmFiles.get(state.llmSelectedPath);
+      renderLlmPreview(warningsByPath);
     });
   });
 
   state.llmSelectedPath = entries[0][0];
-  els.llmPreviewTitle.textContent = entries[0][0];
-  els.llmPreviewBody.textContent = entries[0][1];
+  renderLlmPreview(warningsByPath);
+}
+
+function renderLlmPreview(warningsByPath) {
+  const body = state.llmFiles.get(state.llmSelectedPath) || "";
+  const warnings = warningsByPath.get(state.llmSelectedPath) || [];
+  els.llmPreviewTitle.textContent = warnings.length
+    ? `${state.llmSelectedPath} · ${warnings.length} warning${warnings.length === 1 ? "" : "s"}`
+    : state.llmSelectedPath;
+  els.llmPreviewBody.textContent = warnings.length
+    ? `Review warnings:\n${warnings.map((warning) => `- ${warning}`).join("\n")}\n\n${body}`
+    : body;
+}
+
+function validateLlmFiles(fileMap) {
+  const warningsByPath = new Map();
+  const entries = [...fileMap.entries()];
+  const promotedPages = entries.filter(([path]) => (
+    path.startsWith("wiki/concepts/") ||
+    path.startsWith("wiki/entities/") ||
+    path.startsWith("wiki/synthesis/")
+  ));
+  const hasPromotedPages = promotedPages.length > 0;
+
+  for (const [path, body] of entries) {
+    const warnings = [];
+    if (path.startsWith("wiki/") && path.endsWith(".md") && !hasYamlFrontmatter(body)) {
+      warnings.push("Missing YAML frontmatter.");
+    }
+    if (/:contentReference\[|oaicite:/i.test(body)) {
+      warnings.push("Contains ChatGPT contentReference citations. Replace with durable source/file citations.");
+    }
+    if (path.startsWith("wiki/sources/")) {
+      if (!/##\s+Mentioned but missing/i.test(body)) warnings.push("Source page is missing a Mentioned but missing section.");
+      if (!/##\s+Inferences refused/i.test(body)) warnings.push("Source page is missing an Inferences refused section.");
+      if (hasPromotedPages && extractWikiLinks(body).length === 0) {
+        warnings.push("Source page does not link to promoted concepts, entities, or synthesis pages.");
+      }
+    }
+    if ((path.startsWith("wiki/concepts/") || path.startsWith("wiki/entities/") || path.startsWith("wiki/synthesis/")) && !body.includes("[[source-")) {
+      warnings.push("Promoted page does not link back to a source page.");
+    }
+    if (path.startsWith("wiki/entities/") && /\bfictional\b|\bdemo\b|\bis this a real\b/i.test(body)) {
+      warnings.push("Entity may be fictional or demo-only. Review before keeping it as a first-class entity.");
+    }
+    if (path === ".margins/edit-log.jsonl") {
+      const invalidLines = body.split("\n").filter((line) => line.trim() && !parseJsonLine(line));
+      if (invalidLines.length > 0) warnings.push(`${invalidLines.length} edit-log line${invalidLines.length === 1 ? "" : "s"} are not valid JSON.`);
+    }
+    warningsByPath.set(path, warnings);
+  }
+
+  return warningsByPath;
+}
+
+function hasYamlFrontmatter(body) {
+  return /^---\n[\s\S]+?\n---\n/.test(body);
+}
+
+function warningLabel(warnings) {
+  return warnings.length ? ` · ${warnings.length} warning${warnings.length === 1 ? "" : "s"}` : "";
 }
 
 function drawGraph(graph) {
@@ -560,6 +620,16 @@ Output format:
 Return Markdown files in this exact fenced-block format so Margins can parse them:
 
 \`\`\`margins-file path="wiki/sources/source-example.md"
+---
+type: source
+bucket: sources
+summary: One sentence direct-read summary.
+tags: [source]
+created: YYYY-MM-DD
+updated: YYYY-MM-DD
+voice: claude-draft
+---
+
 # Source: Example
 
 Markdown body here.
@@ -582,7 +652,8 @@ Use one fenced block per file. Return files in this structure:
 - .margins/edit-log.jsonl
 
 Page rules:
-- Every factual claim needs a source citation.
+- Every wiki Markdown file must start with YAML frontmatter.
+- Every factual claim needs a durable source citation. Do not use ChatGPT-only citation tokens such as :contentReference, oaicite, turn references, or hidden attachment ids. Cite with source page links and plain file/section references that will still make sense after export.
 - Synthesis is allowed, but label it as synthesis.
 - Do not invent account balances, transaction details, dates, roles, or relationships.
 - Prefer useful connection-point summaries over generic tags.
@@ -593,6 +664,8 @@ Page rules:
 - Add wiki links only when the relationship is explicit and useful. Weak keyword overlap should stay unlinked.
 - Make edit proposals before changing important structure.
 - Use wiki links for source-supported proper nouns and durable pages only.
+- When you create a concept, entity, or synthesis page, add backlinks from the relevant source pages using [[page-slug]] links so the graph is navigable.
+- Promoted concept/entity/synthesis pages must link back to their supporting source pages.
 - Do not create stub pages just to resolve a mention. Put those in "Mentioned but missing" instead.
 
 For each source:
