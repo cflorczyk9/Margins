@@ -1,4 +1,10 @@
 import { compileVault, vaultToFiles } from "./compiler.js";
+import * as pdfjsLib from "../node_modules/pdfjs-dist/build/pdf.mjs";
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  "../node_modules/pdfjs-dist/build/pdf.worker.mjs",
+  import.meta.url
+).toString();
 
 const state = {
   files: [],
@@ -10,6 +16,7 @@ const els = {
   folderInput: document.getElementById("folder-input"),
   fileInput: document.getElementById("file-input"),
   sourceList: document.getElementById("source-list"),
+  extractBtn: document.getElementById("extract-btn"),
   compileBtn: document.getElementById("compile-btn"),
   llmBtn: document.getElementById("llm-btn"),
   exportBtn: document.getElementById("export-btn"),
@@ -36,12 +43,13 @@ async function handleSourceSelection(event) {
   state.vault = null;
   state.selectedPath = null;
   renderSources();
-  els.compileBtn.disabled = state.files.length === 0;
-  els.llmBtn.disabled = state.files.length === 0;
+  updateActionState();
   els.exportBtn.disabled = true;
   els.copyBtn.disabled = true;
   els.stats.textContent = `${state.files.length} source${state.files.length === 1 ? "" : "s"} loaded · 0 nodes · 0 edges`;
 }
+
+els.extractBtn.addEventListener("click", extractPdfSources);
 
 els.compileBtn.addEventListener("click", () => {
   state.vault = compileVault(state.files, { name: "Karpathy Original" });
@@ -95,9 +103,9 @@ function renderSources() {
   }
   els.sourceList.className = "source-list";
   els.sourceList.innerHTML = state.files.map((file) => `
-    <div class="source-item ${file.text ? "" : "needs-extraction"}">
+    <div class="source-item ${sourceClass(file)}">
       <strong>${escapeHtml(file.name)}</strong>
-      <span>${file.text ? `${wordCount(file.text)} words` : "needs text extraction or LLM attachment"}</span>
+      <span>${escapeHtml(sourceStatus(file))}</span>
     </div>
   `).join("");
 }
@@ -196,8 +204,90 @@ async function readBrowserFile(file) {
   const isPdf = /\.pdf$/i.test(file.name);
   return {
     name: file.webkitRelativePath || file.name,
-    text: isPdf ? "" : await file.text()
+    text: isPdf ? "" : await file.text(),
+    browserFile: file,
+    type: isPdf ? "pdf" : "text",
+    extractionStatus: isPdf ? "needed" : "ready",
+    extractionError: ""
   };
+}
+
+async function extractPdfSources() {
+  const targets = state.files.filter((file) => file.type === "pdf" && file.extractionStatus !== "extracted");
+  if (targets.length === 0) return;
+
+  els.extractBtn.disabled = true;
+  els.extractBtn.textContent = "Extracting PDFs...";
+  state.vault = null;
+  state.selectedPath = null;
+
+  for (const file of targets) {
+    file.extractionStatus = "extracting";
+    file.extractionError = "";
+    renderSources();
+
+    try {
+      const text = await extractPdfText(file.browserFile);
+      file.text = text.trim();
+      file.extractionStatus = file.text ? "extracted" : "failed";
+      if (!file.text) file.extractionError = "No selectable text found.";
+    } catch (error) {
+      file.text = "";
+      file.extractionStatus = "failed";
+      file.extractionError = error.message || "PDF extraction failed.";
+    }
+  }
+
+  els.extractBtn.textContent = "Extract PDF text";
+  renderSources();
+  updateActionState();
+  els.stats.textContent = `${state.files.length} source${state.files.length === 1 ? "" : "s"} loaded · 0 nodes · 0 edges`;
+}
+
+async function extractPdfText(file) {
+  const data = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data }).promise;
+  const pages = [];
+
+  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+    const page = await pdf.getPage(pageNumber);
+    const content = await page.getTextContent();
+    const text = content.items
+      .map((item) => item.str || "")
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (text) pages.push(`Page ${pageNumber}\n${text}`);
+  }
+
+  return pages.join("\n\n");
+}
+
+function updateActionState() {
+  const hasFiles = state.files.length > 0;
+  const hasPendingPdf = state.files.some((file) => file.type === "pdf" && file.extractionStatus !== "extracted");
+  els.extractBtn.disabled = !hasPendingPdf;
+  els.compileBtn.disabled = !hasFiles;
+  els.llmBtn.disabled = !hasFiles;
+}
+
+function sourceClass(file) {
+  if (file.text) return "";
+  if (file.type === "pdf") return "needs-extraction";
+  return "";
+}
+
+function sourceStatus(file) {
+  if (file.text) {
+    const suffix = file.type === "pdf" ? " extracted" : "";
+    return `${wordCount(file.text)} words${suffix}`;
+  }
+  if (file.type === "pdf" && file.extractionStatus === "extracting") return "extracting text...";
+  if (file.type === "pdf" && file.extractionStatus === "failed") {
+    return `extraction failed: ${file.extractionError || "needs text extraction or LLM attachment"}`;
+  }
+  if (file.type === "pdf") return "needs text extraction or LLM attachment";
+  return "0 words";
 }
 
 function normalizeSelectedFiles(files) {

@@ -32,7 +32,8 @@ Open `http://localhost:5173`.
 The browser app has two compile paths:
 
 - `Local compile` uses only local heuristics. It proves the folder -> wiki -> operating layer pipeline.
-- `Copy LLM ingest prompt` creates a Claude/ChatGPT handoff prompt. Use this when PDFs are selected, because browser uploads currently register PDFs but do not extract their text.
+- `Extract PDF text` uses PDF.js in the browser to turn readable PDFs into source text.
+- `Copy LLM ingest prompt` creates a Claude/ChatGPT handoff prompt. Use this after extraction; failed PDFs are listed as attachments.
 
 ## Compile the sample vault
 
@@ -52,7 +53,7 @@ npm run compile:custom -- /path/to/raw_sources /path/to/output
 
 - Local-first proof of concept.
 - Markdown/text files are fully supported.
-- PDFs are represented as raw sources but need extraction before high-quality ingest.
+- PDFs with selectable text can be extracted locally in the browser.
 - No hosted storage.
 - No Margins-owned chat surface.
 - Write-back is proposal-first, never silent.

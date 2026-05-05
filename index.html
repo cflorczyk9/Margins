@@ -33,6 +33,7 @@
 
       <section class="panel">
         <h2>2. Compile</h2>
+        <button id="extract-btn" disabled>Extract PDF text</button>
         <button id="compile-btn" class="primary" disabled>Local compile</button>
         <button id="llm-btn" disabled>Copy LLM ingest prompt</button>
         <button id="export-btn" disabled>Download vault JSON</button>
@@ -42,9 +43,9 @@
       <section class="panel muted-panel">
         <h2>Active waits</h2>
         <ul>
-          <li>Can literal local folders work?</li>
-          <li>Do users understand commands and agents?</li>
-          <li>Are edit proposals useful enough to accept?</li>
+          <li>Do readable PDFs extract locally?</li>
+          <li>Do extracted PDFs compile into useful source pages?</li>
+          <li>Is the LLM prompt useful after extraction?</li>
         </ul>
       </section>
     </aside>
@@ -89,7 +90,7 @@
           </article>
 
           <article class="checklist-card">
-            <h3>Current test to build</h3>
+            <h3>Current test</h3>
             <label class="check-row">
               <input type="checkbox" data-check-id="phase2-test-load">
               <span><strong>1. Load 3-5 PDFs.</strong> Expected: each PDF appears once in the sidebar.</span>

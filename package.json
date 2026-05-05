@@ -8,5 +8,8 @@
     "dev": "python3 -m http.server 5173",
     "compile": "node src/cli.js sample/raw_sources sample/output",
     "compile:custom": "node src/cli.js"
+  },
+  "dependencies": {
+    "pdfjs-dist": "^5.7.284"
   }
 }
