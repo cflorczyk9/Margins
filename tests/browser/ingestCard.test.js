@@ -59,6 +59,29 @@ test("ingest card expands summaries and persists question answers", {
   }
 });
 
+test("vault raw sources without source notes appear in the pending inbox", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    const pendingNames = await page.evaluate(() => window.__marginsTest.seedVaultPendingSources());
+    assert.deepEqual(pendingNames, ["unfiled-note.md"]);
+
+    const pendingText = await page.locator("#source-list").innerText();
+    assert.match(pendingText, /unfiled-note\.md/);
+    assert.doesNotMatch(pendingText, /^filed-note\.md$/m);
+    assert.match(await page.locator("#vault-tree").innerText(), /Pending\s+1|1\s+Pending/);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
 async function assertSelected(page, label) {
   const pressed = await page.locator(".run-question .quick-answer", { hasText: label }).getAttribute("aria-pressed");
   assert.equal(pressed, "true");

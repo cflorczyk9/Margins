@@ -550,7 +550,7 @@ async function loadExistingVault(handle) {
   state.vaultFiles = rawFiles;
   state.editedRawFiles = new Map();
   state.loadedFileMap = new Map(fileMap);
-  state.files = [];
+  state.files = pendingRawSourcesFromVault(fileMap, rawFiles);
   renderSources();
   renderVaultTree(fileMap);
   updateActionState();
@@ -770,7 +770,7 @@ async function saveCurrentVault() {
         : ""
     }, null, 2));
     state.vaultFiles = mergeSourceFiles(state.vaultFiles, pendingRaw.map((file) => ({ ...file, sourceScope: "vault" })));
-    state.files = [];
+    state.files = pendingRawSourcesFromVault(state.currentFileMap, state.vaultFiles);
     state.editedRawFiles = new Map();
     state.ingestReviews = new Map();
     state.ingestAnswers = new Map();
@@ -1061,12 +1061,26 @@ function applyIngestReviewToFileMap(file, review) {
 }
 
 function sourceNoteEntryForFile(file) {
-  if (!state.currentFileMap || !file?.name) return null;
-  const rawPath = `raw_sources/${file.name}`;
-  for (const [path, body] of state.currentFileMap.entries()) {
+  return sourceNoteEntryForFileMap(file, state.currentFileMap);
+}
+
+function sourceNoteEntryForFileMap(file, fileMap) {
+  if (!fileMap || !file?.name) return null;
+  const rawPath = rawSourceOutputPath(file.name);
+  for (const [path, body] of fileMap.entries()) {
     if (path.startsWith("wiki/sources/") && body.includes(rawPath)) return { path, body };
   }
   return null;
+}
+
+function isRawSourceIngested(file, fileMap = state.currentFileMap) {
+  return Boolean(sourceNoteEntryForFileMap(file, fileMap));
+}
+
+function pendingRawSourcesFromVault(fileMap = state.currentFileMap, rawFiles = state.vaultFiles) {
+  return rawFiles
+    .filter((file) => !isRawSourceIngested(file, fileMap))
+    .map((file) => ({ ...file, sourceScope: "vault" }));
 }
 
 function replaceYamlSummary(body, summary) {
@@ -1609,18 +1623,20 @@ function renderSourceIngestRun(file) {
         ${renderSourceConnections(file)}
       ` : ""}
       ${isReady ? renderSourceRunQuestions(file) : `
-        ${renderBrushLoader()}
-        <div class="run-note">${escapeHtml(pendingReviewNote(file))}</div>
+        ${renderProcessingIndicator(file)}
       `}
     </div>
   `;
 }
 
-function renderBrushLoader() {
+function renderProcessingIndicator(file) {
   return `
-    <div class="brush-loader" aria-label="Margins is working">
-      <span class="brush-stroke"></span>
-      <span class="brush-tip"></span>
+    <div class="process-indicator" aria-label="Margins is working">
+      <div class="process-line"><span></span></div>
+      <div class="process-caption">
+        <strong>${escapeHtml(pendingReviewStepLabel(file))}</strong>
+        <span>${escapeHtml(pendingReviewNote(file))}</span>
+      </div>
     </div>
   `;
 }
@@ -1631,12 +1647,12 @@ function pendingReviewStepLabel(file) {
 
 function pendingReviewNote(file) {
   if (state.apiSecret && file.text) {
-    return "Margins is saving the raw source, sending readable text to the model with vault context, and preparing the card.";
+    return "Saved locally. Reading with vault context.";
   }
   if (needsTextExtraction(file)) {
-    return "Margins is saving the raw source and checking whether readable text can be extracted.";
+    return "Saved locally. Checking readable text.";
   }
-  return "Margins is saving the raw source and preparing a local review card.";
+  return "Saved locally. Preparing review.";
 }
 
 function modelReviewStepLabel(review) {
@@ -1816,6 +1832,49 @@ ${summary || ""}
     },
     answerCount() {
       return state.ingestAnswers.size;
+    },
+    seedVaultPendingSources() {
+      const rawFiles = [
+        {
+          name: "filed-note.md",
+          text: "Filed note already has a generated source note.",
+          type: "text",
+          size: 45,
+          sourceScope: "vault",
+          extractionStatus: "ready",
+          extractionError: ""
+        },
+        {
+          name: "unfiled-note.md",
+          text: "Unfiled note exists in raw_sources but has not been ingested into wiki sources yet.",
+          type: "text",
+          size: 82,
+          sourceScope: "vault",
+          extractionStatus: "ready",
+          extractionError: ""
+        }
+      ];
+      const fileMap = new Map([
+        ["wiki/sources/source-filed-note.md", `---
+type: source
+summary: Filed note.
+raw_file: raw_sources/filed-note.md
+---
+
+# Source: Filed Note
+`],
+        ["wiki/index.md", "# Index\n"]
+      ]);
+      state.vaultFiles = rawFiles;
+      state.files = pendingRawSourcesFromVault(fileMap, rawFiles);
+      state.currentFileMap = fileMap;
+      state.pendingSave = false;
+      state.processingInbox = false;
+      state.ingestReviews = new Map();
+      state.ingestAnswers = new Map();
+      renderSources();
+      renderVaultTree(fileMap);
+      return state.files.map((file) => file.name);
     }
   };
 }
@@ -1856,8 +1915,9 @@ function renderVaultTree(fileMap = state.currentFileMap) {
 function ingestionStats(fileMap) {
   const sources = allSourceFiles();
   const parsedFiles = sources.filter((file) => wordCount(file.text || "") > 0).length;
-  const pendingFiles = state.files.length;
-  const ingestedFiles = state.vaultFiles.length;
+  const unfiledRawCount = sources.filter((file) => !isRawSourceIngested(file, fileMap)).length;
+  const pendingFiles = Math.max(state.files.length, unfiledRawCount);
+  const ingestedFiles = sources.filter((file) => isRawSourceIngested(file, fileMap)).length;
   const totalWords = sources.reduce((sum, file) => sum + wordCount(file.text || ""), 0);
   const needsExtraction = sources.filter(needsTextExtraction).length;
   const reviewedFiles = state.ingestReviews.size;

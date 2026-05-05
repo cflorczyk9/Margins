@@ -1657,63 +1657,78 @@ button,
   font-weight: 600;
 }
 
-.brush-loader {
+.process-indicator {
+  display: grid;
+  gap: 10px;
+  padding: 12px 0 2px;
+}
+
+.process-line {
   position: relative;
-  height: 20px;
+  height: 2px;
   overflow: hidden;
-}
-
-.brush-stroke {
-  position: absolute;
-  left: 0;
-  top: 7px;
-  width: 100%;
-  height: 7px;
   border-radius: 999px;
-  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 22%, transparent), transparent);
-  transform-origin: left center;
-  animation: brush-stroke 1.35s ease-in-out infinite;
+  background: color-mix(in srgb, var(--line) 76%, transparent);
 }
 
-.brush-tip {
+.process-line span {
   position: absolute;
-  top: 3px;
-  left: 0;
-  width: 24px;
-  height: 14px;
-  border-radius: 999px 999px 999px 4px;
-  background: color-mix(in srgb, var(--accent) 78%, var(--ink));
-  box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 28%, transparent);
-  animation: brush-tip 1.35s ease-in-out infinite;
+  inset: 0;
+  width: 42%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0.72;
+  transform: translateX(-100%);
+  animation: process-sheen 1.45s cubic-bezier(0.33, 0, 0.2, 1) infinite;
 }
 
-@keyframes brush-stroke {
-  0% {
-    clip-path: inset(0 100% 0 0);
-    opacity: 0.25;
+.process-caption {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--muted);
+}
+
+.process-caption strong {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 680;
+}
+
+.process-caption span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 560;
+  text-align: right;
+}
+
+@media (max-width: 560px) {
+  .process-caption {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
   }
-  42% {
-    clip-path: inset(0 18% 0 0);
-    opacity: 0.82;
-  }
-  100% {
-    clip-path: inset(0 0 0 82%);
-    opacity: 0.2;
+
+  .process-caption span {
+    text-align: left;
   }
 }
 
-@keyframes brush-tip {
-  0% {
-    left: 0;
-    transform: rotate(-8deg);
+@media (prefers-reduced-motion: reduce) {
+  .process-line span {
+    animation: none;
+    opacity: 0.58;
+    transform: none;
   }
-  52% {
-    left: calc(100% - 24px);
-    transform: rotate(3deg);
+}
+
+@keyframes process-sheen {
+  0% {
+    transform: translateX(-110%);
   }
   100% {
-    left: calc(100% - 24px);
-    transform: rotate(3deg);
+    transform: translateX(245%);
   }
 }
 
