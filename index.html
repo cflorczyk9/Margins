@@ -36,6 +36,7 @@
         <button id="extract-btn" disabled>Extract PDF text</button>
         <button id="compile-btn" class="primary" disabled>Local compile</button>
         <button id="llm-btn" disabled>Copy LLM ingest prompt</button>
+        <button id="write-folder-btn" disabled>Write local folder</button>
         <button id="export-btn" disabled>Download vault JSON</button>
         <button id="copy-btn" disabled>Copy operator manual</button>
       </section>
@@ -43,9 +44,9 @@
       <section class="panel muted-panel">
         <h2>Active waits</h2>
         <ul>
-          <li>Do readable PDFs extract locally?</li>
-          <li>Do extracted PDFs compile into useful source pages?</li>
-          <li>Is the LLM prompt useful after extraction?</li>
+          <li>Does clean LLM output write to a real folder?</li>
+          <li>Does the folder contain raw_sources plus wiki files?</li>
+          <li>Can the generated Markdown open as a usable vault?</li>
         </ul>
       </section>
     </aside>
@@ -71,62 +72,58 @@
       <section id="checklist-view" class="view active">
         <div class="checklist-grid">
           <article class="checklist-card">
-            <h3>Phase 3 goal</h3>
+            <h3>Phase 4 goal</h3>
             <label class="check-row">
-              <input type="checkbox" data-check-id="phase3-goal-prompt">
-              <span><strong>LLM gets the wiki schema.</strong> Copy the prompt and the model receives frontmatter rules, examples, and operating behavior.</span>
+              <input type="checkbox" data-check-id="phase4-goal-memory">
+              <span><strong>Accepted wiki exists in memory.</strong> Clean LLM output can become the current Margins wiki.</span>
             </label>
             <label class="check-row">
-              <input type="checkbox" data-check-id="phase3-goal-paste">
-              <span><strong>LLM output comes back into Margins.</strong> Paste model output and parse it into proposed Markdown files.</span>
+              <input type="checkbox" data-check-id="phase4-goal-folder">
+              <span><strong>Write a real folder.</strong> Margins creates raw_sources, wiki, commands, agents, and .margins files on disk.</span>
             </label>
             <label class="check-row">
-              <input type="checkbox" data-check-id="phase3-goal-review">
-              <span><strong>Review before accepting.</strong> Preview source, concept, entity, and synthesis pages before using them as the current wiki.</span>
+              <input type="checkbox" data-check-id="phase4-goal-raw">
+              <span><strong>Preserve raw evidence.</strong> Original uploaded files are written under raw_sources without relying on JSON.</span>
             </label>
             <label class="check-row">
-              <input type="checkbox" data-check-id="phase3-goal-repair">
-              <span><strong>Warnings become a repair prompt.</strong> Margins turns review issues into a follow-up prompt before accepting.</span>
+              <input type="checkbox" data-check-id="phase4-goal-open">
+              <span><strong>Folder is inspectable.</strong> The output can be opened in Finder, Obsidian, or a code editor as Markdown files.</span>
             </label>
           </article>
 
           <article class="checklist-card">
             <h3>Current test</h3>
             <label class="check-row">
-              <input type="checkbox" data-check-id="phase3-test-load">
-              <span><strong>1. Load and extract sources.</strong> Expected: readable PDFs show real word counts.</span>
+              <input type="checkbox" data-check-id="phase4-test-clean">
+              <span><strong>1. Accept clean LLM output.</strong> Expected: LLM Review shows low or zero warnings, then Wiki tab shows accepted files.</span>
             </label>
             <label class="check-row">
-              <input type="checkbox" data-check-id="phase3-test-copy">
-              <span><strong>2. Copy LLM ingest prompt.</strong> Expected: prompt includes schema, examples, source text, and fenced file block rules.</span>
+              <input type="checkbox" data-check-id="phase4-test-write">
+              <span><strong>2. Click Write local folder.</strong> Expected: browser asks for a destination folder.</span>
             </label>
             <label class="check-row">
-              <input type="checkbox" data-check-id="phase3-test-model">
-              <span><strong>3. Paste into Claude/ChatGPT.</strong> Expected: the model returns Markdown files in `margins-file` blocks.</span>
+              <input type="checkbox" data-check-id="phase4-test-dest">
+              <span><strong>3. Choose a destination.</strong> Expected: Margins creates a timestamped export folder inside it.</span>
             </label>
             <label class="check-row">
-              <input type="checkbox" data-check-id="phase3-test-parse">
-              <span><strong>4. Paste result into LLM Review.</strong> Expected: Margins parses file cards that you can inspect.</span>
+              <input type="checkbox" data-check-id="phase4-test-contents">
+              <span><strong>4. Inspect contents.</strong> Expected: raw_sources, wiki, commands, agents, operator-manual.md, query-cookbook.md, and .margins exist.</span>
             </label>
             <label class="check-row">
-              <input type="checkbox" data-check-id="phase3-test-repair">
-              <span><strong>5. Copy repair prompt if warnings appear.</strong> Expected: the model regenerates cleaner files and warning count drops.</span>
-            </label>
-            <label class="check-row">
-              <input type="checkbox" data-check-id="phase3-test-accept">
-              <span><strong>6. Accept reviewed files.</strong> Expected: the Wiki tab shows the cleaned LLM-generated wiki instead of local scaffolding.</span>
+              <input type="checkbox" data-check-id="phase4-test-open">
+              <span><strong>5. Open a Markdown file.</strong> Expected: frontmatter and wiki links are preserved on disk.</span>
             </label>
           </article>
 
           <article class="checklist-card">
-            <h3>Next checklist after LLM review passes</h3>
+            <h3>Next checklist after folder writing passes</h3>
             <label class="check-row">
               <input type="checkbox" disabled>
-              <span><strong>Review generated wiki edits.</strong> Expected: accept, reject, or edit individual files before export.</span>
+              <span><strong>Review generated wiki edits.</strong> Expected: accept, reject, or edit individual files before writing.</span>
             </label>
             <label class="check-row">
               <input type="checkbox" disabled>
-              <span><strong>Write files locally.</strong> Expected: accepted wiki pages export as a usable folder, not only JSON.</span>
+              <span><strong>Choose output naming.</strong> Expected: user controls export folder name instead of timestamp only.</span>
             </label>
             <label class="check-row">
               <input type="checkbox" disabled>

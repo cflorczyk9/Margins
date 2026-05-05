@@ -22,6 +22,7 @@ const els = {
   extractBtn: document.getElementById("extract-btn"),
   compileBtn: document.getElementById("compile-btn"),
   llmBtn: document.getElementById("llm-btn"),
+  writeFolderBtn: document.getElementById("write-folder-btn"),
   exportBtn: document.getElementById("export-btn"),
   copyBtn: document.getElementById("copy-btn"),
   wikiTree: document.getElementById("wiki-tree"),
@@ -57,6 +58,7 @@ async function handleSourceSelection(event) {
   renderSources();
   updateActionState();
   els.exportBtn.disabled = true;
+  els.writeFolderBtn.disabled = true;
   els.copyBtn.disabled = true;
   els.stats.textContent = `${state.files.length} source${state.files.length === 1 ? "" : "s"} loaded · 0 nodes · 0 edges`;
 }
@@ -94,12 +96,51 @@ els.exportBtn.addEventListener("click", () => {
   }
 });
 
+els.writeFolderBtn.addEventListener("click", writeCurrentFolder);
+
 els.copyBtn.addEventListener("click", async () => {
   if (!state.vault) return;
   await navigator.clipboard.writeText(state.vault.operatingLayer.operatorManual);
   els.copyBtn.textContent = "Copied";
   setTimeout(() => { els.copyBtn.textContent = "Copy operator manual"; }, 1100);
 });
+
+async function writeCurrentFolder() {
+  if (!state.currentFileMap) return;
+  if (!("showDirectoryPicker" in window)) {
+    els.stats.textContent = "Local folder writing needs Chrome or Edge on localhost. Use Download vault JSON for now.";
+    return;
+  }
+
+  els.writeFolderBtn.disabled = true;
+  const originalText = els.writeFolderBtn.textContent;
+  els.writeFolderBtn.textContent = "Writing...";
+
+  try {
+    const destination = await window.showDirectoryPicker({ mode: "readwrite" });
+    const exportName = `margins-wiki-${timestampSlug(new Date())}`;
+    const exportDir = await destination.getDirectoryHandle(exportName, { create: true });
+    const writtenRaw = await writeRawSources(exportDir, state.files);
+    const writtenFiles = await writeFileMap(exportDir, state.currentFileMap);
+    await writeTextFile(exportDir, ".margins/export-summary.json", JSON.stringify({
+      exported_at: new Date().toISOString(),
+      raw_sources: writtenRaw,
+      generated_files: writtenFiles,
+      source_count: state.files.length,
+      file_count: state.currentFileMap.size
+    }, null, 2));
+    els.stats.textContent = `Wrote ${writtenFiles} wiki/operating file${writtenFiles === 1 ? "" : "s"} + ${writtenRaw} raw source${writtenRaw === 1 ? "" : "s"} to ${exportName}`;
+    els.writeFolderBtn.textContent = "Wrote folder";
+    setTimeout(() => { els.writeFolderBtn.textContent = originalText; }, 1500);
+  } catch (error) {
+    if (error.name !== "AbortError") {
+      els.stats.textContent = `Folder write failed: ${error.message || "unknown error"}`;
+    }
+    els.writeFolderBtn.textContent = originalText;
+  } finally {
+    els.writeFolderBtn.disabled = !state.currentFileMap;
+  }
+}
 
 document.querySelectorAll(".tab").forEach((tab) => {
   tab.addEventListener("click", () => {
@@ -135,6 +176,7 @@ els.acceptLlmBtn.addEventListener("click", () => {
   renderAcceptedLlmEditState();
   drawGraph(graphFromFileMap(state.currentFileMap));
   els.exportBtn.disabled = false;
+  els.writeFolderBtn.disabled = false;
   els.copyBtn.disabled = true;
   activateTab("wiki");
 });
@@ -165,6 +207,7 @@ function renderVault() {
   const fileMap = vaultToFiles(vault);
 
   els.exportBtn.disabled = false;
+  els.writeFolderBtn.disabled = false;
   els.copyBtn.disabled = false;
   els.stats.textContent = `${vault.manifest.counts.raw_sources} sources · ${vault.wiki.graph.nodes.length} nodes · ${vault.wiki.graph.edges.length} edges`;
   state.currentFileMap = fileMap;
@@ -871,6 +914,74 @@ function download(name, body) {
   link.download = name;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+async function writeRawSources(rootHandle, files) {
+  let count = 0;
+  for (const file of files) {
+    const path = rawSourceOutputPath(file.name || `source-${count + 1}.txt`);
+    if (file.browserFile) {
+      await writeBlobFile(rootHandle, path, file.browserFile);
+    } else {
+      await writeTextFile(rootHandle, path, file.text || "");
+    }
+    count += 1;
+  }
+  return count;
+}
+
+function rawSourceOutputPath(path) {
+  const safePath = safeRelativePath(path);
+  return safePath.startsWith("raw_sources/")
+    ? safePath
+    : `raw_sources/${safePath}`;
+}
+
+async function writeFileMap(rootHandle, fileMap) {
+  let count = 0;
+  for (const [path, body] of fileMap.entries()) {
+    await writeTextFile(rootHandle, safeRelativePath(path), body);
+    count += 1;
+  }
+  return count;
+}
+
+async function writeTextFile(rootHandle, path, body) {
+  const fileHandle = await fileHandleForPath(rootHandle, path);
+  const writable = await fileHandle.createWritable();
+  await writable.write(body);
+  await writable.close();
+}
+
+async function writeBlobFile(rootHandle, path, blob) {
+  const fileHandle = await fileHandleForPath(rootHandle, path);
+  const writable = await fileHandle.createWritable();
+  await writable.write(blob);
+  await writable.close();
+}
+
+async function fileHandleForPath(rootHandle, path) {
+  const parts = safeRelativePath(path).split("/").filter(Boolean);
+  const fileName = parts.pop();
+  let dir = rootHandle;
+  for (const part of parts) {
+    dir = await dir.getDirectoryHandle(part, { create: true });
+  }
+  return dir.getFileHandle(fileName || "untitled.md", { create: true });
+}
+
+function safeRelativePath(path) {
+  return String(path)
+    .replace(/\\/g, "/")
+    .split("/")
+    .map((part) => part.trim())
+    .filter((part) => part && part !== "." && part !== "..")
+    .map((part) => part.replace(/[<>:"|?*\u0000-\u001F]/g, "-"))
+    .join("/");
+}
+
+function timestampSlug(date) {
+  return date.toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "-");
 }
 
 function wordCount(text) {
