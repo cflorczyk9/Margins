@@ -69,58 +69,62 @@
       <section id="checklist-view" class="view active">
         <div class="checklist-grid">
           <article class="checklist-card">
-            <h3>What this build is trying to prove</h3>
+            <h3>Phase 2 goal</h3>
             <label class="check-row">
-              <input type="checkbox" data-check-id="goal-raw">
-              <span><strong>Raw sources load once.</strong> Select files or a folder and each source appears one time.</span>
+              <input type="checkbox" data-check-id="phase2-goal-pdf">
+              <span><strong>PDFs become readable sources.</strong> A selected PDF should produce extracted text and a real word count.</span>
             </label>
             <label class="check-row">
-              <input type="checkbox" data-check-id="goal-honest">
-              <span><strong>PDFs are honest.</strong> PDFs show that they need text extraction or an LLM attachment.</span>
+              <input type="checkbox" data-check-id="phase2-goal-no-placeholder">
+              <span><strong>No fake summaries.</strong> If extraction fails, the app must keep saying the PDF needs extraction.</span>
             </label>
             <label class="check-row">
-              <input type="checkbox" data-check-id="goal-local">
-              <span><strong>Local compile creates scaffolding.</strong> Click Local compile and see source pages, an index, and operating files.</span>
+              <input type="checkbox" data-check-id="phase2-goal-compile">
+              <span><strong>Local compile uses extracted text.</strong> Source pages should include real PDF summaries, key terms, and entity candidates.</span>
             </label>
             <label class="check-row">
-              <input type="checkbox" data-check-id="goal-llm">
-              <span><strong>LLM handoff is usable.</strong> Click Copy LLM ingest prompt and paste it into Claude/ChatGPT with the PDFs attached.</span>
-            </label>
-          </article>
-
-          <article class="checklist-card">
-            <h3>Current test</h3>
-            <label class="check-row">
-              <input type="checkbox" data-check-id="test-load">
-              <span><strong>1. Load 3-5 sources.</strong> Expected: the sidebar count matches your selected files.</span>
-            </label>
-            <label class="check-row">
-              <input type="checkbox" data-check-id="test-pdf">
-              <span><strong>2. Check PDF status.</strong> Expected: PDFs say they need text extraction or an LLM attachment.</span>
-            </label>
-            <label class="check-row">
-              <input type="checkbox" data-check-id="test-compile">
-              <span><strong>3. Click Local compile.</strong> Expected: Markdown scaffold appears, but PDFs are not summarized.</span>
-            </label>
-            <label class="check-row">
-              <input type="checkbox" data-check-id="test-prompt">
-              <span><strong>4. Click Copy LLM ingest prompt.</strong> Expected: you can paste a clear prompt into an LLM and attach the same PDFs.</span>
+              <input type="checkbox" data-check-id="phase2-goal-ready">
+              <span><strong>Ready for LLM ingest.</strong> Once PDFs have text, the next phase can ask an LLM to create useful wiki nodes.</span>
             </label>
           </article>
 
           <article class="checklist-card">
-            <h3>Next checklist after this passes</h3>
+            <h3>Current test to build</h3>
+            <label class="check-row">
+              <input type="checkbox" data-check-id="phase2-test-load">
+              <span><strong>1. Load 3-5 PDFs.</strong> Expected: each PDF appears once in the sidebar.</span>
+            </label>
+            <label class="check-row">
+              <input type="checkbox" data-check-id="phase2-test-extract">
+              <span><strong>2. Extract text.</strong> Expected: each readable PDF changes from "needs text extraction" to a real word count.</span>
+            </label>
+            <label class="check-row">
+              <input type="checkbox" data-check-id="phase2-test-fail">
+              <span><strong>3. Check failed extraction.</strong> Expected: image-only or locked PDFs stay clearly marked as needing extraction.</span>
+            </label>
+            <label class="check-row">
+              <input type="checkbox" data-check-id="phase2-test-compile">
+              <span><strong>4. Click Local compile.</strong> Expected: generated source pages include text-based summaries instead of placeholders.</span>
+            </label>
+            <label class="check-row">
+              <input type="checkbox" data-check-id="phase2-test-prompt">
+              <span><strong>5. Copy LLM ingest prompt.</strong> Expected: extracted text is included, and only failed PDFs are listed as attachments.</span>
+            </label>
+          </article>
+
+          <article class="checklist-card">
+            <h3>Next checklist after PDF extraction passes</h3>
             <label class="check-row">
               <input type="checkbox" disabled>
-              <span><strong>Extract PDF text locally.</strong> Expected: PDFs show real word counts before compile.</span>
+              <span><strong>Run real LLM ingest.</strong> Expected: summaries, concepts, entities, and synthesis come from document content.</span>
             </label>
             <label class="check-row">
               <input type="checkbox" disabled>
-              <span><strong>Run real LLM ingest.</strong> Expected: summaries, entities, and synthesis come from document content.</span>
+              <span><strong>Review generated wiki.</strong> Expected: proposed pages can be accepted, rejected, or edited before saving.</span>
             </label>
             <label class="check-row">
               <input type="checkbox" disabled>
-              <span><strong>Review before saving.</strong> Expected: generated wiki edits are accepted or rejected before write-back.</span>
+              <span><strong>Write files locally.</strong> Expected: accepted wiki pages are exported as a usable folder, not only JSON.</span>
             </label>
           </article>
         </div>
