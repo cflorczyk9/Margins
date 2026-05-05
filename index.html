@@ -139,15 +139,22 @@
       </section>
 
       <section id="wiki-view" class="view">
-        <div class="split">
-          <div class="tree">
-            <h3>Vault</h3>
+        <div class="split vault-workspace">
+          <div class="tree vault-navigator">
+            <div class="vault-panel-title">
+              <h3>Vault</h3>
+              <span id="vault-tree-count">0 files</span>
+            </div>
             <div id="wiki-tree" class="tree-list empty">Open a vault to browse files.</div>
           </div>
-          <article class="document">
+          <article class="document vault-document">
+            <div id="doc-path" class="doc-path">Vault</div>
             <div class="doc-toolbar">
-              <div id="doc-title" class="doc-title">No file selected</div>
-              <button id="doc-save-btn" type="button" disabled>Save changes</button>
+              <div class="doc-heading">
+                <div id="doc-title" class="doc-title">No file selected</div>
+                <div id="doc-meta" class="doc-meta">No file selected</div>
+              </div>
+              <button id="doc-save-btn" type="button" disabled>Save</button>
             </div>
             <textarea id="doc-body" class="doc-body vault-editor" spellcheck="false">Open raw_sources or wiki, then choose a file.</textarea>
           </article>

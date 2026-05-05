@@ -82,7 +82,10 @@ const els = {
   exportBtn: document.getElementById("export-btn"),
   copyBtn: document.getElementById("copy-btn"),
   wikiTree: document.getElementById("wiki-tree"),
+  vaultTreeCount: document.getElementById("vault-tree-count"),
+  docPath: document.getElementById("doc-path"),
   docTitle: document.getElementById("doc-title"),
+  docMeta: document.getElementById("doc-meta"),
   docBody: document.getElementById("doc-body"),
   docSaveBtn: document.getElementById("doc-save-btn"),
   graphSvg: document.getElementById("graph-svg"),
@@ -656,7 +659,7 @@ async function saveCurrentVault() {
     renderChangePreview();
     setTimeout(() => {
       els.saveVaultBtn.textContent = originalText;
-      if (els.docSaveBtn) els.docSaveBtn.textContent = "Save changes";
+      if (els.docSaveBtn) els.docSaveBtn.textContent = "Save";
       updateSaveButtonState();
     }, 1500);
   } catch (error) {
@@ -664,7 +667,7 @@ async function saveCurrentVault() {
       els.stats.textContent = `Vault save failed: ${error.message || "unknown error"}`;
     }
     els.saveVaultBtn.textContent = originalText;
-    if (els.docSaveBtn) els.docSaveBtn.textContent = "Save changes";
+    if (els.docSaveBtn) els.docSaveBtn.textContent = "Save";
   } finally {
     updateSaveButtonState();
     updateWorkflowState();
@@ -1461,11 +1464,12 @@ function renderWikiFiles(fileMap) {
   const entries = vaultBrowserEntries(fileMap || new Map()).filter((entry) => (
     !query || entry.path.toLowerCase().includes(query) || entry.body.toLowerCase().includes(query)
   ));
+  if (els.vaultTreeCount) els.vaultTreeCount.textContent = fileCountLabel(entries.length);
 
   if (entries.length === 0) {
     els.wikiTree.className = "tree-list empty";
     els.wikiTree.textContent = "Open a vault or add documents to browse raw_sources and wiki.";
-    els.docTitle.textContent = "No file selected";
+    setDocumentHeader(null, "", { title: "No file selected", meta: "No file selected" });
     setDocBody("Open raw_sources or wiki, then choose a file.", { readOnly: true });
     if (els.docSaveBtn) els.docSaveBtn.disabled = true;
     return;
@@ -1487,7 +1491,7 @@ function renderWikiFiles(fileMap) {
 
   state.selectedPath = null;
   state.selectedKind = "";
-  els.docTitle.textContent = "No file selected";
+  setDocumentHeader(null, "", { title: "No file selected", meta: "No file selected" });
   setDocBody("Choose a file from raw_sources or wiki.", { readOnly: true });
   if (els.docSaveBtn) els.docSaveBtn.disabled = true;
 }
@@ -1522,28 +1526,29 @@ function renderVaultFolderTree(entries) {
     node.files.push(entry);
   }
   return [...root.folders.entries()]
-    .sort(([left], [right]) => left.localeCompare(right))
+    .sort(([left], [right]) => sidebarFolderOrder(left) - sidebarFolderOrder(right) || left.localeCompare(right))
     .map(([name, node]) => renderVaultFolder(name, node, 0))
     .join("");
 }
 
-function renderVaultFolder(name, node, depth) {
-  const count = vaultFolderCount(node);
+function renderVaultFolder(name, node, depth, parentPath = "") {
+  const folderPath = parentPath ? `${parentPath}/${name}` : name;
+  const hasQuery = !!(els.vaultSearch?.value || "").trim();
+  const shouldOpen = hasQuery || state.selectedPath?.startsWith(`${folderPath}/`);
   const folders = [...node.folders.entries()]
     .sort(([left], [right]) => left.localeCompare(right))
-    .map(([childName, childNode]) => renderVaultFolder(childName, childNode, depth + 1))
+    .map(([childName, childNode]) => renderVaultFolder(childName, childNode, depth + 1, folderPath))
     .join("");
   const files = node.files
     .sort((left, right) => left.path.localeCompare(right.path))
     .map((file) => `
       <button class="vault-file" type="button" data-path="${escapeHtml(file.path)}" style="--depth: ${depth + 1}">
         <span>${escapeHtml(basename(file.path))}</span>
-        <em>${escapeHtml(file.kind.toUpperCase())}</em>
       </button>
     `).join("");
   return `
-    <details class="vault-folder" style="--depth: ${depth}">
-      <summary><span>${escapeHtml(name)}</span><em>${count}</em></summary>
+    <details class="vault-folder" style="--depth: ${depth}"${shouldOpen ? " open" : ""}>
+      <summary><span>${escapeHtml(name)}</span></summary>
       ${folders}${files}
     </details>
   `;
@@ -1561,10 +1566,10 @@ function selectVaultPath(path, options = {}) {
   if (rawFile) {
     state.selectedPath = rawSourceOutputPath(rawFile.name);
     state.selectedKind = "raw";
-    els.docTitle.textContent = state.selectedPath;
-    setDocBody(rawFile.text || "PDF source preserved in raw_sources. Text extraction has not been saved for this file yet.", {
-      readOnly: rawFile.type === "pdf" && !rawFile.text
-    });
+    const body = rawFile.text || "PDF source preserved in raw_sources. Text extraction has not been saved for this file yet.";
+    const readOnly = rawFile.type === "pdf" && !rawFile.text;
+    setDocumentHeader(state.selectedPath, body, { kind: "raw", readOnly });
+    setDocBody(body, { readOnly });
     updateSelectedFileState(options);
     return true;
   }
@@ -1572,8 +1577,9 @@ function selectVaultPath(path, options = {}) {
   if (state.currentFileMap?.has(normalizedPath)) {
     state.selectedPath = normalizedPath;
     state.selectedKind = normalizedPath.startsWith("wiki/") ? "wiki" : "system";
-    els.docTitle.textContent = normalizedPath;
-    setDocBody(state.currentFileMap.get(normalizedPath), { readOnly: false });
+    const body = state.currentFileMap.get(normalizedPath);
+    setDocumentHeader(normalizedPath, body, { kind: state.selectedKind, readOnly: false });
+    setDocBody(body, { readOnly: false });
     updateSelectedFileState(options);
     return true;
   }
@@ -1592,6 +1598,42 @@ function updateSelectedFileState(options = {}) {
     els.docBody?.focus({ preventScroll: true });
   }
   updateSaveButtonState();
+}
+
+function fileCountLabel(count) {
+  return `${count} file${count === 1 ? "" : "s"}`;
+}
+
+function setDocumentHeader(path, body = "", options = {}) {
+  if (els.docPath) els.docPath.textContent = path ? documentBreadcrumb(path) : "Vault";
+  if (els.docTitle) els.docTitle.textContent = options.title || (path ? documentTitle(path) : "No file selected");
+  if (els.docMeta) {
+    const words = wordCount(body);
+    els.docMeta.textContent = options.meta || (path
+      ? `${documentKindLabel(options.kind || state.selectedKind || pathKind(path))} · ${words} word${words === 1 ? "" : "s"} · ${options.readOnly ? "read only" : "editable"}`
+      : "No file selected");
+  }
+}
+
+function documentBreadcrumb(path) {
+  const parts = normalizeMarginsPath(path).split("/");
+  return parts.length > 1 ? parts.slice(0, -1).join(" / ") : "Vault";
+}
+
+function documentTitle(path) {
+  return basename(path).replace(/\.md$/i, "");
+}
+
+function pathKind(path) {
+  return path.startsWith("raw_sources/") ? "raw" : path.startsWith("wiki/") ? "wiki" : "system";
+}
+
+function documentKindLabel(kind) {
+  return {
+    raw: "Raw source",
+    wiki: "Wiki note",
+    system: "Operating file"
+  }[kind] || "Vault file";
 }
 
 function setDocBody(body, options = {}) {
@@ -1629,6 +1671,7 @@ function handleVaultDocumentEdit() {
   }
   state.hasUnsavedEdits = true;
   state.pendingSave = true;
+  setDocumentHeader(state.selectedPath, body, { kind: state.selectedKind, readOnly: false });
   updateSaveButtonState();
   renderChangePreview();
 }
@@ -2555,7 +2598,7 @@ function updateSaveButtonState() {
   if (els.docSaveBtn) {
     els.docSaveBtn.disabled = !canSave;
     if (els.docSaveBtn.textContent !== "Saving..." && els.docSaveBtn.textContent !== "Saved") {
-      els.docSaveBtn.textContent = "Save changes";
+      els.docSaveBtn.textContent = "Save";
     }
   }
 }
@@ -3145,7 +3188,7 @@ async function writeRawSources(rootHandle, files) {
 
 No raw source files were loaded in the browser when this Margins folder was written.
 
-To preserve raw evidence, reload the original files in Margins before clicking "Save changes." Browsers clear selected file handles after refresh for security.
+To preserve raw evidence, reload the original files in Margins before clicking "Save." Browsers clear selected file handles after refresh for security.
 `);
     return 0;
   }
