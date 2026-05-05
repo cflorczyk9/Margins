@@ -34,6 +34,7 @@ The browser app has two compile paths:
 - `Local compile` uses only local heuristics. It proves the folder -> wiki -> operating layer pipeline.
 - `Extract PDF text` uses PDF.js in the browser to turn readable PDFs into source text.
 - `Copy LLM ingest prompt` creates a Claude/ChatGPT handoff prompt. Use this after extraction; failed PDFs are listed as attachments.
+- `LLM Review` parses Claude/ChatGPT output returned as `margins-file` fenced blocks and lets you preview it before accepting it as the current wiki.
 
 ## Compile the sample vault
 

@@ -61,6 +61,7 @@
 
       <nav class="tabs">
         <button class="tab active" data-view="checklist">Checklist</button>
+        <button class="tab" data-view="llm">LLM Review</button>
         <button class="tab" data-view="wiki">Wiki</button>
         <button class="tab" data-view="graph">Graph</button>
         <button class="tab" data-view="ops">Operating Layer</button>
@@ -70,63 +71,85 @@
       <section id="checklist-view" class="view active">
         <div class="checklist-grid">
           <article class="checklist-card">
-            <h3>Phase 2 goal</h3>
+            <h3>Phase 3 goal</h3>
             <label class="check-row">
-              <input type="checkbox" data-check-id="phase2-goal-pdf">
-              <span><strong>PDFs become readable sources.</strong> A selected PDF should produce extracted text and a real word count.</span>
+              <input type="checkbox" data-check-id="phase3-goal-prompt">
+              <span><strong>LLM prompt is structured.</strong> Copy the prompt and the model knows exactly what file format to return.</span>
             </label>
             <label class="check-row">
-              <input type="checkbox" data-check-id="phase2-goal-no-placeholder">
-              <span><strong>No fake summaries.</strong> If extraction fails, the app must keep saying the PDF needs extraction.</span>
+              <input type="checkbox" data-check-id="phase3-goal-paste">
+              <span><strong>LLM output comes back into Margins.</strong> Paste model output and parse it into proposed Markdown files.</span>
             </label>
             <label class="check-row">
-              <input type="checkbox" data-check-id="phase2-goal-compile">
-              <span><strong>Local compile uses extracted text.</strong> Source pages should include real PDF summaries, key terms, and entity candidates.</span>
+              <input type="checkbox" data-check-id="phase3-goal-review">
+              <span><strong>Review before accepting.</strong> Preview source, concept, entity, and synthesis pages before using them as the current wiki.</span>
             </label>
             <label class="check-row">
-              <input type="checkbox" data-check-id="phase2-goal-ready">
-              <span><strong>Ready for LLM ingest.</strong> Once PDFs have text, the next phase can ask an LLM to create useful wiki nodes.</span>
+              <input type="checkbox" data-check-id="phase3-goal-export">
+              <span><strong>Export reviewed files.</strong> Accepted LLM wiki files can be exported as JSON for now.</span>
             </label>
           </article>
 
           <article class="checklist-card">
             <h3>Current test</h3>
             <label class="check-row">
-              <input type="checkbox" data-check-id="phase2-test-load">
-              <span><strong>1. Load 3-5 PDFs.</strong> Expected: each PDF appears once in the sidebar.</span>
+              <input type="checkbox" data-check-id="phase3-test-load">
+              <span><strong>1. Load and extract sources.</strong> Expected: readable PDFs show real word counts.</span>
             </label>
             <label class="check-row">
-              <input type="checkbox" data-check-id="phase2-test-extract">
-              <span><strong>2. Extract text.</strong> Expected: each readable PDF changes from "needs text extraction" to a real word count.</span>
+              <input type="checkbox" data-check-id="phase3-test-copy">
+              <span><strong>2. Copy LLM ingest prompt.</strong> Expected: prompt includes extracted source text and asks for fenced file blocks.</span>
             </label>
             <label class="check-row">
-              <input type="checkbox" data-check-id="phase2-test-fail">
-              <span><strong>3. Check failed extraction.</strong> Expected: image-only or locked PDFs stay clearly marked as needing extraction.</span>
+              <input type="checkbox" data-check-id="phase3-test-model">
+              <span><strong>3. Paste into Claude/ChatGPT.</strong> Expected: the model returns Markdown files in `margins-file` blocks.</span>
             </label>
             <label class="check-row">
-              <input type="checkbox" data-check-id="phase2-test-compile">
-              <span><strong>4. Click Local compile.</strong> Expected: generated source pages include text-based summaries instead of placeholders.</span>
+              <input type="checkbox" data-check-id="phase3-test-parse">
+              <span><strong>4. Paste result into LLM Review.</strong> Expected: Margins parses file cards that you can inspect.</span>
             </label>
             <label class="check-row">
-              <input type="checkbox" data-check-id="phase2-test-prompt">
-              <span><strong>5. Copy LLM ingest prompt.</strong> Expected: extracted text is included, and only failed PDFs are listed as attachments.</span>
+              <input type="checkbox" data-check-id="phase3-test-accept">
+              <span><strong>5. Accept reviewed files.</strong> Expected: the Wiki tab shows the LLM-generated wiki instead of local scaffolding.</span>
             </label>
           </article>
 
           <article class="checklist-card">
-            <h3>Next checklist after PDF extraction passes</h3>
+            <h3>Next checklist after LLM review passes</h3>
             <label class="check-row">
               <input type="checkbox" disabled>
-              <span><strong>Run real LLM ingest.</strong> Expected: summaries, concepts, entities, and synthesis come from document content.</span>
+              <span><strong>Review generated wiki edits.</strong> Expected: accept, reject, or edit individual files before export.</span>
             </label>
             <label class="check-row">
               <input type="checkbox" disabled>
-              <span><strong>Review generated wiki.</strong> Expected: proposed pages can be accepted, rejected, or edited before saving.</span>
+              <span><strong>Write files locally.</strong> Expected: accepted wiki pages export as a usable folder, not only JSON.</span>
             </label>
             <label class="check-row">
               <input type="checkbox" disabled>
-              <span><strong>Write files locally.</strong> Expected: accepted wiki pages are exported as a usable folder, not only JSON.</span>
+              <span><strong>Optional API mode.</strong> Expected: run the same ingest without copy/paste when an API key is available.</span>
             </label>
+          </article>
+        </div>
+      </section>
+
+      <section id="llm-view" class="view">
+        <div class="llm-grid">
+          <article class="document">
+            <h3>Paste LLM Output</h3>
+            <textarea id="llm-input" class="llm-input" spellcheck="false" placeholder="Paste Claude/ChatGPT output here. Expected format: fenced blocks starting with ```margins-file path=&quot;wiki/sources/source-example.md&quot;."></textarea>
+            <div class="button-row">
+              <button id="parse-llm-btn">Parse LLM files</button>
+              <button id="accept-llm-btn" class="primary" disabled>Accept as current wiki</button>
+            </div>
+            <div id="llm-status" class="status-line">No LLM output parsed yet.</div>
+          </article>
+          <div class="tree">
+            <h3>Parsed files</h3>
+            <div id="llm-file-list" class="tree-list empty">Paste output and parse to review files.</div>
+          </div>
+          <article class="document">
+            <div id="llm-preview-title" class="doc-title">No LLM file selected</div>
+            <pre id="llm-preview-body" class="doc-body">Paste model output, then click Parse LLM files.</pre>
           </article>
         </div>
       </section>

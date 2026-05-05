@@ -9,7 +9,10 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
 const state = {
   files: [],
   vault: null,
-  selectedPath: null
+  selectedPath: null,
+  currentFileMap: null,
+  llmFiles: new Map(),
+  llmSelectedPath: null
 };
 
 const els = {
@@ -26,6 +29,13 @@ const els = {
   docBody: document.getElementById("doc-body"),
   graphSvg: document.getElementById("graph-svg"),
   stats: document.getElementById("stats"),
+  llmInput: document.getElementById("llm-input"),
+  parseLlmBtn: document.getElementById("parse-llm-btn"),
+  acceptLlmBtn: document.getElementById("accept-llm-btn"),
+  llmStatus: document.getElementById("llm-status"),
+  llmFileList: document.getElementById("llm-file-list"),
+  llmPreviewTitle: document.getElementById("llm-preview-title"),
+  llmPreviewBody: document.getElementById("llm-preview-body"),
   operatorManual: document.getElementById("operator-manual"),
   queryCookbook: document.getElementById("query-cookbook"),
   commandsList: document.getElementById("commands-list"),
@@ -42,6 +52,7 @@ async function handleSourceSelection(event) {
   state.files = await Promise.all(files.map(readBrowserFile));
   state.vault = null;
   state.selectedPath = null;
+  state.currentFileMap = null;
   renderSources();
   updateActionState();
   els.exportBtn.disabled = true;
@@ -54,6 +65,7 @@ els.extractBtn.addEventListener("click", extractPdfSources);
 els.compileBtn.addEventListener("click", () => {
   state.vault = compileVault(state.files, { name: "Karpathy Original" });
   state.selectedPath = null;
+  state.currentFileMap = null;
   renderVault();
 });
 
@@ -65,12 +77,20 @@ els.llmBtn.addEventListener("click", async () => {
 });
 
 els.exportBtn.addEventListener("click", () => {
-  if (!state.vault) return;
-  const files = Object.fromEntries(vaultToFiles(state.vault));
-  download("margins-vault.json", JSON.stringify({
-    raw_sources: state.vault.rawSources.map(({ name, text }) => ({ name, text })),
-    files
-  }, null, 2));
+  if (state.vault) {
+    const files = Object.fromEntries(vaultToFiles(state.vault));
+    download("margins-vault.json", JSON.stringify({
+      raw_sources: state.vault.rawSources.map(({ name, text }) => ({ name, text })),
+      files
+    }, null, 2));
+    return;
+  }
+  if (state.currentFileMap) {
+    download("margins-llm-wiki.json", JSON.stringify({
+      raw_sources: state.files.map(({ name, text }) => ({ name, text })),
+      files: Object.fromEntries(state.currentFileMap)
+    }, null, 2));
+  }
 });
 
 els.copyBtn.addEventListener("click", async () => {
@@ -82,10 +102,7 @@ els.copyBtn.addEventListener("click", async () => {
 
 document.querySelectorAll(".tab").forEach((tab) => {
   tab.addEventListener("click", () => {
-    document.querySelectorAll(".tab").forEach((item) => item.classList.remove("active"));
-    document.querySelectorAll(".view").forEach((item) => item.classList.remove("active"));
-    tab.classList.add("active");
-    document.getElementById(`${tab.dataset.view}-view`).classList.add("active");
+    activateTab(tab.dataset.view);
   });
 });
 
@@ -93,6 +110,23 @@ document.querySelectorAll("[data-check-id]").forEach((checkbox) => {
   checkbox.addEventListener("change", () => {
     localStorage.setItem(`margins-check-${checkbox.dataset.checkId}`, checkbox.checked ? "1" : "0");
   });
+});
+
+els.parseLlmBtn.addEventListener("click", () => {
+  state.llmFiles = parseLlmFiles(els.llmInput.value);
+  renderLlmReview();
+});
+
+els.acceptLlmBtn.addEventListener("click", () => {
+  if (state.llmFiles.size === 0) return;
+  state.vault = null;
+  state.currentFileMap = new Map(state.llmFiles);
+  state.selectedPath = null;
+  renderWikiFiles(state.currentFileMap);
+  els.exportBtn.disabled = false;
+  els.copyBtn.disabled = true;
+  els.stats.textContent = `${state.llmFiles.size} LLM file${state.llmFiles.size === 1 ? "" : "s"} reviewed · ready to export`;
+  activateTab("wiki");
 });
 
 function renderSources() {
@@ -119,27 +153,12 @@ function hydrateChecklist() {
 function renderVault() {
   const vault = state.vault;
   const fileMap = vaultToFiles(vault);
-  const entries = [...fileMap.entries()].filter(([path]) => path.startsWith("wiki/") && path.endsWith(".md"));
 
   els.exportBtn.disabled = false;
   els.copyBtn.disabled = false;
   els.stats.textContent = `${vault.manifest.counts.raw_sources} sources · ${vault.wiki.graph.nodes.length} nodes · ${vault.wiki.graph.edges.length} edges`;
-
-  els.wikiTree.className = "tree-list";
-  els.wikiTree.innerHTML = entries.map(([path, body]) => `
-    <div class="tree-item" data-path="${escapeHtml(path)}">
-      <strong>${escapeHtml(path)}</strong>
-      <span>${wordCount(body)} words</span>
-    </div>
-  `).join("");
-
-  els.wikiTree.querySelectorAll(".tree-item").forEach((item) => {
-    item.addEventListener("click", () => {
-      state.selectedPath = item.dataset.path;
-      els.docTitle.textContent = state.selectedPath;
-      els.docBody.textContent = fileMap.get(state.selectedPath);
-    });
-  });
+  state.currentFileMap = fileMap;
+  renderWikiFiles(fileMap);
 
   els.operatorManual.textContent = vault.operatingLayer.operatorManual;
   els.queryCookbook.textContent = vault.operatingLayer.queryCookbook;
@@ -160,11 +179,72 @@ function renderVault() {
   `).join("");
 
   drawGraph(vault.wiki.graph);
+}
+
+function renderWikiFiles(fileMap) {
+  const entries = [...fileMap.entries()].filter(([path]) => path.startsWith("wiki/") && path.endsWith(".md"));
+  els.wikiTree.className = "tree-list";
+  els.wikiTree.innerHTML = entries.map(([path, body]) => `
+    <div class="tree-item" data-path="${escapeHtml(path)}">
+      <strong>${escapeHtml(path)}</strong>
+      <span>${wordCount(body)} words</span>
+    </div>
+  `).join("");
+
+  els.wikiTree.querySelectorAll(".tree-item").forEach((item) => {
+    item.addEventListener("click", () => {
+      state.selectedPath = item.dataset.path;
+      els.docTitle.textContent = state.selectedPath;
+      els.docBody.textContent = fileMap.get(state.selectedPath);
+    });
+  });
+
   if (entries[0]) {
     state.selectedPath = entries[0][0];
     els.docTitle.textContent = entries[0][0];
     els.docBody.textContent = entries[0][1];
+  } else {
+    els.wikiTree.className = "tree-list empty";
+    els.wikiTree.textContent = "No wiki Markdown files found.";
+    els.docTitle.textContent = "No node selected";
+    els.docBody.textContent = "Paste LLM output or compile sources to generate wiki nodes.";
   }
+}
+
+function renderLlmReview() {
+  const entries = [...state.llmFiles.entries()];
+  els.acceptLlmBtn.disabled = entries.length === 0;
+  els.llmStatus.textContent = entries.length
+    ? `${entries.length} file${entries.length === 1 ? "" : "s"} parsed. Review them before accepting.`
+    : "No files found. Paste output that uses ```margins-file path=\"...\" fenced blocks.";
+
+  if (entries.length === 0) {
+    els.llmFileList.className = "tree-list empty";
+    els.llmFileList.textContent = "No parsed files.";
+    els.llmPreviewTitle.textContent = "No LLM file selected";
+    els.llmPreviewBody.textContent = "Paste model output, then click Parse LLM files.";
+    return;
+  }
+
+  els.llmFileList.className = "tree-list";
+  els.llmFileList.innerHTML = entries.map(([path, body]) => `
+    <div class="tree-item" data-path="${escapeHtml(path)}">
+      <strong>${escapeHtml(path)}</strong>
+      <span>${wordCount(body)} words</span>
+    </div>
+  `).join("");
+
+  els.llmFileList.querySelectorAll(".tree-item").forEach((item) => {
+    item.addEventListener("click", () => {
+      state.llmSelectedPath = item.dataset.path;
+      els.llmPreviewTitle.textContent = state.llmSelectedPath;
+      els.llmPreviewBody.textContent = state.llmFiles.get(state.llmSelectedPath);
+    });
+  });
+
+  state.llmSelectedPath = entries[0][0];
+  els.llmPreviewTitle.textContent = entries[0][0];
+  els.llmPreviewBody.textContent = entries[0][1];
 }
 
 function drawGraph(graph) {
@@ -331,7 +411,15 @@ ${attachmentList}
 - If a source is unavailable, create a source placeholder and mark it "needs text extraction".
 
 Output format:
-Return Markdown files in this structure:
+Return Markdown files in this exact fenced-block format so Margins can parse them:
+
+\`\`\`margins-file path="wiki/sources/source-example.md"
+# Source: Example
+
+Markdown body here.
+\`\`\`
+
+Use one fenced block per file. Return files in this structure:
 - wiki/sources/source-{slug}.md
 - wiki/concepts/{slug}.md
 - wiki/entities/{slug}.md
@@ -359,6 +447,29 @@ Across sources:
 Extracted text sources:
 
 ${sourceBlocks}`;
+}
+
+function parseLlmFiles(value) {
+  const files = new Map();
+  const pattern = /```margins-file\s+path="([^"]+)"\s*\n([\s\S]*?)```/g;
+  let match;
+
+  while ((match = pattern.exec(value)) !== null) {
+    const path = match[1].trim();
+    const body = match[2].trim();
+    if (path && body) files.set(path, body);
+  }
+
+  return files;
+}
+
+function activateTab(view) {
+  document.querySelectorAll(".tab").forEach((item) => {
+    item.classList.toggle("active", item.dataset.view === view);
+  });
+  document.querySelectorAll(".view").forEach((item) => {
+    item.classList.toggle("active", item.id === `${view}-view`);
+  });
 }
 
 function shouldIgnorePath(path) {

@@ -301,6 +301,41 @@ button.primary:not(:disabled):hover {
   gap: 16px;
 }
 
+.llm-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 310px minmax(0, 1fr);
+  gap: 16px;
+}
+
+.llm-input {
+  width: 100%;
+  min-height: 340px;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 10px;
+  margin-top: 10px;
+  background: #fffdfa;
+  color: var(--ink);
+  font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
+.button-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.button-row button {
+  margin-top: 0;
+}
+
+.status-line {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .graph-wrap {
   height: calc(100vh - 144px);
 }
@@ -391,7 +426,8 @@ button.primary:not(:disabled):hover {
   }
 
   .split,
-  .ops-grid {
+  .ops-grid,
+  .llm-grid {
     grid-template-columns: 1fr;
   }
 }
