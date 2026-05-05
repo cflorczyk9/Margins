@@ -267,6 +267,55 @@ p {
   margin-top: 12px;
 }
 
+.api-guard {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0 14px;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--paper) 72%, transparent);
+}
+
+.api-guard-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 680;
+}
+
+.api-guard-toggle input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+}
+
+.api-guard-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.api-guard-grid label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.api-guard-grid label span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.api-guard-grid .text-control {
+  min-height: 32px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
 .vault-status {
   color: var(--ink) !important;
   font-weight: 800;

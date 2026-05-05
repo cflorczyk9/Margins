@@ -11,6 +11,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
 const initialTheme = localStorage.getItem("margins-theme") || "dark";
 document.documentElement.dataset.theme = initialTheme;
 const API_SECRET_STORAGE_KEY = "margins.apiSecret.v1";
+const API_GUARD_STORAGE_KEY = "margins.apiGuard.v1";
 let apiSecretHydrationPromise = null;
 
 const state = {
@@ -38,6 +39,8 @@ const state = {
   vaultName: "",
   apiSettings: loadApiSettings(),
   apiSecret: localStorage.getItem(API_SECRET_STORAGE_KEY) || "",
+  apiGuardSettings: loadApiGuardSettings(),
+  apiUsage: emptyApiUsage(),
   apiQuestionSource: "",
   ingestReviews: new Map(),
   ingestAnswers: new Map(),
@@ -71,6 +74,13 @@ const els = {
   saveApiKeyBtn: document.getElementById("save-api-key-btn"),
   clearApiKeyBtn: document.getElementById("clear-api-key-btn"),
   apiKeyStatus: document.getElementById("api-key-status"),
+  apiGuardEnabled: document.getElementById("api-guard-enabled"),
+  apiMaxRequests: document.getElementById("api-max-requests"),
+  apiMaxOutputTokens: document.getElementById("api-max-output-tokens"),
+  apiMaxSessionTokens: document.getElementById("api-max-session-tokens"),
+  apiMaxSessionUsd: document.getElementById("api-max-session-usd"),
+  resetApiUsageBtn: document.getElementById("reset-api-usage-btn"),
+  apiGuardStatus: document.getElementById("api-guard-status"),
   inlineReviewPanel: document.getElementById("inline-review-panel"),
   workflowGuidance: document.getElementById("workflow-guidance"),
   workflowBtn: document.getElementById("workflow-btn"),
@@ -145,6 +155,7 @@ if (els.inlineReviewPanel) {
 els.themeToggle.checked = state.theme === "dark";
 updateThemeToggleLabel();
 hydrateApiControls();
+hydrateApiGuardControls();
 ensureApiSecretReady();
 els.folderInput.addEventListener("change", handleSourceSelection);
 els.fileInput.addEventListener("change", handleSourceSelection);
@@ -178,10 +189,18 @@ els.vaultSearch?.addEventListener("input", () => {
 els.graphOpenNodeBtn?.addEventListener("click", openSelectedGraphNode);
 els.saveApiKeyBtn.addEventListener("click", saveApiControls);
 els.clearApiKeyBtn.addEventListener("click", clearApiControls);
+els.apiGuardEnabled?.addEventListener("change", saveApiGuardControls);
+els.apiMaxRequests?.addEventListener("change", saveApiGuardControls);
+els.apiMaxOutputTokens?.addEventListener("change", saveApiGuardControls);
+els.apiMaxSessionTokens?.addEventListener("change", saveApiGuardControls);
+els.apiMaxSessionUsd?.addEventListener("change", saveApiGuardControls);
+els.resetApiUsageBtn?.addEventListener("click", resetApiUsage);
 els.apiProvider.addEventListener("change", () => {
   els.apiModel.value = defaultModelForProvider(els.apiProvider.value);
   renderApiStatus();
+  renderApiGuardStatus();
 });
+els.apiModel?.addEventListener("change", renderApiGuardStatus);
 
 els.sourceDropZone.addEventListener("dragover", (event) => {
   event.preventDefault();
@@ -330,6 +349,99 @@ function renderApiStatus(message = "") {
   els.apiKeyStatus.textContent = message || (secret || settings.hasApiKey
     ? `${provider} · ${model} · ${maskSecret(secret) || settings.maskedApiKey}`
     : "Optional. Stored only in this browser for model-generated filing questions.");
+}
+
+function defaultApiGuardSettings() {
+  return {
+    enabled: true,
+    maxRequests: 20,
+    maxOutputTokens: 2048,
+    maxSessionTokens: 250000,
+    maxSessionUsd: 1
+  };
+}
+
+function loadApiGuardSettings() {
+  try {
+    return normalizeApiGuardSettings(JSON.parse(localStorage.getItem(API_GUARD_STORAGE_KEY) || "{}"));
+  } catch {
+    return defaultApiGuardSettings();
+  }
+}
+
+function normalizeApiGuardSettings(settings = {}) {
+  const defaults = defaultApiGuardSettings();
+  return {
+    enabled: settings.enabled !== false,
+    maxRequests: positiveInteger(settings.maxRequests, defaults.maxRequests),
+    maxOutputTokens: positiveInteger(settings.maxOutputTokens, defaults.maxOutputTokens),
+    maxSessionTokens: positiveInteger(settings.maxSessionTokens, defaults.maxSessionTokens),
+    maxSessionUsd: positiveNumber(settings.maxSessionUsd, defaults.maxSessionUsd)
+  };
+}
+
+function hydrateApiGuardControls() {
+  const settings = state.apiGuardSettings;
+  if (els.apiGuardEnabled) els.apiGuardEnabled.checked = settings.enabled;
+  if (els.apiMaxRequests) els.apiMaxRequests.value = settings.maxRequests;
+  if (els.apiMaxOutputTokens) els.apiMaxOutputTokens.value = settings.maxOutputTokens;
+  if (els.apiMaxSessionTokens) els.apiMaxSessionTokens.value = settings.maxSessionTokens;
+  if (els.apiMaxSessionUsd) els.apiMaxSessionUsd.value = settings.maxSessionUsd.toFixed(2);
+  renderApiGuardStatus();
+}
+
+function saveApiGuardControls() {
+  state.apiGuardSettings = normalizeApiGuardSettings({
+    enabled: !!els.apiGuardEnabled?.checked,
+    maxRequests: els.apiMaxRequests?.value,
+    maxOutputTokens: els.apiMaxOutputTokens?.value,
+    maxSessionTokens: els.apiMaxSessionTokens?.value,
+    maxSessionUsd: els.apiMaxSessionUsd?.value
+  });
+  localStorage.setItem(API_GUARD_STORAGE_KEY, JSON.stringify(state.apiGuardSettings));
+  hydrateApiGuardControls();
+}
+
+function resetApiUsage() {
+  state.apiUsage = emptyApiUsage();
+  renderApiGuardStatus("Usage reset for this browser session.");
+}
+
+function renderApiGuardStatus(message = "") {
+  if (!els.apiGuardStatus) return;
+  const usage = state.apiUsage;
+  const settings = state.apiGuardSettings;
+  const model = els.apiModel?.value || defaultModelForProvider("gemini");
+  const rates = pricingForModel(model);
+  const priceLabel = rates.source === "gemini-2.5-flash"
+    ? "Flash pricing"
+    : rates.source === "unknown"
+      ? "conservative estimate"
+      : `${rates.source} pricing`;
+  const body = settings.enabled
+    ? `${usage.requests}/${settings.maxRequests} calls · ${formatStatNumber(usage.totalTokens)}/${formatStatNumber(settings.maxSessionTokens)} tokens · ${formatUsd(usage.estimatedUsd)}/${formatUsd(settings.maxSessionUsd)} estimated · ${priceLabel}.`
+    : "Spend guard is off.";
+  els.apiGuardStatus.textContent = message ? `${message} ${body}` : body;
+}
+
+function emptyApiUsage() {
+  return {
+    requests: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+    estimatedUsd: 0
+  };
+}
+
+function positiveInteger(value, fallback) {
+  const number = Number.parseInt(value, 10);
+  return Number.isFinite(number) && number > 0 ? number : fallback;
+}
+
+function positiveNumber(value, fallback) {
+  const number = Number.parseFloat(value);
+  return Number.isFinite(number) && number > 0 ? number : fallback;
 }
 
 function providerValue(label) {
@@ -1154,15 +1266,21 @@ function localIngestReview(file, fileMap, mode) {
 }
 
 function ingestModelErrorMessage(error) {
+  if (isSpendGuardError(error)) {
+    return `${error.message} The raw source is saved. Raise the guard or reset usage, then retry.`;
+  }
   if (isRateLimitError(error)) {
-    return `Gemini free-tier limit reached. The raw source is saved. ${retryAfterText(error)}Retry this file when the limit resets.`;
+    return `Gemini quota or rate limit reached. The raw source is saved. ${retryAfterText(error)}Retry this file when the limit resets.`;
   }
   return `Model review did not finish: ${error.message || "unknown error"}`;
 }
 
 function localFallbackStatusForModelError(error) {
+  if (isSpendGuardError(error)) {
+    return `${error.message} Local review shown. Raise the guard or reset usage if you want model-generated questions.`;
+  }
   if (isRateLimitError(error)) {
-    return `Gemini free-tier limit reached. Local review shown. ${retryAfterText(error)}Retry later if you want model-generated questions.`;
+    return `Gemini quota or rate limit reached. Local review shown. ${retryAfterText(error)}Retry later if you want model-generated questions.`;
   }
   return `Model review failed, using local checks: ${error.message || "unknown error"}`;
 }
@@ -1176,6 +1294,10 @@ function retryAfterText(error) {
 
 function isRateLimitError(error) {
   return Number(error?.status) === 429 || /rate limit|rate-limited|quota|resource exhausted|free-tier limit|limit reached|HTTP 429/i.test(`${error?.message || error || ""}`);
+}
+
+function isSpendGuardError(error) {
+  return error?.code === "MARGINS_SPEND_GUARD" || /spend guard stopped/i.test(`${error?.message || error || ""}`);
 }
 
 function canSendSourceToModel(file) {
@@ -1342,6 +1464,13 @@ async function generateApiIngestReview(file, fileMap, mode) {
 
 async function generateOpenAiCompatibleJsonContent(provider, model, prompt) {
   const endpoint = defaultEndpointForProvider(provider);
+  const budget = reserveApiBudget({
+    provider,
+    model,
+    prompt,
+    extraParts: [],
+    outputTokenLimit: apiOutputTokenLimit()
+  });
   const response = await fetch(endpoint, {
     method: "POST",
     headers: {
@@ -1351,6 +1480,7 @@ async function generateOpenAiCompatibleJsonContent(provider, model, prompt) {
     body: JSON.stringify({
       model,
       temperature: 0.2,
+      max_tokens: budget.outputTokenLimit,
       messages: [
         {
           role: "system",
@@ -1368,6 +1498,13 @@ async function generateOpenAiCompatibleJsonContent(provider, model, prompt) {
     throw await apiErrorFromResponse(response, "model review");
   }
   const json = await response.json();
+  recordApiUsage({
+    provider,
+    model,
+    inputTokens: json.usage?.prompt_tokens || budget.inputTokens,
+    outputTokens: json.usage?.completion_tokens || budget.outputTokenLimit,
+    estimated: !json.usage
+  });
   return json.choices?.[0]?.message?.content || "";
 }
 
@@ -1378,6 +1515,13 @@ async function generateGeminiReviewQuestions(model, prompt) {
 
 async function generateGeminiJsonContent(model, prompt, extraParts = []) {
   const endpoint = defaultEndpointForProvider("gemini").replace("{model}", encodeURIComponent(normalizeGeminiModel(model)));
+  const budget = reserveApiBudget({
+    provider: "gemini",
+    model,
+    prompt,
+    extraParts,
+    outputTokenLimit: apiOutputTokenLimit()
+  });
   const response = await fetch(endpoint, {
     method: "POST",
     headers: {
@@ -1398,7 +1542,8 @@ async function generateGeminiJsonContent(model, prompt, extraParts = []) {
       ],
       generationConfig: {
         temperature: 0.2,
-        responseMimeType: "application/json"
+        responseMimeType: "application/json",
+        maxOutputTokens: budget.outputTokenLimit
       }
     })
   });
@@ -1407,6 +1552,13 @@ async function generateGeminiJsonContent(model, prompt, extraParts = []) {
     throw await apiErrorFromResponse(response, "Gemini");
   }
   const json = await response.json();
+  recordApiUsage({
+    provider: "gemini",
+    model,
+    inputTokens: json.usageMetadata?.promptTokenCount || budget.inputTokens,
+    outputTokens: geminiOutputTokenCount(json.usageMetadata) || budget.outputTokenLimit,
+    estimated: !json.usageMetadata
+  });
   return json.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("\n") || "";
 }
 
@@ -1432,6 +1584,104 @@ async function apiErrorFromResponse(response, providerLabel = "API") {
   error.status = status;
   error.retryAfter = retryAfter;
   return error;
+}
+
+function apiOutputTokenLimit() {
+  return state.apiGuardSettings.enabled
+    ? state.apiGuardSettings.maxOutputTokens
+    : defaultApiGuardSettings().maxOutputTokens;
+}
+
+function reserveApiBudget({ provider, model, prompt, extraParts = [], outputTokenLimit = apiOutputTokenLimit() }) {
+  const inputTokens = estimateRequestInputTokens(prompt, extraParts);
+  const outputTokens = positiveInteger(outputTokenLimit, defaultApiGuardSettings().maxOutputTokens);
+  const estimatedUsd = estimateModelCostUsd(model, inputTokens, outputTokens);
+  const guard = state.apiGuardSettings;
+
+  if (guard.enabled) {
+    const projectedRequests = state.apiUsage.requests + 1;
+    const projectedTokens = state.apiUsage.totalTokens + inputTokens + outputTokens;
+    const projectedUsd = state.apiUsage.estimatedUsd + estimatedUsd;
+    const reasons = [];
+    if (projectedRequests > guard.maxRequests) {
+      reasons.push(`${projectedRequests}/${guard.maxRequests} model calls`);
+    }
+    if (projectedTokens > guard.maxSessionTokens) {
+      reasons.push(`${formatStatNumber(projectedTokens)}/${formatStatNumber(guard.maxSessionTokens)} tokens`);
+    }
+    if (projectedUsd > guard.maxSessionUsd) {
+      reasons.push(`${formatUsd(projectedUsd)}/${formatUsd(guard.maxSessionUsd)} estimated`);
+    }
+    if (reasons.length) {
+      throw spendGuardError(`Spend guard stopped this ${providerLabel(provider)} call before it ran: ${reasons.join(", ")}.`);
+    }
+  }
+
+  state.apiUsage.requests += 1;
+  renderApiGuardStatus();
+  return { inputTokens, outputTokenLimit: outputTokens, estimatedUsd };
+}
+
+function recordApiUsage({ provider, model, inputTokens = 0, outputTokens = 0, estimated = false }) {
+  const safeInput = Math.max(0, Math.ceil(Number(inputTokens) || 0));
+  const safeOutput = Math.max(0, Math.ceil(Number(outputTokens) || 0));
+  state.apiUsage.inputTokens += safeInput;
+  state.apiUsage.outputTokens += safeOutput;
+  state.apiUsage.totalTokens += safeInput + safeOutput;
+  state.apiUsage.estimatedUsd += estimateModelCostUsd(model, safeInput, safeOutput);
+  const suffix = estimated ? " Usage estimated because the model did not return token metadata." : "";
+  renderApiGuardStatus(`${providerLabel(provider)} call recorded.${suffix}`);
+}
+
+function spendGuardError(message) {
+  const error = new Error(message);
+  error.code = "MARGINS_SPEND_GUARD";
+  return error;
+}
+
+function geminiOutputTokenCount(usage = {}) {
+  return Number(usage.candidatesTokenCount || 0) + Number(usage.thoughtsTokenCount || 0);
+}
+
+function estimateRequestInputTokens(prompt, extraParts = []) {
+  return Math.ceil(estimateTextTokens(prompt) + extraParts.reduce((sum, part) => (
+    sum + estimatePartTokens(part)
+  ), 0));
+}
+
+function estimateTextTokens(text) {
+  const value = String(text || "");
+  if (!value) return 0;
+  const byChars = value.length / 4;
+  const byWords = wordCount(value) * 1.35;
+  return Math.max(1, Math.ceil(Math.max(byChars, byWords)));
+}
+
+function estimatePartTokens(part) {
+  if (part?.text) return estimateTextTokens(part.text);
+  const data = part?.inline_data?.data || part?.inlineData?.data || "";
+  const mime = part?.inline_data?.mime_type || part?.inlineData?.mimeType || "";
+  if (!data) return 0;
+  const bytes = Math.ceil(String(data).length * 0.75);
+  if (/pdf/i.test(mime)) {
+    return Math.max(258, Math.ceil(bytes / 4096) * 258);
+  }
+  if (/image/i.test(mime)) return 560;
+  if (/audio/i.test(mime)) return Math.ceil(bytes / 120);
+  return Math.ceil(bytes / 4);
+}
+
+function estimateModelCostUsd(model, inputTokens, outputTokens) {
+  const rates = pricingForModel(model);
+  return (inputTokens / 1_000_000) * rates.input + (outputTokens / 1_000_000) * rates.output;
+}
+
+function pricingForModel(model) {
+  const normalized = normalizeGeminiModel(model).toLowerCase();
+  if (normalized.includes("flash-lite")) return { input: 0.10, output: 0.40, source: "gemini-2.5-flash-lite" };
+  if (normalized.includes("flash")) return { input: 0.30, output: 2.50, source: "gemini-2.5-flash" };
+  if (normalized.includes("pro")) return { input: 1.25, output: 10.00, source: "gemini-2.5-pro <=200k" };
+  return { input: 1.25, output: 10.00, source: "unknown" };
 }
 
 async function geminiSourceParts(file) {
@@ -1969,8 +2219,14 @@ function renderSourceIngestError(file, error) {
 }
 
 function renderSourceRunNotice(review) {
-  if (!review?.status || !isRateLimitError(review.status)) return "";
-  return `<div class="run-warning">Gemini is rate-limited right now, so Margins is showing the local review. Retry later for model-generated questions.</div>`;
+  if (!review?.status) return "";
+  if (isSpendGuardError(review.status)) {
+    return `<div class="run-warning">${escapeHtml(review.status)}</div>`;
+  }
+  if (isRateLimitError(review.status)) {
+    return `<div class="run-warning">Gemini is rate-limited right now, so Margins is showing the local review. Retry later for model-generated questions.</div>`;
+  }
+  return "";
 }
 
 function renderProcessingIndicator(file) {
@@ -2230,6 +2486,14 @@ ${summary || ""}
     },
     answerCount() {
       return state.ingestAnswers.size;
+    },
+    setApiGuard(settings = {}) {
+      state.apiGuardSettings = normalizeApiGuardSettings(settings);
+      state.apiUsage = emptyApiUsage();
+      hydrateApiGuardControls();
+    },
+    apiUsage() {
+      return { ...state.apiUsage };
     },
     seedVaultPendingSources() {
       const rawFiles = [
@@ -2552,6 +2816,10 @@ function uploadDetail(label, value) {
 
 function formatStatNumber(value) {
   return Number(value || 0).toLocaleString("en-US");
+}
+
+function formatUsd(value) {
+  return `$${Number(value || 0).toFixed(4).replace(/0+$/, "").replace(/\.$/, ".00")}`;
 }
 
 function sidebarFolderOrder(name) {

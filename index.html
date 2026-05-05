@@ -70,6 +70,34 @@
           <button id="clear-api-key-btn">Clear</button>
         </div>
         <p id="api-key-status" class="status-line">Key is stored locally when configured.</p>
+        <div class="api-guard">
+          <label class="api-guard-toggle">
+            <input id="api-guard-enabled" type="checkbox" checked>
+            <span>Spend guard</span>
+          </label>
+          <div class="api-guard-grid">
+            <label>
+              <span>Requests</span>
+              <input id="api-max-requests" class="text-control" type="number" min="1" step="1" value="20">
+            </label>
+            <label>
+              <span>Output tokens</span>
+              <input id="api-max-output-tokens" class="text-control" type="number" min="128" step="128" value="2048">
+            </label>
+            <label>
+              <span>Session tokens</span>
+              <input id="api-max-session-tokens" class="text-control" type="number" min="1000" step="1000" value="250000">
+            </label>
+            <label>
+              <span>Session $</span>
+              <input id="api-max-session-usd" class="text-control" type="number" min="0.01" step="0.01" value="1.00">
+            </label>
+          </div>
+          <div class="rail-actions two">
+            <button id="reset-api-usage-btn" type="button">Reset usage</button>
+          </div>
+          <p id="api-guard-status" class="status-line">Local session usage: $0.00.</p>
+        </div>
         <button id="extract-btn" disabled>Extract PDF text</button>
         <button id="compile-btn" disabled>Local compile</button>
         <button id="llm-btn" disabled>Copy LLM ingest prompt</button>
