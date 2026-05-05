@@ -29,10 +29,15 @@ els.folderInput.addEventListener("change", handleSourceSelection);
 els.fileInput.addEventListener("change", handleSourceSelection);
 
 async function handleSourceSelection(event) {
-  const files = [...event.target.files];
+  const files = normalizeSelectedFiles([...event.target.files]);
   state.files = await Promise.all(files.map(readBrowserFile));
+  state.vault = null;
+  state.selectedPath = null;
   renderSources();
   els.compileBtn.disabled = state.files.length === 0;
+  els.exportBtn.disabled = true;
+  els.copyBtn.disabled = true;
+  els.stats.textContent = `${state.files.length} source${state.files.length === 1 ? "" : "s"} loaded · 0 nodes · 0 edges`;
 }
 
 els.compileBtn.addEventListener("click", () => {
@@ -171,6 +176,39 @@ async function readBrowserFile(file) {
     name: file.webkitRelativePath || file.name,
     text: isPdf ? "" : await file.text()
   };
+}
+
+function normalizeSelectedFiles(files) {
+  const seen = new Set();
+  const normalized = [];
+
+  for (const file of files) {
+    const path = file.webkitRelativePath || file.name;
+    if (!path || shouldIgnorePath(path)) continue;
+
+    const key = `${path}::${file.size}::${file.lastModified}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    normalized.push(file);
+  }
+
+  return normalized.sort((a, b) => {
+    const left = a.webkitRelativePath || a.name;
+    const right = b.webkitRelativePath || b.name;
+    return left.localeCompare(right);
+  });
+}
+
+function shouldIgnorePath(path) {
+  const parts = path.split("/");
+  if (parts.includes("sample") && parts.includes("output")) return true;
+  return parts.some((part) => (
+    part.startsWith(".") ||
+    part === "node_modules" ||
+    part === "output" ||
+    part === "dist" ||
+    part === "build"
+  ));
 }
 
 function download(name, body) {
