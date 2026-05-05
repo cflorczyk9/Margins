@@ -640,15 +640,6 @@ button.primary:not(:disabled):hover,
   font-size: 12px;
 }
 
-.source-item.needs-extraction {
-  border-color: var(--warning-line);
-  background: var(--warning-bg);
-}
-
-.source-item.needs-extraction span {
-  color: var(--warning-text);
-}
-
 .split {
   display: grid;
   grid-template-columns: minmax(240px, 310px) minmax(0, 1fr);
@@ -1599,11 +1590,6 @@ button,
   background: var(--accent-dark);
   border-color: var(--accent-dark);
   color: var(--on-accent);
-}
-
-.source-item.needs-extraction {
-  border-color: color-mix(in srgb, var(--amber) 42%, var(--line));
-  background: color-mix(in srgb, var(--warning-bg) 46%, var(--paper));
 }
 
 .source-item.processing,

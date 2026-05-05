@@ -1579,7 +1579,6 @@ function renderSources() {
       <span class="source-badge">${escapeHtml(sourceTypeLabel(file))}</span>
       <div class="source-copy">
         <strong>${escapeHtml(file.name)}</strong>
-        <span>${escapeHtml(sourceStatus(file))}</span>
       </div>
       <button class="source-process-btn" type="button" data-source-action="process" ${sourceProcessDisabled() ? "disabled" : ""}>
         ${escapeHtml(sourceProcessLabel())}
@@ -1911,7 +1910,7 @@ raw_file: raw_sources/filed-note.md
       state.pendingSave = false;
       state.processingInbox = false;
       renderSources();
-      return [...document.querySelectorAll("#source-list .source-copy span")].map((node) => node.textContent);
+      return document.querySelector("#source-list")?.innerText || "";
     }
   };
 }
@@ -3573,29 +3572,7 @@ function sourceClass(file) {
   const classes = [];
   if (state.processingInbox) classes.push("processing");
   else if (state.pendingSave && state.currentFileMap) classes.push("ready-to-write");
-  if (needsTextExtraction(file)) classes.push("needs-extraction");
   return classes.join(" ");
-}
-
-function sourceStatus(file) {
-  const prefix = rawSourceAlreadySaved(file) || file.sourceScope === "vault"
-    ? "raw source saved"
-    : "new source";
-  const size = file.size ? ` · ${formatFileSize(file.size)}` : "";
-  if (file.text) {
-    const suffix = file.type === "pdf" || file.type === "docx" ? " extracted" : " ready";
-    return `${prefix}${size} · ${formatStatNumber(wordCount(file.text))} words${suffix}`;
-  }
-  if (file.type === "pdf" && file.extractionStatus === "extracting") return `${prefix}${size} · extracting PDF text...`;
-  if (file.type === "pdf" && file.extractionStatus === "failed") {
-    return `${prefix}${size} · PDF text was not readable`;
-  }
-  if (file.type === "pdf") return `${prefix}${size} · PDF text not extracted yet`;
-  if (file.type === "docx" && file.extractionStatus === "failed") {
-    return `${prefix}${size} · Word text was not readable`;
-  }
-  if (file.type === "docx") return `${prefix}${size} · Word text not extracted yet`;
-  return `${prefix}${size} · no readable text yet`;
 }
 
 function needsTextExtraction(file) {

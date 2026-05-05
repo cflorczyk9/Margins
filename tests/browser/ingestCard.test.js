@@ -82,7 +82,7 @@ test("vault raw sources without source notes appear in the pending inbox", {
   }
 });
 
-test("pending source status copy avoids internal extraction jargon", {
+test("pending source cards stay minimal before processing", {
   skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
 }, async () => {
   const server = await startStaticServer();
@@ -92,12 +92,12 @@ test("pending source status copy avoids internal extraction jargon", {
     await page.goto(`${server.url}/index.html?marginsTest=1`);
     await page.waitForFunction(() => Boolean(window.__marginsTest));
 
-    const statuses = await page.evaluate(() => window.__marginsTest.seedSourceStatusCards());
-    const joined = statuses.join("\n");
-    assert.doesNotMatch(joined, /LLM attachment|0 words|DOCX text extraction/i);
-    assert.match(joined, /Word text was not readable/);
-    assert.match(joined, /PDF text not extracted yet/);
-    assert.match(joined, /2 words ready/);
+    const pendingText = await page.evaluate(() => window.__marginsTest.seedSourceStatusCards());
+    assert.match(pendingText, /pending-word\.docx/);
+    assert.match(pendingText, /pending-statement\.pdf/);
+    assert.match(pendingText, /script\/build\.py/);
+    assert.equal((pendingText.match(/Process/g) || []).length, 3);
+    assert.doesNotMatch(pendingText, /LLM attachment|0 words|DOCX text extraction|Word text|PDF text|words ready|raw source saved/i);
   } finally {
     await browser.close();
     await server.close();
