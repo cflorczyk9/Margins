@@ -361,54 +361,8 @@ button.primary:not(:disabled):hover,
 
 .vault-tree {
   display: grid;
-  gap: 4px;
+  gap: 2px;
   font-size: 13px;
-}
-
-.vault-tree div,
-.vault-tree-file {
-  padding: 6px 8px;
-  border-radius: 6px;
-  color: var(--muted);
-}
-
-.vault-tree-file {
-  width: 100%;
-  min-height: 0;
-  justify-content: flex-start;
-  margin: 0;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-  font-size: 12px;
-  font-weight: 650;
-  padding-left: 18px;
-}
-
-.vault-tree-folder {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 5px;
-}
-
-.vault-tree-folder em,
-.vault-tree-more {
-  color: var(--faint);
-  font-style: normal;
-  font-size: 11px;
-}
-
-.vault-tree-root {
-  color: var(--ink) !important;
-}
-
-.vault-tree div:nth-child(2),
-.vault-tree div:hover,
-.vault-tree-file:hover {
-  background: var(--paper-soft);
-  color: var(--ink);
-  transform: none;
 }
 
 .workspace {
@@ -1291,63 +1245,104 @@ button,
   padding-bottom: 12px;
 }
 
-.vault-tree-folder {
-  margin: 14px 0 4px;
-  padding: 0;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 650;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+.sidebar-folder {
+  color: var(--ink);
 }
 
-.vault-tree-folder:first-child {
-  margin-top: 0;
-}
-
-.vault-tree-folder em {
-  color: var(--faint);
-}
-
-.vault-tree-file {
-  min-height: 27px;
+.vault-tree .sidebar-folder summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 28px;
+  margin-bottom: 0;
+  padding: 4px 6px 4px calc(4px + var(--depth, 0) * 12px);
   border-radius: 6px;
-  padding: 4px 8px 4px 16px;
-  color: color-mix(in srgb, var(--ink) 76%, var(--muted));
+  color: color-mix(in srgb, var(--ink) 80%, var(--muted));
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 520;
+  letter-spacing: 0;
+  line-height: 1.25;
+  list-style: none;
+  text-transform: none;
+}
+
+.vault-tree .sidebar-folder summary::-webkit-details-marker {
+  display: none;
+}
+
+.vault-tree .sidebar-folder summary::before {
+  content: "›";
+  flex: 0 0 auto;
+  margin-right: 7px;
+  color: var(--faint);
+  transform: rotate(0deg);
+}
+
+.vault-tree .sidebar-folder[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.vault-tree .sidebar-folder summary span,
+.sidebar-file span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vault-tree .sidebar-folder summary span {
+  flex: 1 1 auto;
+}
+
+.vault-tree .sidebar-folder summary em,
+.sidebar-more {
+  flex: 0 0 auto;
+  color: var(--faint);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 600;
+}
+
+.sidebar-file {
+  width: 100%;
+  min-height: 27px;
+  justify-content: flex-start;
+  margin: 0;
+  padding: 4px 6px 4px calc(20px + var(--depth, 1) * 12px);
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  box-shadow: none;
+  color: color-mix(in srgb, var(--ink) 72%, var(--muted));
   font-size: 13px;
   font-weight: 400;
-  line-height: 1.35;
+  line-height: 1.3;
   text-align: left;
   opacity: 1;
 }
 
-.vault-tree-file::before {
-  content: "";
-  width: 3px;
-  height: 3px;
-  margin-right: 8px;
-  border-radius: 50%;
-  background: var(--faint);
-}
-
-.vault-tree-file:hover {
-  background: color-mix(in srgb, var(--paper) 72%, transparent);
+.vault-tree .sidebar-folder summary:hover,
+.sidebar-file:hover,
+.sidebar-file.active {
+  background: color-mix(in srgb, var(--paper) 76%, transparent);
   color: var(--ink);
+  transform: none;
 }
 
-.vault-tree-file:disabled,
+.sidebar-file:disabled,
 .muted-file {
   color: var(--faint);
   cursor: default;
 }
 
-.vault-tree-file:disabled:hover,
+.sidebar-file:disabled:hover,
 .muted-file:hover {
   background: transparent;
 }
 
-.vault-tree-more {
-  padding: 3px 0 2px 17px;
+.sidebar-more {
+  padding: 3px 6px 3px calc(20px + var(--depth, 1) * 12px);
 }
 
 .advanced-panel {

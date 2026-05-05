@@ -1073,27 +1073,28 @@ function renderSources() {
 
 function renderVaultTree(fileMap = state.currentFileMap) {
   if (!els.vaultTree) return;
-  const rawFiles = allSourceFiles();
   const query = (els.vaultSearch?.value || "").trim().toLowerCase();
-  const matchesSearch = (path) => !query || path.toLowerCase().includes(query);
-  const entries = fileMap ? [...fileMap.keys()].filter(matchesSearch).sort() : [];
-  const rawPaths = rawFiles.map((file) => rawSourceOutputPath(file.name)).filter(matchesSearch);
-  const wikiPaths = entries.filter((path) => path.startsWith("wiki/") && !path.startsWith("wiki/.margins/"));
-  const operatingPaths = entries.filter((path) => (
-    path.startsWith("commands/") ||
-    path.startsWith("agents/") ||
-    path === "operator-manual.md" ||
-    path === "query-cookbook.md" ||
-    path.startsWith("wiki/.margins/")
+  const entries = vaultSidebarEntries(fileMap || new Map()).filter((entry) => (
+    !query || entry.path.toLowerCase().includes(query)
   ));
 
-  els.vaultTree.innerHTML = [
-    treeSection("RAW", rawPaths),
-    treeSection("WIKI", wikiPaths),
-    treeSection("SYSTEM", operatingPaths)
-  ].join("");
+  if (entries.length === 0) {
+    els.vaultTree.innerHTML = `
+      <details class="sidebar-folder">
+        <summary><span>raw_sources</span><em>0</em></summary>
+        <button class="sidebar-file muted-file" type="button" disabled>No sources yet</button>
+      </details>
+      <details class="sidebar-folder">
+        <summary><span>wiki</span><em>0</em></summary>
+        <button class="sidebar-file muted-file" type="button" disabled>No wiki yet</button>
+      </details>
+    `;
+    return;
+  }
 
-  els.vaultTree.querySelectorAll(".vault-tree-file").forEach((item) => {
+  els.vaultTree.innerHTML = renderSidebarFolderTree(entries);
+
+  els.vaultTree.querySelectorAll(".sidebar-file").forEach((item) => {
     item.addEventListener("click", () => {
       const path = item.dataset.path;
       if (selectVaultPath(path)) activateTab("wiki");
@@ -1101,17 +1102,92 @@ function renderVaultTree(fileMap = state.currentFileMap) {
   });
 }
 
-function treeSection(label, paths) {
+function vaultSidebarEntries(fileMap) {
+  const rawEntries = allSourceFiles().map((file) => ({
+    path: rawSourceOutputPath(file.name),
+    kind: "raw"
+  }));
+  const fileEntries = [...fileMap.keys()]
+    .filter((path) => (
+      (path.startsWith("wiki/") && !path.startsWith("wiki/.margins/")) ||
+      path.startsWith("commands/") ||
+      path.startsWith("agents/") ||
+      path === "operator-manual.md" ||
+      path === "query-cookbook.md"
+    ))
+    .map((path) => ({ path: normalizeMarginsPath(path), kind: "vault" }));
+  return [...rawEntries, ...fileEntries].sort((left, right) => {
+    const order = (path) => (
+      path.startsWith("raw_sources/") ? 0 :
+        path.startsWith("wiki/") ? 1 :
+          path.startsWith("commands/") ? 2 :
+            path.startsWith("agents/") ? 3 : 4
+    );
+    return order(left.path) - order(right.path) || left.path.localeCompare(right.path);
+  });
+}
+
+function renderSidebarFolderTree(entries) {
+  const root = { folders: new Map(), files: [] };
+  for (const entry of entries) {
+    const parts = entry.path.split("/");
+    let node = root;
+    for (const part of parts.slice(0, -1)) {
+      if (!node.folders.has(part)) node.folders.set(part, { folders: new Map(), files: [] });
+      node = node.folders.get(part);
+    }
+    node.files.push(entry);
+  }
+
+  const folders = [...root.folders.entries()]
+    .sort(([left], [right]) => sidebarFolderOrder(left) - sidebarFolderOrder(right) || left.localeCompare(right))
+    .map(([name, node]) => renderSidebarFolder(name, node, 0))
+    .join("");
+  const rootFiles = root.files
+    .sort((left, right) => left.path.localeCompare(right.path))
+    .map((file) => renderSidebarFile(file, 0))
+    .join("");
+  return folders + rootFiles;
+}
+
+function renderSidebarFolder(name, node, depth, parentPath = "") {
+  const folderPath = parentPath ? `${parentPath}/${name}` : name;
+  const hasQuery = !!(els.vaultSearch?.value || "").trim();
+  const shouldOpen = hasQuery || state.selectedPath?.startsWith(`${folderPath}/`);
+  const count = vaultFolderCount(node);
+  const folders = [...node.folders.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([childName, childNode]) => renderSidebarFolder(childName, childNode, depth + 1, folderPath))
+    .join("");
+  const files = node.files
+    .sort((left, right) => left.path.localeCompare(right.path))
+    .slice(0, 60)
+    .map((file) => renderSidebarFile(file, depth + 1))
+    .join("");
+  const more = node.files.length > 60 ? `<div class="sidebar-more" style="--depth: ${depth + 1}">${node.files.length - 60} more</div>` : "";
   return `
-      <div class="vault-tree-folder">
-        <span>${escapeHtml(label)}</span>
-        <em>${paths.length}</em>
-      </div>
-      ${paths.length
-        ? paths.slice(0, 10).map((path) => `<button class="vault-tree-file" type="button" data-path="${escapeHtml(normalizeMarginsPath(path))}">${escapeHtml(basename(path))}</button>`).join("")
-        : `<button class="vault-tree-file muted-file" type="button" disabled>Nothing yet</button>`}
-      ${paths.length > 10 ? `<div class="vault-tree-more">${paths.length - 10} more</div>` : ""}
-    `;
+    <details class="sidebar-folder" style="--depth: ${depth}"${shouldOpen ? " open" : ""}>
+      <summary><span>${escapeHtml(name)}</span><em>${count}</em></summary>
+      ${folders}${files}${more}
+    </details>
+  `;
+}
+
+function renderSidebarFile(file, depth) {
+  return `
+    <button class="sidebar-file" type="button" data-path="${escapeHtml(file.path)}" style="--depth: ${depth}">
+      <span>${escapeHtml(basename(file.path))}</span>
+    </button>
+  `;
+}
+
+function sidebarFolderOrder(name) {
+  return {
+    raw_sources: 0,
+    wiki: 1,
+    commands: 2,
+    agents: 3
+  }[name] ?? 4;
 }
 
 function allSourceFiles() {
@@ -1507,6 +1583,9 @@ function selectVaultPath(path, options = {}) {
 
 function updateSelectedFileState(options = {}) {
   els.wikiTree?.querySelectorAll(".vault-file").forEach((item) => {
+    item.classList.toggle("active", item.dataset.path === state.selectedPath);
+  });
+  els.vaultTree?.querySelectorAll(".sidebar-file").forEach((item) => {
     item.classList.toggle("active", item.dataset.path === state.selectedPath);
   });
   if (!options.preserveFocus && document.activeElement !== els.docBody) {
