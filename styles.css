@@ -336,6 +336,62 @@ button.primary:not(:disabled):hover {
   font-size: 13px;
 }
 
+.select-control {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 9px 10px;
+  background: #fffdfa;
+  color: var(--ink);
+  font: inherit;
+}
+
+.review-list {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.review-list.empty {
+  color: var(--muted);
+  font-size: 13px;
+  border: 1px dashed var(--line);
+  border-radius: 7px;
+  padding: 10px;
+}
+
+.review-card {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 10px;
+  background: #fffdfa;
+}
+
+.review-card.warn {
+  border-color: rgba(184, 58, 47, 0.45);
+}
+
+.review-card strong {
+  display: block;
+  font-size: 13px;
+  margin-top: 3px;
+}
+
+.review-card p,
+.recommendation {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.review-meta {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
 .graph-wrap {
   height: calc(100vh - 144px);
 }

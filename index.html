@@ -43,6 +43,16 @@
         <button id="copy-btn" disabled>Copy operator manual</button>
       </section>
 
+      <section class="panel">
+        <h2>3. Review Mode</h2>
+        <select id="review-mode" class="select-control">
+          <option value="suggested" selected>Suggested review</option>
+          <option value="auto">Auto-file</option>
+          <option value="strict">Strict review</option>
+        </select>
+        <p id="review-mode-help">Ask only about durable wiki decisions, with a recommended default.</p>
+      </section>
+
       <section class="panel muted-panel">
         <h2>Active waits</h2>
         <ul>
@@ -150,6 +160,7 @@
               <button id="accept-llm-btn" class="primary" disabled>Accept as current wiki</button>
             </div>
             <div id="llm-status" class="status-line">No LLM output parsed yet.</div>
+            <div id="review-questions" class="review-list empty">Parse LLM output to see material review questions.</div>
           </article>
           <div class="tree">
             <h3>Parsed files</h3>

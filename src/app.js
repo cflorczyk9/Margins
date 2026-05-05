@@ -11,6 +11,7 @@ const state = {
   vault: null,
   selectedPath: null,
   currentFileMap: null,
+  reviewMode: localStorage.getItem("margins-review-mode") || "suggested",
   llmFiles: new Map(),
   llmSelectedPath: null,
   vaultHandle: null,
@@ -27,6 +28,8 @@ const els = {
   createVaultBtn: document.getElementById("create-vault-btn"),
   openVaultBtn: document.getElementById("open-vault-btn"),
   saveVaultBtn: document.getElementById("save-vault-btn"),
+  reviewMode: document.getElementById("review-mode"),
+  reviewModeHelp: document.getElementById("review-mode-help"),
   exportBtn: document.getElementById("export-btn"),
   copyBtn: document.getElementById("copy-btn"),
   wikiTree: document.getElementById("wiki-tree"),
@@ -39,6 +42,7 @@ const els = {
   repairLlmBtn: document.getElementById("repair-llm-btn"),
   acceptLlmBtn: document.getElementById("accept-llm-btn"),
   llmStatus: document.getElementById("llm-status"),
+  reviewQuestions: document.getElementById("review-questions"),
   llmFileList: document.getElementById("llm-file-list"),
   llmPreviewTitle: document.getElementById("llm-preview-title"),
   llmPreviewBody: document.getElementById("llm-preview-body"),
@@ -51,6 +55,8 @@ const els = {
 
 els.folderInput.addEventListener("change", handleSourceSelection);
 els.fileInput.addEventListener("change", handleSourceSelection);
+els.reviewMode.value = state.reviewMode;
+updateReviewModeHelp();
 hydrateChecklist();
 
 async function handleSourceSelection(event) {
@@ -210,6 +216,13 @@ document.querySelectorAll("[data-check-id]").forEach((checkbox) => {
   });
 });
 
+els.reviewMode.addEventListener("change", () => {
+  state.reviewMode = els.reviewMode.value;
+  localStorage.setItem("margins-review-mode", state.reviewMode);
+  updateReviewModeHelp();
+  if (state.llmFiles.size > 0) renderLlmReview();
+});
+
 els.parseLlmBtn.addEventListener("click", () => {
   state.llmFiles = parseLlmFiles(els.llmInput.value);
   renderLlmReview();
@@ -256,6 +269,14 @@ function hydrateChecklist() {
   document.querySelectorAll("[data-check-id]").forEach((checkbox) => {
     checkbox.checked = localStorage.getItem(`margins-check-${checkbox.dataset.checkId}`) === "1";
   });
+}
+
+function updateReviewModeHelp() {
+  els.reviewModeHelp.textContent = {
+    auto: "File automatically unless serious warnings appear.",
+    suggested: "Ask only about durable wiki decisions, with a recommended default.",
+    strict: "Ask before promotions, synthesis, and sensitive-source saves."
+  }[state.reviewMode] || "";
 }
 
 function renderVault() {
@@ -367,11 +388,12 @@ function renderWikiFiles(fileMap) {
 function renderLlmReview() {
   const entries = [...state.llmFiles.entries()];
   const warningsByPath = validateLlmFiles(state.llmFiles);
+  const questions = buildMaterialQuestions(state.llmFiles, warningsByPath, state.reviewMode);
   const warningCount = [...warningsByPath.values()].reduce((sum, warnings) => sum + warnings.length, 0);
   els.acceptLlmBtn.disabled = entries.length === 0;
   els.repairLlmBtn.disabled = entries.length === 0 || warningCount === 0;
   els.llmStatus.textContent = entries.length
-    ? `${entries.length} file${entries.length === 1 ? "" : "s"} parsed · ${warningCount} review warning${warningCount === 1 ? "" : "s"}`
+    ? `${entries.length} file${entries.length === 1 ? "" : "s"} parsed · ${warningCount} review warning${warningCount === 1 ? "" : "s"} · ${questions.length} material question${questions.length === 1 ? "" : "s"}`
     : "No files found. Paste output that uses ```margins-file path=\"...\" fenced blocks.";
 
   if (entries.length === 0) {
@@ -379,6 +401,7 @@ function renderLlmReview() {
     els.llmFileList.textContent = "No parsed files.";
     els.llmPreviewTitle.textContent = "No LLM file selected";
     els.llmPreviewBody.textContent = "Paste model output, then click Parse LLM files.";
+    renderMaterialQuestions([]);
     els.repairLlmBtn.disabled = true;
     return;
   }
@@ -400,6 +423,7 @@ function renderLlmReview() {
 
   state.llmSelectedPath = entries[0][0];
   renderLlmPreview(warningsByPath);
+  renderMaterialQuestions(questions);
 }
 
 function renderLlmPreview(warningsByPath) {
@@ -411,6 +435,168 @@ function renderLlmPreview(warningsByPath) {
   els.llmPreviewBody.textContent = warnings.length
     ? `Review warnings:\n${warnings.map((warning) => `- ${warning}`).join("\n")}\n\n${body}`
     : body;
+}
+
+function renderMaterialQuestions(questions) {
+  if (questions.length === 0) {
+    els.reviewQuestions.className = "review-list empty";
+    els.reviewQuestions.textContent = state.reviewMode === "auto"
+      ? "Auto-file mode: no material blockers found."
+      : "No material review questions.";
+    return;
+  }
+
+  els.reviewQuestions.className = "review-list";
+  els.reviewQuestions.innerHTML = questions.map((question) => `
+    <div class="review-card ${question.severity}">
+      <div class="review-meta">${escapeHtml(question.kind)} · ${escapeHtml(question.path || "vault")}</div>
+      <strong>${escapeHtml(question.question)}</strong>
+      <p>${escapeHtml(question.reason)}</p>
+      <div class="recommendation">Recommended: ${escapeHtml(question.recommendation)}</div>
+    </div>
+  `).join("");
+}
+
+function buildMaterialQuestions(fileMap, warningsByPath, mode) {
+  if (mode === "auto") {
+    return buildAutoFileQuestions(fileMap, warningsByPath);
+  }
+
+  const questions = [
+    ...promotionQuestions(fileMap),
+    ...synthesisQuestions(fileMap),
+    ...riskQuestions(fileMap),
+    ...rawSourceQuestions(fileMap)
+  ];
+
+  if (mode === "strict") {
+    questions.push(...strictReviewQuestions(fileMap));
+  }
+
+  return dedupeQuestions(questions).slice(0, mode === "strict" ? 12 : 6);
+}
+
+function buildAutoFileQuestions(fileMap, warningsByPath) {
+  const warningQuestions = [];
+  for (const [path, warnings] of warningsByPath.entries()) {
+    for (const warning of warnings) {
+      if (/contentReference|Missing YAML|not valid JSON|raw source/i.test(warning)) {
+        warningQuestions.push(reviewQuestion("blocker", "Warning", path, warning, "Repair before saving."));
+      }
+    }
+  }
+  return warningQuestions.slice(0, 4);
+}
+
+function promotionQuestions(fileMap) {
+  const questions = [];
+  for (const [path, body] of fileMap.entries()) {
+    if (path.startsWith("wiki/entities/")) {
+      const title = markdownTitle(body) || titleFromSlug(basename(path).replace(/\.md$/, ""));
+      const demoLike = /\bdemo\b|\bfictional\b|\bplaceholder\b|\bnot an actual\b|\bexample\b/i.test(body);
+      questions.push(reviewQuestion(
+        demoLike ? "warn" : "suggest",
+        "Entity promotion",
+        path,
+        demoLike
+          ? `Should ${title} become a real entity page, or stay inside source notes as demo context?`
+          : `Should ${title} become a durable entity page?`,
+        demoLike
+          ? "Demo-only entities usually stay mentioned-but-missing unless they help future retrieval."
+          : "Entity pages are worth keeping when future queries will ask about this person, org, account, project, tool, or place.",
+        demoLike ? "Move to Needs Review unless this entity will recur." : "Keep if this is a real recurring entity."
+      ));
+    }
+    if (path.startsWith("wiki/concepts/")) {
+      const title = markdownTitle(body) || titleFromSlug(basename(path).replace(/\.md$/, ""));
+      questions.push(reviewQuestion(
+        "suggest",
+        "Concept promotion",
+        path,
+        `Is ${title} a reusable concept, or should it stay inside the source pages?`,
+        "Concept pages should be durable connection points, not keywords extracted from one file.",
+        "Keep if it will help connect future sources."
+      ));
+    }
+  }
+  return questions;
+}
+
+function synthesisQuestions(fileMap) {
+  return [...fileMap.entries()]
+    .filter(([path]) => path.startsWith("wiki/synthesis/"))
+    .map(([path, body]) => reviewQuestion(
+      "suggest",
+      "Synthesis",
+      path,
+      `Should this synthesis node be saved as a durable connection?`,
+      "Synthesis pages are the product wedge, but they should preserve useful cross-source reasoning rather than restating a source.",
+      /\bnot directly stated\b|\bhypothesis\b|\bnot stated\b/i.test(body)
+        ? "Keep as voice: claude-draft if useful; do not treat as fact."
+        : "Keep if it connects two or more sources or concepts."
+    ));
+}
+
+function riskQuestions(fileMap) {
+  const sensitive = [];
+  for (const [path, body] of fileMap.entries()) {
+    if (!path.startsWith("wiki/sources/")) continue;
+    if (/\b(account number|ssn|social security|medical|diagnosis|legal|attorney|customer|client|salary|tax|bank|routing)\b/i.test(body)) {
+      sensitive.push(reviewQuestion(
+        "warn",
+        "Sensitive source",
+        path,
+        "Does this source contain sensitive information that should require stricter review?",
+        "Financial, legal, medical, customer, and employer data raise the cost of a wrong node or unsupported synthesis.",
+        "Use Strict review or save as source-only if unsure."
+      ));
+    }
+  }
+  return sensitive;
+}
+
+function rawSourceQuestions() {
+  if (state.files.length > 0) return [];
+  return [reviewQuestion(
+    "warn",
+    "Raw evidence",
+    "raw_sources/",
+    "Raw files are not currently loaded. Save generated wiki without raw evidence?",
+    "The vault is most trustworthy when raw_sources contains the original files.",
+    "Reload raw files before saving."
+  )];
+}
+
+function strictReviewQuestions(fileMap) {
+  const sourceCount = [...fileMap.keys()].filter((path) => path.startsWith("wiki/sources/")).length;
+  const promotedCount = [...fileMap.keys()].filter((path) => (
+    path.startsWith("wiki/entities/") ||
+    path.startsWith("wiki/concepts/") ||
+    path.startsWith("wiki/synthesis/")
+  )).length;
+  if (sourceCount === 0 || promotedCount === 0) return [];
+  return [reviewQuestion(
+    "suggest",
+    "Strict review",
+    "wiki/",
+    "Do promoted pages have enough source support to save now?",
+    "Strict review treats durable graph changes as user-approved memory decisions.",
+    "Approve promoted pages one by one before saving."
+  )];
+}
+
+function reviewQuestion(severity, kind, path, question, reason, recommendation) {
+  return { severity, kind, path, question, reason, recommendation };
+}
+
+function dedupeQuestions(questions) {
+  const seen = new Set();
+  return questions.filter((question) => {
+    const key = `${question.kind}:${question.path}:${question.question}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function validateLlmFiles(fileMap) {
