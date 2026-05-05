@@ -1536,7 +1536,7 @@ button,
 
 .source-item {
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr);
+  grid-template-columns: 42px minmax(0, 1fr) auto;
   gap: 14px;
   align-items: center;
   min-height: 72px;
@@ -1577,6 +1577,24 @@ button,
 
 .source-item .source-badge {
   font-size: 11px;
+}
+
+.source-process-btn {
+  width: auto;
+  min-width: 96px;
+  min-height: 38px;
+  margin-top: 0;
+  padding: 0 16px;
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+  white-space: nowrap;
+}
+
+.source-process-btn:not(:disabled):hover {
+  background: var(--accent-dark);
+  border-color: var(--accent-dark);
+  color: var(--on-accent);
 }
 
 .source-item.needs-extraction {
@@ -2087,6 +2105,11 @@ button,
   .source-item {
     grid-template-columns: 38px minmax(0, 1fr);
     padding: 12px;
+  }
+
+  .source-process-btn {
+    grid-column: 1 / -1;
+    width: 100%;
   }
 
   .source-badge {

@@ -30,6 +30,7 @@ const state = {
   hasSavedCurrent: false,
   hasUnsavedEdits: false,
   pendingSave: false,
+  processingInbox: false,
   vaultHandle: null,
   rememberedVaultHandle: null,
   vaultName: "",
@@ -138,6 +139,7 @@ updateThemeToggleLabel();
 hydrateApiControls();
 els.folderInput.addEventListener("change", handleSourceSelection);
 els.fileInput.addEventListener("change", handleSourceSelection);
+els.sourceList?.addEventListener("click", handleSourceActionClick);
 els.docBody?.addEventListener("input", handleVaultDocumentEdit);
 els.docBody?.addEventListener("scroll", syncDocHighlightScroll);
 els.docSaveBtn?.addEventListener("click", saveCurrentVault);
@@ -580,6 +582,29 @@ async function handleSaveAndOrganize() {
   }
 }
 
+async function handleSourceActionClick(event) {
+  const button = event.target.closest("[data-source-action]");
+  if (!button || state.processingInbox) return;
+  await processPendingSource();
+}
+
+async function processPendingSource() {
+  state.processingInbox = true;
+  renderSources();
+  updateSaveButtonState();
+  try {
+    if (state.pendingSave && state.currentFileMap) {
+      await saveCurrentVault();
+    } else {
+      await prepareInboxSave();
+    }
+  } finally {
+    state.processingInbox = false;
+    renderSources();
+    updateSaveButtonState();
+  }
+}
+
 async function prepareInboxSave() {
   if (!state.vaultHandle) {
     const reconnected = await reconnectRememberedVault();
@@ -605,7 +630,7 @@ async function prepareInboxSave() {
   els.exportBtn.disabled = false;
   updateSaveButtonState();
   els.copyBtn.disabled = false;
-  await prepareReviewForCurrentFileMap("Margins organized the queue. Answer the quick checks, then click Save and organize again to write the vault.");
+  await prepareReviewForCurrentFileMap("Margins reviewed the queue. Answer any quick checks, then write the local vault.");
 }
 
 async function saveCurrentVault() {
@@ -1073,8 +1098,21 @@ function renderSources() {
         <strong>${escapeHtml(file.name)}</strong>
         <span>${escapeHtml(sourceStatus(file))}</span>
       </div>
+      <button class="source-process-btn" type="button" data-source-action="process" ${sourceProcessDisabled() ? "disabled" : ""}>
+        ${escapeHtml(sourceProcessLabel())}
+      </button>
     </div>
   `).join("");
+}
+
+function sourceProcessLabel() {
+  if (state.processingInbox) return "Processing...";
+  if (state.pendingSave && state.currentFileMap) return "Write vault";
+  return "Process";
+}
+
+function sourceProcessDisabled() {
+  return state.processingInbox || state.files.some((file) => file.extractionStatus === "extracting");
 }
 
 function renderVaultTree(fileMap = state.currentFileMap) {
@@ -1337,12 +1375,12 @@ function workflowStep() {
   const failedPdfCount = state.files.filter((file) => file.type === "pdf" && !file.text).length;
   return {
     action: "prepareInboxSave",
-    label: "Save and organize",
+    label: "Process",
     guidance: failedPdfCount
       ? `${failedPdfCount} PDF${failedPdfCount === 1 ? "" : "s"} need to be attached in the LLM chat. The copied prompt will list them.`
       : state.currentFileMap
-        ? "Organize the new source against the existing vault, then review the proposed changes."
-        : "Organize the uploaded files, ask a few filing questions, then save the local vault."
+        ? "Review the new source against the existing vault, then ingest the proposed changes."
+        : "Review the uploaded files, ask a few filing questions, then ingest them locally."
   };
 }
 
@@ -2620,7 +2658,7 @@ function updateSaveButtonState() {
   const canPrepare = state.files.length > 0 && !state.pendingSave;
   const canSave = (state.pendingSave || state.hasUnsavedEdits) && state.currentFileMap;
   els.saveVaultBtn.disabled = !(canPrepare || canSave);
-  els.saveVaultBtn.textContent = canSave ? "Write vault" : "Save";
+  els.saveVaultBtn.textContent = state.processingInbox ? "Processing..." : canSave ? "Write vault" : "Process";
   if (els.docSaveBtn) {
     els.docSaveBtn.disabled = !canSave;
     if (els.docSaveBtn.textContent !== "Saving..." && els.docSaveBtn.textContent !== "Saved") {
