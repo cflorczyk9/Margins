@@ -11,10 +11,54 @@ const STOP_WORDS = new Set([
   "raw", "draft", "they", "if", "corporate", "hosting"
 ]);
 
+const LOW_QUALITY_CONCEPTS = new Set([
+  "able", "admin", "app", "apps", "builds", "can", "closer", "come", "contains",
+  "controls", "documents", "draft", "edited", "files", "folder", "generic", "include",
+  "keeps", "later", "made", "minimum", "nodes", "only", "organized", "pages", "plans",
+  "probably", "product", "real", "should", "similar", "silent", "surface", "text",
+  "thinking", "useful", "user", "users", "value", "version", "want", "without", "work"
+]);
+
+const DURABLE_SINGLE_CONCEPTS = new Set([
+  "citations", "context", "evidence", "graph", "markdown", "privacy", "wiki"
+]);
+
+const CONCEPT_PHRASES = [
+  "agent files",
+  "command files",
+  "concept nodes",
+  "edit log",
+  "edit proposals",
+  "entity nodes",
+  "language model",
+  "local first",
+  "mcp server",
+  "operator manual",
+  "personal context",
+  "query cookbook",
+  "raw sources",
+  "source nodes",
+  "synthesis nodes",
+  "write back"
+];
+
 const PERSON_STOP = new Set([
   "The", "This", "That", "These", "Those", "When", "Where", "What", "Why", "How",
   "And", "But", "For", "With", "From", "Into", "It", "Every", "Users", "Version",
-  "Without", "Markdown", "Claude", "ChatGPT", "Margins"
+  "Without", "Markdown", "Raw", "Draft", "If"
+]);
+
+const ENTITY_STOP_LOWER = new Set([
+  "briefly branch map",
+  "karpathy original template notes",
+  "raw sources",
+  "source nodes",
+  "concept nodes",
+  "entity nodes",
+  "synthesis nodes",
+  "query cookbook",
+  "operator manual",
+  "markdown instructions"
 ]);
 
 export function compileVault(files, options = {}) {
@@ -36,15 +80,40 @@ export function compileVault(files, options = {}) {
   };
   const operatingLayer = buildOperatingLayer(today);
   const editProposals = buildEditProposals(conceptNodes, entityNodes, synthesisNodes, today);
+  const structuralLayer = buildStructuralLayer({
+    today,
+    files: normalized,
+    sourceNodes,
+    conceptNodes,
+    entityNodes,
+    synthesisNodes,
+    edges,
+    editProposals
+  });
   const manifest = {
     name: options.name || "Karpathy Original",
+    schema_version: "margins-v1",
     template: "karpathy-original",
+    compiler: "local-heuristic",
     version: "0.1.0",
     generated_at: `${today}T00:00:00.000Z`,
     privacy: {
       storage: "local-first",
       hosted_documents: false,
-      silent_write_back: false
+      silent_write_back: false,
+      requires_secrets: false
+    },
+    paths: {
+      raw_sources: "raw_sources/",
+      wiki: "wiki/",
+      root_instructions: "CLAUDE.md",
+      ingest_tracker: "wiki/ingest-tracker.md",
+      narrative_log: "wiki/log.md",
+      wiki_stats: "wiki/wiki-stats.md",
+      metadata: "wiki/.margins/",
+      templates: "wiki/_templates/",
+      commands: "commands/",
+      agents: "agents/"
     },
     counts: {
       raw_sources: normalized.length,
@@ -52,8 +121,15 @@ export function compileVault(files, options = {}) {
       concept_nodes: conceptNodes.length,
       entity_nodes: entityNodes.length,
       synthesis_nodes: synthesisNodes.length,
-      edges: edges.length
+      edges: edges.length,
+      structural_files: structuralLayer.fileCount
     },
+    raw_sources: normalized.map((file) => ({
+      id: file.id,
+      path: `raw_sources/${file.name}`,
+      words: file.wordCount,
+      unsupported: file.unsupported
+    })),
     enabled_commands: Object.keys(operatingLayer.commands),
     enabled_agents: Object.keys(operatingLayer.agents)
   };
@@ -65,10 +141,21 @@ export function compileVault(files, options = {}) {
       concepts: conceptNodes,
       entities: entityNodes,
       synthesis: synthesisNodes,
-      graph
+      graph,
+      structural: structuralLayer
     },
     operatingLayer,
     editProposals,
+    ingestReport: buildIngestReport({
+      today,
+      files: normalized,
+      sourceNodes,
+      conceptNodes,
+      entityNodes,
+      synthesisNodes,
+      edges,
+      editProposals
+    }),
     manifest
   };
 }
@@ -90,17 +177,28 @@ export function vaultToFiles(vault) {
   }
 
   files.set("wiki/index.md", buildIndex(vault));
+  files.set("wiki/ingest-tracker.md", vault.wiki.structural.ingestTracker);
+  files.set("wiki/log.md", vault.wiki.structural.log);
+  files.set("wiki/wiki-stats.md", vault.wiki.structural.stats);
   files.set("wiki/graph.json", JSON.stringify(vault.wiki.graph, null, 2));
+  files.set("CLAUDE.md", vault.operatingLayer.claudeMd);
   files.set("operator-manual.md", vault.operatingLayer.operatorManual);
   files.set("query-cookbook.md", vault.operatingLayer.queryCookbook);
   files.set("wiki/.margins/manifest.json", JSON.stringify(vault.manifest, null, 2));
   files.set("wiki/.margins/edit-log.jsonl", vault.editProposals.map((p) => JSON.stringify(p)).join("\n") + "\n");
+  files.set("wiki/.margins/ingest-report.md", vault.ingestReport);
 
   for (const [name, body] of Object.entries(vault.operatingLayer.commands)) {
     files.set(`commands/${name}.md`, body);
   }
   for (const [name, body] of Object.entries(vault.operatingLayer.agents)) {
     files.set(`agents/${name}.md`, body);
+  }
+  for (const [path, body] of Object.entries(vault.wiki.structural.bucketOverviews)) {
+    files.set(path, body);
+  }
+  for (const [name, body] of Object.entries(vault.wiki.structural.templates)) {
+    files.set(`wiki/_templates/${name}.md`, body);
   }
 
   return files;
@@ -187,7 +285,7 @@ function buildConceptNodes(sourceNodes, today) {
   }
 
   return [...counts.entries()]
-    .filter(([, count]) => count >= 1)
+    .filter(([term, count]) => isDurableConceptCandidate(term, count))
     .sort((a, b) => b[1] - a[1])
     .slice(0, 10)
     .map(([term, count]) => {
@@ -257,6 +355,13 @@ created: ${today}
 updated: ${today}
 status: stub
 priority:
+last_contact:
+next_move:
+firm:
+role:
+relationship:
+category:
+contact_channel:
 voice: claude-draft
 key_links: [${sources.map((s) => `"[[${s}]]"`).join(", ")}]
 ---
@@ -273,6 +378,10 @@ key_links: [${sources.map((s) => `"[[${s}]]"`).join(", ")}]
 ## Context
 
 This page is a draft. Do not infer role, firm, relationship, or next move without user confirmation.
+
+## Source Log
+
+${sources.map((source) => `- [[${source}]] — Mentioned during ingest; verify the entity's role and status before relying on it.`).join("\n") || "- _(none yet)_"}
 `;
       return {
         id: slug,
@@ -395,8 +504,441 @@ function buildEdges(sourceNodes, conceptNodes, entityNodes, synthesisNodes) {
   return edges;
 }
 
+function buildStructuralLayer({ today, files, sourceNodes, conceptNodes, entityNodes, synthesisNodes, edges, editProposals }) {
+  const bucketOverviews = buildBucketOverviews({ today, sourceNodes, conceptNodes, entityNodes, synthesisNodes });
+  const templates = buildTemplates(today);
+  return {
+    ingestTracker: buildIngestTracker({ today, files, sourceNodes, conceptNodes, entityNodes, synthesisNodes }),
+    log: buildNarrativeLog({ today, files, sourceNodes, conceptNodes, entityNodes, synthesisNodes, editProposals }),
+    stats: buildWikiStats({ today, files, sourceNodes, conceptNodes, entityNodes, synthesisNodes, edges }),
+    bucketOverviews,
+    templates,
+    fileCount: 3 + Object.keys(bucketOverviews).length + Object.keys(templates).length
+  };
+}
+
+function buildIngestTracker({ today, files, sourceNodes, conceptNodes, entityNodes, synthesisNodes }) {
+  const conceptBySource = nodesBySource(conceptNodes);
+  const entityBySource = nodesBySource(entityNodes);
+  const synthesisBySource = nodesBySource(synthesisNodes);
+  const rows = sourceNodes.map((source, index) => {
+    const raw = files[index];
+    const connected = [
+      ...(conceptBySource.get(source.slug) || []),
+      ...(entityBySource.get(source.slug) || []),
+      ...(synthesisBySource.get(source.slug) || [])
+    ];
+    const status = raw.unsupported ? "needs-extraction" : "ingested";
+    const notes = raw.unsupported
+      ? "Original preserved; add text extraction before relying on summary."
+      : "Source page generated from extracted text.";
+    return `| ${tableCell(`raw_sources/${raw.name}`)} | ${status} | [[${source.slug}]] | ${connected.map((node) => `[[${node.slug}]]`).join(", ") || "-"} | ${raw.wordCount} | ${tableCell(notes)} |`;
+  }).join("\n");
+
+  return `---
+type: tracker
+bucket: system
+summary: Raw-source ingestion tracker for this Margins vault.
+tags: [tracker, ingest, system]
+created: ${today}
+updated: ${today}
+voice: claude-draft
+---
+
+# Ingest Tracker
+
+This is the single source of truth for which raw files have been converted into wiki pages. Update it whenever ingest creates, rewrites, or skips a source.
+
+| Raw source | Status | Source page | Connected pages | Words | Notes |
+|---|---|---|---|---:|---|
+${rows || "| - | - | - | - | 0 | No raw sources registered yet. |"}
+
+## Status Vocabulary
+
+- ingested: source text was available and a wiki source page exists.
+- needs-extraction: the raw file is preserved, but readable text was not available to the compiler.
+- skipped: the user intentionally chose not to file this source.
+- superseded: a newer source replaced this one as the preferred reference.
+`;
+}
+
+function buildNarrativeLog({ today, files, sourceNodes, conceptNodes, entityNodes, synthesisNodes, editProposals }) {
+  return `---
+type: log
+bucket: system
+summary: Human-readable operation log for this Margins vault.
+tags: [log, operations, system]
+created: ${today}
+updated: ${today}
+voice: claude-draft
+---
+
+# Log
+
+Allowed ops: ingest | query | compile | lint | update
+
+Use headings shaped like \`## [YYYY-MM-DD] ingest\` so agents can grep the log without a plugin.
+
+## [${today}] ingest
+
+- Registered ${files.length} raw source${files.length === 1 ? "" : "s"}.
+- Created ${sourceNodes.length} source page${sourceNodes.length === 1 ? "" : "s"}, ${conceptNodes.length} concept candidate${conceptNodes.length === 1 ? "" : "s"}, ${entityNodes.length} entity candidate${entityNodes.length === 1 ? "" : "s"}, and ${synthesisNodes.length} synthesis page${synthesisNodes.length === 1 ? "" : "s"}.
+- Queued ${editProposals.length} proposal${editProposals.length === 1 ? "" : "s"} in \`wiki/.margins/edit-log.jsonl\`.
+- Updated \`wiki/ingest-tracker.md\`, bucket overviews, and \`wiki/wiki-stats.md\`.
+
+## Operation Vocabulary
+
+- ingest: raw source preservation, source-page creation, propagation, and tracker updates.
+- query: user-facing answer from current wiki state.
+- compile: backlink, concept, entity, synthesis, and index refresh.
+- lint: drift, stale summary, missing citation, and structure health checks.
+- update: user-approved content or structure edits.
+`;
+}
+
+function buildWikiStats({ today, files, sourceNodes, conceptNodes, entityNodes, synthesisNodes, edges }) {
+  const rawWords = files.reduce((sum, file) => sum + file.wordCount, 0);
+  const summaryWords = sourceNodes.reduce((sum, source) => sum + words(source.summary).length, 0);
+  const compression = rawWords > 0 ? Math.max(1, Math.round(rawWords / Math.max(1, summaryWords))) : 0;
+  const unsupported = files.filter((file) => file.unsupported);
+  const fattest = [...files]
+    .sort((left, right) => right.wordCount - left.wordCount || left.name.localeCompare(right.name))
+    .slice(0, 8);
+
+  return `---
+type: dashboard
+bucket: system
+summary: Structural health dashboard for this Margins vault.
+tags: [stats, lint, drift, system]
+created: ${today}
+updated: ${today}
+voice: claude-draft
+---
+
+# Wiki Stats
+
+Generated: ${today}
+
+## Shape
+
+- Raw sources: ${files.length}
+- Source pages: ${sourceNodes.length}
+- Concept pages: ${conceptNodes.length}
+- Entity pages: ${entityNodes.length}
+- Synthesis pages: ${synthesisNodes.length}
+- Graph edges: ${edges.length}
+
+## Compression
+
+- Raw words available: ${rawWords}
+- Source-summary words: ${summaryWords}
+- Approximate compression: ${compression ? `${compression}:1` : "n/a"}
+
+## Drift Watch
+
+- Summary freshness: new vault pass; no stale summaries detected at generation time.
+- Extraction gaps: ${unsupported.length}
+- Review rule: if a summary is older than the sources it represents, refresh it before answering from memory.
+
+## Fattest Raw Sources
+
+${fattest.map((file) => `- \`raw_sources/${file.name}\` — ${file.wordCount} words${file.unsupported ? " (needs extraction)" : ""}`).join("\n") || "- _(none)_"}
+
+## Maintenance Checks
+
+- Run compile after new ingest batches to promote repeated concepts and backlink gaps.
+- Run lint when source pages grow faster than summaries.
+- Prefer fixing the tracker and log before adding more generated pages.
+`;
+}
+
+function buildBucketOverviews({ today, sourceNodes, conceptNodes, entityNodes, synthesisNodes }) {
+  return {
+    "wiki/sources/sources.md": bucketOverview({
+      today,
+      title: "Sources",
+      bucket: "sources",
+      summary: "Entry point for raw-source-derived pages.",
+      description: "Source pages are faithful reads of one preserved raw file. They should cite the raw source and avoid unsupported synthesis.",
+      nodes: sourceNodes
+    }),
+    "wiki/concepts/concepts.md": bucketOverview({
+      today,
+      title: "Concepts",
+      bucket: "concepts",
+      summary: "Entry point for durable reusable ideas.",
+      description: "Concept pages should exist only when an idea will help future retrieval across more than one source or workflow.",
+      nodes: conceptNodes
+    }),
+    "wiki/entities/entities.md": bucketOverview({
+      today,
+      title: "Entities",
+      bucket: "entities",
+      summary: "Entry point for people, organizations, places, tools, accounts, and projects.",
+      description: "Entity pages need snapshots and source logs. Do not fill roles, relationships, or next moves without evidence or user confirmation.",
+      nodes: entityNodes
+    }),
+    "wiki/synthesis/synthesis.md": bucketOverview({
+      today,
+      title: "Synthesis",
+      bucket: "synthesis",
+      summary: "Entry point for connection-point summaries across sources.",
+      description: "Synthesis pages connect sources and concepts. Keep them labeled as synthesis unless the user confirms them as settled knowledge.",
+      nodes: synthesisNodes
+    })
+  };
+}
+
+function bucketOverview({ today, title, bucket, summary, description, nodes }) {
+  return `---
+type: index
+bucket: ${bucket}
+summary: ${yamlString(summary)}
+tags: [index, ${bucket}]
+created: ${today}
+updated: ${today}
+voice: claude-draft
+---
+
+# ${title}
+
+${description}
+
+## Pages
+
+${nodes.map((node) => `- [[${node.slug}]] — ${node.summary}`).join("\n") || "- _(none yet)_"}
+
+## Maintenance
+
+- Keep this overview short enough for an agent to scan first.
+- Add only pages that belong in \`${bucket}/\`.
+- Update summaries when underlying source pages change.
+`;
+}
+
+function buildTemplates(today) {
+  return {
+    source: `---
+type: source
+bucket: sources
+summary:
+tags: [source]
+created: ${today}
+updated: ${today}
+event_date:
+voice: claude-draft
+raw_file:
+---
+
+# Source: Title
+
+Raw file: \`raw_sources/example.md\`
+
+## Summary
+
+## Context
+
+## Concrete Facts
+
+## Related Pages
+
+## Mentioned but Missing
+
+## Inferences Refused
+`,
+    entity: `---
+type: entity
+bucket: entities
+summary:
+tags: [entity]
+created: ${today}
+updated: ${today}
+status: stub
+priority:
+last_contact:
+next_move:
+firm:
+role:
+relationship:
+category:
+contact_channel:
+voice: claude-draft
+key_links: []
+---
+
+# Entity Name
+
+## Snapshot
+- **Role:** _(unknown)_
+- **Status:** _(unknown)_
+- **Last interaction:** _(unknown)_
+- **Next move:** _(unknown)_
+- **Key link:** _(none)_
+
+## Context
+
+## Source Log
+
+- [[source-slug]] — one-line note about what this source established.
+`,
+    concept: `---
+type: concept
+bucket: concepts
+summary:
+tags: [concept]
+created: ${today}
+updated: ${today}
+status: stub
+voice: claude-draft
+key_links: []
+---
+
+# Concept Name
+
+## Snapshot
+- **What it is:**
+- **Why it matters:**
+- **Related sources:**
+
+## Context
+
+## Source Log
+`,
+    synthesis: `---
+type: synthesis
+bucket: synthesis
+summary:
+tags: [synthesis]
+created: ${today}
+updated: ${today}
+voice: claude-draft
+source_nodes: []
+concept_nodes: []
+---
+
+# Synthesis Title
+
+## Connection
+
+## Claims
+
+## Evidence
+
+## Open Threads
+`,
+    meeting: `---
+type: source
+bucket: sources
+summary:
+tags: [source, meeting]
+created: ${today}
+updated: ${today}
+event_date:
+voice: claude-draft
+raw_file:
+participants: []
+---
+
+# Meeting: Title
+
+## Summary
+
+## Decisions
+
+## Follow-ups
+
+## People and Organizations
+
+## Inferences Refused
+`,
+    daily: `---
+type: log
+bucket: daily
+summary:
+tags: [daily, log]
+created: ${today}
+updated: ${today}
+event_date: ${today}
+voice: claude-draft
+---
+
+# ${today}
+
+## What Changed
+
+## Decisions
+
+## Quick Notes
+
+## Sources
+`
+  };
+}
+
+function nodesBySource(nodes) {
+  const map = new Map();
+  for (const node of nodes) {
+    for (const source of node.sources || []) {
+      if (!map.has(source)) map.set(source, []);
+      map.get(source).push(node);
+    }
+  }
+  return map;
+}
+
+function tableCell(value) {
+  return String(value || "").replace(/\|/g, "\\|").replace(/\n/g, " ");
+}
+
 function buildOperatingLayer(today) {
   return {
+    claudeMd: `# CLAUDE.md
+
+This file is the agent operating skeleton for a Margins vault. Treat it as the first file to read when an LLM opens the vault.
+
+## Mission
+
+Maintain a local-first, source-grounded wiki that compounds over time. Raw sources are evidence. Wiki pages are the navigable memory layer. Generated drafts must stay labeled until a user confirms them.
+
+## First Files To Read
+
+1. \`wiki/index.md\` for the map.
+2. \`wiki/ingest-tracker.md\` to see what raw files have been filed.
+3. \`wiki/log.md\` for recent operations.
+4. \`wiki/wiki-stats.md\` for drift, extraction gaps, and oversized sources.
+5. \`operator-manual.md\` and \`query-cookbook.md\` for detailed operating rules.
+
+## Closed-Set Operation Vocabulary
+
+Use these words in \`wiki/log.md\` headings: ingest | query | compile | lint | update.
+
+## Authorship And Voice
+
+- \`voice: claude-draft\` means model-written or model-shaped content that may need review.
+- Ask before inferring roles, relationships, motives, priorities, dates, money, or next moves.
+- Put uncertain model reasoning in synthesis sections or clearly labeled notes.
+- Preserve raw source paths and cite durable wiki links, not chat-only references.
+
+## Buckets
+
+- \`wiki/sources/\`: faithful source pages tied to one raw file.
+- \`wiki/concepts/\`: durable ideas that should help future retrieval.
+- \`wiki/entities/\`: people, organizations, places, tools, accounts, and projects.
+- \`wiki/synthesis/\`: connection-point summaries across multiple pages.
+- \`wiki/_templates/\`: page shapes and examples for future ingest.
+
+## Query Patterns
+
+- Have we ingested a file? Search \`wiki/ingest-tracker.md\` for its raw filename.
+- What changed? Read the latest \`## [date] op\` section in \`wiki/log.md\`.
+- Is a summary stale? Check \`wiki/wiki-stats.md\`, then compare source pages with overview pages.
+- What supports this claim? Follow source links from the relevant concept/entity/synthesis page.
+
+## Write-Back Rules
+
+Never silently change important structure. Propose edits first unless the user explicitly approves saving. When updating a page, also update any affected tracker, log, bucket overview, source log, and stats file.
+
+Generated ${today}.`,
     operatorManual: `# Operator Manual
 
 ## Mission
@@ -406,7 +948,7 @@ Maintain an LLM-operable wiki from raw sources. Preserve evidence, create useful
 ## Rules
 
 1. Raw sources are evidence. Never mutate \`raw_sources/\`.
-2. The wiki is the compounding layer. Source, concept, entity, and synthesis nodes can evolve.
+2. The wiki is the compounding layer. Source, concept, entity, synthesis, tracker, log, stats, and bucket overview pages can evolve.
 3. Cite or label. Every factual claim must cite a source node or be marked as synthesis.
 4. Ask before inferring roles, motives, relationships, numbers, dates, or next moves.
 5. Write-back is proposal-first. Do not silently mutate important structure.
@@ -419,13 +961,16 @@ Maintain an LLM-operable wiki from raw sources. Preserve evidence, create useful
 - concept: durable theme or idea
 - entity: person, organization, place, project, tool
 - synthesis: connection-point summary across nodes
+- tracker: raw file ingest state
+- log: human-readable operation history
+- dashboard: structural health and drift view
 
 Generated ${today}.`,
     queryCookbook: `# Query Cookbook
 
 ## Summarize the vault
 
-Read \`wiki/index.md\`, then inspect the top source, concept, and synthesis nodes.
+Read \`CLAUDE.md\`, \`wiki/index.md\`, \`wiki/ingest-tracker.md\`, and \`wiki/wiki-stats.md\`, then inspect the top source, concept, entity, and synthesis nodes.
 
 ## Answer a question
 
@@ -434,9 +979,17 @@ Read \`wiki/index.md\`, then inspect the top source, concept, and synthesis node
 3. Cite source nodes for factual claims.
 4. Mark unsourced reasoning as synthesis.
 
+## Check whether a file was ingested
+
+Search \`wiki/ingest-tracker.md\` for the raw filename. If the tracker is missing or stale, scan \`wiki/sources/\` for matching \`raw_file:\` frontmatter and then update the tracker.
+
 ## Find what changed
 
-Scan recently updated nodes and the edit log.
+Scan \`wiki/log.md\` first, then recently updated nodes and \`wiki/.margins/edit-log.jsonl\`.
+
+## Check wiki health
+
+Read \`wiki/wiki-stats.md\`. Pay special attention to extraction gaps, stale summaries, oversized sources, and bucket overviews that no longer match their folders.
 
 ## Propose an improvement
 
@@ -471,10 +1024,12 @@ Purpose: ${purpose}
 
 ## Behavior
 
+- Read \`CLAUDE.md\` first if present.
 - Follow \`operator-manual.md\`.
 - Prefer source-cited facts.
 - Mark synthesis clearly.
 - Ask before inference when trust matters.
+- Keep \`wiki/ingest-tracker.md\`, \`wiki/log.md\`, \`wiki/wiki-stats.md\`, and bucket overviews consistent with any approved write.
 - If writing is required, produce an edit proposal unless the user has explicitly approved applying it.
 `;
 }
@@ -486,7 +1041,7 @@ Purpose: ${purpose}
 
 ## Instructions
 
-Read \`operator-manual.md\` before acting. Use \`query-cookbook.md\` for retrieval patterns. Return concise, cited output. Do not silently mutate the wiki.
+Read \`CLAUDE.md\` and \`operator-manual.md\` before acting. Use \`query-cookbook.md\` for retrieval patterns. Check \`wiki/ingest-tracker.md\` and \`wiki/log.md\` before deciding whether a source is new. Return concise, cited output. Do not silently mutate the wiki.
 `;
 }
 
@@ -531,10 +1086,76 @@ function buildEditProposals(concepts, entities, synthesis, today) {
   return proposals;
 }
 
+function buildIngestReport({ today, files, sourceNodes, conceptNodes, entityNodes, synthesisNodes, edges, editProposals }) {
+  const unsupported = files.filter((file) => file.unsupported);
+  const lowText = files.filter((file) => !file.unsupported && file.wordCount < 20);
+  return `# Ingest Report
+
+Generated: ${today}
+Compiler: local heuristic
+
+## Summary
+
+- Raw sources registered: ${files.length}
+- Source pages created: ${sourceNodes.length}
+- Concept candidates created: ${conceptNodes.length}
+- Entity candidates created: ${entityNodes.length}
+- Synthesis pages created: ${synthesisNodes.length}
+- Graph edges created: ${edges.length}
+- Edit proposals queued: ${editProposals.length}
+
+## Files Created
+
+${sourceNodes.map((source) => `- wiki/sources/${source.slug}.md from raw_sources/${source.rawFile}`).join("\n") || "- _(none)_"}
+
+## Candidate Concepts
+
+${conceptNodes.map((concept) => `- [[${concept.slug}]] from ${concept.sources.length} source node${concept.sources.length === 1 ? "" : "s"}`).join("\n") || "- _(none)_"}
+
+## Candidate Entities
+
+${entityNodes.map((entity) => `- [[${entity.slug}]] from ${entity.sources.length} source node${entity.sources.length === 1 ? "" : "s"}`).join("\n") || "- _(none)_"}
+
+## Inferences Refused
+
+- Entity pages remain candidates. Roles, relationships, priorities, and next moves require user confirmation.
+- Concept pages are stubs until a model or user expands them from cited source nodes.
+- Unsupported or low-text files are not summarized beyond registration.
+
+## Needs Review
+
+${[
+  ...unsupported.map((file) => `- Extract text from raw_sources/${file.name} before relying on its summary.`),
+  ...lowText.map((file) => `- Add more text to raw_sources/${file.name}; only ${file.wordCount} words were available.`),
+  ...(editProposals.length > 0 ? [`- Review ${editProposals.length} proposed edit${editProposals.length === 1 ? "" : "s"} in wiki/.margins/edit-log.jsonl.`] : [])
+].join("\n") || "- No immediate review flags."}
+`;
+}
+
 function buildIndex(vault) {
-  return `# Wiki Index
+  return `---
+type: index
+bucket: index
+summary: Generated index for this Margins vault.
+tags: [index]
+created: ${vault.manifest.generated_at.slice(0, 10)}
+updated: ${vault.manifest.generated_at.slice(0, 10)}
+voice: claude-draft
+---
+
+# Wiki Index
 
 Generated by Margins.
+
+## Operating Map
+
+- [[ingest-tracker]] — raw source filing status
+- [[log]] — human-readable operation history
+- [[wiki-stats]] — drift, extraction, and size dashboard
+- [[sources]] — source bucket overview
+- [[concepts]] — concept bucket overview
+- [[entities]] — entity bucket overview
+- [[synthesis]] — synthesis bucket overview
 
 ## Sources
 
@@ -573,13 +1194,23 @@ function summarize(text, unsupported) {
 
 function topTerms(text, limit = 10) {
   const counts = new Map();
-  for (const word of words(stripMarkdownNoise(text))) {
+  const clean = stripMarkdownNoise(text).toLowerCase();
+  for (const phrase of CONCEPT_PHRASES) {
+    const matches = clean.match(new RegExp(`\\b${escapeRegExp(phrase).replace(/\s+/g, "[-\\s]+")}\\b`, "g")) || [];
+    if (matches.length > 0) counts.set(phrase.replace(/\s+/g, "-"), matches.length + 1);
+  }
+  for (const word of words(clean)) {
     const lower = word.toLowerCase();
-    if (lower.length < 4 || STOP_WORDS.has(lower) || /^\d+$/.test(lower)) continue;
+    if (
+      lower.length < 4 ||
+      STOP_WORDS.has(lower) ||
+      LOW_QUALITY_CONCEPTS.has(lower) ||
+      /^\d+$/.test(lower)
+    ) continue;
     counts.set(lower, (counts.get(lower) || 0) + 1);
   }
   return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1])
+    .sort((a, b) => b[1] - a[1] || conceptRank(b[0]) - conceptRank(a[0]) || a[0].localeCompare(b[0]))
     .slice(0, limit)
     .map(([word]) => word);
 }
@@ -590,12 +1221,35 @@ function extractEntities(text) {
   for (const match of matches) {
     const normalized = match.trim();
     const lower = normalized.toLowerCase();
-    if (PERSON_STOP.has(normalized)) continue;
-    if (STOP_WORDS.has(lower)) continue;
+    if (!isEntityCandidate(normalized)) continue;
     if (normalized.split(/\s+/).length > 2 && firstWord(normalized) === lastWord(normalized)) continue;
     counts.set(normalized, (counts.get(normalized) || 0) + 1);
   }
   return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([name]) => name);
+}
+
+function isDurableConceptCandidate(term, sourceCount) {
+  const normalized = String(term || "").toLowerCase();
+  if (!normalized) return false;
+  if (LOW_QUALITY_CONCEPTS.has(normalized) || STOP_WORDS.has(normalized)) return false;
+  if (normalized.includes("-")) return sourceCount >= 1;
+  return sourceCount >= 2 && DURABLE_SINGLE_CONCEPTS.has(normalized);
+}
+
+function isEntityCandidate(value) {
+  const normalized = String(value || "").trim();
+  const lower = normalized.toLowerCase();
+  const parts = normalized.split(/\s+/);
+  if (!normalized || PERSON_STOP.has(normalized)) return false;
+  if (STOP_WORDS.has(lower) || LOW_QUALITY_CONCEPTS.has(lower) || ENTITY_STOP_LOWER.has(lower)) return false;
+  if (parts.some((part) => PERSON_STOP.has(part))) return false;
+  if (parts.length > 3) return false;
+  if (parts.length === 1 && !/^[A-Z][A-Za-z0-9]+$/.test(normalized)) return false;
+  return true;
+}
+
+function conceptRank(term) {
+  return String(term || "").includes("-") ? 1 : 0;
 }
 
 function words(text) {
@@ -621,6 +1275,10 @@ function lastWord(value) {
   return parts[parts.length - 1] || "";
 }
 
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function excerpt(text, max) {
   const clean = (text || "").replace(/\s+/g, " ").trim();
   if (clean.length <= max) return clean;
@@ -628,7 +1286,7 @@ function excerpt(text, max) {
 }
 
 function isProbablyUnsupported(name, text) {
-  return /\.pdf$/i.test(name) && (!text || text.length < 20);
+  return /\.(pdf|docx)$/i.test(name) && (!text || text.length < 20);
 }
 
 export function slugify(value) {
