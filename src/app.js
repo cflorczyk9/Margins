@@ -123,9 +123,11 @@ els.acceptLlmBtn.addEventListener("click", () => {
   state.currentFileMap = new Map(state.llmFiles);
   state.selectedPath = null;
   renderWikiFiles(state.currentFileMap);
+  renderOperatingLayer(state.currentFileMap);
+  renderAcceptedLlmEditState();
+  drawGraph(graphFromFileMap(state.currentFileMap));
   els.exportBtn.disabled = false;
   els.copyBtn.disabled = true;
-  els.stats.textContent = `${state.llmFiles.size} LLM file${state.llmFiles.size === 1 ? "" : "s"} reviewed · ready to export`;
   activateTab("wiki");
 });
 
@@ -160,8 +162,7 @@ function renderVault() {
   state.currentFileMap = fileMap;
   renderWikiFiles(fileMap);
 
-  els.operatorManual.textContent = vault.operatingLayer.operatorManual;
-  els.queryCookbook.textContent = vault.operatingLayer.queryCookbook;
+  renderOperatingLayer(fileMap);
   els.commandsList.innerHTML = Object.entries(vault.operatingLayer.commands).map(([name, body]) => `
     <div class="mini-card"><strong>/${escapeHtml(name)}</strong><br><span>${escapeHtml(firstLine(body))}</span></div>
   `).join("");
@@ -179,6 +180,51 @@ function renderVault() {
   `).join("");
 
   drawGraph(vault.wiki.graph);
+}
+
+function renderOperatingLayer(fileMap) {
+  els.operatorManual.textContent = fileMap.get("operator-manual.md") || "No operator manual found in this file set.";
+  els.queryCookbook.textContent = fileMap.get("query-cookbook.md") || "No query cookbook found in this file set.";
+
+  const commands = [...fileMap.entries()].filter(([path]) => path.startsWith("commands/") && path.endsWith(".md"));
+  const agents = [...fileMap.entries()].filter(([path]) => path.startsWith("agents/") && path.endsWith(".md"));
+
+  els.commandsList.innerHTML = commands.length
+    ? commands.map(([path, body]) => `
+      <div class="mini-card"><strong>/${escapeHtml(basename(path).replace(/\.md$/, ""))}</strong><br><span>${escapeHtml(firstLine(body))}</span></div>
+    `).join("")
+    : `<div class="mini-card"><strong>No commands</strong><br><span>Ask the LLM to return commands/*.md files when needed.</span></div>`;
+
+  els.agentsList.innerHTML = agents.length
+    ? agents.map(([path, body]) => `
+      <div class="mini-card"><strong>${escapeHtml(basename(path).replace(/\.md$/, ""))}</strong><br><span>${escapeHtml(firstLine(body))}</span></div>
+    `).join("")
+    : `<div class="mini-card"><strong>No agents</strong><br><span>Ask the LLM to return agents/*.md files when needed.</span></div>`;
+}
+
+function renderAcceptedLlmEditState() {
+  const editLog = state.currentFileMap.get(".margins/edit-log.jsonl") || "";
+  const proposals = editLog
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map(parseJsonLine)
+    .filter(Boolean);
+
+  if (proposals.length === 0) {
+    els.editList.className = "edit-list empty";
+    els.editList.textContent = "LLM files accepted. No structured edit proposals were returned.";
+    return;
+  }
+
+  els.editList.className = "edit-list";
+  els.editList.innerHTML = proposals.map((proposal) => `
+    <div class="edit-card">
+      <strong>${escapeHtml(proposal.title || proposal.operation || "Edit proposal")}</strong>
+      <span>${escapeHtml(proposal.operation || "review")} · ${escapeHtml(proposal.target || "unknown target")}</span>
+      <div>${escapeHtml(proposal.rationale || proposal.summary || "Review this proposed change before writing it locally.")}</div>
+    </div>
+  `).join("");
 }
 
 function renderWikiFiles(fileMap) {
@@ -250,6 +296,10 @@ function renderLlmReview() {
 function drawGraph(graph) {
   const width = 980;
   const height = 560;
+  if (!graph || graph.nodes.length === 0) {
+    els.graphSvg.innerHTML = `<text class="node-label" x="${width / 2}" y="${height / 2}" text-anchor="middle">No accepted graph nodes yet.</text>`;
+    return;
+  }
   const cx = width / 2;
   const cy = height / 2;
   const radius = 210;
@@ -278,6 +328,95 @@ function drawGraph(graph) {
   `).join("");
 
   els.graphSvg.innerHTML = `${edgeSvg}${nodeSvg}`;
+}
+
+function graphFromFileMap(fileMap) {
+  const nodeEntries = [...fileMap.entries()]
+    .filter(([path]) => isGraphNodePath(path))
+    .map(([path, body]) => nodeFromMarkdownFile(path, body));
+  const nodes = nodeEntries.map(({ node }) => node);
+  const bySlug = new Map();
+  const byPath = new Map();
+
+  for (const entry of nodeEntries) {
+    byPath.set(entry.path, entry.node);
+    bySlug.set(entry.slug, entry.node);
+    bySlug.set(entry.node.id, entry.node);
+    bySlug.set(slugifyLoose(entry.node.title), entry.node);
+  }
+
+  const edges = [];
+  const seen = new Set();
+  for (const { path, body, node } of nodeEntries) {
+    for (const target of extractWikiLinks(body)) {
+      const to = resolveGraphLink(target, byPath, bySlug);
+      if (!to || to.id === node.id) continue;
+      const key = `${node.id}->${to.id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      edges.push({ from: node.id, to: to.id, type: "wiki-link" });
+    }
+  }
+
+  const graph = { nodes, edges };
+  els.stats.textContent = `${fileMap.size} accepted file${fileMap.size === 1 ? "" : "s"} · ${nodes.length} reviewed nodes · ${edges.length} cited links`;
+  return graph;
+}
+
+function nodeFromMarkdownFile(path, body) {
+  const slug = basename(path).replace(/\.md$/, "");
+  const id = path.replace(/^wiki\//, "").replace(/\.md$/, "");
+  return {
+    path,
+    body,
+    slug,
+    node: {
+      id,
+      type: graphTypeFromPath(path),
+      title: markdownTitle(body) || titleFromSlug(slug)
+    }
+  };
+}
+
+function isGraphNodePath(path) {
+  return /^wiki\/(sources|concepts|entities|synthesis)\/[^/]+\.md$/.test(path) || path === "wiki/index.md";
+}
+
+function graphTypeFromPath(path) {
+  if (path.startsWith("wiki/sources/")) return "source";
+  if (path.startsWith("wiki/concepts/")) return "concept";
+  if (path.startsWith("wiki/entities/")) return "entity";
+  if (path.startsWith("wiki/synthesis/")) return "synthesis";
+  return "index";
+}
+
+function extractWikiLinks(body) {
+  const links = [];
+  const pattern = /\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]/g;
+  let match;
+  while ((match = pattern.exec(body)) !== null) {
+    links.push(match[1].trim());
+  }
+  return links;
+}
+
+function resolveGraphLink(target, byPath, bySlug) {
+  const trimmed = target.replace(/^\//, "").replace(/\.md$/, "");
+  const pathCandidates = [
+    target,
+    `${trimmed}.md`,
+    `wiki/sources/${trimmed}.md`,
+    `wiki/concepts/${trimmed}.md`,
+    `wiki/entities/${trimmed}.md`,
+    `wiki/synthesis/${trimmed}.md`
+  ];
+
+  for (const candidate of pathCandidates) {
+    const node = byPath.get(candidate);
+    if (node) return node;
+  }
+
+  return bySlug.get(slugifyLoose(trimmed)) || bySlug.get(trimmed);
 }
 
 async function readBrowserFile(file) {
@@ -432,6 +571,11 @@ Page rules:
 - Synthesis is allowed, but label it as synthesis.
 - Do not invent account balances, transaction details, dates, roles, or relationships.
 - Prefer useful connection-point summaries over generic tags.
+- Only create concept pages for durable ideas that will remain useful across future sources.
+- Only create entity pages for real people, organizations, named accounts, tools, securities, projects, or places.
+- Do not create concept/entity pages for generic labels, PDF artifacts, table headers, UI labels, or section names such as page, positions, spec, inch, flow, append, value, account, or description.
+- Treat "positions" as source content or a synthesis section unless the source names a specific position that matters.
+- Add wiki links only when the relationship is explicit and useful. Weak keyword overlap should stay unlinked.
 - Make edit proposals before changing important structure.
 
 For each source:
@@ -500,6 +644,39 @@ function wordCount(text) {
 
 function firstLine(text) {
   return text.split("\n").find((line) => line.trim() && !line.startsWith("#")) || "";
+}
+
+function basename(path) {
+  return path.split("/").pop() || path;
+}
+
+function markdownTitle(body) {
+  const match = body.match(/^#\s+(.+)$/m);
+  return match ? match[1].trim() : "";
+}
+
+function titleFromSlug(slug) {
+  return slug
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function slugifyLoose(value) {
+  return String(value)
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function parseJsonLine(line) {
+  try {
+    return JSON.parse(line);
+  } catch {
+    return null;
+  }
 }
 
 function escapeHtml(value) {
