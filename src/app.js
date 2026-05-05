@@ -36,7 +36,8 @@ const state = {
   vaultName: "",
   apiSettings: loadApiSettings(),
   apiSecret: localStorage.getItem(API_SECRET_STORAGE_KEY) || "",
-  apiQuestionSource: ""
+  apiQuestionSource: "",
+  ingestReviews: new Map()
 };
 
 const graphView = {
@@ -137,6 +138,7 @@ if (els.inlineReviewPanel) {
 els.themeToggle.checked = state.theme === "dark";
 updateThemeToggleLabel();
 hydrateApiControls();
+hydrateLocalEnvApiSecret();
 els.folderInput.addEventListener("change", handleSourceSelection);
 els.fileInput.addEventListener("change", handleSourceSelection);
 els.sourceList?.addEventListener("click", handleSourceActionClick);
@@ -237,6 +239,35 @@ function hydrateApiControls() {
   renderApiStatus();
 }
 
+async function hydrateLocalEnvApiSecret() {
+  if (state.apiSecret) return;
+  try {
+    const response = await fetch(".env", { cache: "no-store" });
+    if (!response.ok) return;
+    const env = parseDotEnv(await response.text());
+    if (!env.GEMINI_API_KEY) return;
+    state.apiSecret = env.GEMINI_API_KEY;
+    if (els.apiProvider) els.apiProvider.value = "gemini";
+    if (els.apiModel && !els.apiModel.value.trim()) {
+      els.apiModel.value = defaultModelForProvider("gemini");
+    }
+    renderApiStatus(`${env.GEMINI_API_LABEL || "Gemini API free tier"} loaded from local .env.`);
+  } catch {
+    // Local .env is optional and ignored in production.
+  }
+}
+
+function parseDotEnv(text) {
+  const env = {};
+  for (const line of String(text || "").split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) continue;
+    const [key, ...rest] = trimmed.split("=");
+    env[key.trim()] = rest.join("=").trim().replace(/^["']|["']$/g, "");
+  }
+  return env;
+}
+
 function updateThemeToggleLabel() {
   if (!els.themeToggleLabel) return;
   els.themeToggleLabel.textContent = state.theme === "dark" ? "Dark mode" : "Light mode";
@@ -333,6 +364,7 @@ async function setSourceFiles(files) {
   state.llmFiles = new Map();
   state.llmSelectedPath = null;
   state.currentMaterialQuestions = [];
+  state.ingestReviews = new Map();
   els.llmInput.value = "";
   state.llmPromptCopied = false;
   state.hasSavedCurrent = false;
@@ -865,6 +897,11 @@ function acceptLlmFiles() {
 
 async function prepareReviewForCurrentFileMap(statusText) {
   if (!state.currentFileMap) return;
+  if (state.files.length > 0) {
+    await prepareIngestReviews(statusText);
+    return;
+  }
+
   const warningsByPath = validateLlmFiles(state.currentFileMap);
   let questions = buildMaterialQuestions(state.currentFileMap, warningsByPath, state.reviewMode);
   state.apiQuestionSource = "heuristic";
@@ -889,6 +926,142 @@ async function prepareReviewForCurrentFileMap(statusText) {
     : `${statusText} No questions needed.`;
   activateTab("inbox");
   updateWorkflowState();
+}
+
+async function prepareIngestReviews(statusText) {
+  const reviewMap = new Map();
+  const allQuestions = [];
+
+  for (const file of state.files) {
+    let review = localIngestReview(file, state.currentFileMap, state.reviewMode);
+    if (state.apiSecret && file.text && state.reviewMode !== "auto") {
+      els.llmStatus.textContent = `Sending ${file.name} to the configured model with vault context...`;
+      try {
+        const apiReview = await generateApiIngestReview(file, state.currentFileMap, state.reviewMode);
+        review = mergeIngestReview(review, apiReview, "api");
+        state.apiQuestionSource = "api";
+      } catch (error) {
+        review.status = `Model review failed, using local checks: ${error.message || "unknown error"}`;
+        state.apiQuestionSource = "heuristic";
+      }
+    }
+    reviewMap.set(file.name, review);
+    for (const question of review.questions || []) allQuestions.push(question);
+    applyIngestReviewToFileMap(file, review);
+  }
+
+  state.ingestReviews = reviewMap;
+  state.currentMaterialQuestions = limitMaterialQuestions(allQuestions, state.reviewMode);
+  renderMaterialQuestions(state.currentMaterialQuestions);
+  renderWikiFiles(state.currentFileMap);
+  renderOperatingLayer(state.currentFileMap);
+  drawGraph(graphFromFileMap(state.currentFileMap));
+  renderSources();
+  els.llmStatus.textContent = state.currentMaterialQuestions.length
+    ? `${statusText} ${state.currentMaterialQuestions.length} quick check${state.currentMaterialQuestions.length === 1 ? "" : "s"} need your call.`
+    : `${statusText} No questions needed.`;
+  activateTab("inbox");
+  updateWorkflowState();
+}
+
+function localIngestReview(file, fileMap, mode) {
+  return {
+    source: "local",
+    status: needsTextExtraction(file)
+      ? "Raw source saved. Text extraction is needed before Margins can summarize it well."
+      : "Raw source saved. Local summary prepared while the model review runs.",
+    summary: needsTextExtraction(file)
+      ? "Margins saved the original file in raw_sources, but it could not extract readable text yet."
+      : sourceIngestSummary(file),
+    connections: localConnectionSuggestions(fileMap, file),
+    questions: mode === "auto" ? [] : currentIngestQuestionsForFile(file, fileMap, mode)
+  };
+}
+
+function mergeIngestReview(localReview, apiReview, source) {
+  return {
+    source,
+    status: apiReview.status || "Model reviewed the source against the current vault.",
+    summary: apiReview.summary || localReview.summary,
+    connections: apiReview.connections?.length ? apiReview.connections : localReview.connections,
+    questions: apiReview.questions?.length ? apiReview.questions : localReview.questions
+  };
+}
+
+function applyIngestReviewToFileMap(file, review) {
+  if (!state.currentFileMap || !review) return;
+  const entry = sourceNoteEntryForFile(file);
+  if (!entry) return;
+
+  let body = entry.body;
+  if (review.summary) {
+    body = replaceYamlSummary(body, review.summary);
+    body = replaceSummarySection(body, review.summary);
+  }
+  if (review.connections?.length) {
+    body = upsertConnectionsSection(body, review.connections);
+  }
+  state.currentFileMap.set(entry.path, body);
+}
+
+function sourceNoteEntryForFile(file) {
+  if (!state.currentFileMap || !file?.name) return null;
+  const rawPath = `raw_sources/${file.name}`;
+  for (const [path, body] of state.currentFileMap.entries()) {
+    if (path.startsWith("wiki/sources/") && body.includes(rawPath)) return { path, body };
+  }
+  return null;
+}
+
+function replaceYamlSummary(body, summary) {
+  const line = `summary: ${JSON.stringify(cleanSummary(summary))}`;
+  return body.replace(/^summary:\s*.*$/m, line);
+}
+
+function replaceSummarySection(body, summary) {
+  const section = `## Summary\n\n${cleanSummary(summary)}`;
+  if (/## Summary\s+[\s\S]*?(?=\n##\s|$)/.test(body)) {
+    return body.replace(/## Summary\s+[\s\S]*?(?=\n##\s|$)/, section);
+  }
+  return `${body.trim()}\n\n${section}\n`;
+}
+
+function upsertConnectionsSection(body, connections) {
+  const section = `## Connections\n\n${connections.map(formatConnectionLine).join("\n")}`;
+  if (/## Connections\s+[\s\S]*?(?=\n##\s|$)/.test(body)) {
+    return body.replace(/## Connections\s+[\s\S]*?(?=\n##\s|$)/, section);
+  }
+  return `${body.trim()}\n\n${section}\n`;
+}
+
+function formatConnectionLine(connection) {
+  const title = connection.title || titleFromSlug(basename(connection.path || "connection").replace(/\.md$/, ""));
+  const link = connection.path && connection.path.startsWith("wiki/")
+    ? `[[${basename(connection.path).replace(/\.md$/, "")}|${title}]]`
+    : title;
+  const label = connection.type === "new" ? "new page" : "existing";
+  return `- ${link} (${label}) — ${connection.reason || "Relevant to this source."}`;
+}
+
+function localConnectionSuggestions(fileMap, file) {
+  if (!fileMap?.size || !file?.text) return [];
+  const text = file.text.toLowerCase();
+  return [...fileMap.entries()]
+    .filter(([path]) => path.startsWith("wiki/") && !path.startsWith("wiki/.margins/") && path.endsWith(".md"))
+    .filter(([, body]) => !body.includes(`raw_sources/${file.name}`))
+    .map(([path, body]) => {
+      const title = markdownTitle(body) || titleFromSlug(basename(path).replace(/\.md$/, ""));
+      return {
+        path,
+        title,
+        type: "existing",
+        reason: text.includes(title.toLowerCase())
+          ? "The source directly mentions this existing note."
+          : ""
+      };
+    })
+    .filter((connection) => connection.reason)
+    .slice(0, 3);
 }
 
 async function generateApiReviewQuestions(fileMap, files) {
@@ -935,7 +1108,60 @@ async function generateApiReviewQuestions(fileMap, files) {
   return parseApiQuestions(content).slice(0, 3);
 }
 
+async function generateApiIngestReview(file, fileMap, mode) {
+  const provider = els.apiProvider?.value || providerValue(state.apiSettings.providerLabel) || "gemini";
+  const model = els.apiModel?.value.trim() || defaultModelForProvider(provider);
+  const prompt = buildApiIngestReviewPrompt(file, fileMap, mode);
+  let content = "";
+
+  if (provider === "gemini") {
+    content = await generateGeminiJsonContent(model, prompt);
+  } else if (provider === "openai" || provider === "local") {
+    content = await generateOpenAiCompatibleJsonContent(provider, model, prompt);
+  } else {
+    throw new Error("Direct browser calls are wired for Gemini and OpenAI-compatible endpoints right now.");
+  }
+
+  return parseApiIngestReview(content, file, mode);
+}
+
+async function generateOpenAiCompatibleJsonContent(provider, model, prompt) {
+  const endpoint = defaultEndpointForProvider(provider);
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${state.apiSecret}`
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0.2,
+      messages: [
+        {
+          role: "system",
+          content: "You review one uploaded source for a local-first personal wiki. Return JSON only."
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ]
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+  const json = await response.json();
+  return json.choices?.[0]?.message?.content || "";
+}
+
 async function generateGeminiReviewQuestions(model, prompt) {
+  const content = await generateGeminiJsonContent(model, `You generate concise filing review questions for a local-first personal wiki. Return JSON only.\n\n${prompt}`);
+  return parseApiQuestions(content).slice(0, 3);
+}
+
+async function generateGeminiJsonContent(model, prompt) {
   const endpoint = defaultEndpointForProvider("gemini").replace("{model}", encodeURIComponent(normalizeGeminiModel(model)));
   const response = await fetch(endpoint, {
     method: "POST",
@@ -949,7 +1175,7 @@ async function generateGeminiReviewQuestions(model, prompt) {
           role: "user",
           parts: [
             {
-              text: `You generate concise filing review questions for a local-first personal wiki. Return JSON only.\n\n${prompt}`
+              text: prompt
             }
           ]
         }
@@ -965,12 +1191,120 @@ async function generateGeminiReviewQuestions(model, prompt) {
     throw new Error(`HTTP ${response.status}`);
   }
   const json = await response.json();
-  const content = json.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("\n") || "";
-  return parseApiQuestions(content).slice(0, 3);
+  return json.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("\n") || "";
 }
 
 function normalizeGeminiModel(model) {
   return String(model || defaultModelForProvider("gemini")).replace(/^models\//, "");
+}
+
+function buildApiIngestReviewPrompt(file, fileMap, mode) {
+  const budget = questionBudgetForMode(mode);
+  return `Review this uploaded source for Margins, a local-first raw-source-to-wiki compiler.
+
+Pipeline:
+1. The raw file is already saved in raw_sources.
+2. You receive the source text, current wiki context, and guardrails.
+3. Return a short summary, useful vault connections, and ${budget} or fewer user questions.
+4. Margins will show this on the pending card before writing the wiki.
+
+Guardrails:
+- Preserve raw evidence. Never imply the raw file was changed.
+- Do not ask where to file the document. Margins handles filing.
+- Do not ask generic approval questions.
+- Ask only if the answer changes meaning, identity, priority, sensitivity, or a follow-up action.
+- Avoid acronym/initial questions unless the acronym is central.
+- Prefer yes/no or short options, and always include a default recommendation.
+- Connections should point to existing wiki paths when useful. Suggest a new page only if it would be reusable.
+- If the source is clear, return no questions.
+- Review mode is ${reviewModeLabel(mode)}. Question budget: ${budget}.
+
+Return JSON only:
+{
+  "summary": "2-4 plain-English sentences about what this source is and why it matters.",
+  "connections": [
+    {"path":"wiki/...", "title":"...", "type":"existing|new", "reason":"why this connection matters"}
+  ],
+  "questions": [
+    {"kind":"Quick check", "question":"...", "reason":"...", "recommendation":"My take: ...", "options":["Yes","No","Use default"]}
+  ]
+}
+
+Uploaded source:
+Name: ${file.name}
+Type: ${file.type}
+Words: ${wordCount(file.text || "")}
+Text:
+${excerptForQuestion(file.text || file.extractionError || "", 12000)}
+
+Current wiki context:
+${wikiContextForIngestPrompt(fileMap)}
+
+Operating guardrails:
+${operatingContextForPrompt(fileMap)}`;
+}
+
+function questionBudgetForMode(mode) {
+  return {
+    auto: 0,
+    suggested: 2,
+    strict: 3
+  }[mode] ?? 2;
+}
+
+function wikiContextForIngestPrompt(fileMap) {
+  if (!fileMap?.size) return "- No existing wiki context loaded.";
+  const entries = [...fileMap.entries()]
+    .filter(([path]) => isWikiPagePath(path))
+    .filter(([path]) => !path.startsWith("wiki/.margins/"))
+    .slice(0, 40)
+    .map(([path, body]) => {
+      const title = markdownTitle(body) || titleFromSlug(basename(path).replace(/\.md$/, ""));
+      const summary = extractSourceSummary(body) || excerptForQuestion(body, 220);
+      return `- ${path}: ${title}${summary ? ` — ${summary}` : ""}`;
+    });
+  return entries.length ? entries.join("\n") : "- No existing wiki context loaded.";
+}
+
+function operatingContextForPrompt(fileMap) {
+  if (!fileMap?.size) return "- Local-first. Proposal-first. No silent write-back.";
+  const parts = [
+    fileMap.get("operator-manual.md"),
+    fileMap.get("query-cookbook.md")
+  ].filter(Boolean).map((body) => excerptForQuestion(body, 900));
+  return parts.length ? parts.join("\n\n") : "- Local-first. Proposal-first. No silent write-back.";
+}
+
+function parseApiIngestReview(content, file, mode) {
+  const parsed = parseJsonObject(content) || {};
+  const connections = Array.isArray(parsed.connections) ? parsed.connections : [];
+  const questions = Array.isArray(parsed.questions) ? parsed.questions : [];
+  return {
+    source: "api",
+    status: "Model reviewed the source against the current vault.",
+    summary: cleanSummary(parsed.summary || ""),
+    connections: connections
+      .map((connection) => ({
+        path: String(connection.path || "").trim(),
+        title: String(connection.title || "").trim(),
+        type: /new/i.test(connection.type || "") ? "new" : "existing",
+        reason: cleanSummary(connection.reason || "")
+      }))
+      .filter((connection) => connection.title || connection.path || connection.reason)
+      .slice(0, 5),
+    questions: questions
+      .map((question) => reviewQuestion(
+        /careful|sensitive|risk|warning/i.test(question.kind || "") ? "warn" : "suggest",
+        question.kind || "Quick check",
+        `raw_sources/${file.name}`,
+        question.question || "",
+        question.reason || "The model flagged this as useful before filing.",
+        question.recommendation || "My take: use the default unless it looks wrong.",
+        Array.isArray(question.options) && question.options.length ? question.options.slice(0, 4) : ["Yes", "No", "Use default"]
+      ))
+      .filter((question) => question.question)
+      .slice(0, questionBudgetForMode(mode))
+  };
 }
 
 function buildApiQuestionPrompt(fileMap, files) {
@@ -1209,11 +1543,12 @@ function renderSources() {
 function renderSourceIngestRun(file) {
   if (!state.processingInbox && !(state.pendingSave && state.currentFileMap)) return "";
   const isReady = state.pendingSave && state.currentFileMap && !state.processingInbox;
+  const review = state.ingestReviews.get(file.name);
   return `
     <div class="source-ingest-run">
       <div class="run-steps">
         ${runStep("Raw source saved", isReady || rawSourceAlreadySaved(file), state.processingInbox && !rawSourceAlreadySaved(file))}
-        ${runStep(isReady ? "Summary ready" : "Reading source", isReady, state.processingInbox && rawSourceAlreadySaved(file))}
+        ${runStep(isReady ? modelReviewStepLabel(review) : pendingReviewStepLabel(file), isReady, state.processingInbox && rawSourceAlreadySaved(file))}
         ${runStep(isReady ? "Questions ready" : "Checking what to ask", isReady, false)}
       </div>
       ${isReady && state.reviewMode !== "auto" ? `
@@ -1221,12 +1556,33 @@ function renderSourceIngestRun(file) {
           <span>Summary</span>
           <p>${escapeHtml(sourceIngestSummary(file))}</p>
         </div>
+        ${renderSourceConnections(file)}
       ` : ""}
-      ${isReady ? renderSourceRunQuestions() : `
-        <div class="run-note">Margins is reading this source and preparing the filing decision.</div>
+      ${isReady ? renderSourceRunQuestions(file) : `
+        <div class="run-note">${escapeHtml(pendingReviewNote(file))}</div>
       `}
     </div>
   `;
+}
+
+function pendingReviewStepLabel(file) {
+  return state.apiSecret && file.text ? "Sending to model" : "Preparing review";
+}
+
+function pendingReviewNote(file) {
+  if (state.apiSecret && file.text) {
+    return "Margins is saving the raw source, sending readable text to the model with vault context, and preparing the card.";
+  }
+  if (needsTextExtraction(file)) {
+    return "Margins is saving the raw source and checking whether readable text can be extracted.";
+  }
+  return "Margins is saving the raw source and preparing a local review card.";
+}
+
+function modelReviewStepLabel(review) {
+  if (review?.source === "api") return "Model reviewed";
+  if (review?.source === "local") return "Local review ready";
+  return "Summary ready";
 }
 
 function runStep(label, done, active) {
@@ -1238,8 +1594,9 @@ function runStep(label, done, active) {
   `;
 }
 
-function renderSourceRunQuestions() {
-  const questions = state.currentMaterialQuestions || [];
+function renderSourceRunQuestions(file) {
+  const review = state.ingestReviews.get(file.name);
+  const questions = review?.questions || currentIngestQuestionsForFile(file, state.currentFileMap, state.reviewMode);
   if (questions.length === 0) {
     return `<div class="run-note">No questions needed. Approve when you're ready.</div>`;
   }
@@ -1261,6 +1618,22 @@ function renderSourceRunQuestions() {
   `;
 }
 
+function renderSourceConnections(file) {
+  const connections = state.ingestReviews.get(file.name)?.connections || [];
+  if (connections.length === 0) return "";
+  return `
+    <div class="run-connections">
+      <span>Connections</span>
+      ${connections.map((connection) => `
+        <div>
+          <strong>${escapeHtml(connection.title || connection.path || "Suggested connection")}</strong>
+          <p>${escapeHtml(connection.reason || connection.path || "Useful context for this source.")}</p>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
 function questionOptionsWithSkip(question) {
   const options = question.options?.length ? question.options : ["Yes", "No", "Use default"];
   return options.some((option) => String(option).toLowerCase() === "skip")
@@ -1269,6 +1642,8 @@ function questionOptionsWithSkip(question) {
 }
 
 function sourceIngestSummary(file) {
+  const review = state.ingestReviews.get(file.name);
+  if (review?.summary) return clampSentence(review.summary, 420);
   const sourceNote = sourceNoteForFile(file);
   const summary = extractSourceSummary(sourceNote) || excerptForQuestion(file.text || sourceStatus(file), 320) || "Margins preserved the raw source and prepared it for filing.";
   return clampSentence(summary, 340);
@@ -1281,12 +1656,7 @@ function clampSentence(value, limit) {
 }
 
 function sourceNoteForFile(file) {
-  if (!state.currentFileMap || !file?.name) return "";
-  const rawPath = `raw_sources/${file.name}`;
-  for (const [path, body] of state.currentFileMap.entries()) {
-    if (path.startsWith("wiki/sources/") && body.includes(rawPath)) return body;
-  }
-  return "";
+  return sourceNoteEntryForFile(file)?.body || "";
 }
 
 function extractSourceSummary(body) {
@@ -1349,7 +1719,7 @@ function ingestionStats(fileMap) {
   const pendingFiles = state.files.length;
   const ingestedFiles = state.vaultFiles.length;
   const totalWords = sources.reduce((sum, file) => sum + wordCount(file.text || ""), 0);
-  const needsExtraction = sources.filter((file) => file.type === "pdf" && !file.text).length;
+  const needsExtraction = sources.filter(needsTextExtraction).length;
   const wikiFiles = [...fileMap.keys()].filter((path) => path.startsWith("wiki/") && !path.startsWith("wiki/.margins/")).length;
   const graph = fileMap.size
     ? (fileMap === state.currentFileMap && graphView.nodes.length ? graphView : graphFromFileMap(fileMap))
@@ -2066,6 +2436,10 @@ function buildMaterialQuestions(fileMap, warningsByPath, mode) {
     return buildAutoFileQuestions(fileMap, warningsByPath);
   }
 
+  if (state.files.length > 0) {
+    return limitMaterialQuestions(state.files.flatMap((file) => currentIngestQuestionsForFile(file, fileMap, mode)), mode);
+  }
+
   const questions = [
     ...riskQuestions(fileMap),
     ...synthesisQuestions(fileMap)
@@ -2081,6 +2455,36 @@ function buildMaterialQuestions(fileMap, warningsByPath, mode) {
 function limitMaterialQuestions(questions, mode) {
   const limit = 3;
   return dedupeQuestions(questions).slice(0, limit);
+}
+
+function currentIngestQuestionsForFile(file, fileMap, mode) {
+  if (mode === "auto") return [];
+
+  if (needsTextExtraction(file)) {
+    return [reviewQuestion(
+      "warn",
+      "Needs extraction",
+      `raw_sources/${file.name}`,
+      `I could not extract readable text from ${file.name}. Save the raw source only for now?`,
+      "Margins preserved the original file, but a useful wiki note needs readable text.",
+      "My take: save the raw source, then retry with a PDF/text export or pasted transcript.",
+      ["Save raw only", "Skip", "Use default"]
+    )];
+  }
+
+  const currentSourceMap = currentSourceNoteMap(fileMap, file);
+  const questions = riskQuestions(currentSourceMap).slice(0, 1);
+  if (mode === "strict" && questions.length === 0) return [];
+  return questions;
+}
+
+function currentSourceNoteMap(fileMap, file = null) {
+  if (!fileMap || (state.files.length === 0 && !file)) return fileMap || new Map();
+  const rawPaths = new Set(file ? [`raw_sources/${file.name}`] : state.files.map((source) => `raw_sources/${source.name}`));
+  const entries = [...fileMap.entries()].filter(([path, body]) => (
+    path.startsWith("wiki/sources/") && [...rawPaths].some((rawPath) => body.includes(rawPath))
+  ));
+  return new Map(entries);
 }
 
 function buildAutoFileQuestions(fileMap, warningsByPath) {
@@ -2209,7 +2613,7 @@ function reviewQuestion(severity, kind, path, question, reason, recommendation, 
 function dedupeQuestions(questions) {
   const seen = new Set();
   return questions.filter((question) => {
-    const key = `${question.kind}:${question.path}:${question.question}`;
+    const key = `${question.kind}:${question.question}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -2784,16 +3188,70 @@ function resolveGraphLink(target, byPath, bySlug) {
 
 async function readBrowserFile(file) {
   const isPdf = /\.pdf$/i.test(file.name);
-  return {
+  const isDocx = /\.docx$/i.test(file.name);
+  const base = {
     name: file.webkitRelativePath || file.name,
-    text: isPdf ? "" : await file.text(),
     browserFile: file,
     size: file.size,
     lastModified: file.lastModified,
-    type: isPdf ? "pdf" : "text",
-    extractionStatus: isPdf ? "needed" : "ready",
     extractionError: ""
   };
+
+  if (isPdf) {
+    return {
+      ...base,
+      text: "",
+      type: "pdf",
+      extractionStatus: "needed"
+    };
+  }
+
+  if (isDocx) {
+    try {
+      const text = await extractDocxText(file);
+      return {
+        ...base,
+        text,
+        type: "docx",
+        extractionStatus: text ? "extracted" : "failed",
+        extractionError: text ? "" : "No readable text found in DOCX."
+      };
+    } catch (error) {
+      return {
+        ...base,
+        text: "",
+        type: "docx",
+        extractionStatus: "failed",
+        extractionError: error.message || "DOCX extraction failed."
+      };
+    }
+  }
+
+  return {
+    ...base,
+    text: await file.text(),
+    type: "text",
+    extractionStatus: "ready"
+  };
+}
+
+async function extractDocxText(file) {
+  const mammoth = globalThis.mammoth;
+  if (!mammoth?.extractRawText) {
+    throw new Error("DOCX extraction library did not load.");
+  }
+  const arrayBuffer = await file.arrayBuffer();
+  const result = await mammoth.extractRawText({ arrayBuffer });
+  return cleanExtractedText(result.value || "");
+}
+
+function cleanExtractedText(value) {
+  return String(value || "")
+    .replace(/\u0000/g, " ")
+    .replace(/\r/g, "\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 async function extractPdfSources() {
@@ -2879,7 +3337,7 @@ function sourceClass(file) {
   const classes = [];
   if (state.processingInbox) classes.push("processing");
   else if (state.pendingSave && state.currentFileMap) classes.push("ready-to-write");
-  if (!file.text && file.type === "pdf") classes.push("needs-extraction");
+  if (needsTextExtraction(file)) classes.push("needs-extraction");
   return classes.join(" ");
 }
 
@@ -2889,7 +3347,7 @@ function sourceStatus(file) {
     : file.sourceScope === "pending" ? "new · " : file.sourceScope === "vault" ? "in vault · " : "";
   const size = file.size ? `${formatFileSize(file.size)} · ` : "";
   if (file.text) {
-    const suffix = file.type === "pdf" ? " extracted" : "";
+    const suffix = file.type === "pdf" || file.type === "docx" ? " extracted" : "";
     return `${prefix}${size}${wordCount(file.text)} words${suffix}`;
   }
   if (file.type === "pdf" && file.extractionStatus === "extracting") return `${prefix}extracting text...`;
@@ -2897,7 +3355,15 @@ function sourceStatus(file) {
     return `${prefix}extraction failed: ${file.extractionError || "needs text extraction or LLM attachment"}`;
   }
   if (file.type === "pdf") return `${prefix}needs text extraction or LLM attachment`;
+  if (file.type === "docx" && file.extractionStatus === "failed") {
+    return `${prefix}DOCX text extraction failed: ${file.extractionError || "needs conversion"}`;
+  }
+  if (file.type === "docx") return `${prefix}needs DOCX text extraction`;
   return `${prefix}0 words`;
+}
+
+function needsTextExtraction(file) {
+  return (file.type === "pdf" || file.type === "docx") && !file.text;
 }
 
 function rawSourceAlreadySaved(file) {
@@ -2907,6 +3373,7 @@ function rawSourceAlreadySaved(file) {
 
 function sourceTypeLabel(file) {
   if (file.type === "pdf") return "PDF";
+  if (file.type === "docx") return "DOCX";
   const ext = basename(file.name).split(".").pop() || "TXT";
   return ext.length <= 4 ? ext.toUpperCase() : "FILE";
 }

@@ -792,7 +792,7 @@ function excerpt(text, max) {
 }
 
 function isProbablyUnsupported(name, text) {
-  return /\.pdf$/i.test(name) && (!text || text.length < 20);
+  return /\.(pdf|docx)$/i.test(name) && (!text || text.length < 20);
 }
 
 export function slugify(value) {

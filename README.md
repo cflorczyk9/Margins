@@ -33,7 +33,7 @@ The default UI is an inbox-style local vault flow:
 
 1. Choose a vault folder.
 2. Drop or upload documents into the inbox.
-3. Click `Process` on the pending document. Margins immediately saves the raw source, prepares a short summary, and asks at most three optional questions.
+3. Click `Process` on the pending document. Margins immediately saves the raw source, sends readable text to the configured model with wiki context and guardrails, then prepares a short summary, connections, and at most three optional questions.
 4. Answer or skip the quick questions.
 5. Click `Approve` on the document to save the generated wiki, graph, and operating layer.
 
