@@ -118,11 +118,10 @@ async function createVault() {
   }
 
   try {
-    const parent = await window.showDirectoryPicker({ mode: "readwrite" });
-    const handle = await parent.getDirectoryHandle("Margins Vault", { create: true });
+    const handle = await window.showDirectoryPicker({ mode: "readwrite" });
     await scaffoldVault(handle);
-    setActiveVault(handle, "Margins Vault");
-    els.stats.textContent = "Created vault: Margins Vault";
+    setActiveVault(handle, handle.name);
+    els.stats.textContent = `Created vault structure in: ${handle.name}`;
     return handle;
   } catch (error) {
     if (error.name !== "AbortError") {
