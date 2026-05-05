@@ -31,6 +31,7 @@ const els = {
   stats: document.getElementById("stats"),
   llmInput: document.getElementById("llm-input"),
   parseLlmBtn: document.getElementById("parse-llm-btn"),
+  repairLlmBtn: document.getElementById("repair-llm-btn"),
   acceptLlmBtn: document.getElementById("accept-llm-btn"),
   llmStatus: document.getElementById("llm-status"),
   llmFileList: document.getElementById("llm-file-list"),
@@ -115,6 +116,13 @@ document.querySelectorAll("[data-check-id]").forEach((checkbox) => {
 els.parseLlmBtn.addEventListener("click", () => {
   state.llmFiles = parseLlmFiles(els.llmInput.value);
   renderLlmReview();
+});
+
+els.repairLlmBtn.addEventListener("click", async () => {
+  if (state.llmFiles.size === 0) return;
+  await navigator.clipboard.writeText(buildLlmRepairPrompt(state.llmFiles));
+  els.repairLlmBtn.textContent = "Copied";
+  setTimeout(() => { els.repairLlmBtn.textContent = "Copy repair prompt"; }, 1100);
 });
 
 els.acceptLlmBtn.addEventListener("click", () => {
@@ -262,6 +270,7 @@ function renderLlmReview() {
   const warningsByPath = validateLlmFiles(state.llmFiles);
   const warningCount = [...warningsByPath.values()].reduce((sum, warnings) => sum + warnings.length, 0);
   els.acceptLlmBtn.disabled = entries.length === 0;
+  els.repairLlmBtn.disabled = entries.length === 0 || warningCount === 0;
   els.llmStatus.textContent = entries.length
     ? `${entries.length} file${entries.length === 1 ? "" : "s"} parsed · ${warningCount} review warning${warningCount === 1 ? "" : "s"}`
     : "No files found. Paste output that uses ```margins-file path=\"...\" fenced blocks.";
@@ -271,6 +280,7 @@ function renderLlmReview() {
     els.llmFileList.textContent = "No parsed files.";
     els.llmPreviewTitle.textContent = "No LLM file selected";
     els.llmPreviewBody.textContent = "Paste model output, then click Parse LLM files.";
+    els.repairLlmBtn.disabled = true;
     return;
   }
 
@@ -603,6 +613,10 @@ function buildLlmIngestPrompt(files) {
 Goal:
 Turn raw sources into a useful wiki, not a chat transcript and not a generic file organizer. Preserve raw sources as evidence. Create source pages first, then only create durable concept/entity/synthesis pages when the source material actually supports them.
 
+Use this operating context as law:
+
+${wikiSchemaPack()}
+
 The model behavior should match this operating philosophy:
 - The wiki is the user's external memory. Correct recall matters more than producing many nodes.
 - Source pages are faithful direct reads. Synthesis is allowed only when labeled.
@@ -694,6 +708,120 @@ Extracted text sources:
 ${sourceBlocks}`;
 }
 
+function wikiSchemaPack() {
+  return `## Margins Wiki Schema Pack
+
+Architecture:
+- raw_sources/ stores immutable evidence.
+- wiki/ stores LLM-operable Markdown: source pages, concept pages, entity pages, synthesis pages, and index pages.
+- operator-manual.md, query-cookbook.md, commands/, agents/, and .margins/ tell future models how to operate the wiki.
+
+Required frontmatter for every wiki/*.md file:
+---
+type: source | concept | entity | synthesis | index
+bucket: sources | concepts | entities | synthesis | index
+summary: One sentence direct-read summary.
+tags: [source]
+created: YYYY-MM-DD
+updated: YYYY-MM-DD
+voice: claude-draft
+---
+
+Citation rules:
+- Use durable wiki/file citations only.
+- Good: "Ending value was $40,053.97 (source file: coleman-brokerage-2026-03.pdf, Account Summary)."
+- Good: "See [[source-coleman-brokerage-2026-03]]."
+- Bad: ":contentReference[oaicite:10]{index=10}", hidden attachment ids, turn ids, or any citation that disappears outside the chat.
+
+Good source page shape:
+---
+type: source
+bucket: sources
+summary: Demo brokerage statement for Sarah Coleman covering March 2026 account values, allocation, holdings, and withdrawals.
+tags: [source, statement, demo]
+created: YYYY-MM-DD
+updated: YYYY-MM-DD
+event_date: 2026-03-31
+voice: claude-draft
+---
+
+# Source: Coleman Brokerage Statement, March 2026
+
+Raw file: coleman-brokerage-2026-03.pdf
+
+## Summary
+Direct-read summary with durable citations to the raw file or source page.
+
+## Context
+- Link durable promoted pages when supported: [[demo-financial-statements]]
+
+## Concrete Facts
+- Fact with raw file / section citation.
+
+## Related Pages
+- [[demo-financial-statements]] -- why this page connects
+
+## Mentioned but missing
+- Candidate -- why it was not promoted
+
+## Inferences refused
+- Tempting unsupported claim -- why it stayed out
+
+Good promoted page rule:
+- A concept/entity/synthesis page must link back to supporting sources with [[source-slug]].
+- Do not promote demo-only names unless the name itself will help future retrieval.
+
+Good ingest report shape:
+# Ingest Report
+
+## Files Created
+## Links Made
+## Inferences Refused
+## Mentioned but Missing
+## Needs Review
+
+Self-check before returning:
+1. Every wiki/*.md file has YAML frontmatter.
+2. No ChatGPT-only citation artifacts remain.
+3. Every source page has Mentioned but missing and Inferences refused.
+4. Every promoted page links back to a source page.
+5. Source pages link to promoted pages where supported.
+6. Fictional/demo-only names are not promoted unless useful durable entities.`;
+}
+
+function buildLlmRepairPrompt(fileMap) {
+  const warningsByPath = validateLlmFiles(fileMap);
+  const groupedWarnings = [...warningsByPath.entries()]
+    .filter(([, warnings]) => warnings.length > 0)
+    .map(([path, warnings]) => `## ${path}\n${warnings.map((warning) => `- ${warning}`).join("\n")}`)
+    .join("\n\n") || "No warnings.";
+
+  return `Repair this Margins wiki output.
+
+Use this operating context as law:
+
+${wikiSchemaPack()}
+
+Your task:
+1. Regenerate the complete file set, not a patch.
+2. Keep the exact \`\`\`margins-file path="..."\`\`\` fenced block format.
+3. Fix every warning listed below.
+4. Remove all :contentReference, oaicite, hidden attachment ids, and turn references.
+5. Add YAML frontmatter to every wiki/*.md file.
+6. Use durable citations only: source page links, raw filenames, and plain section names.
+7. Add source-page backlinks to promoted pages where supported.
+8. Demote fictional/demo-only entity pages into Mentioned but missing or Needs Review unless they are useful durable entities.
+9. Preserve good source facts and refused inferences.
+
+Review warnings:
+
+${groupedWarnings}
+
+Current output to repair:
+
+${serializeLlmFiles(fileMap)}`;
+}
+
 function parseLlmFiles(value) {
   const files = new Map();
   const pattern = /```margins-file\s+path="([^"]+)"\s*\n([\s\S]*?)```/g;
@@ -706,6 +834,12 @@ function parseLlmFiles(value) {
   }
 
   return files;
+}
+
+function serializeLlmFiles(fileMap) {
+  return [...fileMap.entries()]
+    .map(([path, body]) => `\`\`\`margins-file path="${path}"\n${body}\n\`\`\``)
+    .join("\n\n");
 }
 
 function activateTab(view) {

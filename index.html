@@ -74,7 +74,7 @@
             <h3>Phase 3 goal</h3>
             <label class="check-row">
               <input type="checkbox" data-check-id="phase3-goal-prompt">
-              <span><strong>LLM prompt is structured.</strong> Copy the prompt and the model knows exactly what file format to return.</span>
+              <span><strong>LLM gets the wiki schema.</strong> Copy the prompt and the model receives frontmatter rules, examples, and operating behavior.</span>
             </label>
             <label class="check-row">
               <input type="checkbox" data-check-id="phase3-goal-paste">
@@ -85,8 +85,8 @@
               <span><strong>Review before accepting.</strong> Preview source, concept, entity, and synthesis pages before using them as the current wiki.</span>
             </label>
             <label class="check-row">
-              <input type="checkbox" data-check-id="phase3-goal-export">
-              <span><strong>Export reviewed files.</strong> Accepted LLM wiki files can be exported as JSON for now.</span>
+              <input type="checkbox" data-check-id="phase3-goal-repair">
+              <span><strong>Warnings become a repair prompt.</strong> Margins turns review issues into a follow-up prompt before accepting.</span>
             </label>
           </article>
 
@@ -98,7 +98,7 @@
             </label>
             <label class="check-row">
               <input type="checkbox" data-check-id="phase3-test-copy">
-              <span><strong>2. Copy LLM ingest prompt.</strong> Expected: prompt includes extracted source text and asks for fenced file blocks.</span>
+              <span><strong>2. Copy LLM ingest prompt.</strong> Expected: prompt includes schema, examples, source text, and fenced file block rules.</span>
             </label>
             <label class="check-row">
               <input type="checkbox" data-check-id="phase3-test-model">
@@ -109,8 +109,12 @@
               <span><strong>4. Paste result into LLM Review.</strong> Expected: Margins parses file cards that you can inspect.</span>
             </label>
             <label class="check-row">
+              <input type="checkbox" data-check-id="phase3-test-repair">
+              <span><strong>5. Copy repair prompt if warnings appear.</strong> Expected: the model regenerates cleaner files and warning count drops.</span>
+            </label>
+            <label class="check-row">
               <input type="checkbox" data-check-id="phase3-test-accept">
-              <span><strong>5. Accept reviewed files.</strong> Expected: the Wiki tab shows the LLM-generated wiki instead of local scaffolding.</span>
+              <span><strong>6. Accept reviewed files.</strong> Expected: the Wiki tab shows the cleaned LLM-generated wiki instead of local scaffolding.</span>
             </label>
           </article>
 
@@ -139,6 +143,7 @@
             <textarea id="llm-input" class="llm-input" spellcheck="false" placeholder="Paste Claude/ChatGPT output here. Expected format: fenced blocks starting with ```margins-file path=&quot;wiki/sources/source-example.md&quot;."></textarea>
             <div class="button-row">
               <button id="parse-llm-btn">Parse LLM files</button>
+              <button id="repair-llm-btn" disabled>Copy repair prompt</button>
               <button id="accept-llm-btn" class="primary" disabled>Accept as current wiki</button>
             </div>
             <div id="llm-status" class="status-line">No LLM output parsed yet.</div>
