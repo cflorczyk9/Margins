@@ -57,11 +57,12 @@
         <summary>Advanced</summary>
         <div class="section-kicker">API</div>
         <select id="api-provider" class="select-control" aria-label="API provider">
-          <option value="openai" selected>OpenAI</option>
+          <option value="gemini" selected>Gemini</option>
+          <option value="openai">OpenAI</option>
           <option value="anthropic">Anthropic</option>
           <option value="local">Local model</option>
         </select>
-        <input id="api-model" class="text-control" type="text" value="gpt-5" aria-label="API model">
+        <input id="api-model" class="text-control" type="text" value="gemini-2.5-flash" aria-label="API model">
         <input id="api-key" class="text-control" type="password" placeholder="API key" aria-label="API key">
         <div class="rail-actions two">
           <button id="save-api-key-btn">Save key</button>

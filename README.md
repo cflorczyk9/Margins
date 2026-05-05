@@ -33,18 +33,18 @@ The default UI is an inbox-style local vault flow:
 
 1. Choose a vault folder.
 2. Drop or upload documents into the inbox.
-3. Click `Save and organize`.
-4. Answer quick filing questions or add freeform notes.
-5. Click `Write local vault` to save the raw sources, generated wiki, graph, and operating layer.
+3. Click `Process` on the pending document. Margins immediately saves the raw source, prepares a short summary, and asks at most three optional questions.
+4. Answer or skip the quick questions.
+5. Click `Approve` on the document to save the generated wiki, graph, and operating layer.
 
 The left rail keeps the local vault visible and remembers the last selected vault where the browser allows it. The main app tabs are Inbox, Vault, and Graph. Review questions appear inline inside the inbox when needed. There is intentionally no Margins-owned chat tab.
 
-Until API mode exists, the language-model step is still copy/paste: Margins copies the ingest prompt, you paste it into Claude/ChatGPT, then paste the returned `margins-file` blocks back into Margins. Advanced controls are available under `Advanced tools`.
+Gemini can be used from the Advanced controls for model-generated filing questions with a local browser key. If the direct API call fails or no key is configured, Margins falls back to local review rules. The full language-model compile path still supports copy/paste: Margins copies the ingest prompt, you paste it into Claude/ChatGPT, then paste returned `margins-file` blocks back into Margins.
 
 Margins V1 is local-first. Public API directories include some ML and extraction APIs, but there is not a clearly suitable no-secret LLM compiler endpoint for this product contract. The current posture is therefore:
 
 - Local compile requires no API key, paid call, hosted storage, or Margins-owned account.
-- LLM compile/review is a manual handoff to a chat product the user already controls.
+- LLM compile/review can use either a BYO-key question pass or a manual handoff to a chat product the user already controls.
 - Future provider integrations should be optional BYO key/provider flows, not a requirement for using the vault compiler.
 
 The browser app has two compile paths:
@@ -55,8 +55,8 @@ The browser app has two compile paths:
 - `LLM Review` parses Claude/ChatGPT output returned as `margins-file` fenced blocks and lets you preview it before accepting it as the current wiki.
 - `Create vault` scaffolds the selected folder with the expected vault structure. `Open vault` selects an existing local vault and loads its existing wiki files back into the app. `Save changes` writes the accepted wiki plus original raw sources directly into the selected vault using the browser File System Access API.
 - Incremental ingest keeps the loaded vault as context, sends only the new source batch to the language model, and merges returned `margins-file` blocks into the existing wiki.
-- `Review Mode` controls how many material judgment questions Margins asks: Auto-file, Suggested review, or Strict review. You can answer those questions in plain English and copy a review response prompt back to the language model for revised files.
-- Temporary API settings are tucked under developer controls and are local-only browser settings used for model-generated filing questions. They should be hidden in production. If a direct browser API call fails, Margins falls back to local review rules.
+- `Review Mode` controls how much interruption Margins allows: Auto-file skips the summary, Suggested review shows the source summary and asks only useful questions, and Strict review keeps the same three-question cap.
+- Temporary API settings are tucked under developer controls and are local-only browser settings used for model-generated filing questions. Gemini is the default local provider. These controls should be hidden in production.
 
 ## Compile the sample vault
 

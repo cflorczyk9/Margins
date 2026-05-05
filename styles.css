@@ -1604,8 +1604,88 @@ button,
 
 .source-item.processing,
 .source-item.ready-to-write {
+  border-color: color-mix(in srgb, var(--accent) 24%, var(--line));
+  background: var(--paper);
+}
+
+.source-ingest-run {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 12px;
+  padding: 12px 0 2px;
+  border-top: 1px solid var(--line);
+}
+
+.run-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.run-step {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  color: var(--muted);
+}
+
+.run-step > span {
+  width: 9px;
+  height: 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  background: var(--paper);
+}
+
+.run-step.done > span {
+  border-color: var(--accent);
+  background: var(--accent);
+  box-shadow: none;
+}
+
+.run-step.active > span {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 22%, var(--paper));
+}
+
+.run-step strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.run-summary,
+.run-question {
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--paper) 86%, var(--paper-soft));
+  padding: 12px 14px;
+}
+
+.run-summary span,
+.run-question > span {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 760;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.run-summary p,
+.run-question p,
+.run-note {
+  margin: 5px 0 0;
+  color: color-mix(in srgb, var(--ink) 82%, var(--muted));
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.run-question.answered {
   border-color: color-mix(in srgb, var(--accent) 36%, var(--line));
-  background: color-mix(in srgb, var(--accent-soft) 20%, var(--paper));
+}
+
+.run-conversation {
+  display: grid;
+  gap: 10px;
 }
 
 .inline-review-panel {

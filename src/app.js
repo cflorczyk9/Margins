@@ -231,7 +231,7 @@ async function restoreRememberedVault() {
 function hydrateApiControls() {
   if (!els.apiProvider) return;
   const settings = state.apiSettings;
-  els.apiProvider.value = providerValue(settings.providerLabel) || "openai";
+  els.apiProvider.value = providerValue(settings.providerLabel) || "gemini";
   els.apiModel.value = settings.model || defaultModelForProvider(els.apiProvider.value);
   els.apiKey.value = "";
   renderApiStatus();
@@ -276,7 +276,7 @@ function renderApiStatus(message = "") {
   if (!els.apiKeyStatus) return;
   const secret = state.apiSecret;
   const settings = state.apiSettings;
-  const provider = providerLabel(els.apiProvider?.value || providerValue(settings.providerLabel) || "openai");
+  const provider = providerLabel(els.apiProvider?.value || providerValue(settings.providerLabel) || "gemini");
   const model = els.apiModel?.value || settings.model || defaultModelForProvider(providerValue(settings.providerLabel));
   els.apiKeyStatus.textContent = message || (secret || settings.hasApiKey
     ? `${provider} · ${model} · ${maskSecret(secret) || settings.maskedApiKey}`
@@ -285,6 +285,7 @@ function renderApiStatus(message = "") {
 
 function providerValue(label) {
   const value = String(label || "").toLowerCase();
+  if (value.includes("gemini") || value.includes("google")) return "gemini";
   if (value.includes("anthropic")) return "anthropic";
   if (value.includes("local")) return "local";
   if (value.includes("openai")) return "openai";
@@ -293,26 +294,29 @@ function providerValue(label) {
 
 function providerLabel(value) {
   return {
+    gemini: "Gemini",
     openai: "OpenAI",
     anthropic: "Anthropic",
     local: "Local model"
-  }[value] || "OpenAI";
+  }[value] || "Gemini";
 }
 
 function defaultModelForProvider(provider) {
   return {
+    gemini: "gemini-2.5-flash",
     openai: "gpt-5-mini",
     anthropic: "claude-3-5-haiku-latest",
     local: "local-filing-helper"
-  }[provider] || "gpt-5-mini";
+  }[provider] || "gemini-2.5-flash";
 }
 
 function defaultEndpointForProvider(provider) {
   return {
+    gemini: "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
     openai: "https://api.openai.com/v1/chat/completions",
     anthropic: "https://api.anthropic.com/v1/messages",
     local: "http://localhost:11434/v1/chat/completions"
-  }[provider] || "https://api.openai.com/v1/chat/completions";
+  }[provider] || "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent";
 }
 
 async function setSourceFiles(files) {
@@ -583,6 +587,17 @@ async function handleSaveAndOrganize() {
 }
 
 async function handleSourceActionClick(event) {
+  const answerButton = event.target.closest("[data-run-answer]");
+  if (answerButton) {
+    const card = answerButton.closest(".run-question");
+    appendReviewAnswer(answerButton.dataset.question, answerButton.dataset.answer);
+    card?.classList.add("answered");
+    card?.querySelectorAll("[data-run-answer]").forEach((item) => {
+      item.classList.toggle("selected", item === answerButton);
+    });
+    return;
+  }
+
   const button = event.target.closest("[data-source-action]");
   if (!button || state.processingInbox) return;
   await processPendingSource();
@@ -611,6 +626,8 @@ async function prepareInboxSave() {
     if (!reconnected && !await openVault()) return;
   }
 
+  await savePendingRawSourcesImmediately();
+
   if (state.files.some((file) => file.type === "pdf" && file.extractionStatus === "needed")) {
     await extractPdfSources();
   }
@@ -630,7 +647,16 @@ async function prepareInboxSave() {
   els.exportBtn.disabled = false;
   updateSaveButtonState();
   els.copyBtn.disabled = false;
-  await prepareReviewForCurrentFileMap("Margins reviewed the queue. Answer any quick checks, then write the local vault.");
+  await prepareReviewForCurrentFileMap("Margins prepared this document. Answer any quick checks, then approve it.");
+}
+
+async function savePendingRawSourcesImmediately() {
+  if (!state.vaultHandle || state.files.length === 0) return 0;
+  const pendingRaw = state.files.map((file) => ({ ...file, sourceScope: "vault" }));
+  const written = await writeRawSources(state.vaultHandle, pendingRaw);
+  state.vaultFiles = mergeSourceFiles(state.vaultFiles, pendingRaw);
+  renderVaultTree(state.currentFileMap);
+  return written;
 }
 
 async function saveCurrentVault() {
@@ -866,13 +892,19 @@ async function prepareReviewForCurrentFileMap(statusText) {
 }
 
 async function generateApiReviewQuestions(fileMap, files) {
-  const provider = els.apiProvider?.value || providerValue(state.apiSettings.providerLabel) || "openai";
+  const provider = els.apiProvider?.value || providerValue(state.apiSettings.providerLabel) || "gemini";
+  const model = els.apiModel?.value.trim() || defaultModelForProvider(provider);
+  const prompt = buildApiQuestionPrompt(fileMap, files);
+
+  if (provider === "gemini") {
+    return generateGeminiReviewQuestions(model, prompt);
+  }
+
   if (provider !== "openai" && provider !== "local") {
-    throw new Error("Direct browser calls are only wired for OpenAI-compatible endpoints right now.");
+    throw new Error("Direct browser calls are wired for Gemini and OpenAI-compatible endpoints right now.");
   }
 
   const endpoint = defaultEndpointForProvider(provider);
-  const model = els.apiModel?.value.trim() || defaultModelForProvider(provider);
   const response = await fetch(endpoint, {
     method: "POST",
     headers: {
@@ -889,7 +921,7 @@ async function generateApiReviewQuestions(fileMap, files) {
         },
         {
           role: "user",
-          content: buildApiQuestionPrompt(fileMap, files)
+          content: prompt
         }
       ]
     })
@@ -900,7 +932,45 @@ async function generateApiReviewQuestions(fileMap, files) {
   }
   const json = await response.json();
   const content = json.choices?.[0]?.message?.content || "";
-  return parseApiQuestions(content).slice(0, 1);
+  return parseApiQuestions(content).slice(0, 3);
+}
+
+async function generateGeminiReviewQuestions(model, prompt) {
+  const endpoint = defaultEndpointForProvider("gemini").replace("{model}", encodeURIComponent(normalizeGeminiModel(model)));
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-goog-api-key": state.apiSecret
+    },
+    body: JSON.stringify({
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text: `You generate concise filing review questions for a local-first personal wiki. Return JSON only.\n\n${prompt}`
+            }
+          ]
+        }
+      ],
+      generationConfig: {
+        temperature: 0.2,
+        responseMimeType: "application/json"
+      }
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+  const json = await response.json();
+  const content = json.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("\n") || "";
+  return parseApiQuestions(content).slice(0, 3);
+}
+
+function normalizeGeminiModel(model) {
+  return String(model || defaultModelForProvider("gemini")).replace(/^models\//, "");
 }
 
 function buildApiQuestionPrompt(fileMap, files) {
@@ -909,14 +979,16 @@ function buildApiQuestionPrompt(fileMap, files) {
     .filter((path) => isWikiPagePath(path))
     .slice(0, 28)
     .join("\n");
-  return `Create 0-1 quick filing questions before Margins saves this local vault.
+  return `Create 0-3 quick questions before Margins saves this local vault.
 
 Rules:
-- Ask only durable questions that affect where files/pages go or whether a node should exist.
-- Ask nothing if the default filing is good enough.
-- Prefer yes/no or short option buttons.
+- Do not ask where to file this or whether to create pages. Margins can decide that.
+- Ask only deeper questions about meaning, identity, priority, action, decision, or user intent.
+- Ask nothing if the source is clear enough.
+- Prefer yes/no or short option buttons that a user can answer in one tap.
+- Do not ask about random acronyms, initials, or short labels unless they are central to understanding the source.
 - Include a default recommendation.
-- Do not ask generic approval questions.
+- Do not ask generic approval or routing questions.
 
 Return JSON:
 {"questions":[{"kind":"Quick check","path":"wiki/...","question":"...","reason":"...","recommendation":"My take: ...","options":["Yes","No","Use default"]}]}
@@ -965,6 +1037,7 @@ function excerptForQuestion(text, max) {
 
 function renderChangePreview() {
   const parsedMode = state.llmFiles.size > 0;
+  const sourceIngestMode = state.files.length > 0 && !parsedMode;
   const unsavedMode = !parsedMode && state.currentFileMap && (state.pendingSave || state.hasUnsavedEdits);
   const baseMap = parsedMode
     ? state.currentFileMap || new Map()
@@ -976,6 +1049,13 @@ function renderChangePreview() {
   const rawChanges = (parsedMode || unsavedMode) ? rawSourceChangePlan() : [];
   const visibleChanges = fileChanges.filter((change) => change.status !== "unchanged");
   const summaryChanges = parsedMode ? fileChanges : visibleChanges;
+
+  if (sourceIngestMode) {
+    els.changeSummary.innerHTML = "";
+    els.changePreview.innerHTML = "";
+    updateInlineReviewVisibility();
+    return;
+  }
 
   if (!parsedMode && !unsavedMode) {
     els.changeSummary.innerHTML = "";
@@ -1121,13 +1201,112 @@ function renderSources() {
       <button class="source-process-btn" type="button" data-source-action="process" ${sourceProcessDisabled() ? "disabled" : ""}>
         ${escapeHtml(sourceProcessLabel())}
       </button>
+      ${renderSourceIngestRun(file)}
     </div>
   `).join("");
 }
 
+function renderSourceIngestRun(file) {
+  if (!state.processingInbox && !(state.pendingSave && state.currentFileMap)) return "";
+  const isReady = state.pendingSave && state.currentFileMap && !state.processingInbox;
+  return `
+    <div class="source-ingest-run">
+      <div class="run-steps">
+        ${runStep("Raw source saved", isReady || rawSourceAlreadySaved(file), state.processingInbox && !rawSourceAlreadySaved(file))}
+        ${runStep(isReady ? "Summary ready" : "Reading source", isReady, state.processingInbox && rawSourceAlreadySaved(file))}
+        ${runStep(isReady ? "Questions ready" : "Checking what to ask", isReady, false)}
+      </div>
+      ${isReady && state.reviewMode !== "auto" ? `
+        <div class="run-summary">
+          <span>Summary</span>
+          <p>${escapeHtml(sourceIngestSummary(file))}</p>
+        </div>
+      ` : ""}
+      ${isReady ? renderSourceRunQuestions() : `
+        <div class="run-note">Margins is reading this source and preparing the filing decision.</div>
+      `}
+    </div>
+  `;
+}
+
+function runStep(label, done, active) {
+  return `
+    <div class="run-step ${done ? "done" : ""} ${active ? "active" : ""}">
+      <span></span>
+      <strong>${escapeHtml(label)}</strong>
+    </div>
+  `;
+}
+
+function renderSourceRunQuestions() {
+  const questions = state.currentMaterialQuestions || [];
+  if (questions.length === 0) {
+    return `<div class="run-note">No questions needed. Approve when you're ready.</div>`;
+  }
+  return `
+    <div class="run-conversation">
+      ${questions.map((question, questionIndex) => `
+        <div class="run-question" data-question="${escapeHtml(question.question)}">
+          <span>${escapeHtml(question.kind || `Question ${questionIndex + 1}`)}</span>
+          <p>${escapeHtml(question.question)}</p>
+          ${question.recommendation ? `<div class="recommendation">${escapeHtml(question.recommendation)}</div>` : ""}
+          <div class="quick-actions">
+            ${questionOptionsWithSkip(question).map((option, index) => `
+              <button class="quick-answer ${index === 0 ? "primary" : ""}" type="button" data-run-answer="${escapeHtml(option)}" data-question="${escapeHtml(question.question)}">${escapeHtml(option)}</button>
+            `).join("")}
+          </div>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function questionOptionsWithSkip(question) {
+  const options = question.options?.length ? question.options : ["Yes", "No", "Use default"];
+  return options.some((option) => String(option).toLowerCase() === "skip")
+    ? options
+    : [...options, "Skip"];
+}
+
+function sourceIngestSummary(file) {
+  const sourceNote = sourceNoteForFile(file);
+  const summary = extractSourceSummary(sourceNote) || excerptForQuestion(file.text || sourceStatus(file), 320) || "Margins preserved the raw source and prepared it for filing.";
+  return clampSentence(summary, 340);
+}
+
+function clampSentence(value, limit) {
+  const text = cleanSummary(value);
+  if (text.length <= limit) return text;
+  return `${text.slice(0, limit - 3).trim()}...`;
+}
+
+function sourceNoteForFile(file) {
+  if (!state.currentFileMap || !file?.name) return "";
+  const rawPath = `raw_sources/${file.name}`;
+  for (const [path, body] of state.currentFileMap.entries()) {
+    if (path.startsWith("wiki/sources/") && body.includes(rawPath)) return body;
+  }
+  return "";
+}
+
+function extractSourceSummary(body) {
+  if (!body) return "";
+  const section = body.match(/## Summary\s+([\s\S]*?)(?:\n##\s|$)/);
+  if (section?.[1]) return cleanSummary(section[1]);
+  const yaml = body.match(/^summary:\s*("?)(.*?)\1\s*$/m);
+  return yaml?.[2] ? cleanSummary(yaml[2]) : "";
+}
+
+function cleanSummary(value) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .replace(/\[\[([^\]]+)\]\]/g, "$1")
+    .trim();
+}
+
 function sourceProcessLabel() {
   if (state.processingInbox) return "Processing...";
-  if (state.pendingSave && state.currentFileMap) return "Write vault";
+  if (state.pendingSave && state.currentFileMap) return "Approve";
   return "Process";
 }
 
@@ -1858,6 +2037,11 @@ function renderMaterialQuestions(questions) {
 
 function updateInlineReviewVisibility() {
   if (!els.inlineReviewPanel) return;
+  if (state.files.length > 0 && (state.processingInbox || (state.pendingSave && state.currentFileMap))) {
+    els.inlineReviewPanel.hidden = true;
+    els.reviewResponseBtn.hidden = true;
+    return;
+  }
   const hasQuestions = state.currentMaterialQuestions.length > 0;
   const hasPendingSave = state.pendingSave && state.currentFileMap;
   const hasPreview = Boolean(els.changePreview.innerHTML.trim());
@@ -1883,10 +2067,8 @@ function buildMaterialQuestions(fileMap, warningsByPath, mode) {
   }
 
   const questions = [
-    ...promotionQuestions(fileMap),
-    ...synthesisQuestions(fileMap),
     ...riskQuestions(fileMap),
-    ...rawSourceQuestions(fileMap)
+    ...synthesisQuestions(fileMap)
   ];
 
   if (mode === "strict") {
@@ -1897,7 +2079,7 @@ function buildMaterialQuestions(fileMap, warningsByPath, mode) {
 }
 
 function limitMaterialQuestions(questions, mode) {
-  const limit = mode === "strict" ? 3 : 1;
+  const limit = 3;
   return dedupeQuestions(questions).slice(0, limit);
 }
 
@@ -2702,7 +2884,9 @@ function sourceClass(file) {
 }
 
 function sourceStatus(file) {
-  const prefix = file.sourceScope === "pending" ? "new · " : file.sourceScope === "vault" ? "in vault · " : "";
+  const prefix = rawSourceAlreadySaved(file) && file.sourceScope === "pending"
+    ? "raw saved · "
+    : file.sourceScope === "pending" ? "new · " : file.sourceScope === "vault" ? "in vault · " : "";
   const size = file.size ? `${formatFileSize(file.size)} · ` : "";
   if (file.text) {
     const suffix = file.type === "pdf" ? " extracted" : "";
@@ -2714,6 +2898,11 @@ function sourceStatus(file) {
   }
   if (file.type === "pdf") return `${prefix}needs text extraction or LLM attachment`;
   return `${prefix}0 words`;
+}
+
+function rawSourceAlreadySaved(file) {
+  if (!file?.name) return false;
+  return state.vaultFiles.some((vaultFile) => vaultFile.name === file.name);
 }
 
 function sourceTypeLabel(file) {
