@@ -94,24 +94,28 @@
           <article class="checklist-card">
             <h3>Current test</h3>
             <label class="check-row">
+              <input type="checkbox" data-check-id="phase4-test-loaded">
+              <span><strong>1. Keep raw files loaded.</strong> Expected: left sidebar still shows the original source files before writing.</span>
+            </label>
+            <label class="check-row">
               <input type="checkbox" data-check-id="phase4-test-clean">
-              <span><strong>1. Accept clean LLM output.</strong> Expected: LLM Review shows low or zero warnings, then Wiki tab shows accepted files.</span>
+              <span><strong>2. Accept clean LLM output.</strong> Expected: LLM Review shows low or zero warnings, then Wiki tab shows accepted files.</span>
             </label>
             <label class="check-row">
               <input type="checkbox" data-check-id="phase4-test-write">
-              <span><strong>2. Click Write local folder.</strong> Expected: browser asks for a destination folder.</span>
+              <span><strong>3. Click Write local folder.</strong> Expected: browser asks for a destination folder.</span>
             </label>
             <label class="check-row">
               <input type="checkbox" data-check-id="phase4-test-dest">
-              <span><strong>3. Choose a destination.</strong> Expected: Margins creates a timestamped export folder inside it.</span>
+              <span><strong>4. Choose a destination.</strong> Expected: Margins creates a timestamped export folder inside it.</span>
             </label>
             <label class="check-row">
               <input type="checkbox" data-check-id="phase4-test-contents">
-              <span><strong>4. Inspect contents.</strong> Expected: raw_sources, wiki, commands, agents, operator-manual.md, query-cookbook.md, and .margins exist.</span>
+              <span><strong>5. Inspect contents.</strong> Expected: raw_sources, wiki, commands, agents, operator-manual.md, query-cookbook.md, and .margins exist.</span>
             </label>
             <label class="check-row">
               <input type="checkbox" data-check-id="phase4-test-open">
-              <span><strong>5. Open a Markdown file.</strong> Expected: frontmatter and wiki links are preserved on disk.</span>
+              <span><strong>6. Open a Markdown file.</strong> Expected: frontmatter and wiki links are preserved on disk.</span>
             </label>
           </article>
 

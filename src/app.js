@@ -127,9 +127,14 @@ async function writeCurrentFolder() {
       raw_sources: writtenRaw,
       generated_files: writtenFiles,
       source_count: state.files.length,
-      file_count: state.currentFileMap.size
+      file_count: state.currentFileMap.size,
+      warning: state.files.length === 0
+        ? "No raw source files were loaded in the browser when this folder was written."
+        : ""
     }, null, 2));
-    els.stats.textContent = `Wrote ${writtenFiles} wiki/operating file${writtenFiles === 1 ? "" : "s"} + ${writtenRaw} raw source${writtenRaw === 1 ? "" : "s"} to ${exportName}`;
+    els.stats.textContent = state.files.length === 0
+      ? `Wrote ${writtenFiles} wiki/operating files to ${exportName}, but no raw sources were loaded.`
+      : `Wrote ${writtenFiles} wiki/operating file${writtenFiles === 1 ? "" : "s"} + ${writtenRaw} raw source${writtenRaw === 1 ? "" : "s"} to ${exportName}`;
     els.writeFolderBtn.textContent = "Wrote folder";
     setTimeout(() => { els.writeFolderBtn.textContent = originalText; }, 1500);
   } catch (error) {
@@ -917,6 +922,16 @@ function download(name, body) {
 }
 
 async function writeRawSources(rootHandle, files) {
+  if (files.length === 0) {
+    await writeTextFile(rootHandle, "raw_sources/README.md", `# Raw Sources
+
+No raw source files were loaded in the browser when this Margins folder was written.
+
+To preserve raw evidence, reload the original files in Margins before clicking "Write local folder." Browsers clear selected file handles after refresh for security.
+`);
+    return 0;
+  }
+
   let count = 0;
   for (const file of files) {
     const path = rawSourceOutputPath(file.name || `source-${count + 1}.txt`);
