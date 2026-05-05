@@ -51,6 +51,7 @@ const graphView = {
 
 const els = {
   themeToggle: document.getElementById("theme-toggle"),
+  themeToggleLabel: document.getElementById("theme-toggle-label"),
   vaultStatus: document.getElementById("vault-status"),
   vaultTree: document.getElementById("vault-tree"),
   apiProvider: document.getElementById("api-provider"),
@@ -124,6 +125,7 @@ if (els.inlineReviewPanel) {
 }
 
 els.themeToggle.checked = state.theme === "dark";
+updateThemeToggleLabel();
 hydrateApiControls();
 els.folderInput.addEventListener("change", handleSourceSelection);
 els.fileInput.addEventListener("change", handleSourceSelection);
@@ -137,6 +139,7 @@ els.themeToggle.addEventListener("change", () => {
   state.theme = els.themeToggle.checked ? "dark" : "light";
   document.documentElement.dataset.theme = state.theme;
   localStorage.setItem("margins-theme", state.theme);
+  updateThemeToggleLabel();
 });
 
 els.workflowBtn.addEventListener("click", runWorkflowStep);
@@ -217,6 +220,11 @@ function hydrateApiControls() {
   els.apiModel.value = settings.model || defaultModelForProvider(els.apiProvider.value);
   els.apiKey.value = "";
   renderApiStatus();
+}
+
+function updateThemeToggleLabel() {
+  if (!els.themeToggleLabel) return;
+  els.themeToggleLabel.textContent = state.theme === "dark" ? "Dark mode" : "Light mode";
 }
 
 function saveApiControls() {

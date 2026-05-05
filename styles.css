@@ -2022,3 +2022,101 @@ button,
     max-width: 100%;
   }
 }
+
+/* Layout correction pass: restore the artistic inbox surface and make theme state explicit. */
+.sidebar > .theme-toggle {
+  display: inline-flex;
+  width: 100%;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  margin-top: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.sidebar > .theme-toggle span {
+  display: inline;
+}
+
+.sidebar > .theme-toggle input {
+  flex: 0 0 auto;
+}
+
+.inbox-drop {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-color: color-mix(in srgb, var(--line-strong) 76%, var(--accent));
+  background:
+    radial-gradient(circle at 18% 27%, transparent 0 35px, color-mix(in srgb, #2f6da3 28%, transparent) 36px 38px, transparent 39px),
+    radial-gradient(circle at 77% 24%, color-mix(in srgb, #e8b04b 30%, transparent) 0 11px, transparent 12px),
+    radial-gradient(circle at 84% 76%, transparent 0 46px, color-mix(in srgb, var(--accent) 24%, transparent) 47px 50px, transparent 51px),
+    linear-gradient(145deg, color-mix(in srgb, var(--paper) 92%, #fff4ef), var(--paper-soft));
+  box-shadow: 0 18px 60px rgba(29, 29, 31, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.inbox-drop::before,
+.inbox-drop::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.inbox-drop::before {
+  width: 188px;
+  height: 188px;
+  right: 10%;
+  top: 22px;
+  border: 1px solid color-mix(in srgb, var(--ink) 12%, transparent);
+  border-radius: 50%;
+  background:
+    linear-gradient(90deg, transparent 0 47%, color-mix(in srgb, var(--ink) 12%, transparent) 48% 52%, transparent 53%),
+    linear-gradient(0deg, transparent 0 47%, color-mix(in srgb, var(--ink) 10%, transparent) 48% 52%, transparent 53%);
+  opacity: 0.58;
+}
+
+.inbox-drop::after {
+  left: 12%;
+  bottom: 24px;
+  width: 128px;
+  height: 18px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  transform: rotate(-14deg);
+}
+
+.inbox-drop > * {
+  position: relative;
+  z-index: 1;
+}
+
+.drop-mark {
+  width: 70px;
+  height: 48px;
+  margin-bottom: 16px;
+  background:
+    radial-gradient(circle at 47px 24px, var(--ink) 0 3px, transparent 3.5px),
+    radial-gradient(circle at 47px 24px, var(--accent) 0 12px, transparent 12.5px),
+    radial-gradient(circle at 47px 24px, #e8b04b 0 22px, transparent 22.5px),
+    radial-gradient(circle at 16px 29px, #2f6da3 0 8px, transparent 8.5px),
+    linear-gradient(var(--ink), var(--ink)) 16px 9px / 3px 31px no-repeat;
+}
+
+.drop-mark::before,
+.drop-mark::after {
+  content: none;
+}
+
+[data-theme="dark"] .inbox-drop {
+  background:
+    radial-gradient(circle at 18% 27%, transparent 0 35px, color-mix(in srgb, #64b5ff 26%, transparent) 36px 38px, transparent 39px),
+    radial-gradient(circle at 77% 24%, color-mix(in srgb, #e8b04b 22%, transparent) 0 11px, transparent 12px),
+    radial-gradient(circle at 84% 76%, transparent 0 46px, color-mix(in srgb, var(--accent) 28%, transparent) 47px 50px, transparent 51px),
+    linear-gradient(145deg, color-mix(in srgb, var(--paper) 90%, #2a1a1a), var(--paper-soft));
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
