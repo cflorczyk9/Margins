@@ -541,7 +541,14 @@ function buildLlmIngestPrompt(files) {
   return `You are operating Margins, a local-first personal wiki compiler.
 
 Goal:
-Turn raw sources into a useful wiki, not a chat transcript. Preserve raw sources as evidence. Create source nodes, concept nodes, entity nodes, synthesis nodes, and edit proposals.
+Turn raw sources into a useful wiki, not a chat transcript and not a generic file organizer. Preserve raw sources as evidence. Create source pages first, then only create durable concept/entity/synthesis pages when the source material actually supports them.
+
+The model behavior should match this operating philosophy:
+- The wiki is the user's external memory. Correct recall matters more than producing many nodes.
+- Source pages are faithful direct reads. Synthesis is allowed only when labeled.
+- The best graph is conservative: fewer true links beat many weak links.
+- Do not infer silently. If a relationship, role, date, amount, intent, next move, or strategic implication is not a direct read, flag it as an open question or Claude synthesis.
+- If you considered an inference but did not write it as fact, list it in an "Inferences refused" section.
 
 Important:
 - The following files did not expose text in the browser and must be attached or extracted before you summarize them:
@@ -564,6 +571,14 @@ Use one fenced block per file. Return files in this structure:
 - wiki/entities/{slug}.md
 - wiki/synthesis/{slug}.md
 - wiki/index.md
+- operator-manual.md
+- query-cookbook.md
+- commands/ingest.md
+- commands/query.md
+- commands/compile.md
+- commands/lint.md
+- agents/wiki-ingest.md
+- .margins/ingest-report.md
 - .margins/edit-log.jsonl
 
 Page rules:
@@ -577,16 +592,29 @@ Page rules:
 - Treat "positions" as source content or a synthesis section unless the source names a specific position that matters.
 - Add wiki links only when the relationship is explicit and useful. Weak keyword overlap should stay unlinked.
 - Make edit proposals before changing important structure.
+- Use wiki links for source-supported proper nouns and durable pages only.
+- Do not create stub pages just to resolve a mention. Put those in "Mentioned but missing" instead.
 
 For each source:
-1. Write a faithful summary.
-2. Extract concrete entities, dates, accounts, projects, decisions, and unresolved questions.
-3. Identify concepts that should become durable wiki pages.
+1. Write a faithful source page with frontmatter, summary, context, key takeaways, concrete facts, and open questions.
+2. Extract concrete entities, dates, accounts, projects, decisions, and unresolved questions, but keep weak candidates inside the source page.
+3. Identify concepts that should become durable wiki pages. A concept should be reusable across future sources, not just a word that appeared in this file.
+4. Add a "Mentioned but missing" section for proper nouns that might need pages but should not be auto-promoted.
+5. Add an "Inferences refused" section for tempting claims you did not promote because the source does not directly support them.
 
 Across sources:
-1. Link related source nodes.
-2. Create synthesis pages that explain why the sources connect.
-3. List open questions and next actions.
+1. Link related source nodes only when the connection is explicit or strongly source-supported.
+2. Create synthesis pages that explain why sources connect, and label them as synthesis / not user-confirmed.
+3. Create entity pages only for real named people, organizations, named accounts, tools, securities, projects, or places that matter.
+4. Create concept pages only for load-bearing ideas that will help future retrieval.
+5. List open questions and next actions separately from direct-read facts.
+
+Operating-layer files:
+- operator-manual.md should teach a future language model how to read, query, edit, and avoid overreaching in this wiki.
+- query-cookbook.md should include practical lookup patterns.
+- commands/*.md should be short executable workflow specs.
+- agents/wiki-ingest.md should describe the conservative ingest workflow: source page first, direct-read propagation, inference refusal, and review before promotion.
+- .margins/ingest-report.md should summarize files created, links made, inferences refused, mentioned-but-missing candidates, and anything that needs user review.
 
 Extracted text sources:
 
