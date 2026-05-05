@@ -37,7 +37,9 @@ const state = {
   apiSettings: loadApiSettings(),
   apiSecret: localStorage.getItem(API_SECRET_STORAGE_KEY) || "",
   apiQuestionSource: "",
-  ingestReviews: new Map()
+  ingestReviews: new Map(),
+  ingestAnswers: new Map(),
+  expandedSummaries: new Set()
 };
 
 const graphView = {
@@ -365,6 +367,8 @@ async function setSourceFiles(files) {
   state.llmSelectedPath = null;
   state.currentMaterialQuestions = [];
   state.ingestReviews = new Map();
+  state.ingestAnswers = new Map();
+  state.expandedSummaries = new Set();
   els.llmInput.value = "";
   state.llmPromptCopied = false;
   state.hasSavedCurrent = false;
@@ -619,20 +623,50 @@ async function handleSaveAndOrganize() {
 }
 
 async function handleSourceActionClick(event) {
+  const summaryToggle = event.target.closest("[data-summary-toggle]");
+  if (summaryToggle) {
+    toggleSourceSummary(summaryToggle.dataset.summaryToggle);
+    return;
+  }
+
   const answerButton = event.target.closest("[data-run-answer]");
   if (answerButton) {
-    const card = answerButton.closest(".run-question");
-    appendReviewAnswer(answerButton.dataset.question, answerButton.dataset.answer);
-    card?.classList.add("answered");
-    card?.querySelectorAll("[data-run-answer]").forEach((item) => {
-      item.classList.toggle("selected", item === answerButton);
-    });
+    setIngestReviewAnswer(answerButton.dataset.file, answerButton.dataset.question, answerButton.dataset.answer);
     return;
   }
 
   const button = event.target.closest("[data-source-action]");
   if (!button || state.processingInbox) return;
   await processPendingSource();
+}
+
+function toggleSourceSummary(fileName) {
+  if (!fileName) return;
+  if (state.expandedSummaries.has(fileName)) state.expandedSummaries.delete(fileName);
+  else state.expandedSummaries.add(fileName);
+  renderSources();
+}
+
+function setIngestReviewAnswer(fileName, question, answer) {
+  if (!fileName || !question || !answer) return;
+  state.ingestAnswers.set(ingestAnswerKey(fileName, question), { fileName, question, answer });
+  syncIngestAnswersToReviewReply();
+  renderSources();
+  updateWorkflowState();
+}
+
+function ingestAnswerKey(fileName, question) {
+  return `${fileName}::${question}`;
+}
+
+function ingestAnswerFor(fileName, question) {
+  return state.ingestAnswers.get(ingestAnswerKey(fileName, question))?.answer || "";
+}
+
+function syncIngestAnswersToReviewReply() {
+  const lines = [...state.ingestAnswers.values()].map((entry) => `- ${entry.fileName} — ${entry.question}: ${entry.answer}`);
+  els.reviewReply.value = lines.join("\n");
+  updateReviewResponseState();
 }
 
 async function processPendingSource() {
@@ -727,6 +761,9 @@ async function saveCurrentVault() {
     state.vaultFiles = mergeSourceFiles(state.vaultFiles, pendingRaw.map((file) => ({ ...file, sourceScope: "vault" })));
     state.files = [];
     state.editedRawFiles = new Map();
+    state.ingestReviews = new Map();
+    state.ingestAnswers = new Map();
+    state.expandedSummaries = new Set();
     state.loadedFileMap = new Map(state.currentFileMap);
     renderSources();
     renderVaultTree(state.currentFileMap);
@@ -1552,15 +1589,22 @@ function renderSourceIngestRun(file) {
         ${runStep(isReady ? "Questions ready" : "Checking what to ask", isReady, false)}
       </div>
       ${isReady && state.reviewMode !== "auto" ? `
-        <div class="run-summary">
-          <span>Summary</span>
-          <p>${escapeHtml(sourceIngestSummary(file))}</p>
-        </div>
+        ${renderSourceSummary(file)}
         ${renderSourceConnections(file)}
       ` : ""}
       ${isReady ? renderSourceRunQuestions(file) : `
+        ${renderBrushLoader()}
         <div class="run-note">${escapeHtml(pendingReviewNote(file))}</div>
       `}
+    </div>
+  `;
+}
+
+function renderBrushLoader() {
+  return `
+    <div class="brush-loader" aria-label="Margins is working">
+      <span class="brush-stroke"></span>
+      <span class="brush-tip"></span>
     </div>
   `;
 }
@@ -1603,17 +1647,37 @@ function renderSourceRunQuestions(file) {
   return `
     <div class="run-conversation">
       ${questions.map((question, questionIndex) => `
-        <div class="run-question" data-question="${escapeHtml(question.question)}">
+        <div class="run-question ${ingestAnswerFor(file.name, question.question) ? "answered" : ""}" data-question="${escapeHtml(question.question)}">
           <span>${escapeHtml(question.kind || `Question ${questionIndex + 1}`)}</span>
           <p>${escapeHtml(question.question)}</p>
           ${question.recommendation ? `<div class="recommendation">${escapeHtml(question.recommendation)}</div>` : ""}
           <div class="quick-actions">
-            ${questionOptionsWithSkip(question).map((option, index) => `
-              <button class="quick-answer ${index === 0 ? "primary" : ""}" type="button" data-run-answer="${escapeHtml(option)}" data-question="${escapeHtml(question.question)}">${escapeHtml(option)}</button>
-            `).join("")}
+            ${questionOptionsWithSkip(question).map((option, index) => {
+              const selected = ingestAnswerFor(file.name, question.question) === option;
+              return `
+                <button class="quick-answer ${index === 0 ? "primary" : ""} ${selected ? "selected" : ""}" type="button" data-run-answer="${escapeHtml(option)}" data-question="${escapeHtml(question.question)}" data-file="${escapeHtml(file.name)}" aria-pressed="${selected ? "true" : "false"}">${escapeHtml(option)}</button>
+              `;
+            }).join("")}
           </div>
+          ${ingestAnswerFor(file.name, question.question) ? `<div class="answered-note">Answered: ${escapeHtml(ingestAnswerFor(file.name, question.question))}</div>` : ""}
         </div>
       `).join("")}
+    </div>
+  `;
+}
+
+function renderSourceSummary(file) {
+  const fullSummary = sourceIngestFullSummary(file);
+  const expanded = state.expandedSummaries.has(file.name);
+  const canExpand = fullSummary.length > 240;
+  const visibleSummary = expanded || !canExpand ? fullSummary : clampSentence(fullSummary, 240);
+  return `
+    <div class="run-summary ${expanded ? "expanded" : ""}">
+      <div class="run-summary-head">
+        <span>Summary</span>
+        ${canExpand ? `<button class="text-toggle" type="button" data-summary-toggle="${escapeHtml(file.name)}">${expanded ? "Show less" : "Show more"}</button>` : ""}
+      </div>
+      <p>${escapeHtml(visibleSummary)}</p>
     </div>
   `;
 }
@@ -1642,11 +1706,14 @@ function questionOptionsWithSkip(question) {
 }
 
 function sourceIngestSummary(file) {
+  return clampSentence(sourceIngestFullSummary(file), 340);
+}
+
+function sourceIngestFullSummary(file) {
   const review = state.ingestReviews.get(file.name);
-  if (review?.summary) return clampSentence(review.summary, 420);
+  if (review?.summary) return cleanSummary(review.summary);
   const sourceNote = sourceNoteForFile(file);
-  const summary = extractSourceSummary(sourceNote) || excerptForQuestion(file.text || sourceStatus(file), 320) || "Margins preserved the raw source and prepared it for filing.";
-  return clampSentence(summary, 340);
+  return cleanSummary(extractSourceSummary(sourceNote) || excerptForQuestion(file.text || sourceStatus(file), 900) || "Margins preserved the raw source and prepared it for filing.");
 }
 
 function clampSentence(value, limit) {

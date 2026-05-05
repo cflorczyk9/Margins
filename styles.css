@@ -1657,6 +1657,66 @@ button,
   font-weight: 600;
 }
 
+.brush-loader {
+  position: relative;
+  height: 20px;
+  overflow: hidden;
+}
+
+.brush-stroke {
+  position: absolute;
+  left: 0;
+  top: 7px;
+  width: 100%;
+  height: 7px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 22%, transparent), transparent);
+  transform-origin: left center;
+  animation: brush-stroke 1.35s ease-in-out infinite;
+}
+
+.brush-tip {
+  position: absolute;
+  top: 3px;
+  left: 0;
+  width: 24px;
+  height: 14px;
+  border-radius: 999px 999px 999px 4px;
+  background: color-mix(in srgb, var(--accent) 78%, var(--ink));
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 28%, transparent);
+  animation: brush-tip 1.35s ease-in-out infinite;
+}
+
+@keyframes brush-stroke {
+  0% {
+    clip-path: inset(0 100% 0 0);
+    opacity: 0.25;
+  }
+  42% {
+    clip-path: inset(0 18% 0 0);
+    opacity: 0.82;
+  }
+  100% {
+    clip-path: inset(0 0 0 82%);
+    opacity: 0.2;
+  }
+}
+
+@keyframes brush-tip {
+  0% {
+    left: 0;
+    transform: rotate(-8deg);
+  }
+  52% {
+    left: calc(100% - 24px);
+    transform: rotate(3deg);
+  }
+  100% {
+    left: calc(100% - 24px);
+    transform: rotate(3deg);
+  }
+}
+
 .run-summary,
 .run-question,
 .run-connections {
@@ -1674,6 +1734,31 @@ button,
   font-weight: 760;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+
+.run-summary-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.text-toggle {
+  width: auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  box-shadow: none;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.text-toggle:not(:disabled):hover {
+  color: var(--accent-dark);
+  transform: none;
 }
 
 .run-summary p,
@@ -1699,6 +1784,14 @@ button,
 
 .run-question.answered {
   border-color: color-mix(in srgb, var(--accent) 36%, var(--line));
+  background: color-mix(in srgb, var(--accent-soft) 18%, var(--paper));
+}
+
+.answered-note {
+  margin-top: 9px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .run-conversation {
@@ -1774,6 +1867,11 @@ button,
 .quick-answer.selected,
 .review-card.answered {
   border-color: var(--ink);
+}
+
+.quick-answer.selected {
+  background: var(--ink);
+  color: var(--paper);
 }
 
 .review-reply {
