@@ -67,6 +67,7 @@ const els = {
   docBody: document.getElementById("doc-body"),
   graphSvg: document.getElementById("graph-svg"),
   stats: document.getElementById("stats"),
+  vaultSearch: document.getElementById("vault-search"),
   llmInput: document.getElementById("llm-input"),
   parseLlmBtn: document.getElementById("parse-llm-btn"),
   repairLlmBtn: document.getElementById("repair-llm-btn"),
@@ -121,6 +122,10 @@ els.themeToggle.addEventListener("change", () => {
 });
 
 els.workflowBtn.addEventListener("click", runWorkflowStep);
+els.vaultSearch?.addEventListener("input", () => {
+  renderVaultTree();
+  if (state.currentFileMap) renderWikiFiles(state.currentFileMap);
+});
 els.saveApiKeyBtn.addEventListener("click", saveApiControls);
 els.clearApiKeyBtn.addEventListener("click", clearApiControls);
 els.apiProvider.addEventListener("change", () => {
@@ -131,6 +136,17 @@ els.apiProvider.addEventListener("change", () => {
 els.sourceDropZone.addEventListener("dragover", (event) => {
   event.preventDefault();
   els.sourceDropZone.classList.add("dragging");
+});
+
+els.sourceDropZone.addEventListener("click", (event) => {
+  if (event.target.closest("button, input, label, select, textarea, a")) return;
+  els.fileInput.click();
+});
+
+els.sourceDropZone.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  event.preventDefault();
+  els.fileInput.click();
 });
 
 els.sourceDropZone.addEventListener("dragleave", () => {
@@ -259,10 +275,11 @@ function defaultEndpointForProvider(provider) {
 
 async function setSourceFiles(files) {
   const normalized = normalizeSelectedFiles(files);
-  state.files = await Promise.all(normalized.map(async (file) => ({
+  const incomingFiles = await Promise.all(normalized.map(async (file) => ({
     ...await readBrowserFile(file),
     sourceScope: "pending"
   })));
+  state.files = mergeSourceFiles(state.files, incomingFiles);
   state.vault = null;
   if (!state.currentFileMap) {
     state.selectedPath = null;
@@ -986,14 +1003,17 @@ function renderSources() {
   const files = allSourceFiles();
   if (files.length === 0) {
     els.sourceList.className = "source-list empty";
-    els.sourceList.textContent = "No sources loaded.";
+    els.sourceList.textContent = "Drop files above and they will appear here before Margins writes anything.";
     return;
   }
   els.sourceList.className = "source-list";
   els.sourceList.innerHTML = files.map((file) => `
     <div class="source-item ${sourceClass(file)}">
-      <strong>${escapeHtml(file.name)}</strong>
-      <span>${escapeHtml(sourceStatus(file))}</span>
+      <span class="source-badge">${escapeHtml(sourceTypeLabel(file))}</span>
+      <div class="source-copy">
+        <strong>${escapeHtml(file.name)}</strong>
+        <span>${escapeHtml(sourceStatus(file))}</span>
+      </div>
     </div>
   `).join("");
 }
@@ -1001,45 +1021,48 @@ function renderSources() {
 function renderVaultTree(fileMap = state.currentFileMap) {
   if (!els.vaultTree) return;
   const rawFiles = allSourceFiles();
-  const entries = fileMap ? [...fileMap.keys()].sort() : [];
-  const groups = [
-    ["raw_sources/", rawFiles.map((file) => rawSourceOutputPath(file.name))],
-    ["wiki/sources/", entries.filter((path) => path.startsWith("wiki/sources/"))],
-    ["wiki/concepts/", entries.filter((path) => path.startsWith("wiki/concepts/"))],
-    ["wiki/entities/", entries.filter((path) => path.startsWith("wiki/entities/"))],
-    ["wiki/synthesis/", entries.filter((path) => path.startsWith("wiki/synthesis/"))],
-    ["commands/", entries.filter((path) => path.startsWith("commands/"))],
-    ["agents/", entries.filter((path) => path.startsWith("agents/"))],
-    ["wiki/.margins/", entries.filter((path) => path.startsWith("wiki/.margins/"))]
-  ];
-  const rootFiles = entries.filter((path) => path === "operator-manual.md" || path === "query-cookbook.md" || path === "wiki/index.md");
+  const query = (els.vaultSearch?.value || "").trim().toLowerCase();
+  const matchesSearch = (path) => !query || path.toLowerCase().includes(query);
+  const entries = fileMap ? [...fileMap.keys()].filter(matchesSearch).sort() : [];
+  const rawPaths = rawFiles.map((file) => rawSourceOutputPath(file.name)).filter(matchesSearch);
+  const wikiPaths = entries.filter((path) => path.startsWith("wiki/") && !path.startsWith("wiki/.margins/"));
+  const operatingPaths = entries.filter((path) => (
+    path.startsWith("commands/") ||
+    path.startsWith("agents/") ||
+    path === "operator-manual.md" ||
+    path === "query-cookbook.md" ||
+    path.startsWith("wiki/.margins/")
+  ));
 
   els.vaultTree.innerHTML = [
-    `<div class="vault-tree-root"><strong>${escapeHtml(state.vaultName || "local vault")}</strong></div>`,
-    ...groups.map(([label, paths]) => `
-      <div class="vault-tree-folder">
-        <span>${escapeHtml(label)}</span>
-        <em>${paths.length}</em>
-      </div>
-      ${paths.slice(0, 6).map((path) => `<button class="vault-tree-file" type="button" data-path="${escapeHtml(normalizeMarginsPath(path))}">${escapeHtml(basename(path))}</button>`).join("")}
-      ${paths.length > 6 ? `<div class="vault-tree-more">${paths.length - 6} more</div>` : ""}
-    `),
-    ...rootFiles.map((path) => `<button class="vault-tree-file root-file" type="button" data-path="${escapeHtml(path)}">${escapeHtml(path)}</button>`)
+    treeSection("RAW", rawPaths),
+    treeSection("WIKI", wikiPaths),
+    treeSection("SYSTEM", operatingPaths)
   ].join("");
 
   els.vaultTree.querySelectorAll(".vault-tree-file").forEach((item) => {
     item.addEventListener("click", () => {
       const path = item.dataset.path;
-      if (state.currentFileMap?.has(path) && isWikiPagePath(path)) {
-        activateTab("wiki");
-        state.selectedPath = path;
-        els.docTitle.textContent = path;
-        els.docBody.textContent = state.currentFileMap.get(path);
-      } else if (state.currentFileMap?.has(path)) {
-        activateTab("ops");
-      }
+      if (!state.currentFileMap?.has(path)) return;
+      activateTab("wiki");
+      state.selectedPath = path;
+      els.docTitle.textContent = path;
+      els.docBody.textContent = state.currentFileMap.get(path);
     });
   });
+}
+
+function treeSection(label, paths) {
+  return `
+      <div class="vault-tree-folder">
+        <span>${escapeHtml(label)}</span>
+        <em>${paths.length}</em>
+      </div>
+      ${paths.length
+        ? paths.slice(0, 10).map((path) => `<button class="vault-tree-file" type="button" data-path="${escapeHtml(normalizeMarginsPath(path))}">${escapeHtml(basename(path))}</button>`).join("")
+        : `<button class="vault-tree-file muted-file" type="button" disabled>Nothing yet</button>`}
+      ${paths.length > 10 ? `<div class="vault-tree-more">${paths.length - 10} more</div>` : ""}
+    `;
 }
 
 function allSourceFiles() {
@@ -1302,7 +1325,11 @@ function renderAcceptedLlmEditState() {
 }
 
 function renderWikiFiles(fileMap) {
-  const entries = [...fileMap.entries()].filter(([path]) => isWikiPagePath(path));
+  const query = (els.vaultSearch?.value || "").trim().toLowerCase();
+  const entries = [...fileMap.entries()].filter(([path, body]) => (
+    isWikiPagePath(path) &&
+    (!query || path.toLowerCase().includes(query) || body.toLowerCase().includes(query))
+  ));
   els.wikiTree.className = "tree-list";
   els.wikiTree.innerHTML = entries.map(([path, body]) => `
     <div class="tree-item" data-path="${escapeHtml(path)}">
@@ -1784,6 +1811,8 @@ async function readBrowserFile(file) {
     name: file.webkitRelativePath || file.name,
     text: isPdf ? "" : await file.text(),
     browserFile: file,
+    size: file.size,
+    lastModified: file.lastModified,
     type: isPdf ? "pdf" : "text",
     extractionStatus: isPdf ? "needed" : "ready",
     extractionError: ""
@@ -1860,7 +1889,7 @@ function updateSaveButtonState() {
   const canPrepare = state.files.length > 0 && !state.pendingSave;
   const canSave = state.pendingSave && state.currentFileMap;
   els.saveVaultBtn.disabled = !(canPrepare || canSave);
-  els.saveVaultBtn.textContent = canSave ? "Write local vault" : "Save and organize";
+  els.saveVaultBtn.textContent = canSave ? "Write vault" : "Save";
 }
 
 function sourceClass(file) {
@@ -1871,9 +1900,10 @@ function sourceClass(file) {
 
 function sourceStatus(file) {
   const prefix = file.sourceScope === "pending" ? "new · " : file.sourceScope === "vault" ? "in vault · " : "";
+  const size = file.size ? `${formatFileSize(file.size)} · ` : "";
   if (file.text) {
     const suffix = file.type === "pdf" ? " extracted" : "";
-    return `${prefix}${wordCount(file.text)} words${suffix}`;
+    return `${prefix}${size}${wordCount(file.text)} words${suffix}`;
   }
   if (file.type === "pdf" && file.extractionStatus === "extracting") return `${prefix}extracting text...`;
   if (file.type === "pdf" && file.extractionStatus === "failed") {
@@ -1881,6 +1911,12 @@ function sourceStatus(file) {
   }
   if (file.type === "pdf") return `${prefix}needs text extraction or LLM attachment`;
   return `${prefix}0 words`;
+}
+
+function sourceTypeLabel(file) {
+  if (file.type === "pdf") return "PDF";
+  const ext = basename(file.name).split(".").pop() || "TXT";
+  return ext.length <= 4 ? ext.toUpperCase() : "FILE";
 }
 
 function normalizeSelectedFiles(files) {
@@ -2523,6 +2559,19 @@ function normalizeMarginsPath(path) {
 
 function wordCount(text) {
   return (text.match(/\S+/g) || []).length;
+}
+
+function formatFileSize(size) {
+  if (!Number.isFinite(size) || size <= 0) return "";
+  if (size < 1024) return `${size} B`;
+  const units = ["KB", "MB", "GB"];
+  let value = size / 1024;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`;
 }
 
 function todayString() {
