@@ -49,6 +49,12 @@ const state = {
   expandedSummaries: new Set()
 };
 
+const apiThrottle = {
+  queue: Promise.resolve(),
+  lastStartedAt: 0,
+  startedAt: []
+};
+
 const graphView = {
   width: 1120,
   height: 700,
@@ -79,6 +85,8 @@ const els = {
   apiMaxOutputTokens: document.getElementById("api-max-output-tokens"),
   apiMaxSessionTokens: document.getElementById("api-max-session-tokens"),
   apiMaxSessionUsd: document.getElementById("api-max-session-usd"),
+  apiMinRequestDelay: document.getElementById("api-min-request-delay"),
+  apiMaxWindowRequests: document.getElementById("api-max-window-requests"),
   resetApiUsageBtn: document.getElementById("reset-api-usage-btn"),
   apiGuardStatus: document.getElementById("api-guard-status"),
   inlineReviewPanel: document.getElementById("inline-review-panel"),
@@ -194,6 +202,8 @@ els.apiMaxRequests?.addEventListener("change", saveApiGuardControls);
 els.apiMaxOutputTokens?.addEventListener("change", saveApiGuardControls);
 els.apiMaxSessionTokens?.addEventListener("change", saveApiGuardControls);
 els.apiMaxSessionUsd?.addEventListener("change", saveApiGuardControls);
+els.apiMinRequestDelay?.addEventListener("change", saveApiGuardControls);
+els.apiMaxWindowRequests?.addEventListener("change", saveApiGuardControls);
 els.resetApiUsageBtn?.addEventListener("click", resetApiUsage);
 els.apiProvider.addEventListener("change", () => {
   els.apiModel.value = defaultModelForProvider(els.apiProvider.value);
@@ -271,6 +281,7 @@ function hydrateApiControls() {
 
 async function hydrateLocalEnvApiSecret() {
   if (state.apiSecret) return;
+  if (new URLSearchParams(location.search).has("marginsTest")) return;
   try {
     const response = await fetch(".env", { cache: "no-store" });
     if (!response.ok) return;
@@ -357,7 +368,10 @@ function defaultApiGuardSettings() {
     maxRequests: 20,
     maxOutputTokens: 2048,
     maxSessionTokens: 250000,
-    maxSessionUsd: 1
+    maxSessionUsd: 1,
+    minRequestDelaySeconds: 2,
+    maxRequestsPerWindow: 3,
+    requestWindowSeconds: 10
   };
 }
 
@@ -376,7 +390,10 @@ function normalizeApiGuardSettings(settings = {}) {
     maxRequests: positiveInteger(settings.maxRequests, defaults.maxRequests),
     maxOutputTokens: positiveInteger(settings.maxOutputTokens, defaults.maxOutputTokens),
     maxSessionTokens: positiveInteger(settings.maxSessionTokens, defaults.maxSessionTokens),
-    maxSessionUsd: positiveNumber(settings.maxSessionUsd, defaults.maxSessionUsd)
+    maxSessionUsd: positiveNumber(settings.maxSessionUsd, defaults.maxSessionUsd),
+    minRequestDelaySeconds: nonNegativeNumber(settings.minRequestDelaySeconds, defaults.minRequestDelaySeconds),
+    maxRequestsPerWindow: positiveInteger(settings.maxRequestsPerWindow, defaults.maxRequestsPerWindow),
+    requestWindowSeconds: positiveNumber(settings.requestWindowSeconds, defaults.requestWindowSeconds)
   };
 }
 
@@ -387,6 +404,8 @@ function hydrateApiGuardControls() {
   if (els.apiMaxOutputTokens) els.apiMaxOutputTokens.value = settings.maxOutputTokens;
   if (els.apiMaxSessionTokens) els.apiMaxSessionTokens.value = settings.maxSessionTokens;
   if (els.apiMaxSessionUsd) els.apiMaxSessionUsd.value = settings.maxSessionUsd.toFixed(2);
+  if (els.apiMinRequestDelay) els.apiMinRequestDelay.value = formatControlNumber(settings.minRequestDelaySeconds);
+  if (els.apiMaxWindowRequests) els.apiMaxWindowRequests.value = settings.maxRequestsPerWindow;
   renderApiGuardStatus();
 }
 
@@ -396,7 +415,10 @@ function saveApiGuardControls() {
     maxRequests: els.apiMaxRequests?.value,
     maxOutputTokens: els.apiMaxOutputTokens?.value,
     maxSessionTokens: els.apiMaxSessionTokens?.value,
-    maxSessionUsd: els.apiMaxSessionUsd?.value
+    maxSessionUsd: els.apiMaxSessionUsd?.value,
+    minRequestDelaySeconds: els.apiMinRequestDelay?.value,
+    maxRequestsPerWindow: els.apiMaxWindowRequests?.value,
+    requestWindowSeconds: state.apiGuardSettings.requestWindowSeconds
   });
   localStorage.setItem(API_GUARD_STORAGE_KEY, JSON.stringify(state.apiGuardSettings));
   hydrateApiGuardControls();
@@ -404,6 +426,8 @@ function saveApiGuardControls() {
 
 function resetApiUsage() {
   state.apiUsage = emptyApiUsage();
+  apiThrottle.startedAt = [];
+  apiThrottle.lastStartedAt = 0;
   renderApiGuardStatus("Usage reset for this browser session.");
 }
 
@@ -419,7 +443,7 @@ function renderApiGuardStatus(message = "") {
       ? "conservative estimate"
       : `${rates.source} pricing`;
   const body = settings.enabled
-    ? `${usage.requests}/${settings.maxRequests} calls · ${formatStatNumber(usage.totalTokens)}/${formatStatNumber(settings.maxSessionTokens)} tokens · ${formatUsd(usage.estimatedUsd)}/${formatUsd(settings.maxSessionUsd)} estimated · ${priceLabel}.`
+    ? `${usage.requests}/${settings.maxRequests} calls · ${formatStatNumber(usage.totalTokens)}/${formatStatNumber(settings.maxSessionTokens)} tokens · ${formatUsd(usage.estimatedUsd)}/${formatUsd(settings.maxSessionUsd)} estimated · ${formatControlNumber(settings.minRequestDelaySeconds)}s gap · ${settings.maxRequestsPerWindow}/${formatControlNumber(settings.requestWindowSeconds)}s cap · ${priceLabel}.`
     : "Spend guard is off.";
   els.apiGuardStatus.textContent = message ? `${message} ${body}` : body;
 }
@@ -442,6 +466,17 @@ function positiveInteger(value, fallback) {
 function positiveNumber(value, fallback) {
   const number = Number.parseFloat(value);
   return Number.isFinite(number) && number > 0 ? number : fallback;
+}
+
+function nonNegativeNumber(value, fallback) {
+  const number = Number.parseFloat(value);
+  return Number.isFinite(number) && number >= 0 ? number : fallback;
+}
+
+function formatControlNumber(value) {
+  return Number(value || 0).toLocaleString("en-US", {
+    maximumFractionDigits: 1
+  });
 }
 
 function providerValue(label) {
@@ -1415,6 +1450,14 @@ async function generateApiReviewQuestions(fileMap, files) {
   }
 
   const endpoint = defaultEndpointForProvider(provider);
+  const budget = reserveApiBudget({
+    provider,
+    model,
+    prompt,
+    extraParts: [],
+    outputTokenLimit: apiOutputTokenLimit()
+  });
+  await waitForApiThrottle(provider);
   const response = await fetch(endpoint, {
     method: "POST",
     headers: {
@@ -1424,6 +1467,7 @@ async function generateApiReviewQuestions(fileMap, files) {
     body: JSON.stringify({
       model,
       temperature: 0.2,
+      max_tokens: budget.outputTokenLimit,
       messages: [
         {
           role: "system",
@@ -1441,6 +1485,13 @@ async function generateApiReviewQuestions(fileMap, files) {
     throw await apiErrorFromResponse(response, "model review");
   }
   const json = await response.json();
+  recordApiUsage({
+    provider,
+    model,
+    inputTokens: json.usage?.prompt_tokens || budget.inputTokens,
+    outputTokens: json.usage?.completion_tokens || budget.outputTokenLimit,
+    estimated: !json.usage
+  });
   const content = json.choices?.[0]?.message?.content || "";
   return parseApiQuestions(content).slice(0, 3);
 }
@@ -1471,6 +1522,7 @@ async function generateOpenAiCompatibleJsonContent(provider, model, prompt) {
     extraParts: [],
     outputTokenLimit: apiOutputTokenLimit()
   });
+  await waitForApiThrottle(provider);
   const response = await fetch(endpoint, {
     method: "POST",
     headers: {
@@ -1522,6 +1574,7 @@ async function generateGeminiJsonContent(model, prompt, extraParts = []) {
     extraParts,
     outputTokenLimit: apiOutputTokenLimit()
   });
+  await waitForApiThrottle("gemini");
   const response = await fetch(endpoint, {
     method: "POST",
     headers: {
@@ -1631,6 +1684,57 @@ function recordApiUsage({ provider, model, inputTokens = 0, outputTokens = 0, es
   state.apiUsage.estimatedUsd += estimateModelCostUsd(model, safeInput, safeOutput);
   const suffix = estimated ? " Usage estimated because the model did not return token metadata." : "";
   renderApiGuardStatus(`${providerLabel(provider)} call recorded.${suffix}`);
+}
+
+function waitForApiThrottle(provider) {
+  if (!state.apiGuardSettings.enabled) return Promise.resolve();
+  const run = apiThrottle.queue.then(() => runApiThrottleWait(provider));
+  apiThrottle.queue = run.catch(() => {});
+  return run;
+}
+
+async function runApiThrottleWait(provider) {
+  let waitMs = apiThrottleWaitMs();
+  while (waitMs > 0) {
+    renderApiGuardStatus(`Waiting ${formatWaitSeconds(waitMs)}s before the next ${providerLabel(provider)} call.`);
+    await sleep(waitMs);
+    waitMs = apiThrottleWaitMs();
+  }
+
+  const now = Date.now();
+  apiThrottle.lastStartedAt = now;
+  apiThrottle.startedAt = recentApiCallStarts(now);
+  apiThrottle.startedAt.push(now);
+  renderApiGuardStatus(`${providerLabel(provider)} request started.`);
+}
+
+function apiThrottleWaitMs(now = Date.now()) {
+  const settings = state.apiGuardSettings;
+  const minDelayMs = Math.max(0, Number(settings.minRequestDelaySeconds) || 0) * 1000;
+  const windowMs = Math.max(1, Number(settings.requestWindowSeconds) || 10) * 1000;
+  const maxInWindow = Math.max(1, Number(settings.maxRequestsPerWindow) || 1);
+  const recentStarts = recentApiCallStarts(now);
+  const delayWait = apiThrottle.lastStartedAt ? Math.max(0, apiThrottle.lastStartedAt + minDelayMs - now) : 0;
+  const windowWait = recentStarts.length >= maxInWindow
+    ? Math.max(0, recentStarts[0] + windowMs - now)
+    : 0;
+  return Math.ceil(Math.max(delayWait, windowWait));
+}
+
+function recentApiCallStarts(now = Date.now()) {
+  const windowMs = Math.max(1, Number(state.apiGuardSettings.requestWindowSeconds) || 10) * 1000;
+  apiThrottle.startedAt = apiThrottle.startedAt.filter((startedAt) => now - startedAt < windowMs);
+  return apiThrottle.startedAt;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
+}
+
+function formatWaitSeconds(ms) {
+  return (Math.ceil(ms / 100) / 10).toLocaleString("en-US", {
+    maximumFractionDigits: 1
+  });
 }
 
 function spendGuardError(message) {
@@ -2490,10 +2594,39 @@ ${summary || ""}
     setApiGuard(settings = {}) {
       state.apiGuardSettings = normalizeApiGuardSettings(settings);
       state.apiUsage = emptyApiUsage();
+      apiThrottle.startedAt = [];
+      apiThrottle.lastStartedAt = 0;
       hydrateApiGuardControls();
     },
     apiUsage() {
       return { ...state.apiUsage };
+    },
+    seedTextModelSources(count = 3) {
+      state.files = Array.from({ length: count }, (_, index) => ({
+        name: `model-source-${index + 1}.txt`,
+        text: `Readable source ${index + 1} with enough context for a model-generated filing review.`,
+        type: "text",
+        size: 86,
+        lastModified: new Date(2026, 4, 5, 14, index).getTime(),
+        sourceScope: "pending",
+        extractionStatus: "ready",
+        extractionError: ""
+      }));
+      state.vaultFiles = [];
+      state.vaultHandle = createMemoryVaultHandle();
+      state.vaultName = "Browser Test Vault";
+      state.currentFileMap = new Map([["wiki/index.md", "# Index\n"]]);
+      state.pendingSave = false;
+      state.processingInbox = false;
+      state.apiSecret = "test-gemini-key";
+      state.ingestReviews = new Map();
+      state.ingestErrors = new Map();
+      state.apiUsage = emptyApiUsage();
+      apiThrottle.startedAt = [];
+      apiThrottle.lastStartedAt = 0;
+      renderSources();
+      updateActionState();
+      return document.querySelector("#source-list")?.innerText || "";
     },
     seedVaultPendingSources() {
       const rawFiles = [

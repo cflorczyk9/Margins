@@ -271,6 +271,68 @@ test("spend guard blocks model calls before fetch", {
   }
 });
 
+test("model throttle spaces bursty Gemini calls", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => {
+      window.__fetchTimes = [];
+      window.fetch = async () => {
+        window.__fetchTimes.push(performance.now());
+        return new Response(JSON.stringify({
+          candidates: [{
+            content: {
+              parts: [{
+                text: JSON.stringify({
+                  summary: "Model reviewed this readable source.",
+                  connections: [],
+                  questions: []
+                })
+              }]
+            }
+          }],
+          usageMetadata: {
+            promptTokenCount: 10,
+            candidatesTokenCount: 5,
+            thoughtsTokenCount: 0,
+            totalTokenCount: 15
+          }
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        });
+      };
+      window.__marginsTest.setApiGuard({
+        enabled: true,
+        maxRequests: 20,
+        maxOutputTokens: 512,
+        maxSessionTokens: 250000,
+        maxSessionUsd: 1,
+        minRequestDelaySeconds: 0,
+        maxRequestsPerWindow: 2,
+        requestWindowSeconds: 1
+      });
+      window.__marginsTest.seedTextModelSources(3);
+    });
+
+    await page.getByRole("button", { name: "Bulk ingest" }).click();
+    await page.waitForFunction(() => window.__fetchTimes?.length === 3);
+
+    const fetchTimes = await page.evaluate(() => window.__fetchTimes);
+    assert.equal(fetchTimes.length, 3);
+    assert.ok(fetchTimes[2] - fetchTimes[0] >= 900, `expected third call to wait for rolling window, got ${fetchTimes[2] - fetchTimes[0]}ms`);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
 test("image-only PDFs show a friendly Gemini rate-limit retry state", {
   skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
 }, async () => {
