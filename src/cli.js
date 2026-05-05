@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile, readdir, copyFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile, readdir, copyFile, rm } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { compileVault, vaultToFiles } from "./compiler.js";
 
@@ -10,6 +10,7 @@ async function main() {
   const generated = vaultToFiles(vault);
 
   await mkdir(outputDir, { recursive: true });
+  await cleanGeneratedOutput(outputDir);
   await copyRawSources(files, outputDir);
   for (const [path, body] of generated.entries()) {
     const outPath = join(outputDir, path);
@@ -19,6 +20,26 @@ async function main() {
 
   console.log(`Compiled ${files.length} raw source${files.length === 1 ? "" : "s"} into ${outputDir}`);
   console.log(`Generated ${generated.size} operating/wiki files.`);
+}
+
+async function cleanGeneratedOutput(outputDir) {
+  const generatedPaths = [
+    ".margins",
+    "wiki/.margins",
+    "wiki/sources",
+    "wiki/concepts",
+    "wiki/entities",
+    "wiki/synthesis",
+    "wiki/index.md",
+    "wiki/graph.json",
+    "commands",
+    "agents",
+    "operator-manual.md",
+    "query-cookbook.md"
+  ];
+  for (const path of generatedPaths) {
+    await rm(join(outputDir, path), { recursive: true, force: true });
+  }
 }
 
 async function readRawSources(dir) {
