@@ -29,6 +29,14 @@ npm run dev
 
 Open `http://localhost:5173`.
 
+The default UI is a guided flow:
+
+1. Choose a vault folder.
+2. Drop or add documents.
+3. Click the single `Next Step` button until the wiki is saved.
+
+Until API mode exists, the language-model step is still copy/paste: Margins copies the ingest prompt, you paste it into Claude/ChatGPT, then paste the returned `margins-file` blocks back into Margins. Advanced controls are available under `Advanced tools`.
+
 The browser app has two compile paths:
 
 - `Local compile` uses only local heuristics. It proves the folder -> wiki -> operating layer pipeline.

@@ -19,12 +19,17 @@ const state = {
   llmFiles: new Map(),
   llmSelectedPath: null,
   currentMaterialQuestions: [],
+  llmPromptCopied: false,
+  hasSavedCurrent: false,
   vaultHandle: null,
   vaultName: ""
 };
 
 const els = {
   themeToggle: document.getElementById("theme-toggle"),
+  workflowGuidance: document.getElementById("workflow-guidance"),
+  workflowBtn: document.getElementById("workflow-btn"),
+  sourceDropZone: document.getElementById("source-drop-zone"),
   folderInput: document.getElementById("folder-input"),
   fileInput: document.getElementById("file-input"),
   sourceList: document.getElementById("source-list"),
@@ -67,6 +72,7 @@ els.fileInput.addEventListener("change", handleSourceSelection);
 els.reviewMode.value = state.reviewMode;
 updateReviewModeHelp();
 hydrateChecklist();
+updateWorkflowState();
 
 els.themeToggle.addEventListener("change", () => {
   state.theme = els.themeToggle.checked ? "dark" : "light";
@@ -74,18 +80,45 @@ els.themeToggle.addEventListener("change", () => {
   localStorage.setItem("margins-theme", state.theme);
 });
 
+els.workflowBtn.addEventListener("click", runWorkflowStep);
+
+els.sourceDropZone.addEventListener("dragover", (event) => {
+  event.preventDefault();
+  els.sourceDropZone.classList.add("dragging");
+});
+
+els.sourceDropZone.addEventListener("dragleave", () => {
+  els.sourceDropZone.classList.remove("dragging");
+});
+
+els.sourceDropZone.addEventListener("drop", async (event) => {
+  event.preventDefault();
+  els.sourceDropZone.classList.remove("dragging");
+  await setSourceFiles([...event.dataTransfer.files]);
+});
+
 async function handleSourceSelection(event) {
-  const files = normalizeSelectedFiles([...event.target.files]);
-  state.files = await Promise.all(files.map(readBrowserFile));
+  await setSourceFiles([...event.target.files]);
+}
+
+async function setSourceFiles(files) {
+  const normalized = normalizeSelectedFiles(files);
+  state.files = await Promise.all(normalized.map(readBrowserFile));
   state.vault = null;
   state.selectedPath = null;
   state.currentFileMap = null;
+  state.llmPromptCopied = false;
+  state.hasSavedCurrent = false;
   renderSources();
   updateActionState();
   els.exportBtn.disabled = true;
   els.saveVaultBtn.disabled = true;
   els.copyBtn.disabled = true;
   els.stats.textContent = `${state.files.length} source${state.files.length === 1 ? "" : "s"} loaded · 0 nodes · 0 edges`;
+  updateWorkflowState();
+  if (state.files.some((file) => file.type === "pdf" && file.extractionStatus !== "extracted")) {
+    await extractPdfSources();
+  }
 }
 
 els.extractBtn.addEventListener("click", extractPdfSources);
@@ -94,14 +127,13 @@ els.compileBtn.addEventListener("click", () => {
   state.vault = compileVault(state.files, { name: "Karpathy Original" });
   state.selectedPath = null;
   state.currentFileMap = null;
+  state.hasSavedCurrent = false;
   renderVault();
+  updateWorkflowState();
 });
 
 els.llmBtn.addEventListener("click", async () => {
-  if (state.files.length === 0) return;
-  await navigator.clipboard.writeText(buildLlmIngestPrompt(state.files));
-  els.llmBtn.textContent = "Copied";
-  setTimeout(() => { els.llmBtn.textContent = "Copy LLM ingest prompt"; }, 1100);
+  await copyLlmIngestPrompt();
 });
 
 els.exportBtn.addEventListener("click", () => {
@@ -178,6 +210,7 @@ function setActiveVault(handle, name) {
   els.createVaultBtn.textContent = `Vault: ${shortLabel(name)}`;
   els.openVaultBtn.textContent = "Open another vault";
   els.saveVaultBtn.disabled = !state.currentFileMap;
+  updateWorkflowState();
 }
 
 async function saveCurrentVault() {
@@ -204,6 +237,7 @@ async function saveCurrentVault() {
         ? "No raw source files were loaded in the browser when this folder was written."
         : ""
     }, null, 2));
+    state.hasSavedCurrent = true;
     els.stats.textContent = state.files.length === 0
       ? `Saved ${writtenFiles} wiki/operating files to ${state.vaultName}, but no raw sources were loaded.`
       : `Saved ${writtenFiles} wiki/operating file${writtenFiles === 1 ? "" : "s"} + ${writtenRaw} raw source${writtenRaw === 1 ? "" : "s"} to ${state.vaultName}`;
@@ -216,6 +250,7 @@ async function saveCurrentVault() {
     els.saveVaultBtn.textContent = originalText;
   } finally {
     els.saveVaultBtn.disabled = !state.currentFileMap;
+    updateWorkflowState();
   }
 }
 
@@ -236,24 +271,74 @@ els.reviewMode.addEventListener("change", () => {
   localStorage.setItem("margins-review-mode", state.reviewMode);
   updateReviewModeHelp();
   if (state.llmFiles.size > 0) renderLlmReview();
+  updateWorkflowState();
+});
+
+els.llmInput.addEventListener("input", () => {
+  const parsed = parseLlmFiles(els.llmInput.value);
+  if (parsed.size === 0 && state.llmFiles.size === 0) {
+    updateWorkflowState();
+    return;
+  }
+  if (parsed.size > 0 && serializeLlmFiles(parsed) !== serializeLlmFiles(state.llmFiles)) {
+    els.reviewReply.value = "";
+  }
+  state.llmFiles = parsed;
+  state.currentFileMap = null;
+  state.hasSavedCurrent = false;
+  els.saveVaultBtn.disabled = true;
+  els.exportBtn.disabled = true;
+  renderLlmReview();
 });
 
 els.parseLlmBtn.addEventListener("click", () => {
   state.llmFiles = parseLlmFiles(els.llmInput.value);
   els.reviewReply.value = "";
+  state.currentFileMap = null;
+  state.hasSavedCurrent = false;
+  els.saveVaultBtn.disabled = true;
+  els.exportBtn.disabled = true;
   renderLlmReview();
 });
 
 els.repairLlmBtn.addEventListener("click", async () => {
+  await copyLlmRepairPrompt();
+});
+
+els.reviewReply.addEventListener("input", () => {
+  updateReviewResponseState();
+  updateWorkflowState();
+});
+
+els.reviewResponseBtn.addEventListener("click", async () => {
+  await copyReviewResponsePrompt();
+});
+
+els.acceptLlmBtn.addEventListener("click", () => {
+  acceptLlmFiles();
+});
+
+async function copyLlmIngestPrompt() {
+  if (state.files.length === 0) return;
+  await navigator.clipboard.writeText(buildLlmIngestPrompt(state.files));
+  state.llmPromptCopied = true;
+  els.llmBtn.textContent = "Copied";
+  setTimeout(() => { els.llmBtn.textContent = "Copy LLM ingest prompt"; }, 1100);
+  activateTab("llm");
+  els.llmInput.focus();
+  updateWorkflowState();
+}
+
+async function copyLlmRepairPrompt() {
   if (state.llmFiles.size === 0) return;
   await navigator.clipboard.writeText(buildLlmRepairPrompt(state.llmFiles));
   els.repairLlmBtn.textContent = "Copied";
   setTimeout(() => { els.repairLlmBtn.textContent = "Copy repair prompt"; }, 1100);
-});
+  activateTab("llm");
+  updateWorkflowState();
+}
 
-els.reviewReply.addEventListener("input", updateReviewResponseState);
-
-els.reviewResponseBtn.addEventListener("click", async () => {
+async function copyReviewResponsePrompt() {
   const reply = els.reviewReply.value.trim();
   if (state.llmFiles.size === 0 || !reply) return;
   await navigator.clipboard.writeText(buildReviewResponsePrompt(
@@ -264,13 +349,16 @@ els.reviewResponseBtn.addEventListener("click", async () => {
   ));
   els.reviewResponseBtn.textContent = "Copied";
   setTimeout(() => { els.reviewResponseBtn.textContent = "Copy review response prompt"; }, 1100);
-});
+  activateTab("llm");
+  updateWorkflowState();
+}
 
-els.acceptLlmBtn.addEventListener("click", () => {
-  if (state.llmFiles.size === 0) return;
+function acceptLlmFiles() {
+  if (state.llmFiles.size === 0) return false;
   state.vault = null;
   state.currentFileMap = new Map(state.llmFiles);
   state.selectedPath = null;
+  state.hasSavedCurrent = false;
   renderWikiFiles(state.currentFileMap);
   renderOperatingLayer(state.currentFileMap);
   renderAcceptedLlmEditState();
@@ -279,7 +367,9 @@ els.acceptLlmBtn.addEventListener("click", () => {
   els.saveVaultBtn.disabled = false;
   els.copyBtn.disabled = true;
   activateTab("wiki");
-});
+  updateWorkflowState();
+  return true;
+}
 
 function renderSources() {
   if (state.files.length === 0) {
@@ -310,6 +400,153 @@ function updateReviewModeHelp() {
   }[state.reviewMode] || "";
 }
 
+async function runWorkflowStep() {
+  const step = workflowStep();
+  if (step.disabled) return;
+
+  if (step.action === "vault") {
+    await openVault();
+  } else if (step.action === "sources") {
+    els.fileInput.value = "";
+    els.fileInput.click();
+  } else if (step.action === "extract") {
+    await extractPdfSources();
+  } else if (step.action === "copyPrompt") {
+    await copyLlmIngestPrompt();
+  } else if (step.action === "paste") {
+    activateTab("llm");
+    els.llmInput.focus();
+  } else if (step.action === "repair") {
+    await copyLlmRepairPrompt();
+  } else if (step.action === "reviewReply") {
+    await copyReviewResponsePrompt();
+  } else if (step.action === "acceptSave") {
+    if (acceptLlmFiles()) await saveCurrentVault();
+  } else if (step.action === "save") {
+    await saveCurrentVault();
+  }
+
+  updateWorkflowState();
+}
+
+function updateWorkflowState() {
+  const step = workflowStep();
+  els.workflowGuidance.textContent = step.guidance;
+  els.workflowBtn.textContent = step.label;
+  els.workflowBtn.disabled = !!step.disabled;
+}
+
+function workflowStep() {
+  if (!state.vaultHandle) {
+    return {
+      action: "vault",
+      label: "Choose vault folder",
+      guidance: "Pick or create the local folder Margins will keep updating."
+    };
+  }
+
+  if (state.files.length === 0) {
+    return {
+      action: "sources",
+      label: "Add documents",
+      guidance: `Vault selected: ${state.vaultName}. Now drop documents onto Sources or add files.`
+    };
+  }
+
+  if (state.files.some((file) => file.extractionStatus === "extracting")) {
+    return {
+      action: "extracting",
+      label: "Extracting PDFs...",
+      guidance: "Margins is reading PDF text locally before it builds the LLM prompt.",
+      disabled: true
+    };
+  }
+
+  if (state.files.some((file) => file.type === "pdf" && file.extractionStatus === "needed")) {
+    return {
+      action: "extract",
+      label: "Extract PDF text",
+      guidance: "Some PDFs still need readable text before the language model can organize them."
+    };
+  }
+
+  if (state.hasSavedCurrent) {
+    return {
+      action: "sources",
+      label: "Add more documents",
+      guidance: `Saved to ${state.vaultName}. You can add another document whenever you're ready.`
+    };
+  }
+
+  if (state.currentFileMap) {
+    return {
+      action: "save",
+      label: "Save to vault",
+      guidance: `The wiki is accepted. Save it into ${state.vaultName}.`
+    };
+  }
+
+  if (state.llmFiles.size > 0) {
+    if (els.reviewReply.value.trim()) {
+      return {
+        action: "reviewReply",
+        label: "Copy reply for LLM",
+        guidance: "You wrote guidance for the model. Send it back once, then paste the revised output here."
+      };
+    }
+
+    const warningCount = llmBlockingWarningCount();
+    if (warningCount > 0) {
+      return {
+        action: "repair",
+        label: "Copy cleanup prompt",
+        guidance: `${warningCount} blocking formatting issue${warningCount === 1 ? "" : "s"} found. One cleanup pass should fix the output before saving.`
+      };
+    }
+
+    const questionCount = state.currentMaterialQuestions.length;
+    return {
+      action: "acceptSave",
+      label: "Accept and save",
+      guidance: questionCount
+        ? `${questionCount} optional review question${questionCount === 1 ? "" : "s"} found. Answer only if something looks wrong; otherwise save.`
+        : "Clean LLM output is ready. Accept it and write the vault."
+    };
+  }
+
+  if (els.llmInput.value.trim()) {
+    return {
+      action: "paste",
+      label: "Paste LLM answer",
+      guidance: "The pasted text does not include margins-file blocks yet. Paste the model's full Margins output."
+    };
+  }
+
+  if (state.llmPromptCopied) {
+    return {
+      action: "paste",
+      label: "Paste LLM answer",
+      guidance: "The prompt is copied. Paste it into your LLM, then paste the returned files here."
+    };
+  }
+
+  const failedPdfCount = state.files.filter((file) => file.type === "pdf" && !file.text).length;
+  return {
+    action: "copyPrompt",
+    label: "Organize with LLM",
+    guidance: failedPdfCount
+      ? `${failedPdfCount} PDF${failedPdfCount === 1 ? "" : "s"} need to be attached in the LLM chat. The copied prompt will list them.`
+      : "Copy one prompt for the language model. When API mode exists, this step becomes automatic."
+  };
+}
+
+function llmBlockingWarningCount() {
+  const warningsByPath = validateLlmFiles(state.llmFiles);
+  return [...warningsByPath.values()].reduce((sum, warnings) => (
+    sum + warnings.filter((warning) => /contentReference|Missing YAML|not valid JSON/i.test(warning)).length
+  ), 0);
+}
+
 function renderVault() {
   const vault = state.vault;
   const fileMap = vaultToFiles(vault);
@@ -319,6 +556,7 @@ function renderVault() {
   els.copyBtn.disabled = false;
   els.stats.textContent = `${vault.manifest.counts.raw_sources} sources · ${vault.wiki.graph.nodes.length} nodes · ${vault.wiki.graph.edges.length} edges`;
   state.currentFileMap = fileMap;
+  state.hasSavedCurrent = false;
   renderWikiFiles(fileMap);
 
   renderOperatingLayer(fileMap);
@@ -339,6 +577,7 @@ function renderVault() {
   `).join("");
 
   drawGraph(vault.wiki.graph);
+  updateWorkflowState();
 }
 
 function renderOperatingLayer(fileMap) {
@@ -436,6 +675,7 @@ function renderLlmReview() {
     renderMaterialQuestions([]);
     els.repairLlmBtn.disabled = true;
     updateReviewResponseState();
+    updateWorkflowState();
     return;
   }
 
@@ -458,6 +698,7 @@ function renderLlmReview() {
   renderLlmPreview(warningsByPath);
   renderMaterialQuestions(questions);
   updateReviewResponseState();
+  updateWorkflowState();
 }
 
 function renderLlmPreview(warningsByPath) {
@@ -840,6 +1081,7 @@ async function extractPdfSources() {
   els.extractBtn.textContent = "Extracting PDFs...";
   state.vault = null;
   state.selectedPath = null;
+  updateWorkflowState();
 
   for (const file of targets) {
     file.extractionStatus = "extracting";
@@ -862,6 +1104,7 @@ async function extractPdfSources() {
   renderSources();
   updateActionState();
   els.stats.textContent = `${state.files.length} source${state.files.length === 1 ? "" : "s"} loaded · 0 nodes · 0 edges`;
+  updateWorkflowState();
 }
 
 async function extractPdfText(file) {
@@ -889,6 +1132,7 @@ function updateActionState() {
   els.extractBtn.disabled = !hasPendingPdf;
   els.compileBtn.disabled = !hasFiles;
   els.llmBtn.disabled = !hasFiles;
+  updateWorkflowState();
 }
 
 function sourceClass(file) {

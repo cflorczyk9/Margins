@@ -21,22 +21,28 @@
         </label>
       </div>
 
-      <section class="panel">
-        <h2>1. Raw Sources</h2>
-        <p>Select a raw source folder, or add individual `.md`, `.txt`, and transcript files. PDFs need an LLM handoff or text extraction.</p>
-        <label class="file-picker">
-          <input id="folder-input" type="file" webkitdirectory directory multiple>
-          <span>Select raw_sources folder</span>
-        </label>
+      <section class="panel workflow-panel">
+        <h2>Next Step</h2>
+        <p id="workflow-guidance">Choose where Margins should save your vault.</p>
+        <button id="workflow-btn" class="primary">Choose vault folder</button>
+      </section>
+
+      <section id="source-drop-zone" class="panel source-drop-zone">
+        <h2>Sources</h2>
+        <p>Drop documents here, or add files. Margins keeps originals in raw_sources and writes the wiki into the selected vault.</p>
         <label class="file-picker">
           <input id="file-input" type="file" multiple>
-          <span>Add individual files</span>
+          <span>Add documents</span>
+        </label>
+        <label class="file-picker">
+          <input id="folder-input" type="file" webkitdirectory directory multiple>
+          <span>Add source folder</span>
         </label>
         <div id="source-list" class="source-list empty">No sources loaded.</div>
       </section>
 
-      <section class="panel">
-        <h2>2. Compile</h2>
+      <details class="panel advanced-panel">
+        <summary>Advanced tools</summary>
         <button id="extract-btn" disabled>Extract PDF text</button>
         <button id="compile-btn" class="primary" disabled>Local compile</button>
         <button id="llm-btn" disabled>Copy LLM ingest prompt</button>
@@ -45,10 +51,10 @@
         <button id="save-vault-btn" disabled>Save changes</button>
         <button id="export-btn" disabled>Download vault JSON</button>
         <button id="copy-btn" disabled>Copy operator manual</button>
-      </section>
+      </details>
 
       <section class="panel">
-        <h2>3. Review Mode</h2>
+        <h2>Review Mode</h2>
         <select id="review-mode" class="select-control">
           <option value="suggested" selected>Suggested review</option>
           <option value="auto">Auto-file</option>
@@ -57,14 +63,14 @@
         <p id="review-mode-help">Ask only about durable wiki decisions, with a recommended default.</p>
       </section>
 
-      <section class="panel muted-panel">
-        <h2>Active waits</h2>
+      <details class="panel muted-panel">
+        <summary>Build notes</summary>
         <ul>
           <li>Can Margins create the vault folder for the user?</li>
           <li>Does clean LLM output save into the selected vault?</li>
           <li>Can repeated saves update the same vault?</li>
         </ul>
-      </section>
+      </details>
     </aside>
 
     <main class="workspace">
