@@ -931,6 +931,7 @@ async function prepareInboxSave(fileName = "", options = {}) {
   await savePendingRawSourcesImmediately(targetFiles);
   await prepareSourcesForProcessing(targetFiles);
 
+  const existingFileMap = new Map(state.currentFileMap || []);
   state.vault = compileVault(targetFiles, { name: state.vaultName || "Karpathy Original" });
   state.selectedPath = null;
   state.currentFileMap = mergeFileMaps(state.currentFileMap, vaultToFiles(state.vault));
@@ -949,7 +950,7 @@ async function prepareInboxSave(fileName = "", options = {}) {
   await prepareReviewForCurrentFileMap(
     options.autoFile ? "Margins reviewed and filed the pending documents." : "Margins prepared this document. Answer any quick checks, then approve it.",
     targetFiles,
-    options
+    { ...options, contextFileMap: existingFileMap }
   );
   if (options.autoFile) {
     await saveCurrentVault();
@@ -1239,6 +1240,7 @@ async function prepareIngestReviews(statusText, files = state.files, options = {
   const reviewMap = new Map(state.ingestReviews);
   const allQuestions = [];
   const reviewMode = options.autoFile ? "auto" : state.reviewMode;
+  const apiContextFileMap = options.contextFileMap || state.currentFileMap;
 
   for (const file of files) {
     let review = localIngestReview(file, state.currentFileMap, reviewMode);
@@ -1255,7 +1257,7 @@ async function prepareIngestReviews(statusText, files = state.files, options = {
     if (state.apiSecret && canSendSourceToModel(file)) {
       els.llmStatus.textContent = `Sending ${file.name} to the configured model with vault context...`;
       try {
-        const apiReview = await generateApiIngestReview(file, state.currentFileMap, reviewMode);
+        const apiReview = await generateApiIngestReview(file, apiContextFileMap, reviewMode);
         review = mergeIngestReview(review, apiReview, "api");
         state.apiQuestionSource = "api";
       } catch (error) {
@@ -1296,6 +1298,7 @@ function localIngestReview(file, fileMap, mode) {
     source: "local",
     status: "Raw source saved. Local summary prepared while the model review runs.",
     summary: localSourceSummary(file),
+    summaryBullets: summaryFallbackParts(localSourceSummary(file)).bullets,
     connections: [],
     questions: mode === "auto" ? [] : currentIngestQuestionsForFile(file, fileMap, mode)
   };
@@ -1359,6 +1362,9 @@ function localSourceSummary(file) {
 }
 
 function mergeIngestReview(localReview, apiReview, source) {
+  const questions = source === "api"
+    ? modelQuestionsOrFallback(apiReview)
+    : apiReview.questions?.length ? apiReview.questions : localReview.questions;
   return {
     source,
     status: apiReview.status || "Model reviewed the source against the current vault.",
@@ -1367,10 +1373,14 @@ function mergeIngestReview(localReview, apiReview, source) {
     summary: apiReview.summary || localReview.summary,
     summaryBullets: apiReview.summaryBullets?.length ? apiReview.summaryBullets : localReview.summaryBullets || [],
     connections: apiReview.connections?.length ? apiReview.connections : localReview.connections,
-    questions: source === "api"
-      ? apiReview.questions || []
-      : apiReview.questions?.length ? apiReview.questions : localReview.questions
+    questions
   };
+}
+
+function modelQuestionsOrFallback(apiReview) {
+  if (apiReview.questions?.length) return apiReview.questions;
+  if (apiReview.modelReturnedNoQuestions && apiReview.fallbackQuestions?.length) return apiReview.fallbackQuestions;
+  return [];
 }
 
 function applyIngestReviewToFileMap(file, review) {
@@ -1947,7 +1957,7 @@ Text:
 ${sourceTextForModelPrompt(file)}
 
 Current wiki context:
-${wikiContextForIngestPrompt(fileMap)}
+${wikiContextForIngestPrompt(fileMap, file)}
 
 Operating guardrails:
 ${operatingContextForPrompt(fileMap)}`;
@@ -1969,18 +1979,212 @@ function questionBudgetForMode(mode) {
   }[mode] ?? 2;
 }
 
-function wikiContextForIngestPrompt(fileMap) {
+function wikiContextForIngestPrompt(fileMap, file = null) {
   if (!fileMap?.size) return "- No existing wiki context loaded.";
-  const entries = [...fileMap.entries()]
-    .filter(([path]) => isWikiPagePath(path))
-    .filter(([path]) => !path.startsWith("wiki/.margins/"))
-    .slice(0, 40)
-    .map(([path, body]) => {
-      const title = markdownTitle(body) || titleFromSlug(basename(path).replace(/\.md$/, ""));
-      const summary = extractSourceSummary(body) || excerptForQuestion(body, 220);
-      return `- ${path}: ${title}${summary ? ` — ${summary}` : ""}`;
-    });
-  return entries.length ? entries.join("\n") : "- No existing wiki context loaded.";
+  const records = wikiContextRecords(fileMap);
+  if (!records.length) return "- No existing wiki context loaded.";
+
+  const queryText = [
+    file?.name || "",
+    file?.text || "",
+    file?.extractionError || ""
+  ].join("\n");
+  const queryTerms = keywordSet(queryText);
+  const backlinkCounts = backlinkCountByPath(records);
+  const scored = records
+    .map((record) => ({
+      ...record,
+      backlinkCount: backlinkCounts.get(record.path) || 0,
+      score: scoreWikiContextRecord(record, queryText, queryTerms)
+    }))
+    .sort((left, right) => right.score - left.score || right.backlinkCount - left.backlinkCount || left.path.localeCompare(right.path));
+  const selected = selectWikiContextRecords(scored);
+
+  return [
+    `Use these existing wiki nodes when filing this source. Prefer exact existing paths over creating new pages. Context is ranked from ${records.length} loaded wiki markdown files, including real vault folders like career/, personal/, projects/, daily/, ideas/, and coding/.`,
+    ...selected.map(formatWikiContextRecord)
+  ].join("\n");
+}
+
+function wikiContextRecords(fileMap) {
+  return [...fileMap.entries()]
+    .filter(([path]) => isContextWikiPagePath(path))
+    .map(([path, body]) => wikiContextRecord(path, body));
+}
+
+function isContextWikiPagePath(path) {
+  return path.startsWith("wiki/") &&
+    path.endsWith(".md") &&
+    !path.startsWith("wiki/.margins/") &&
+    !path.startsWith("wiki/_templates/");
+}
+
+function wikiContextRecord(path, body) {
+  const frontmatter = frontmatterFields(body);
+  const title = markdownTitle(body) || titleFromSlug(basename(path).replace(/\.md$/, ""));
+  const summary = cleanSummary(frontmatter.summary || extractSourceSummary(body) || excerptForQuestion(bodyWithoutFrontmatter(body), 260));
+  const tags = frontmatterList(frontmatter.tags);
+  const keyLinks = [
+    ...frontmatterList(frontmatter.key_links),
+    ...extractWikiLinks(body)
+  ].map((link) => cleanWikiLinkLabel(link)).filter(Boolean);
+  return {
+    path,
+    body,
+    title,
+    summary,
+    type: frontmatter.type || graphTypeFromPath(path),
+    bucket: frontmatter.bucket || path.split("/")[1] || "wiki",
+    status: frontmatter.status || "",
+    priority: frontmatter.priority || "",
+    updated: frontmatter.updated || frontmatter.created || "",
+    tags,
+    keyLinks: [...new Set(keyLinks)].slice(0, 12),
+    snippet: contextSnippet(body)
+  };
+}
+
+function frontmatterFields(body) {
+  const match = String(body || "").match(/^---\n([\s\S]*?)\n---\n/);
+  if (!match) return {};
+  const fields = {};
+  for (const line of match[1].split("\n")) {
+    const field = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+    if (!field) continue;
+    fields[field[1]] = field[2].trim().replace(/^"(.*)"$/, "$1");
+  }
+  return fields;
+}
+
+function frontmatterList(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return [];
+  if (raw.startsWith("[") && raw.endsWith("]")) {
+    return raw
+      .slice(1, -1)
+      .split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/)
+      .map((item) => item.trim().replace(/^['"]|['"]$/g, ""))
+      .filter(Boolean);
+  }
+  return raw.split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+function bodyWithoutFrontmatter(body) {
+  return String(body || "").replace(/^---\n[\s\S]*?\n---\n/, "");
+}
+
+function contextSnippet(body) {
+  const clean = bodyWithoutFrontmatter(body)
+    .split("\n")
+    .filter((line) => {
+      const trimmed = line.trim();
+      return trimmed && !trimmed.startsWith("# ") && !/^Raw file:/i.test(trimmed);
+    })
+    .slice(0, 18)
+    .join(" ");
+  return excerptForQuestion(clean, 360);
+}
+
+function cleanWikiLinkLabel(link) {
+  return String(link || "")
+    .replace(/^\[\[/, "")
+    .replace(/\]\]$/, "")
+    .split("|")[0]
+    .replace(/\.md$/, "")
+    .trim();
+}
+
+function keywordSet(text) {
+  return new Set(String(text || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, " ")
+    .split(/\s+/)
+    .filter((term) => term.length > 2 && !STOP_WORDS_FOR_CONTEXT.has(term)));
+}
+
+const STOP_WORDS_FOR_CONTEXT = new Set([
+  "the", "and", "for", "with", "that", "this", "from", "into", "about", "what",
+  "when", "where", "which", "while", "have", "has", "had", "not", "you", "your",
+  "was", "were", "are", "been", "being", "can", "could", "would", "should", "all",
+  "any", "one", "two", "new", "raw", "source", "sources", "summary", "transcript",
+  "file", "files", "document", "documents", "call", "zoom", "meeting"
+]);
+
+function backlinkCountByPath(records) {
+  const bySlug = new Map();
+  const counts = new Map(records.map((record) => [record.path, 0]));
+  for (const record of records) {
+    bySlug.set(record.path, record.path);
+    bySlug.set(record.path.replace(/^wiki\//, "").replace(/\.md$/, ""), record.path);
+    bySlug.set(basename(record.path).replace(/\.md$/, ""), record.path);
+    bySlug.set(slugifyLoose(record.title), record.path);
+  }
+  for (const record of records) {
+    for (const link of record.keyLinks) {
+      const target = bySlug.get(cleanWikiLinkLabel(link)) || bySlug.get(slugifyLoose(link));
+      if (target && target !== record.path) counts.set(target, (counts.get(target) || 0) + 1);
+    }
+  }
+  return counts;
+}
+
+function scoreWikiContextRecord(record, queryText, queryTerms) {
+  const haystack = `${record.path} ${record.title} ${record.summary} ${record.tags.join(" ")} ${record.keyLinks.join(" ")}`.toLowerCase();
+  const queryLower = String(queryText || "").toLowerCase();
+  let score = 0;
+  const titleLower = record.title.toLowerCase();
+  if (titleLower.length > 3 && queryLower.includes(titleLower)) score += 80;
+  const slug = basename(record.path).replace(/\.md$/, "").replace(/[-_]+/g, " ").toLowerCase();
+  if (slug.length > 3 && queryLower.includes(slug)) score += 55;
+  for (const term of queryTerms) {
+    if (haystack.includes(term)) score += 4;
+  }
+  for (const link of record.keyLinks) {
+    const linkText = cleanWikiLinkLabel(link).replace(/[-_]+/g, " ").toLowerCase();
+    if (linkText.length > 3 && queryLower.includes(linkText)) score += 18;
+  }
+  if (/pinned|high|peak/i.test(`${record.priority} ${record.tags.join(" ")}`)) score += 10;
+  if (/active|fresh|recent/i.test(`${record.status} ${record.tags.join(" ")}`)) score += 8;
+  if (record.path === "wiki/index.md") score += 5;
+  if (record.path.startsWith("wiki/sources/")) score -= 2;
+  return score;
+}
+
+function selectWikiContextRecords(scored) {
+  const selected = new Map();
+  for (const record of scored.filter((entry) => entry.score > 0).slice(0, 36)) {
+    selected.set(record.path, record);
+  }
+  for (const record of scored.filter(isPinnedContextRecord).slice(0, 12)) {
+    selected.set(record.path, record);
+  }
+  if (selected.size < 16) {
+    for (const record of scored.slice(0, 24)) selected.set(record.path, record);
+  }
+  return [...selected.values()]
+    .sort((left, right) => right.score - left.score || right.backlinkCount - left.backlinkCount || left.path.localeCompare(right.path))
+    .slice(0, 48);
+}
+
+function isPinnedContextRecord(record) {
+  return record.path === "wiki/index.md" || /pinned|peak|active|fresh/i.test(`${record.priority} ${record.status} ${record.tags.join(" ")}`);
+}
+
+function formatWikiContextRecord(record) {
+  const bits = [
+    `title: ${record.title}`,
+    `type: ${record.type || "note"}`,
+    `bucket: ${record.bucket}`,
+    record.status ? `status: ${record.status}` : "",
+    record.priority ? `priority: ${record.priority}` : "",
+    record.updated ? `updated: ${record.updated}` : "",
+    record.backlinkCount ? `backlinks: ${record.backlinkCount}` : "",
+    record.tags.length ? `tags: ${record.tags.slice(0, 8).join(", ")}` : "",
+    record.keyLinks.length ? `links: ${record.keyLinks.slice(0, 8).join(", ")}` : ""
+  ].filter(Boolean).join(" · ");
+  const summary = record.summary ? ` — ${record.summary}` : "";
+  const snippet = record.snippet && record.snippet !== record.summary ? `\n  signal: ${record.snippet}` : "";
+  return `- ${record.path} (${bits})${summary}${snippet}`;
 }
 
 function operatingContextForPrompt(fileMap) {
@@ -1993,18 +2197,38 @@ function operatingContextForPrompt(fileMap) {
 }
 
 function parseApiIngestReview(content, file, mode, provider = "gemini") {
-  const parsed = parseJsonObject(content) || {};
+  const parsed = parseJsonObject(content);
+  if (!parsed) {
+    throw new Error(`${providerLabel(provider)} returned review text that Margins could not parse as JSON.`);
+  }
   const connections = Array.isArray(parsed.connections) ? parsed.connections : [];
   const questions = Array.isArray(parsed.questions) ? parsed.questions : [];
-  const summary = apiSummaryText(parsed.summary, parsed.summaryBullets || parsed.bullets);
-  const summaryBullets = apiSummaryBullets(parsed.summary, parsed.summaryBullets || parsed.bullets);
+  const summaryParts = apiSummaryParts(parsed.summary, parsed.summaryBullets || parsed.bullets);
+  if (!summaryParts.overview && summaryParts.bullets.length === 0) {
+    throw new Error(`${providerLabel(provider)} did not return a usable summary.`);
+  }
+  const parsedQuestions = questions
+    .map((question) => reviewQuestion(
+      /careful|sensitive|risk|warning/i.test(question.kind || "") ? "warn" : "suggest",
+      question.kind || "Quick check",
+      `raw_sources/${file.name}`,
+      question.question || "",
+      question.reason || "The model flagged this as useful before filing.",
+      question.recommendation || "My take: use the default unless it looks wrong.",
+      Array.isArray(question.options) && question.options.length ? question.options.slice(0, 4) : ["Yes", "No", "Use default"]
+    ))
+    .filter((question) => question.question)
+    .slice(0, questionBudgetForMode(mode));
+  const modelReturnedNoQuestions = mode !== "auto" && parsedQuestions.length === 0;
   return {
     source: "api",
     provider,
     reviewedAt: new Date().toISOString(),
-    status: `${providerLabel(provider)} reviewed the source against the current vault.`,
-    summary,
-    summaryBullets,
+    status: modelReturnedNoQuestions
+      ? `${providerLabel(provider)} reviewed the source but did not return follow-up questions.`
+      : `${providerLabel(provider)} reviewed the source against the current vault.`,
+    summary: summaryParts.overview,
+    summaryBullets: summaryParts.bullets,
     connections: connections
       .map((connection) => ({
         path: String(connection.path || "").trim(),
@@ -2014,28 +2238,23 @@ function parseApiIngestReview(content, file, mode, provider = "gemini") {
       }))
       .filter((connection) => connection.title || connection.path || connection.reason)
       .slice(0, 5),
-    questions: questions
-      .map((question) => reviewQuestion(
-        /careful|sensitive|risk|warning/i.test(question.kind || "") ? "warn" : "suggest",
-        question.kind || "Quick check",
-        `raw_sources/${file.name}`,
-        question.question || "",
-        question.reason || "The model flagged this as useful before filing.",
-        question.recommendation || "My take: use the default unless it looks wrong.",
-        Array.isArray(question.options) && question.options.length ? question.options.slice(0, 4) : ["Yes", "No", "Use default"]
-      ))
-      .filter((question) => question.question)
-      .slice(0, questionBudgetForMode(mode))
+    questions: parsedQuestions,
+    modelReturnedNoQuestions,
+    fallbackQuestions: modelReturnedNoQuestions ? fallbackQuestionsForModelReview(file, summaryParts) : []
   };
 }
 
-function apiSummaryText(summary, extraBullets = []) {
+function apiSummaryParts(summary, extraBullets = []) {
   if (summary && typeof summary === "object" && !Array.isArray(summary)) {
     const overview = cleanSummary(summary.overview || summary.title || summary.text || "");
     const bullets = apiSummaryBullets(summary, extraBullets);
-    return cleanSummary([overview, ...bullets].filter(Boolean).join(" "));
+    const fallback = summaryFallbackParts(cleanSummary([overview, ...bullets].filter(Boolean).join(" ")));
+    return {
+      overview: overview || fallback.overview,
+      bullets: bullets.length ? bullets : fallback.bullets
+    };
   }
-  return cleanSummary(summary || "");
+  return summaryFallbackParts(summary);
 }
 
 function apiSummaryBullets(summary, extraBullets = []) {
@@ -2054,6 +2273,66 @@ function apiSummaryBullets(summary, extraBullets = []) {
 
 function arrayFromUnknown(value) {
   return Array.isArray(value) ? value : [];
+}
+
+function summaryFallbackParts(summary) {
+  const parts = splitSummaryForCard(summary);
+  return {
+    overview: parts[0] ? clampSentence(parts[0], 220) : "",
+    bullets: parts.slice(1, 6).map((part) => clampSentence(part, 220)).filter(Boolean)
+  };
+}
+
+function splitSummaryForCard(summary) {
+  const clean = cleanSummary(summary);
+  if (!clean) return [];
+  const markdownParts = clean
+    .split(/\s+(?:[-*]|\d+[.)])\s+/)
+    .map((part) => cleanSummary(part))
+    .filter(Boolean);
+  if (markdownParts.length > 2) return markdownParts;
+  const labeledParts = summaryLabelSections(clean);
+  if (labeledParts.length > 2) return labeledParts;
+  const sentenceParts = summarySentences(clean);
+  if (sentenceParts.length > 2) return sentenceParts;
+  return chunkLongSummary(clean, 180).slice(0, 6);
+}
+
+function chunkLongSummary(summary, maxLength) {
+  const clean = cleanSummary(summary);
+  if (clean.length <= maxLength) return [clean];
+  const words = clean.split(/\s+/);
+  const chunks = [];
+  let current = "";
+  for (const word of words) {
+    if (`${current} ${word}`.trim().length > maxLength && current) {
+      chunks.push(current.trim());
+      current = word;
+    } else {
+      current = `${current} ${word}`.trim();
+    }
+  }
+  if (current) chunks.push(current.trim());
+  return chunks;
+}
+
+function fallbackQuestionsForModelReview(file, summaryParts) {
+  if (state.reviewMode === "auto") return [];
+  const signal = `${file?.name || ""} ${file?.text || ""} ${summaryParts.overview || ""} ${summaryParts.bullets.join(" ")}`;
+  if (!looksLikeFollowUpSource(signal)) return [];
+  return [reviewQuestion(
+    "suggest",
+    "Follow-up",
+    `raw_sources/${file.name}`,
+    "Should Margins track this as an active follow-up?",
+    "Gemini returned no follow-up questions, but this source looks like a call, meeting, opportunity, or decision note.",
+    "My take: track it if you expect another action or conversation.",
+    ["Track it", "Just file it", "Skip"]
+  )];
+}
+
+function looksLikeFollowUpSource(text) {
+  return /call|meeting|zoom|follow[- ]?up|next steps?|opportunit|decision|role|offer|interview|email|conversation|discussed|should|needs to decide/i.test(text || "");
 }
 
 function buildApiQuestionPrompt(fileMap, files) {
@@ -2720,6 +2999,132 @@ ${summary || ""}
       apiThrottle.startedAt = [];
       apiThrottle.lastStartedAt = 0;
       renderSources();
+      updateActionState();
+      return document.querySelector("#source-list")?.innerText || "";
+    },
+    seedDocxModelCallSource() {
+      const rawSourceHandle = {
+        async getFile() {
+          return new File(["browser test docx attachment"], "pending-word.docx", {
+            type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            lastModified: new Date(2026, 4, 5, 9, 30).getTime()
+          });
+        }
+      };
+      state.files = [{
+        name: "pending-word.docx",
+        text: "",
+        type: "docx",
+        size: 12400,
+        lastModified: new Date(2026, 4, 5, 9, 30).getTime(),
+        rawSourceHandle,
+        sourceScope: "vault",
+        extractionStatus: "failed",
+        extractionError: "No readable text found in DOCX."
+      }];
+      state.vaultFiles = [{ ...state.files[0], sourceScope: "vault", dirtyRaw: false }];
+      state.vaultHandle = createMemoryVaultHandle();
+      state.vaultName = "Browser Test Vault";
+      state.currentFileMap = new Map([["wiki/index.md", "# Index\n"]]);
+      state.pendingSave = false;
+      state.processingInbox = false;
+      state.ingestReviews = new Map();
+      state.ingestErrors = new Map();
+      renderSources();
+      updateActionState();
+      return document.querySelector("#source-list")?.innerText || "";
+    },
+    seedRichWikiContextSource() {
+      const file = {
+        name: "bob-casey-followup.txt",
+        text: "Bob Casey followed up about Riviera, Santa Barbara Management, the GTM role, Alexa Harter, and whether Connor should keep this opportunity warm.",
+        type: "text",
+        size: 148,
+        lastModified: new Date(2026, 4, 5, 15, 20).getTime(),
+        sourceScope: "pending",
+        extractionStatus: "ready",
+        extractionError: ""
+      };
+      state.files = [file];
+      state.vaultFiles = [];
+      state.vaultHandle = createMemoryVaultHandle();
+      state.vaultName = "Browser Test Vault";
+      state.currentFileMap = new Map([
+        ["wiki/index.md", `---
+type: index
+bucket: index
+summary: Vault index.
+tags: [index]
+---
+
+# Index
+
+- [[riviera]]
+- [[bob-casey]]
+`],
+        ["wiki/career/riviera.md", `---
+type: entity
+bucket: career
+summary: New family-office operating-system company being built alongside SBM by Bob Casey. Connor was pitched a founding business/GTM role.
+tags: [company, family-office, software, career-fork, briefly-adjacent, region/riviera, vibrance/peak]
+status: active
+priority: pinned
+key_links: ["[[bob-casey]]", "[[santa-barbara-management]]", "[[briefly]]"]
+updated: 2026-05-01
+---
+
+# Riviera
+
+Family-office operating-system company being built by [[bob-casey]] alongside [[santa-barbara-management]].
+`],
+        ["wiki/projects/bob-casey.md", `---
+type: entity
+bucket: projects
+summary: Bob Casey relationship and Riviera opportunity context.
+tags: [person, career, riviera, vibrance/peak]
+status: active
+priority: pinned
+key_links: ["[[riviera]]", "[[santa-barbara-management]]"]
+updated: 2026-05-01
+---
+
+# Bob Casey
+
+Bob is the founder/CEO contact for the [[riviera]] opportunity.
+`],
+        ["wiki/career/source-2026-04-24-connor-bob-casey.md", `---
+type: source
+bucket: career
+summary: Follow-up Zoom with Bob Casey and Alexa Harter about SBM status and the Riviera role timeline.
+tags: [source, meeting, bob-casey, riviera, career-fork]
+key_links: ["[[bob-casey]]", "[[riviera]]", "[[santa-barbara-management]]"]
+updated: 2026-04-24
+---
+
+# Source: Connor - Bob Casey / Alexa Harter
+
+Second touch on the [[riviera]] founding-role conversation.
+`],
+        ["wiki/personal/unrelated-friend.md", `---
+type: entity
+bucket: personal
+summary: Unrelated personal note.
+tags: [person]
+---
+
+# Unrelated Friend
+`]
+      ]);
+      state.pendingSave = false;
+      state.processingInbox = false;
+      state.apiSecret = "test-gemini-key";
+      state.ingestReviews = new Map();
+      state.ingestErrors = new Map();
+      state.apiUsage = emptyApiUsage();
+      apiThrottle.startedAt = [];
+      apiThrottle.lastStartedAt = 0;
+      renderSources();
+      renderVaultTree(state.currentFileMap);
       updateActionState();
       return document.querySelector("#source-list")?.innerText || "";
     },

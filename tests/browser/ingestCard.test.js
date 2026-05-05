@@ -425,6 +425,171 @@ test("Gemini review shows concise summary bullets and model questions", {
   }
 });
 
+test("Gemini ingest prompt includes relevant existing wiki nodes outside generated folders", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => {
+      window.__geminiCalls = [];
+      window.fetch = async (url, options = {}) => {
+        window.__geminiCalls.push({ url: String(url), body: JSON.parse(options.body || "{}") });
+        return new Response(JSON.stringify({
+          candidates: [{
+            content: {
+              parts: [{
+                text: JSON.stringify({
+                  summary: {
+                    overview: "This source is a Bob Casey follow-up about the Riviera opportunity.",
+                    bullets: [
+                      "It should connect to the existing Riviera company note.",
+                      "It should reuse the existing Bob Casey relationship node.",
+                      "It may update the career-fork context if Connor wants to keep the role warm."
+                    ]
+                  },
+                  connections: [
+                    {
+                      path: "wiki/career/riviera.md",
+                      title: "Riviera",
+                      type: "existing",
+                      reason: "The source is about Riviera."
+                    },
+                    {
+                      path: "wiki/projects/bob-casey.md",
+                      title: "Bob Casey",
+                      type: "existing",
+                      reason: "Bob is central to the follow-up."
+                    }
+                  ],
+                  questions: [
+                    {
+                      kind: "Follow-up",
+                      question: "Should this keep the Riviera opportunity active?",
+                      reason: "That changes how the source is filed.",
+                      recommendation: "My take: track it if Bob expects another conversation.",
+                      options: ["Keep active", "Just file", "Skip"]
+                    }
+                  ]
+                })
+              }]
+            }
+          }],
+          usageMetadata: {
+            promptTokenCount: 80,
+            candidatesTokenCount: 30,
+            thoughtsTokenCount: 0,
+            totalTokenCount: 110
+          }
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        });
+      };
+      window.__marginsTest.seedRichWikiContextSource();
+    });
+
+    await page.locator(".source-item", { hasText: "bob-casey-followup.txt" }).getByRole("button", { name: "Process" }).click();
+    await page.locator(".source-item.ready-to-write", { hasText: "bob-casey-followup.txt" }).waitFor();
+
+    const prompt = await page.evaluate(() => window.__geminiCalls[0].body.contents[0].parts[0].text);
+    assert.match(prompt, /ranked from 5 loaded wiki markdown files/);
+    assert.match(prompt, /wiki\/career\/riviera\.md/);
+    assert.match(prompt, /wiki\/projects\/bob-casey\.md/);
+    assert.match(prompt, /wiki\/career\/source-2026-04-24-connor-bob-casey\.md/);
+    assert.match(prompt, /tags: company, family-office, software, career-fork/);
+    assert.match(prompt, /links: bob-casey, santa-barbara-management, briefly/);
+    assert.doesNotMatch(prompt, /No existing wiki context loaded/);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("Gemini DOCX call review does not collapse a no-question response into a wall of text", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.addInitScript(() => {
+      localStorage.setItem("margins.apiSecret.v1", "test-gemini-key");
+      localStorage.setItem("margins-review-mode", "suggested");
+    });
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => {
+      window.__geminiCalls = [];
+      window.fetch = async (url, options = {}) => {
+        window.__geminiCalls.push({ url: String(url), body: JSON.parse(options.body || "{}") });
+        return new Response(JSON.stringify({
+          candidates: [{
+            content: {
+              parts: [{
+                text: JSON.stringify({
+                  summary: [
+                    "Participants Larry and Connor discussed a possible operating role tied to a healthcare services company and whether Connor should keep the conversation warm.",
+                    "Background Larry framed the call as exploratory and said the company may need finance, strategy, and execution help after a recent acquisition.",
+                    "Opportunity The role could become a CFO or chief-of-staff style position if the business decides to build a more formal leadership layer.",
+                    "Open questions The source leaves follow-up ownership, timing, compensation, and Connor's desired level of engagement unresolved.",
+                    "Next steps Connor needs to decide whether this belongs in active follow-up tracking or should only be filed as context."
+                  ].join(" "),
+                  connections: [],
+                  questions: []
+                })
+              }]
+            }
+          }],
+          usageMetadata: {
+            promptTokenCount: 70,
+            candidatesTokenCount: 90,
+            thoughtsTokenCount: 0,
+            totalTokenCount: 160
+          }
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        });
+      };
+    });
+
+    await page.evaluate(() => window.__marginsTest.seedDocxModelCallSource());
+    await page.locator(".source-item", { hasText: "pending-word.docx" }).getByRole("button", { name: "Process" }).click();
+    const card = page.locator(".source-item.ready-to-write", { hasText: "pending-word.docx" });
+    await card.waitFor();
+
+    const calls = await page.evaluate(() => window.__geminiCalls);
+    assert.equal(calls.length, 1);
+    assert.match(calls[0].body.contents[0].parts[0].text, /Return 1-2 high-signal questions/);
+    assert.match(calls[0].body.contents[0].parts[0].text, /Name: pending-word\.docx/);
+    assert.match(calls[0].body.contents[0].parts[0].text, /Type: docx/);
+    assert.equal(calls[0].body.contents[0].parts.some((part) => part.inline_data?.mime_type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"), true);
+
+    await card.getByText("Gemini reviewed").waitFor();
+    assert.equal(await card.locator(".run-brief-points li").count() >= 3, true);
+    const visibleSummary = normalizeText(await card.locator(".run-summary").innerText());
+    assert.equal(visibleSummary.length < 700, true);
+
+    const actionableQuestions = await card.locator(".run-question").count();
+    const cardText = normalizeText(await card.innerText());
+    const explicitNoQuestionsState = /model (returned|sent|provided) no questions|no model questions/i.test(cardText);
+    assert.ok(
+      actionableQuestions >= 1 || explicitNoQuestionsState,
+      "Expected a call-like DOCX to show an actionable follow-up, or a clear state that the model returned no questions."
+    );
+    assert.doesNotMatch(cardText, /Review complete\.\s+File this source into the vault\./);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
 test("image-only PDFs show a friendly Gemini rate-limit retry state", {
   skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
 }, async () => {
