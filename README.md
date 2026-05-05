@@ -37,6 +37,12 @@ The default UI is a guided flow:
 
 Until API mode exists, the language-model step is still copy/paste: Margins copies the ingest prompt, you paste it into Claude/ChatGPT, then paste the returned `margins-file` blocks back into Margins. Advanced controls are available under `Advanced tools`.
 
+Margins V1 is local-first. Public API directories include some ML and extraction APIs, but there is not a clearly suitable no-secret LLM compiler endpoint for this product contract. The current posture is therefore:
+
+- Local compile requires no API key, paid call, hosted storage, or Margins-owned account.
+- LLM compile/review is a manual handoff to a chat product the user already controls.
+- Future provider integrations should be optional BYO key/provider flows, not a requirement for using the vault compiler.
+
 The browser app has two compile paths:
 
 - `Local compile` uses only local heuristics. It proves the folder -> wiki -> operating layer pipeline.
@@ -53,12 +59,35 @@ The browser app has two compile paths:
 npm run compile
 ```
 
-This writes a generated vault to `sample/output`.
+This writes a generated V1 vault to `sample/output`:
+
+```text
+sample/output/
+  raw_sources/
+  wiki/
+    .margins/
+      manifest.json
+      edit-log.jsonl
+      ingest-report.md
+  operator-manual.md
+  query-cookbook.md
+  commands/
+  agents/
+```
+
+Metadata belongs under `wiki/.margins/`. The compiler does not generate a root `.margins/` directory.
+The CLI compile command rewrites generated wiki and operating-layer paths in its output directory; use the browser flow for proposal-first incremental saves into a working vault.
 
 ## Compile your own folder
 
 ```bash
 npm run compile:custom -- /path/to/raw_sources /path/to/output
+```
+
+## Run tests
+
+```bash
+npm test
 ```
 
 ## Current scope
@@ -68,4 +97,5 @@ npm run compile:custom -- /path/to/raw_sources /path/to/output
 - PDFs with selectable text can be extracted locally in the browser.
 - No hosted storage.
 - No Margins-owned chat surface.
+- No required paid API calls or secrets.
 - Write-back is proposal-first, never silent.

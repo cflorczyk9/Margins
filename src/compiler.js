@@ -11,10 +11,54 @@ const STOP_WORDS = new Set([
   "raw", "draft", "they", "if", "corporate", "hosting"
 ]);
 
+const LOW_QUALITY_CONCEPTS = new Set([
+  "able", "admin", "app", "apps", "builds", "can", "closer", "come", "contains",
+  "controls", "documents", "draft", "edited", "files", "folder", "generic", "include",
+  "keeps", "later", "made", "minimum", "nodes", "only", "organized", "pages", "plans",
+  "probably", "product", "real", "should", "similar", "silent", "surface", "text",
+  "thinking", "useful", "user", "users", "value", "version", "want", "without", "work"
+]);
+
+const DURABLE_SINGLE_CONCEPTS = new Set([
+  "citations", "context", "evidence", "graph", "markdown", "privacy", "wiki"
+]);
+
+const CONCEPT_PHRASES = [
+  "agent files",
+  "command files",
+  "concept nodes",
+  "edit log",
+  "edit proposals",
+  "entity nodes",
+  "language model",
+  "local first",
+  "mcp server",
+  "operator manual",
+  "personal context",
+  "query cookbook",
+  "raw sources",
+  "source nodes",
+  "synthesis nodes",
+  "write back"
+];
+
 const PERSON_STOP = new Set([
   "The", "This", "That", "These", "Those", "When", "Where", "What", "Why", "How",
   "And", "But", "For", "With", "From", "Into", "It", "Every", "Users", "Version",
-  "Without", "Markdown", "Claude", "ChatGPT", "Margins"
+  "Without", "Markdown", "Raw", "Draft", "If"
+]);
+
+const ENTITY_STOP_LOWER = new Set([
+  "briefly branch map",
+  "karpathy original template notes",
+  "raw sources",
+  "source nodes",
+  "concept nodes",
+  "entity nodes",
+  "synthesis nodes",
+  "query cookbook",
+  "operator manual",
+  "markdown instructions"
 ]);
 
 export function compileVault(files, options = {}) {
@@ -38,13 +82,23 @@ export function compileVault(files, options = {}) {
   const editProposals = buildEditProposals(conceptNodes, entityNodes, synthesisNodes, today);
   const manifest = {
     name: options.name || "Karpathy Original",
+    schema_version: "margins-v1",
     template: "karpathy-original",
+    compiler: "local-heuristic",
     version: "0.1.0",
     generated_at: `${today}T00:00:00.000Z`,
     privacy: {
       storage: "local-first",
       hosted_documents: false,
-      silent_write_back: false
+      silent_write_back: false,
+      requires_secrets: false
+    },
+    paths: {
+      raw_sources: "raw_sources/",
+      wiki: "wiki/",
+      metadata: "wiki/.margins/",
+      commands: "commands/",
+      agents: "agents/"
     },
     counts: {
       raw_sources: normalized.length,
@@ -54,6 +108,12 @@ export function compileVault(files, options = {}) {
       synthesis_nodes: synthesisNodes.length,
       edges: edges.length
     },
+    raw_sources: normalized.map((file) => ({
+      id: file.id,
+      path: `raw_sources/${file.name}`,
+      words: file.wordCount,
+      unsupported: file.unsupported
+    })),
     enabled_commands: Object.keys(operatingLayer.commands),
     enabled_agents: Object.keys(operatingLayer.agents)
   };
@@ -69,6 +129,16 @@ export function compileVault(files, options = {}) {
     },
     operatingLayer,
     editProposals,
+    ingestReport: buildIngestReport({
+      today,
+      files: normalized,
+      sourceNodes,
+      conceptNodes,
+      entityNodes,
+      synthesisNodes,
+      edges,
+      editProposals
+    }),
     manifest
   };
 }
@@ -95,6 +165,7 @@ export function vaultToFiles(vault) {
   files.set("query-cookbook.md", vault.operatingLayer.queryCookbook);
   files.set("wiki/.margins/manifest.json", JSON.stringify(vault.manifest, null, 2));
   files.set("wiki/.margins/edit-log.jsonl", vault.editProposals.map((p) => JSON.stringify(p)).join("\n") + "\n");
+  files.set("wiki/.margins/ingest-report.md", vault.ingestReport);
 
   for (const [name, body] of Object.entries(vault.operatingLayer.commands)) {
     files.set(`commands/${name}.md`, body);
@@ -187,7 +258,7 @@ function buildConceptNodes(sourceNodes, today) {
   }
 
   return [...counts.entries()]
-    .filter(([, count]) => count >= 1)
+    .filter(([term, count]) => isDurableConceptCandidate(term, count))
     .sort((a, b) => b[1] - a[1])
     .slice(0, 10)
     .map(([term, count]) => {
@@ -531,8 +602,64 @@ function buildEditProposals(concepts, entities, synthesis, today) {
   return proposals;
 }
 
+function buildIngestReport({ today, files, sourceNodes, conceptNodes, entityNodes, synthesisNodes, edges, editProposals }) {
+  const unsupported = files.filter((file) => file.unsupported);
+  const lowText = files.filter((file) => !file.unsupported && file.wordCount < 20);
+  return `# Ingest Report
+
+Generated: ${today}
+Compiler: local heuristic
+
+## Summary
+
+- Raw sources registered: ${files.length}
+- Source pages created: ${sourceNodes.length}
+- Concept candidates created: ${conceptNodes.length}
+- Entity candidates created: ${entityNodes.length}
+- Synthesis pages created: ${synthesisNodes.length}
+- Graph edges created: ${edges.length}
+- Edit proposals queued: ${editProposals.length}
+
+## Files Created
+
+${sourceNodes.map((source) => `- wiki/sources/${source.slug}.md from raw_sources/${source.rawFile}`).join("\n") || "- _(none)_"}
+
+## Candidate Concepts
+
+${conceptNodes.map((concept) => `- [[${concept.slug}]] from ${concept.sources.length} source node${concept.sources.length === 1 ? "" : "s"}`).join("\n") || "- _(none)_"}
+
+## Candidate Entities
+
+${entityNodes.map((entity) => `- [[${entity.slug}]] from ${entity.sources.length} source node${entity.sources.length === 1 ? "" : "s"}`).join("\n") || "- _(none)_"}
+
+## Inferences Refused
+
+- Entity pages remain candidates. Roles, relationships, priorities, and next moves require user confirmation.
+- Concept pages are stubs until a model or user expands them from cited source nodes.
+- Unsupported or low-text files are not summarized beyond registration.
+
+## Needs Review
+
+${[
+  ...unsupported.map((file) => `- Extract text from raw_sources/${file.name} before relying on its summary.`),
+  ...lowText.map((file) => `- Add more text to raw_sources/${file.name}; only ${file.wordCount} words were available.`),
+  ...(editProposals.length > 0 ? [`- Review ${editProposals.length} proposed edit${editProposals.length === 1 ? "" : "s"} in wiki/.margins/edit-log.jsonl.`] : [])
+].join("\n") || "- No immediate review flags."}
+`;
+}
+
 function buildIndex(vault) {
-  return `# Wiki Index
+  return `---
+type: index
+bucket: index
+summary: Generated index for this Margins vault.
+tags: [index]
+created: ${vault.manifest.generated_at.slice(0, 10)}
+updated: ${vault.manifest.generated_at.slice(0, 10)}
+voice: claude-draft
+---
+
+# Wiki Index
 
 Generated by Margins.
 
@@ -573,13 +700,23 @@ function summarize(text, unsupported) {
 
 function topTerms(text, limit = 10) {
   const counts = new Map();
-  for (const word of words(stripMarkdownNoise(text))) {
+  const clean = stripMarkdownNoise(text).toLowerCase();
+  for (const phrase of CONCEPT_PHRASES) {
+    const matches = clean.match(new RegExp(`\\b${escapeRegExp(phrase).replace(/\s+/g, "[-\\s]+")}\\b`, "g")) || [];
+    if (matches.length > 0) counts.set(phrase.replace(/\s+/g, "-"), matches.length + 1);
+  }
+  for (const word of words(clean)) {
     const lower = word.toLowerCase();
-    if (lower.length < 4 || STOP_WORDS.has(lower) || /^\d+$/.test(lower)) continue;
+    if (
+      lower.length < 4 ||
+      STOP_WORDS.has(lower) ||
+      LOW_QUALITY_CONCEPTS.has(lower) ||
+      /^\d+$/.test(lower)
+    ) continue;
     counts.set(lower, (counts.get(lower) || 0) + 1);
   }
   return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1])
+    .sort((a, b) => b[1] - a[1] || conceptRank(b[0]) - conceptRank(a[0]) || a[0].localeCompare(b[0]))
     .slice(0, limit)
     .map(([word]) => word);
 }
@@ -590,12 +727,35 @@ function extractEntities(text) {
   for (const match of matches) {
     const normalized = match.trim();
     const lower = normalized.toLowerCase();
-    if (PERSON_STOP.has(normalized)) continue;
-    if (STOP_WORDS.has(lower)) continue;
+    if (!isEntityCandidate(normalized)) continue;
     if (normalized.split(/\s+/).length > 2 && firstWord(normalized) === lastWord(normalized)) continue;
     counts.set(normalized, (counts.get(normalized) || 0) + 1);
   }
   return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([name]) => name);
+}
+
+function isDurableConceptCandidate(term, sourceCount) {
+  const normalized = String(term || "").toLowerCase();
+  if (!normalized) return false;
+  if (LOW_QUALITY_CONCEPTS.has(normalized) || STOP_WORDS.has(normalized)) return false;
+  if (normalized.includes("-")) return sourceCount >= 1;
+  return sourceCount >= 2 && DURABLE_SINGLE_CONCEPTS.has(normalized);
+}
+
+function isEntityCandidate(value) {
+  const normalized = String(value || "").trim();
+  const lower = normalized.toLowerCase();
+  const parts = normalized.split(/\s+/);
+  if (!normalized || PERSON_STOP.has(normalized)) return false;
+  if (STOP_WORDS.has(lower) || LOW_QUALITY_CONCEPTS.has(lower) || ENTITY_STOP_LOWER.has(lower)) return false;
+  if (parts.some((part) => PERSON_STOP.has(part))) return false;
+  if (parts.length > 3) return false;
+  if (parts.length === 1 && !/^[A-Z][A-Za-z0-9]+$/.test(normalized)) return false;
+  return true;
+}
+
+function conceptRank(term) {
+  return String(term || "").includes("-") ? 1 : 0;
 }
 
 function words(text) {
@@ -619,6 +779,10 @@ function firstWord(value) {
 function lastWord(value) {
   const parts = String(value || "").split(/\s+/);
   return parts[parts.length - 1] || "";
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function excerpt(text, max) {
