@@ -36,8 +36,9 @@
         <button id="extract-btn" disabled>Extract PDF text</button>
         <button id="compile-btn" class="primary" disabled>Local compile</button>
         <button id="llm-btn" disabled>Copy LLM ingest prompt</button>
-        <button id="workspace-btn">Select workspace folder</button>
-        <button id="write-folder-btn" disabled>Write to workspace</button>
+        <button id="create-vault-btn">Create vault</button>
+        <button id="open-vault-btn">Open vault</button>
+        <button id="save-vault-btn" disabled>Save changes</button>
         <button id="export-btn" disabled>Download vault JSON</button>
         <button id="copy-btn" disabled>Copy operator manual</button>
       </section>
@@ -45,9 +46,9 @@
       <section class="panel muted-panel">
         <h2>Active waits</h2>
         <ul>
-          <li>Does clean LLM output write to a real folder?</li>
-          <li>Does the folder contain raw_sources plus wiki files?</li>
-          <li>Can repeated writes update the same workspace folder?</li>
+          <li>Can Margins create the vault folder for the user?</li>
+          <li>Does clean LLM output save into the selected vault?</li>
+          <li>Can repeated saves update the same vault?</li>
         </ul>
       </section>
     </aside>
@@ -80,7 +81,7 @@
             </label>
             <label class="check-row">
               <input type="checkbox" data-check-id="phase4-goal-folder">
-              <span><strong>Write a real folder.</strong> Margins creates raw_sources, wiki, commands, agents, and .margins files on disk.</span>
+              <span><strong>Create a real vault.</strong> Margins creates raw_sources, wiki, commands, agents, and .margins files on disk.</span>
             </label>
             <label class="check-row">
               <input type="checkbox" data-check-id="phase4-goal-raw">
@@ -96,7 +97,7 @@
             <h3>Current test</h3>
             <label class="check-row">
               <input type="checkbox" data-check-id="phase4-test-loaded">
-              <span><strong>1. Select workspace folder.</strong> Expected: choose the folder Margins should write into repeatedly.</span>
+              <span><strong>1. Create or open vault.</strong> Expected: Margins creates or selects the folder it will save into repeatedly.</span>
             </label>
             <label class="check-row">
               <input type="checkbox" data-check-id="phase4-test-clean">
@@ -108,7 +109,7 @@
             </label>
             <label class="check-row">
               <input type="checkbox" data-check-id="phase4-test-dest">
-              <span><strong>4. Click Write to workspace.</strong> Expected: files are written directly into the selected workspace folder.</span>
+              <span><strong>4. Click Save changes.</strong> Expected: files are written directly into the selected vault folder.</span>
             </label>
             <label class="check-row">
               <input type="checkbox" data-check-id="phase4-test-contents">

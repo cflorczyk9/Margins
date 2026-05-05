@@ -35,7 +35,7 @@ The browser app has two compile paths:
 - `Extract PDF text` uses PDF.js in the browser to turn readable PDFs into source text.
 - `Copy LLM ingest prompt` creates a Claude/ChatGPT handoff prompt. Use this after extraction; failed PDFs are listed as attachments.
 - `LLM Review` parses Claude/ChatGPT output returned as `margins-file` fenced blocks and lets you preview it before accepting it as the current wiki.
-- `Select workspace folder` chooses a local vault folder, and `Write to workspace` writes the accepted wiki plus original raw sources directly into that folder using the browser File System Access API.
+- `Create vault` creates a local `Margins Vault` folder with the expected structure. `Open vault` selects an existing local vault. `Save changes` writes the accepted wiki plus original raw sources directly into the selected vault using the browser File System Access API.
 
 ## Compile the sample vault
 

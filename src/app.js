@@ -13,8 +13,8 @@ const state = {
   currentFileMap: null,
   llmFiles: new Map(),
   llmSelectedPath: null,
-  workspaceHandle: null,
-  workspaceName: ""
+  vaultHandle: null,
+  vaultName: ""
 };
 
 const els = {
@@ -24,8 +24,9 @@ const els = {
   extractBtn: document.getElementById("extract-btn"),
   compileBtn: document.getElementById("compile-btn"),
   llmBtn: document.getElementById("llm-btn"),
-  workspaceBtn: document.getElementById("workspace-btn"),
-  writeFolderBtn: document.getElementById("write-folder-btn"),
+  createVaultBtn: document.getElementById("create-vault-btn"),
+  openVaultBtn: document.getElementById("open-vault-btn"),
+  saveVaultBtn: document.getElementById("save-vault-btn"),
   exportBtn: document.getElementById("export-btn"),
   copyBtn: document.getElementById("copy-btn"),
   wikiTree: document.getElementById("wiki-tree"),
@@ -61,7 +62,7 @@ async function handleSourceSelection(event) {
   renderSources();
   updateActionState();
   els.exportBtn.disabled = true;
-  els.writeFolderBtn.disabled = true;
+  els.saveVaultBtn.disabled = true;
   els.copyBtn.disabled = true;
   els.stats.textContent = `${state.files.length} source${state.files.length === 1 ? "" : "s"} loaded · 0 nodes · 0 edges`;
 }
@@ -99,8 +100,9 @@ els.exportBtn.addEventListener("click", () => {
   }
 });
 
-els.workspaceBtn.addEventListener("click", selectWorkspaceFolder);
-els.writeFolderBtn.addEventListener("click", writeCurrentFolder);
+els.createVaultBtn.addEventListener("click", createVault);
+els.openVaultBtn.addEventListener("click", openVault);
+els.saveVaultBtn.addEventListener("click", saveCurrentVault);
 
 els.copyBtn.addEventListener("click", async () => {
   if (!state.vault) return;
@@ -109,63 +111,91 @@ els.copyBtn.addEventListener("click", async () => {
   setTimeout(() => { els.copyBtn.textContent = "Copy operator manual"; }, 1100);
 });
 
-async function selectWorkspaceFolder() {
+async function createVault() {
   if (!("showDirectoryPicker" in window)) {
-    els.stats.textContent = "Workspace folders need Chrome or Edge on localhost. Use Download vault JSON for now.";
+    els.stats.textContent = "Local vaults need Chrome or Edge on localhost. Use Download vault JSON for now.";
     return null;
   }
 
   try {
-    const handle = await window.showDirectoryPicker({ mode: "readwrite" });
-    state.workspaceHandle = handle;
-    state.workspaceName = handle.name;
-    els.workspaceBtn.textContent = `Workspace: ${shortLabel(handle.name)}`;
-    els.stats.textContent = `Workspace selected: ${handle.name}`;
+    const parent = await window.showDirectoryPicker({ mode: "readwrite" });
+    const handle = await parent.getDirectoryHandle("Margins Vault", { create: true });
+    await scaffoldVault(handle);
+    setActiveVault(handle, "Margins Vault");
+    els.stats.textContent = "Created vault: Margins Vault";
     return handle;
   } catch (error) {
     if (error.name !== "AbortError") {
-      els.stats.textContent = `Workspace selection failed: ${error.message || "unknown error"}`;
+      els.stats.textContent = `Vault creation failed: ${error.message || "unknown error"}`;
     }
     return null;
   }
 }
 
-async function writeCurrentFolder() {
-  if (!state.currentFileMap) return;
-  const workspace = state.workspaceHandle || await selectWorkspaceFolder();
-  if (!workspace) return;
-
-  els.writeFolderBtn.disabled = true;
-  const originalText = els.writeFolderBtn.textContent;
-  els.writeFolderBtn.textContent = "Writing...";
+async function openVault() {
+  if (!("showDirectoryPicker" in window)) {
+    els.stats.textContent = "Local vaults need Chrome or Edge on localhost. Use Download vault JSON for now.";
+    return null;
+  }
 
   try {
-    const writtenRaw = await writeRawSources(workspace, state.files);
-    const writtenFiles = await writeFileMap(workspace, state.currentFileMap);
-    await writeTextFile(workspace, ".margins/export-summary.json", JSON.stringify({
-      exported_at: new Date().toISOString(),
-      workspace: state.workspaceName,
+    const handle = await window.showDirectoryPicker({ mode: "readwrite" });
+    await scaffoldVault(handle);
+    setActiveVault(handle, handle.name);
+    els.stats.textContent = `Opened vault: ${handle.name}`;
+    return handle;
+  } catch (error) {
+    if (error.name !== "AbortError") {
+      els.stats.textContent = `Vault open failed: ${error.message || "unknown error"}`;
+    }
+    return null;
+  }
+}
+
+function setActiveVault(handle, name) {
+  state.vaultHandle = handle;
+  state.vaultName = name;
+  els.createVaultBtn.textContent = `Vault: ${shortLabel(name)}`;
+  els.openVaultBtn.textContent = "Open another vault";
+  els.saveVaultBtn.disabled = !state.currentFileMap;
+}
+
+async function saveCurrentVault() {
+  if (!state.currentFileMap) return;
+  const vault = state.vaultHandle || await createVault();
+  if (!vault) return;
+
+  els.saveVaultBtn.disabled = true;
+  const originalText = els.saveVaultBtn.textContent;
+  els.saveVaultBtn.textContent = "Saving...";
+
+  try {
+    const writtenRaw = await writeRawSources(vault, state.files);
+    const writtenFiles = await writeFileMap(vault, state.currentFileMap);
+    await writeTextFile(vault, ".margins/export-summary.json", JSON.stringify({
+      saved_at: new Date().toISOString(),
+      vault: state.vaultName,
       raw_sources: writtenRaw,
       generated_files: writtenFiles,
       source_count: state.files.length,
       file_count: state.currentFileMap.size,
-      write_mode: "direct-workspace-write",
+      write_mode: "direct-vault-save",
       warning: state.files.length === 0
         ? "No raw source files were loaded in the browser when this folder was written."
         : ""
     }, null, 2));
     els.stats.textContent = state.files.length === 0
-      ? `Wrote ${writtenFiles} wiki/operating files to ${state.workspaceName}, but no raw sources were loaded.`
-      : `Wrote ${writtenFiles} wiki/operating file${writtenFiles === 1 ? "" : "s"} + ${writtenRaw} raw source${writtenRaw === 1 ? "" : "s"} to ${state.workspaceName}`;
-    els.writeFolderBtn.textContent = "Wrote workspace";
-    setTimeout(() => { els.writeFolderBtn.textContent = originalText; }, 1500);
+      ? `Saved ${writtenFiles} wiki/operating files to ${state.vaultName}, but no raw sources were loaded.`
+      : `Saved ${writtenFiles} wiki/operating file${writtenFiles === 1 ? "" : "s"} + ${writtenRaw} raw source${writtenRaw === 1 ? "" : "s"} to ${state.vaultName}`;
+    els.saveVaultBtn.textContent = "Saved";
+    setTimeout(() => { els.saveVaultBtn.textContent = originalText; }, 1500);
   } catch (error) {
     if (error.name !== "AbortError") {
-      els.stats.textContent = `Folder write failed: ${error.message || "unknown error"}`;
+      els.stats.textContent = `Vault save failed: ${error.message || "unknown error"}`;
     }
-    els.writeFolderBtn.textContent = originalText;
+    els.saveVaultBtn.textContent = originalText;
   } finally {
-    els.writeFolderBtn.disabled = !state.currentFileMap;
+    els.saveVaultBtn.disabled = !state.currentFileMap;
   }
 }
 
@@ -203,7 +233,7 @@ els.acceptLlmBtn.addEventListener("click", () => {
   renderAcceptedLlmEditState();
   drawGraph(graphFromFileMap(state.currentFileMap));
   els.exportBtn.disabled = false;
-  els.writeFolderBtn.disabled = false;
+  els.saveVaultBtn.disabled = false;
   els.copyBtn.disabled = true;
   activateTab("wiki");
 });
@@ -234,7 +264,7 @@ function renderVault() {
   const fileMap = vaultToFiles(vault);
 
   els.exportBtn.disabled = false;
-  els.writeFolderBtn.disabled = false;
+  els.saveVaultBtn.disabled = false;
   els.copyBtn.disabled = false;
   els.stats.textContent = `${vault.manifest.counts.raw_sources} sources · ${vault.wiki.graph.nodes.length} nodes · ${vault.wiki.graph.edges.length} edges`;
   state.currentFileMap = fileMap;
@@ -943,13 +973,60 @@ function download(name, body) {
   URL.revokeObjectURL(url);
 }
 
+async function scaffoldVault(rootHandle) {
+  await ensureDirectory(rootHandle, "raw_sources");
+  await ensureDirectory(rootHandle, "wiki/sources");
+  await ensureDirectory(rootHandle, "wiki/concepts");
+  await ensureDirectory(rootHandle, "wiki/entities");
+  await ensureDirectory(rootHandle, "wiki/synthesis");
+  await ensureDirectory(rootHandle, "commands");
+  await ensureDirectory(rootHandle, "agents");
+  await ensureDirectory(rootHandle, ".margins");
+  await writeTextFileIfMissing(rootHandle, "raw_sources/README.md", `# Raw Sources
+
+Drop original source files here. Margins treats this folder as evidence and writes generated knowledge into wiki/.
+`);
+  await writeTextFileIfMissing(rootHandle, "wiki/index.md", `---
+type: index
+bucket: index
+summary: Index for this Margins vault.
+tags: [index]
+created: ${todayString()}
+updated: ${todayString()}
+voice: claude-draft
+---
+
+# Wiki Index
+
+Save generated wiki files from Margins to populate this vault.
+`);
+  await writeTextFileIfMissing(rootHandle, "operator-manual.md", "# Operator Manual\n\nMargins will write model operating instructions here.\n");
+  await writeTextFileIfMissing(rootHandle, "query-cookbook.md", "# Query Cookbook\n\nMargins will write query recipes here.\n");
+  await writeTextFileIfMissing(rootHandle, ".margins/manifest.json", JSON.stringify({
+    name: "Margins Vault",
+    template: "karpathy-original",
+    version: "0.1.0",
+    created_at: new Date().toISOString(),
+    storage: "local-folder"
+  }, null, 2));
+}
+
+async function ensureDirectory(rootHandle, path) {
+  const parts = safeRelativePath(path).split("/").filter(Boolean);
+  let dir = rootHandle;
+  for (const part of parts) {
+    dir = await dir.getDirectoryHandle(part, { create: true });
+  }
+  return dir;
+}
+
 async function writeRawSources(rootHandle, files) {
   if (files.length === 0) {
     await writeTextFile(rootHandle, "raw_sources/README.md", `# Raw Sources
 
 No raw source files were loaded in the browser when this Margins folder was written.
 
-To preserve raw evidence, reload the original files in Margins before clicking "Write to workspace." Browsers clear selected file handles after refresh for security.
+To preserve raw evidence, reload the original files in Margins before clicking "Save changes." Browsers clear selected file handles after refresh for security.
 `);
     return 0;
   }
@@ -990,6 +1067,14 @@ async function writeTextFile(rootHandle, path, body) {
   await writable.close();
 }
 
+async function writeTextFileIfMissing(rootHandle, path, body) {
+  try {
+    await fileHandleForPath(rootHandle, path, false);
+  } catch {
+    await writeTextFile(rootHandle, path, body);
+  }
+}
+
 async function writeBlobFile(rootHandle, path, blob) {
   const fileHandle = await fileHandleForPath(rootHandle, path);
   const writable = await fileHandle.createWritable();
@@ -997,14 +1082,14 @@ async function writeBlobFile(rootHandle, path, blob) {
   await writable.close();
 }
 
-async function fileHandleForPath(rootHandle, path) {
+async function fileHandleForPath(rootHandle, path, create = true) {
   const parts = safeRelativePath(path).split("/").filter(Boolean);
   const fileName = parts.pop();
   let dir = rootHandle;
   for (const part of parts) {
-    dir = await dir.getDirectoryHandle(part, { create: true });
+    dir = await dir.getDirectoryHandle(part, { create });
   }
-  return dir.getFileHandle(fileName || "untitled.md", { create: true });
+  return dir.getFileHandle(fileName || "untitled.md", { create });
 }
 
 function safeRelativePath(path) {
@@ -1019,6 +1104,10 @@ function safeRelativePath(path) {
 
 function wordCount(text) {
   return (text.match(/\S+/g) || []).length;
+}
+
+function todayString() {
+  return new Date().toISOString().slice(0, 10);
 }
 
 function firstLine(text) {
