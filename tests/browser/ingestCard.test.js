@@ -105,6 +105,37 @@ test("pending source cards stay minimal before processing", {
   }
 });
 
+test("pending source cards can be removed after confirmation", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => {
+      window.__confirmMessages = [];
+      window.confirm = (message) => {
+        window.__confirmMessages.push(message);
+        return true;
+      };
+      window.__marginsTest.seedSourceStatusCards();
+    });
+
+    await page.getByRole("button", { name: "Remove pending-word.docx" }).click();
+    const pendingText = await page.locator("#source-list").innerText();
+    assert.doesNotMatch(pendingText, /pending-word\.docx/);
+    assert.match(pendingText, /pending-statement\.pdf/);
+    assert.equal((pendingText.match(/Process/g) || []).length, 2);
+    assert.deepEqual(await page.evaluate(() => window.__confirmMessages), ["Delete pending-word.docx from raw_sources?"]);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
 async function assertSelected(page, label) {
   const pressed = await page.locator(".run-question .quick-answer", { hasText: label }).getAttribute("aria-pressed");
   assert.equal(pressed, "true");

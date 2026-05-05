@@ -634,6 +634,13 @@ async function handleSaveAndOrganize() {
 }
 
 async function handleSourceActionClick(event) {
+  const deleteButton = event.target.closest("[data-source-delete]");
+  if (deleteButton) {
+    event.stopPropagation();
+    await removePendingSource(deleteButton.dataset.sourceDelete);
+    return;
+  }
+
   const summaryToggle = event.target.closest("[data-summary-toggle]");
   if (summaryToggle) {
     toggleSourceSummary(summaryToggle.dataset.summaryToggle);
@@ -649,6 +656,46 @@ async function handleSourceActionClick(event) {
   const button = event.target.closest("[data-source-action]");
   if (!button || state.processingInbox) return;
   await processPendingSource();
+}
+
+async function removePendingSource(fileName) {
+  if (!fileName || state.processingInbox) return;
+  const file = state.files.find((entry) => entry.name === fileName);
+  if (!file) return;
+
+  const rawSaved = rawSourceAlreadySaved(file);
+  const message = rawSaved
+    ? `Delete ${basename(fileName)} from raw_sources?`
+    : `Remove ${basename(fileName)} from pending?`;
+  if (!confirm(message)) return;
+
+  try {
+    if (rawSaved && state.vaultHandle) {
+      await deleteRawSourceFromVault(state.vaultHandle, fileName);
+    }
+    removeSourceFromState(fileName);
+    els.stats.textContent = rawSaved
+      ? `Deleted ${basename(fileName)} from raw_sources.`
+      : `Removed ${basename(fileName)} from pending.`;
+  } catch (error) {
+    els.stats.textContent = `Could not delete ${basename(fileName)}: ${error.message || "unknown error"}`;
+  }
+}
+
+function removeSourceFromState(fileName) {
+  state.files = state.files.filter((file) => file.name !== fileName);
+  state.vaultFiles = state.vaultFiles.filter((file) => file.name !== fileName);
+  state.editedRawFiles.delete(fileName);
+  state.ingestReviews.delete(fileName);
+  for (const key of [...state.ingestAnswers.keys()]) {
+    if (key.startsWith(`${fileName}::`)) state.ingestAnswers.delete(key);
+  }
+  state.expandedSummaries.delete(fileName);
+  renderSources();
+  renderVaultTree(state.currentFileMap);
+  renderWikiFiles(state.currentFileMap);
+  updateActionState();
+  updateWorkflowState();
 }
 
 function toggleSourceSummary(fileName) {
@@ -1576,6 +1623,9 @@ function renderSources() {
   els.sourceList.className = "source-list";
   els.sourceList.innerHTML = files.map((file) => `
     <div class="source-item ${sourceClass(file)}">
+      <button class="source-remove-btn" type="button" data-source-delete="${escapeHtml(file.name)}" aria-label="Remove ${escapeHtml(file.name)}">
+        <span aria-hidden="true">×</span>
+      </button>
       <span class="source-badge">${escapeHtml(sourceTypeLabel(file))}</span>
       <div class="source-copy">
         <strong>${escapeHtml(file.name)}</strong>
@@ -4224,6 +4274,18 @@ function rawSourceOutputPath(path) {
   return safePath.startsWith("raw_sources/")
     ? safePath
     : `raw_sources/${safePath}`;
+}
+
+async function deleteRawSourceFromVault(rootHandle, fileName) {
+  const parts = safeRelativePath(rawSourceOutputPath(fileName)).split("/").filter(Boolean);
+  const entryName = parts.pop();
+  if (!entryName) return;
+
+  let dir = rootHandle;
+  for (const part of parts) {
+    dir = await dir.getDirectoryHandle(part, { create: false });
+  }
+  await dir.removeEntry(entryName);
 }
 
 async function writeFileMap(rootHandle, fileMap) {
