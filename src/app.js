@@ -819,9 +819,15 @@ function filesForInboxProcess(fileName = "") {
 
 async function savePendingRawSourcesImmediately(files = state.files) {
   if (!state.vaultHandle || files.length === 0) return 0;
-  const pendingRaw = files.map((file) => ({ ...file, sourceScope: "vault" }));
-  const written = await writeRawSources(state.vaultHandle, pendingRaw);
-  state.vaultFiles = mergeSourceFiles(state.vaultFiles, pendingRaw);
+  const toWrite = files
+    .filter((file) => !rawSourceAlreadySaved(file))
+    .map((file) => ({ ...file, sourceScope: "vault" }));
+  const written = toWrite.length ? await writeRawSources(state.vaultHandle, toWrite) : 0;
+  for (const file of files) {
+    file.sourceScope = "vault";
+    await refreshRawSourceBlobFromVault(file);
+  }
+  state.vaultFiles = mergeSourceFiles(state.vaultFiles, files.map((file) => ({ ...file, sourceScope: "vault", dirtyRaw: false })));
   renderVaultTree(state.currentFileMap);
   return written;
 }
@@ -840,7 +846,8 @@ async function saveCurrentVault() {
   try {
     const pendingRaw = mergeSourceFiles(state.files, [...state.editedRawFiles.values()]);
     const sourceCount = allSourceFiles().length;
-    const writtenRaw = pendingRaw.length ? await writeRawSources(vault, pendingRaw) : 0;
+    const rawToWrite = rawSourcesNeedingWrite(pendingRaw);
+    const writtenRaw = rawToWrite.length ? await writeRawSources(vault, rawToWrite) : 0;
     const reviewNotes = els.reviewReply.value.trim();
     if (reviewNotes) {
       state.currentFileMap.set("wiki/.margins/review-decisions.md", buildReviewDecisionLog(reviewNotes));
@@ -859,7 +866,7 @@ async function saveCurrentVault() {
         ? "No raw source files were loaded in the browser when this folder was written."
         : ""
     }, null, 2));
-    state.vaultFiles = mergeSourceFiles(state.vaultFiles, pendingRaw.map((file) => ({ ...file, sourceScope: "vault" })));
+    state.vaultFiles = mergeSourceFiles(state.vaultFiles, pendingRaw.map((file) => ({ ...file, sourceScope: "vault", dirtyRaw: false })));
     state.files = pendingRawSourcesFromVault(state.currentFileMap, state.vaultFiles);
     state.editedRawFiles = new Map();
     state.ingestReviews = new Map();
@@ -1137,11 +1144,15 @@ function canSendSourceToModel(file) {
   if (!file) return false;
   if (file.text) return true;
   const provider = els.apiProvider?.value || providerValue(state.apiSettings.providerLabel) || "gemini";
-  return provider === "gemini" && file.type === "pdf" && Boolean(file.browserFile);
+  return provider === "gemini" && canAttachSourceToGemini(file);
 }
 
 function requiresModelReview(file) {
   return needsTextExtraction(file) && !file.text;
+}
+
+function canAttachSourceToGemini(file) {
+  return Boolean(file && (file.browserFile || file.rawSourceHandle || rawSourceAlreadySaved(file)) && sourceAttachmentMimeType(file));
 }
 
 function localSourceSummary(file) {
@@ -1362,13 +1373,54 @@ async function generateGeminiJsonContent(model, prompt, extraParts = []) {
 }
 
 async function geminiSourceParts(file) {
-  if (!file?.browserFile || file.type !== "pdf" || file.text) return [];
+  if (!file || file.text || !canAttachSourceToGemini(file)) return [];
+  const attachment = await sourceAttachmentForModel(file);
+  if (!attachment) return [];
   return [{
     inline_data: {
-      mime_type: file.browserFile.type || "application/pdf",
-      data: await blobToBase64(file.browserFile)
+      mime_type: attachment.mimeType,
+      data: await blobToBase64WithRefresh(file, attachment.blob)
     }
   }];
+}
+
+async function sourceAttachmentForModel(file) {
+  const blob = await refreshRawSourceBlobFromVault(file) || file.browserFile;
+  if (!blob) return null;
+  const mimeType = sourceAttachmentMimeType(file, blob);
+  return mimeType ? { blob, mimeType } : null;
+}
+
+async function refreshRawSourceBlobFromVault(file) {
+  if (!file?.name) return null;
+  let handle = file.rawSourceHandle || null;
+  if (!handle && state.vaultHandle) {
+    try {
+      handle = await fileHandleForPath(state.vaultHandle, rawSourceOutputPath(file.name), false);
+      file.rawSourceHandle = handle;
+    } catch {
+      handle = null;
+    }
+  }
+  if (!handle?.getFile) return null;
+  const freshFile = await handle.getFile();
+  file.browserFile = freshFile;
+  file.size = freshFile.size;
+  file.lastModified = freshFile.lastModified;
+  return freshFile;
+}
+
+async function blobToBase64WithRefresh(file, blob) {
+  try {
+    return await blobToBase64(blob);
+  } catch (error) {
+    if (!isStaleBrowserFileError(error)) throw error;
+    const freshBlob = await refreshRawSourceBlobFromVault(file);
+    if (!freshBlob || freshBlob === blob) {
+      throw new Error("The saved source could not be read. Reopen the vault or re-add the file, then retry.");
+    }
+    return blobToBase64(freshBlob);
+  }
 }
 
 function blobToBase64(blob) {
@@ -1385,6 +1437,41 @@ function blobToBase64(blob) {
 
 function normalizeGeminiModel(model) {
   return String(model || defaultModelForProvider("gemini")).replace(/^models\//, "");
+}
+
+function sourceAttachmentMimeType(file, blob = null) {
+  return (blob?.type || file?.browserFile?.type || mimeTypeFromPath(file?.name || "")).trim();
+}
+
+function mimeTypeFromPath(path) {
+  const ext = basename(path).split(".").pop()?.toLowerCase() || "";
+  return {
+    pdf: "application/pdf",
+    doc: "application/msword",
+    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    xls: "application/vnd.ms-excel",
+    xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ppt: "application/vnd.ms-powerpoint",
+    pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    txt: "text/plain",
+    md: "text/markdown",
+    markdown: "text/markdown",
+    csv: "text/csv",
+    tsv: "text/tab-separated-values",
+    json: "application/json",
+    jsonl: "application/json",
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    webp: "image/webp",
+    gif: "image/gif"
+  }[ext] || "";
+}
+
+function isStaleBrowserFileError(error) {
+  return /requested file could not be read|permission problems|notreadable|could not be read/i.test(
+    `${error?.name || ""} ${error?.message || error || ""}`
+  );
 }
 
 function buildApiIngestReviewPrompt(file, fileMap, mode) {
@@ -1435,8 +1522,8 @@ ${operatingContextForPrompt(fileMap)}`;
 
 function sourceTextForModelPrompt(file) {
   if (file.text) return excerptForQuestion(file.text, 12000);
-  if (file.type === "pdf" && file.browserFile) {
-    return "[PDF attached in this request. Read the attached PDF directly and summarize only what it supports.]";
+  if (canAttachSourceToGemini(file)) {
+    return `[Original ${sourceTypeLabel(file)} file attached in this request. Read the attached file directly and summarize only what it supports.]`;
   }
   return excerptForQuestion(file.extractionError || "", 12000);
 }
@@ -1732,9 +1819,7 @@ function renderSources() {
         <strong>${escapeHtml(file.name)}</strong>
         ${renderSourceTimestamp(file)}
       </div>
-      <button class="source-process-btn" type="button" data-source-action="process" data-source-file="${escapeHtml(file.name)}" ${sourceProcessDisabled(file) ? "disabled" : ""}>
-        ${escapeHtml(sourceProcessLabel(file))}
-      </button>
+      ${showTopSourceAction(file) ? renderSourceActionButton(file, "source-process-btn") : ""}
       ${renderSourceIngestRun(file)}
     </div>
   `).join("");
@@ -1815,6 +1900,7 @@ function renderSourceIngestError(file, error) {
         <strong>Review did not finish</strong>
         <p>${escapeHtml(error)}</p>
       </div>
+      ${renderSourceActionRow(file, { note: "Try again after reconnecting the vault or re-adding the file." })}
     </div>
   `;
 }
@@ -1864,8 +1950,12 @@ function renderSourceRunQuestions(file) {
   const review = state.ingestReviews.get(file.name);
   const questions = review?.questions || currentIngestQuestionsForFile(file, state.currentFileMap, state.reviewMode);
   if (questions.length === 0) {
-    return `<div class="run-note">Review complete. Approve to file it.</div>`;
+    return `
+      <div class="run-note">Review complete.</div>
+      ${renderSourceActionRow(file, { note: "File this source into the vault." })}
+    `;
   }
+  const answeredCount = questions.filter((question) => ingestAnswerFor(file.name, question.question)).length;
   return `
     <div class="run-conversation run-dialogue">
       ${questions.map((question, questionIndex) => `
@@ -1885,6 +1975,32 @@ function renderSourceRunQuestions(file) {
         </div>
       `).join("")}
     </div>
+    ${renderSourceActionRow(file, {
+      note: answeredCount === questions.length
+        ? "Ready to file."
+        : `${answeredCount}/${questions.length} answered. Skip anything that does not need your call.`
+    })}
+  `;
+}
+
+function showTopSourceAction(file) {
+  return !isSourceReviewReady(file) && !state.ingestErrors.has(file?.name);
+}
+
+function renderSourceActionRow(file, { note = "" } = {}) {
+  return `
+    <div class="run-action-row">
+      ${note ? `<span>${escapeHtml(note)}</span>` : "<span></span>"}
+      ${renderSourceActionButton(file, "source-process-btn run-action-btn")}
+    </div>
+  `;
+}
+
+function renderSourceActionButton(file, className = "source-process-btn") {
+  return `
+    <button class="${escapeHtml(className)}" type="button" data-source-action="process" data-source-file="${escapeHtml(file.name)}" ${sourceProcessDisabled(file) ? "disabled" : ""}>
+      ${escapeHtml(sourceProcessLabel(file))}
+    </button>
   `;
 }
 
@@ -1927,16 +2043,18 @@ function summarySentences(summary) {
 function renderSourceConnections(file) {
   const connections = state.ingestReviews.get(file.name)?.connections || [];
   if (connections.length === 0) return "";
+  const visible = connections.slice(0, 6);
+  const hiddenCount = Math.max(0, connections.length - visible.length);
   return `
-    <div class="run-connections run-links">
+    <div class="run-connections connection-strip">
       <span class="run-kicker">Connections</span>
-      <div class="run-link-list">
-        ${connections.map((connection) => `
-        <div class="run-link">
-          <strong>${escapeHtml(connection.title || connection.path || "Suggested connection")}</strong>
-          <p>${escapeHtml(connection.reason || connection.path || "Useful context for this source.")}</p>
-        </div>
-      `).join("")}
+      <div class="connection-chip-list">
+        ${visible.map((connection) => `
+          <span class="connection-chip" title="${escapeHtml(connection.reason || connection.path || "Useful context for this source.")}">
+            ${escapeHtml(connection.title || titleFromSlug(basename(connection.path || "connection").replace(/\.md$/, "")))}
+          </span>
+        `).join("")}
+        ${hiddenCount ? `<span class="connection-chip muted">+${hiddenCount} more</span>` : ""}
       </div>
     </div>
   `;
@@ -2154,6 +2272,41 @@ raw_file: raw_sources/filed-note.md
       state.pendingSave = false;
       state.processingInbox = false;
       state.apiSecret = "";
+      state.ingestReviews = new Map();
+      state.ingestErrors = new Map();
+      renderSources();
+      updateActionState();
+      return document.querySelector("#source-list")?.innerText || "";
+    },
+    seedVaultPdfAttachmentSource() {
+      const rawSourceHandle = {
+        async getFile() {
+          return new File(["%PDF-1.7\nfixture pdf body"], "saved-report.pdf", {
+            type: "application/pdf",
+            lastModified: new Date(2026, 4, 5, 13, 10).getTime()
+          });
+        }
+      };
+      const file = {
+        name: "saved-report.pdf",
+        text: "",
+        type: "pdf",
+        size: 24,
+        lastModified: new Date(2026, 4, 5, 13, 10).getTime(),
+        browserFile: null,
+        rawSourceHandle,
+        sourceScope: "vault",
+        extractionStatus: "needed",
+        extractionError: ""
+      };
+      state.files = [file];
+      state.vaultFiles = [file];
+      state.vaultHandle = createMemoryVaultHandle();
+      state.vaultName = "Browser Test Vault";
+      state.currentFileMap = new Map([["wiki/index.md", "# Index\n"]]);
+      state.pendingSave = false;
+      state.processingInbox = false;
+      state.apiSecret = "test-gemini-key";
       state.ingestReviews = new Map();
       state.ingestErrors = new Map();
       renderSources();
@@ -2622,9 +2775,9 @@ function renderWikiFiles(fileMap) {
 function vaultBrowserEntries(fileMap) {
   const rawEntries = allSourceFiles().map((file) => ({
     path: rawSourceOutputPath(file.name),
-    body: file.text || (file.type === "pdf" ? "PDF source preserved in raw_sources. Text extraction has not been saved for this file yet." : ""),
+    body: file.text || (file.type === "pdf" ? "PDF source preserved in raw_sources." : "Original file preserved in raw_sources."),
     kind: "raw",
-    editable: file.type !== "pdf" || !!file.text
+    editable: (file.type !== "pdf" && file.type !== "attachment") || !!file.text
   }));
   const wikiEntries = [...fileMap.entries()]
     .filter(([path]) => path.startsWith("wiki/") && !path.startsWith("wiki/.margins/"))
@@ -2689,8 +2842,8 @@ function selectVaultPath(path, options = {}) {
   if (rawFile) {
     state.selectedPath = rawSourceOutputPath(rawFile.name);
     state.selectedKind = "raw";
-    const body = rawFile.text || "PDF source preserved in raw_sources. Text extraction has not been saved for this file yet.";
-    const readOnly = rawFile.type === "pdf" && !rawFile.text;
+    const body = rawFile.text || (rawFile.type === "pdf" ? "PDF source preserved in raw_sources." : "Original file preserved in raw_sources.");
+    const readOnly = (rawFile.type === "pdf" || rawFile.type === "attachment") && !rawFile.text;
     setDocumentHeader(state.selectedPath, body, { kind: "raw", readOnly });
     setDocBody(body, { readOnly });
     updateSelectedFileState(options);
@@ -2834,7 +2987,8 @@ function handleVaultDocumentEdit() {
       text: body,
       browserFile: null,
       extractionStatus: "ready",
-      sourceScope: "vault"
+      sourceScope: "vault",
+      dirtyRaw: true
     });
   } else if (state.currentFileMap?.has(state.selectedPath)) {
     state.currentFileMap.set(state.selectedPath, body);
@@ -3722,6 +3876,7 @@ function resolveGraphLink(target, byPath, bySlug) {
 async function readBrowserFile(file) {
   const isPdf = /\.pdf$/i.test(file.name);
   const isDocx = /\.docx$/i.test(file.name);
+  const isReadableText = isReadableSourceTextPath(file.name);
   const base = {
     name: file.webkitRelativePath || file.name,
     browserFile: file,
@@ -3758,6 +3913,16 @@ async function readBrowserFile(file) {
         extractionError: error.message || "DOCX extraction failed."
       };
     }
+  }
+
+  if (!isReadableText) {
+    return {
+      ...base,
+      text: "",
+      type: "attachment",
+      extractionStatus: "needed",
+      extractionError: "Needs model review from the original file."
+    };
   }
 
   return {
@@ -3885,12 +4050,16 @@ function sourceClass(file) {
 }
 
 function needsTextExtraction(file) {
-  return (file.type === "pdf" || file.type === "docx") && !file.text;
+  return (file.type === "pdf" || file.type === "docx" || file.type === "attachment") && !file.text;
 }
 
 function rawSourceAlreadySaved(file) {
   if (!file?.name) return false;
   return state.vaultFiles.some((vaultFile) => vaultFile.name === file.name);
+}
+
+function rawSourcesNeedingWrite(files) {
+  return files.filter((file) => file?.dirtyRaw || file?.sourceScope !== "vault" || !rawSourceAlreadySaved(file));
 }
 
 function sourceTypeLabel(file) {
@@ -4425,12 +4594,16 @@ async function rawSourceFromFileHandle(fileHandle, name) {
   const file = await fileHandle.getFile();
   const isPdf = /\.pdf$/i.test(name);
   const isDocx = /\.docx$/i.test(name);
+  const isReadableText = isReadableSourceTextPath(name);
   let text = "";
   let extractionStatus = "ready";
   let extractionError = "";
+  let type = "text";
   if (isPdf) {
     extractionStatus = "needed";
+    type = "pdf";
   } else if (isDocx) {
+    type = "docx";
     try {
       text = await extractDocxText(file);
       extractionStatus = text ? "extracted" : "failed";
@@ -4440,7 +4613,7 @@ async function rawSourceFromFileHandle(fileHandle, name) {
       extractionStatus = "failed";
       extractionError = error.message || "DOCX extraction failed.";
     }
-  } else if (isReadableSourceTextPath(name)) {
+  } else if (isReadableText) {
     try {
       text = await file.text();
     } catch {
@@ -4448,14 +4621,19 @@ async function rawSourceFromFileHandle(fileHandle, name) {
       extractionStatus = "failed";
       extractionError = "Text could not be read.";
     }
+  } else {
+    type = "attachment";
+    extractionStatus = "needed";
+    extractionError = "Needs model review from the original file.";
   }
   return {
     name,
     text,
     browserFile: file,
+    rawSourceHandle: fileHandle,
     size: file.size,
     lastModified: file.lastModified,
-    type: isPdf ? "pdf" : isDocx ? "docx" : "text",
+    type,
     extractionStatus,
     extractionError,
     sourceScope: "vault"

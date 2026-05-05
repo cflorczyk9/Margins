@@ -35,6 +35,10 @@ test("ingest card expands summaries and persists question answers", {
     await page.evaluate((summary) => {
       window.__marginsTest.seedIngestCard({
         summary,
+        connections: [
+          { title: "Claude Code", path: "wiki/coding/claude-code.md", reason: "Connect this note to existing agentic coding workflow notes." },
+          { title: "Setup Efficiency", path: "wiki/concepts/setup-efficiency.md", reason: "Useful for later setup improvements." }
+        ],
         questions: [
           {
             question: "Should this become a follow-up task?",
@@ -54,6 +58,9 @@ test("ingest card expands summaries and persists question answers", {
     await page.locator(".run-question .quick-answer", { hasText: "Yes" }).click();
     await assertSelected(page, "Yes");
     await assertAnswered(page, "Answered: Yes");
+    assert.equal(await page.locator(".connection-chip").count(), 2);
+    assert.equal(await page.locator(".source-item.ready-to-write > .source-process-btn").count(), 0);
+    await page.locator(".run-action-row").getByRole("button", { name: "Approve" }).waitFor();
   } finally {
     await browser.close();
     await server.close();
@@ -127,6 +134,65 @@ test("model-required sources do not show a fake successful summary", {
     assert.match(pendingText, /Retry/);
     assert.doesNotMatch(pendingText, /Margins saved the original source and is ready to review it with the model/);
     assert.doesNotMatch(pendingText, /Review complete\. Approve to file it/);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("vault PDF review refreshes the saved raw file before model attachment", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => {
+      window.__geminiBodies = [];
+      window.fetch = async (_url, options = {}) => {
+        window.__geminiBodies.push(JSON.parse(options.body || "{}"));
+        return new Response(JSON.stringify({
+          candidates: [{
+            content: {
+              parts: [{
+                text: JSON.stringify({
+                  summary: "This PDF was read directly from the saved raw source and connected to the current vault.",
+                  connections: [
+                    {
+                      path: "wiki/concepts/pdf-ingest.md",
+                      title: "PDF ingest",
+                      type: "existing",
+                      reason: "The source should connect to the PDF ingest workflow."
+                    }
+                  ],
+                  questions: []
+                })
+              }]
+            }
+          }]
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        });
+      };
+      window.__marginsTest.seedVaultPdfAttachmentSource();
+    });
+
+    await page.locator(".source-item", { hasText: "saved-report.pdf" }).getByRole("button", { name: "Process" }).click();
+    await page.locator(".source-item.ready-to-write", { hasText: "saved-report.pdf" }).waitFor();
+
+    const pendingText = await page.locator("#source-list").innerText();
+    assert.doesNotMatch(pendingText, /Review did not finish/);
+    assert.match(pendingText, /This PDF was read directly/);
+    assert.equal(await page.locator(".connection-chip", { hasText: "PDF ingest" }).count(), 1);
+    await page.locator(".run-action-row").getByRole("button", { name: "Approve" }).waitFor();
+
+    const bodies = await page.evaluate(() => window.__geminiBodies);
+    const parts = bodies[0]?.contents?.[0]?.parts || [];
+    assert.equal(parts.some((part) => part.inline_data?.mime_type === "application/pdf" && part.inline_data?.data), true);
   } finally {
     await browser.close();
     await server.close();

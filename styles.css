@@ -1652,6 +1652,10 @@ button,
   white-space: nowrap;
 }
 
+.source-item > .source-process-btn {
+  justify-self: end;
+}
+
 .source-process-btn:not(:disabled):hover {
   background: var(--accent-dark);
   border-color: var(--accent-dark);
@@ -1851,30 +1855,59 @@ button,
   padding-top: 2px;
 }
 
-.run-link-list {
+.connection-strip {
   display: grid;
-  gap: 0;
+  gap: 8px;
+  padding-top: 2px;
 }
 
-.run-link {
-  padding: 10px 0;
-  border-top: 1px solid var(--line);
-  background: transparent;
+.connection-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
 }
 
-.run-link strong {
-  display: block;
-  color: var(--ink);
-  font-size: 13px;
+.connection-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  max-width: 220px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--amber) 50%, var(--line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--amber) 10%, var(--paper));
+  color: color-mix(in srgb, var(--ink) 82%, var(--amber));
+  font-size: 12px;
   font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.run-link p {
-  max-width: 64ch;
-  margin: 3px 0 0;
+.connection-chip.muted {
+  border-color: var(--line);
+  background: var(--paper-soft);
   color: var(--muted);
-  font-size: 13px;
-  line-height: 1.45;
+}
+
+.run-action-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+  padding-top: 4px;
+}
+
+.run-action-row > span {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 560;
+  text-align: right;
+}
+
+.run-action-btn {
+  flex: 0 0 auto;
 }
 
 .run-dialogue,
@@ -2485,6 +2518,15 @@ button,
   .source-process-btn {
     grid-column: 1 / -1;
     width: 100%;
+  }
+
+  .run-action-row {
+    display: grid;
+    justify-content: stretch;
+  }
+
+  .run-action-row > span {
+    text-align: left;
   }
 
   .source-badge {
