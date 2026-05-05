@@ -11,6 +11,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
 const initialTheme = localStorage.getItem("margins-theme") || "dark";
 document.documentElement.dataset.theme = initialTheme;
 const API_SECRET_STORAGE_KEY = "margins.apiSecret.v1";
+let apiSecretHydrationPromise = null;
 
 const state = {
   files: [],
@@ -140,7 +141,7 @@ if (els.inlineReviewPanel) {
 els.themeToggle.checked = state.theme === "dark";
 updateThemeToggleLabel();
 hydrateApiControls();
-hydrateLocalEnvApiSecret();
+ensureApiSecretReady();
 els.folderInput.addEventListener("change", handleSourceSelection);
 els.fileInput.addEventListener("change", handleSourceSelection);
 els.sourceList?.addEventListener("click", handleSourceActionClick);
@@ -153,6 +154,7 @@ updateWorkflowState();
 renderVaultTree();
 renderDocHighlight();
 restoreRememberedVault();
+installTestHooks();
 
 els.themeToggle.addEventListener("change", () => {
   state.theme = els.themeToggle.checked ? "dark" : "light";
@@ -160,6 +162,8 @@ els.themeToggle.addEventListener("change", () => {
   localStorage.setItem("margins-theme", state.theme);
   updateThemeToggleLabel();
 });
+
+globalThis.__marginsRunAnswer = setIngestReviewAnswer;
 
 els.workflowBtn.addEventListener("click", runWorkflowStep);
 els.vaultSearch?.addEventListener("input", () => {
@@ -257,6 +261,13 @@ async function hydrateLocalEnvApiSecret() {
   } catch {
     // Local .env is optional and ignored in production.
   }
+}
+
+function ensureApiSecretReady() {
+  if (!apiSecretHydrationPromise) {
+    apiSecretHydrationPromise = hydrateLocalEnvApiSecret();
+  }
+  return apiSecretHydrationPromise;
 }
 
 function parseDotEnv(text) {
@@ -966,6 +977,7 @@ async function prepareReviewForCurrentFileMap(statusText) {
 }
 
 async function prepareIngestReviews(statusText) {
+  await ensureApiSecretReady();
   const reviewMap = new Map();
   const allQuestions = [];
 
@@ -1009,10 +1021,17 @@ function localIngestReview(file, fileMap, mode) {
       : "Raw source saved. Local summary prepared while the model review runs.",
     summary: needsTextExtraction(file)
       ? "Margins saved the original file in raw_sources, but it could not extract readable text yet."
-      : sourceIngestSummary(file),
-    connections: localConnectionSuggestions(fileMap, file),
+      : localSourceSummary(file),
+    connections: [],
     questions: mode === "auto" ? [] : currentIngestQuestionsForFile(file, fileMap, mode)
   };
+}
+
+function localSourceSummary(file) {
+  const clean = cleanSummary(file.text || "");
+  if (!clean) return "Margins saved the raw source, but there is not enough readable text to summarize yet.";
+  const sentences = clean.match(/[^.!?]+[.!?]+/g) || [clean];
+  return cleanSummary(sentences.slice(0, 4).join(" "));
 }
 
 function mergeIngestReview(localReview, apiReview, source) {
@@ -1078,27 +1097,6 @@ function formatConnectionLine(connection) {
     : title;
   const label = connection.type === "new" ? "new page" : "existing";
   return `- ${link} (${label}) — ${connection.reason || "Relevant to this source."}`;
-}
-
-function localConnectionSuggestions(fileMap, file) {
-  if (!fileMap?.size || !file?.text) return [];
-  const text = file.text.toLowerCase();
-  return [...fileMap.entries()]
-    .filter(([path]) => path.startsWith("wiki/") && !path.startsWith("wiki/.margins/") && path.endsWith(".md"))
-    .filter(([, body]) => !body.includes(`raw_sources/${file.name}`))
-    .map(([path, body]) => {
-      const title = markdownTitle(body) || titleFromSlug(basename(path).replace(/\.md$/, ""));
-      return {
-        path,
-        title,
-        type: "existing",
-        reason: text.includes(title.toLowerCase())
-          ? "The source directly mentions this existing note."
-          : ""
-      };
-    })
-    .filter((connection) => connection.reason)
-    .slice(0, 3);
 }
 
 async function generateApiReviewQuestions(fileMap, files) {
@@ -1575,6 +1573,24 @@ function renderSources() {
       ${renderSourceIngestRun(file)}
     </div>
   `).join("");
+  bindSourceListControls();
+}
+
+function bindSourceListControls() {
+  els.sourceList.querySelectorAll("[data-summary-toggle]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      toggleSourceSummary(button.dataset.summaryToggle);
+    });
+  });
+  els.sourceList.querySelectorAll("[data-run-answer]").forEach((button) => {
+    const handleAnswer = (event) => {
+      event.stopPropagation();
+      setIngestReviewAnswer(button.dataset.file, button.dataset.question, button.dataset.answer);
+    };
+    button.addEventListener("click", handleAnswer);
+    button.addEventListener("pointerup", handleAnswer);
+  });
 }
 
 function renderSourceIngestRun(file) {
@@ -1655,7 +1671,7 @@ function renderSourceRunQuestions(file) {
             ${questionOptionsWithSkip(question).map((option, index) => {
               const selected = ingestAnswerFor(file.name, question.question) === option;
               return `
-                <button class="quick-answer ${index === 0 ? "primary" : ""} ${selected ? "selected" : ""}" type="button" data-run-answer="${escapeHtml(option)}" data-question="${escapeHtml(question.question)}" data-file="${escapeHtml(file.name)}" aria-pressed="${selected ? "true" : "false"}">${escapeHtml(option)}</button>
+                <button class="quick-answer ${index === 0 ? "primary" : ""} ${selected ? "selected" : ""}" type="button" data-run-answer="${escapeHtml(option)}" data-question="${escapeHtml(question.question)}" data-file="${escapeHtml(file.name)}" aria-pressed="${selected ? "true" : "false"}" onclick="event.stopImmediatePropagation(); window.__marginsRunAnswer?.(this.dataset.file, this.dataset.question, this.dataset.runAnswer)">${escapeHtml(option)}</button>
               `;
             }).join("")}
           </div>
@@ -1711,9 +1727,13 @@ function sourceIngestSummary(file) {
 
 function sourceIngestFullSummary(file) {
   const review = state.ingestReviews.get(file.name);
-  if (review?.summary) return cleanSummary(review.summary);
+  if (review?.summary) return stripTrailingEllipsis(cleanSummary(review.summary));
   const sourceNote = sourceNoteForFile(file);
-  return cleanSummary(extractSourceSummary(sourceNote) || excerptForQuestion(file.text || sourceStatus(file), 900) || "Margins preserved the raw source and prepared it for filing.");
+  return stripTrailingEllipsis(cleanSummary(extractSourceSummary(sourceNote) || localSourceSummary(file) || "Margins preserved the raw source and prepared it for filing."));
+}
+
+function stripTrailingEllipsis(value) {
+  return String(value || "").replace(/\s*(?:\.{3}|…)\s*$/u, "").trim();
 }
 
 function clampSentence(value, limit) {
@@ -1741,6 +1761,65 @@ function cleanSummary(value) {
     .trim();
 }
 
+function installTestHooks() {
+  if (!new URLSearchParams(location.search).has("marginsTest")) return;
+  globalThis.__marginsTest = {
+    seedIngestCard({ summary, questions = [], connections = [] } = {}) {
+      const file = {
+        name: "browser-smoke-source.txt",
+        text: "This is a browser smoke source for the ingest card.",
+        type: "text",
+        size: 51,
+        sourceScope: "pending",
+        extractionStatus: "ready",
+        extractionError: ""
+      };
+      state.files = [file];
+      state.pendingSave = true;
+      state.processingInbox = false;
+      state.currentFileMap = new Map([
+        ["wiki/sources/source-browser-smoke-source.md", `---
+type: source
+summary: ${JSON.stringify(summary || "")}
+raw_file: raw_sources/${file.name}
+---
+
+# Source: Browser Smoke Source
+
+Raw file: \`raw_sources/${file.name}\`
+
+## Summary
+
+${summary || ""}
+`]
+      ]);
+      state.ingestReviews = new Map([[file.name, {
+        source: "api",
+        status: "Model reviewed",
+        summary: summary || "",
+        connections,
+        questions: questions.map((question) => reviewQuestion(
+          "suggest",
+          question.kind || "Quick check",
+          `raw_sources/${file.name}`,
+          question.question,
+          question.reason || "Browser smoke question.",
+          question.recommendation || "My take: use the best option.",
+          question.options || ["Yes", "No", "Skip"]
+        ))
+      }]]);
+      state.ingestAnswers = new Map();
+      state.expandedSummaries = new Set();
+      state.currentMaterialQuestions = state.ingestReviews.get(file.name).questions;
+      renderSources();
+      renderVaultTree(state.currentFileMap);
+    },
+    answerCount() {
+      return state.ingestAnswers.size;
+    }
+  };
+}
+
 function sourceProcessLabel() {
   if (state.processingInbox) return "Processing...";
   if (state.pendingSave && state.currentFileMap) return "Approve";
@@ -1763,14 +1842,8 @@ function renderVaultTree(fileMap = state.currentFileMap) {
         ${uploadStat("Pending", stats.pendingFiles)}
         ${uploadStat("Words", formatStatNumber(stats.totalWords))}
       </div>
-      <div class="upload-meter">
-        <div class="upload-meter-label">
-          <span>Processed</span>
-          <strong>${stats.processedPercent}%</strong>
-        </div>
-        <div class="upload-bar" style="--progress: ${stats.processedPercent}%"><span></span></div>
-      </div>
       <div class="upload-detail-list">
+        ${uploadDetail("Model reviewed", stats.reviewedFiles)}
         ${uploadDetail("Wiki notes", stats.wikiFiles)}
         ${uploadDetail("Cited links", stats.graphEdges)}
         ${uploadDetail("Needs extraction", stats.needsExtraction)}
@@ -1787,12 +1860,11 @@ function ingestionStats(fileMap) {
   const ingestedFiles = state.vaultFiles.length;
   const totalWords = sources.reduce((sum, file) => sum + wordCount(file.text || ""), 0);
   const needsExtraction = sources.filter(needsTextExtraction).length;
+  const reviewedFiles = state.ingestReviews.size;
   const wikiFiles = [...fileMap.keys()].filter((path) => path.startsWith("wiki/") && !path.startsWith("wiki/.margins/")).length;
   const graph = fileMap.size
     ? (fileMap === state.currentFileMap && graphView.nodes.length ? graphView : graphFromFileMap(fileMap))
     : { nodes: [], edges: [] };
-  const sourceTotal = sources.length;
-  const processedPercent = sourceTotal ? Math.round((parsedFiles / sourceTotal) * 100) : 0;
   const unsavedEdits = state.hasUnsavedEdits
     ? 1
     : state.pendingSave
@@ -1804,10 +1876,10 @@ function ingestionStats(fileMap) {
     ingestedFiles,
     totalWords,
     needsExtraction,
+    reviewedFiles,
     wikiFiles,
     graphEdges: graph.edges.length,
-    unsavedEdits,
-    processedPercent
+    unsavedEdits
   };
 }
 
