@@ -2190,8 +2190,12 @@ function formatWikiContextRecord(record) {
 function operatingContextForPrompt(fileMap) {
   if (!fileMap?.size) return "- Local-first. Proposal-first. No silent write-back.";
   const parts = [
+    fileMap.get("CLAUDE.md"),
     fileMap.get("operator-manual.md"),
-    fileMap.get("query-cookbook.md")
+    fileMap.get("query-cookbook.md"),
+    fileMap.get("wiki/ingest-tracker.md"),
+    fileMap.get("wiki/log.md"),
+    fileMap.get("wiki/wiki-stats.md")
   ].filter(Boolean).map((body) => excerptForQuestion(body, 900));
   return parts.length ? parts.join("\n\n") : "- Local-first. Proposal-first. No silent write-back.";
 }
@@ -4306,9 +4310,7 @@ function validateLlmFiles(fileMap) {
   const warningsByPath = new Map();
   const entries = [...fileMap.entries()];
   const promotedPages = entries.filter(([path]) => (
-    path.startsWith("wiki/concepts/") ||
-    path.startsWith("wiki/entities/") ||
-    path.startsWith("wiki/synthesis/")
+    isPromotedWikiPagePath(path)
   ));
   const hasPromotedPages = promotedPages.length > 0;
 
@@ -4320,17 +4322,17 @@ function validateLlmFiles(fileMap) {
     if (/:contentReference\[|oaicite:/i.test(body)) {
       warnings.push("Contains ChatGPT contentReference citations. Replace with durable source/file citations.");
     }
-    if (path.startsWith("wiki/sources/")) {
+    if (isSourceNodePagePath(path)) {
       if (!/##\s+Mentioned but missing/i.test(body)) warnings.push("Source page is missing a Mentioned but missing section.");
       if (!/##\s+Inferences refused/i.test(body)) warnings.push("Source page is missing an Inferences refused section.");
       if (hasPromotedPages && extractWikiLinks(body).length === 0) {
         warnings.push("Source page does not link to promoted concepts, entities, or synthesis pages.");
       }
     }
-    if ((path.startsWith("wiki/concepts/") || path.startsWith("wiki/entities/") || path.startsWith("wiki/synthesis/")) && !body.includes("[[source-")) {
+    if (isPromotedWikiPagePath(path) && !body.includes("[[source-")) {
       warnings.push("Promoted page does not link back to a source page.");
     }
-    if (path.startsWith("wiki/entities/") && /\bfictional\b|\bdemo\b|\bis this a real\b/i.test(body)) {
+    if (path.startsWith("wiki/entities/") && !isBucketOverviewPath(path) && /\bfictional\b|\bdemo\b|\bis this a real\b/i.test(body)) {
       warnings.push("Entity may be fictional or demo-only. Review before keeping it as a first-class entity.");
     }
     if (path === "wiki/.margins/edit-log.jsonl" || path === ".margins/edit-log.jsonl") {
@@ -4348,7 +4350,25 @@ function hasYamlFrontmatter(body) {
 }
 
 function isWikiPagePath(path) {
-  return (/^wiki\/(sources|concepts|entities|synthesis)\/[^/]+\.md$/.test(path) || path === "wiki/index.md");
+  return (/^wiki\/(sources|concepts|entities|synthesis)\/[^/]+\.md$/.test(path) ||
+    /^wiki\/(ingest-tracker|log|wiki-stats)\.md$/.test(path) ||
+    path === "wiki/index.md");
+}
+
+function isSourceNodePagePath(path) {
+  return path.startsWith("wiki/sources/") && !isBucketOverviewPath(path);
+}
+
+function isPromotedWikiPagePath(path) {
+  return (
+    path.startsWith("wiki/concepts/") ||
+    path.startsWith("wiki/entities/") ||
+    path.startsWith("wiki/synthesis/")
+  ) && !isBucketOverviewPath(path);
+}
+
+function isBucketOverviewPath(path) {
+  return /^wiki\/(sources\/sources|concepts\/concepts|entities\/entities|synthesis\/synthesis)\.md$/.test(path);
 }
 
 function warningLabel(warnings) {
@@ -5177,6 +5197,17 @@ Use one fenced block per returned file. Use this structure:
 - wiki/entities/{slug}.md
 - wiki/synthesis/{slug}.md
 - wiki/index.md
+- wiki/ingest-tracker.md
+- wiki/log.md
+- wiki/wiki-stats.md
+- wiki/_templates/source.md
+- wiki/_templates/entity.md
+- wiki/_templates/concept.md
+- wiki/sources/sources.md
+- wiki/concepts/concepts.md
+- wiki/entities/entities.md
+- wiki/synthesis/synthesis.md
+- CLAUDE.md
 - operator-manual.md
 - query-cookbook.md
 - commands/ingest.md
@@ -5250,10 +5281,14 @@ function serializeVaultContext(fileMap) {
 
 function shouldIncludeInVaultContext(path) {
   return isWikiPagePath(path) ||
+    path === "CLAUDE.md" ||
     path.startsWith("commands/") ||
     path.startsWith("agents/") ||
     path === "operator-manual.md" ||
     path === "query-cookbook.md" ||
+    path === "wiki/ingest-tracker.md" ||
+    path === "wiki/log.md" ||
+    path === "wiki/wiki-stats.md" ||
     path === "wiki/.margins/ingest-report.md";
 }
 
@@ -5276,8 +5311,8 @@ function wikiSchemaPack() {
 
 Architecture:
 - raw_sources/ stores immutable evidence.
-- wiki/ stores LLM-operable Markdown: source pages, concept pages, entity pages, synthesis pages, and index pages.
-- operator-manual.md, query-cookbook.md, commands/, agents/, and wiki/.margins/ tell future models how to operate the wiki.
+- wiki/ stores LLM-operable Markdown: source pages, concept pages, entity pages, synthesis pages, index pages, an ingest tracker, an operation log, stats, bucket overviews, and templates.
+- CLAUDE.md, operator-manual.md, query-cookbook.md, commands/, agents/, and wiki/.margins/ tell future models how to operate the wiki.
 
 Required frontmatter for wiki source, concept, entity, synthesis, and index pages:
 ---
@@ -5289,6 +5324,14 @@ created: YYYY-MM-DD
 updated: YYYY-MM-DD
 voice: claude-draft
 ---
+
+Structural files every generated vault should include:
+- CLAUDE.md: first-read agent operating skeleton.
+- wiki/ingest-tracker.md: table mapping raw_sources files to generated pages.
+- wiki/log.md: human-readable log with ops limited to ingest | query | compile | lint | update.
+- wiki/wiki-stats.md: drift, compression, extraction, and size dashboard.
+- wiki/{sources,concepts,entities,synthesis}/{bucket}.md: bucket overview pages.
+- wiki/_templates/*.md: source/entity/concept/synthesis/meeting/daily shapes for future ingest.
 
 Citation rules:
 - Use durable wiki/file citations only.
@@ -5497,6 +5540,7 @@ async function scaffoldVault(rootHandle) {
   await ensureDirectory(rootHandle, "wiki/concepts");
   await ensureDirectory(rootHandle, "wiki/entities");
   await ensureDirectory(rootHandle, "wiki/synthesis");
+  await ensureDirectory(rootHandle, "wiki/_templates");
   await ensureDirectory(rootHandle, "commands");
   await ensureDirectory(rootHandle, "agents");
   await ensureDirectory(rootHandle, "wiki/.margins");
@@ -5518,6 +5562,7 @@ voice: claude-draft
 
 Save generated wiki files from Margins to populate this vault.
 `);
+  await writeTextFileIfMissing(rootHandle, "CLAUDE.md", "# CLAUDE.md\n\nMargins will write the agent operating skeleton here.\n");
   await writeTextFileIfMissing(rootHandle, "operator-manual.md", "# Operator Manual\n\nMargins will write model operating instructions here.\n");
   await writeTextFileIfMissing(rootHandle, "query-cookbook.md", "# Query Cookbook\n\nMargins will write query recipes here.\n");
   await writeTextFileIfMissing(rootHandle, "wiki/.margins/manifest.json", JSON.stringify({
@@ -5553,6 +5598,7 @@ async function readVaultFileMap(rootHandle) {
   await readDirectoryTextFiles(rootHandle, "wiki", fileMap);
   await readDirectoryTextFiles(rootHandle, "commands", fileMap);
   await readDirectoryTextFiles(rootHandle, "agents", fileMap);
+  await readRootTextFile(rootHandle, "CLAUDE.md", fileMap);
   await readRootTextFile(rootHandle, "operator-manual.md", fileMap);
   await readRootTextFile(rootHandle, "query-cookbook.md", fileMap);
   return fileMap;
