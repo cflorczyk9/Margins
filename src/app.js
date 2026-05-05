@@ -18,6 +18,7 @@ const state = {
   reviewMode: localStorage.getItem("margins-review-mode") || "suggested",
   llmFiles: new Map(),
   llmSelectedPath: null,
+  currentMaterialQuestions: [],
   vaultHandle: null,
   vaultName: ""
 };
@@ -48,6 +49,8 @@ const els = {
   acceptLlmBtn: document.getElementById("accept-llm-btn"),
   llmStatus: document.getElementById("llm-status"),
   reviewQuestions: document.getElementById("review-questions"),
+  reviewReply: document.getElementById("review-reply"),
+  reviewResponseBtn: document.getElementById("review-response-btn"),
   llmFileList: document.getElementById("llm-file-list"),
   llmPreviewTitle: document.getElementById("llm-preview-title"),
   llmPreviewBody: document.getElementById("llm-preview-body"),
@@ -237,6 +240,7 @@ els.reviewMode.addEventListener("change", () => {
 
 els.parseLlmBtn.addEventListener("click", () => {
   state.llmFiles = parseLlmFiles(els.llmInput.value);
+  els.reviewReply.value = "";
   renderLlmReview();
 });
 
@@ -245,6 +249,21 @@ els.repairLlmBtn.addEventListener("click", async () => {
   await navigator.clipboard.writeText(buildLlmRepairPrompt(state.llmFiles));
   els.repairLlmBtn.textContent = "Copied";
   setTimeout(() => { els.repairLlmBtn.textContent = "Copy repair prompt"; }, 1100);
+});
+
+els.reviewReply.addEventListener("input", updateReviewResponseState);
+
+els.reviewResponseBtn.addEventListener("click", async () => {
+  const reply = els.reviewReply.value.trim();
+  if (state.llmFiles.size === 0 || !reply) return;
+  await navigator.clipboard.writeText(buildReviewResponsePrompt(
+    state.llmFiles,
+    state.currentMaterialQuestions,
+    reply,
+    state.reviewMode
+  ));
+  els.reviewResponseBtn.textContent = "Copied";
+  setTimeout(() => { els.reviewResponseBtn.textContent = "Copy review response prompt"; }, 1100);
 });
 
 els.acceptLlmBtn.addEventListener("click", () => {
@@ -401,6 +420,7 @@ function renderLlmReview() {
   const entries = [...state.llmFiles.entries()];
   const warningsByPath = validateLlmFiles(state.llmFiles);
   const questions = buildMaterialQuestions(state.llmFiles, warningsByPath, state.reviewMode);
+  state.currentMaterialQuestions = questions;
   const warningCount = [...warningsByPath.values()].reduce((sum, warnings) => sum + warnings.length, 0);
   els.acceptLlmBtn.disabled = entries.length === 0;
   els.repairLlmBtn.disabled = entries.length === 0 || warningCount === 0;
@@ -415,6 +435,7 @@ function renderLlmReview() {
     els.llmPreviewBody.textContent = "Paste model output, then click Parse LLM files.";
     renderMaterialQuestions([]);
     els.repairLlmBtn.disabled = true;
+    updateReviewResponseState();
     return;
   }
 
@@ -436,6 +457,7 @@ function renderLlmReview() {
   state.llmSelectedPath = entries[0][0];
   renderLlmPreview(warningsByPath);
   renderMaterialQuestions(questions);
+  updateReviewResponseState();
 }
 
 function renderLlmPreview(warningsByPath) {
@@ -468,6 +490,10 @@ function renderMaterialQuestions(questions) {
       <div class="review-path">${escapeHtml(question.path || "vault")}</div>
     </div>
   `).join("");
+}
+
+function updateReviewResponseState() {
+  els.reviewResponseBtn.disabled = state.llmFiles.size === 0 || !els.reviewReply.value.trim();
 }
 
 function buildMaterialQuestions(fileMap, warningsByPath, mode) {
@@ -1125,6 +1151,61 @@ ${groupedWarnings}
 Current output to repair:
 
 ${serializeLlmFiles(fileMap)}`;
+}
+
+function buildReviewResponsePrompt(fileMap, questions, reply, reviewMode) {
+  return `You are operating Margins, a local-first personal wiki compiler.
+
+The user is responding conversationally to review questions about the generated wiki. Use their reply as judgment, then regenerate the complete file set.
+
+Current review mode: ${reviewModeLabel(reviewMode)}
+
+Operating context:
+
+${wikiSchemaPack()}
+
+Review questions Margins asked:
+
+${serializeReviewQuestions(questions)}
+
+User reply:
+
+${reply}
+
+Task:
+1. Apply the user's guidance conservatively to the wiki files below.
+2. Return the complete replacement file set, not a patch.
+3. Keep the exact \`\`\`margins-file path="..."\`\`\` fenced block format.
+4. Prefer fewer, stronger concept/entity/synthesis pages over many weak pages.
+5. Demote nodes the user does not want into source-page sections, "Mentioned but missing", or draft synthesis notes as appropriate.
+6. Preserve source pages and concrete facts unless the user explicitly says they are wrong.
+7. Keep all synthesis labeled. Do not turn guesses into facts.
+8. If the user's reply contains a stable preference for future ingests, create or update .margins/preferences.json with a concise machine-readable preference.
+9. Only add a follow-up question if the user's answer is needed to avoid a wrong durable wiki decision.
+
+Current file set:
+
+${serializeLlmFiles(fileMap)}`;
+}
+
+function serializeReviewQuestions(questions) {
+  if (!questions.length) {
+    return "- No material questions were generated. The user is giving optional filing guidance.";
+  }
+  return questions.map((question) => [
+    `- ${question.question}`,
+    `  Why Margins asked: ${question.reason}`,
+    `  ${question.recommendation}`,
+    `  File: ${question.path || "vault"}`
+  ].join("\n")).join("\n");
+}
+
+function reviewModeLabel(mode) {
+  return {
+    auto: "Auto-file",
+    suggested: "Suggested review",
+    strict: "Strict review"
+  }[mode] || mode;
 }
 
 function parseLlmFiles(value) {
