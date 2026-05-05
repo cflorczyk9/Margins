@@ -11,6 +11,7 @@ document.documentElement.dataset.theme = initialTheme;
 
 const state = {
   files: [],
+  vaultFiles: [],
   vault: null,
   selectedPath: null,
   currentFileMap: null,
@@ -21,6 +22,7 @@ const state = {
   currentMaterialQuestions: [],
   llmPromptCopied: false,
   hasSavedCurrent: false,
+  pendingSave: false,
   vaultHandle: null,
   vaultName: ""
 };
@@ -102,18 +104,30 @@ async function handleSourceSelection(event) {
 
 async function setSourceFiles(files) {
   const normalized = normalizeSelectedFiles(files);
-  state.files = await Promise.all(normalized.map(readBrowserFile));
+  state.files = await Promise.all(normalized.map(async (file) => ({
+    ...await readBrowserFile(file),
+    sourceScope: "pending"
+  })));
   state.vault = null;
-  state.selectedPath = null;
-  state.currentFileMap = null;
+  if (!state.currentFileMap) {
+    state.selectedPath = null;
+  }
+  state.llmFiles = new Map();
+  state.llmSelectedPath = null;
+  state.currentMaterialQuestions = [];
+  els.llmInput.value = "";
   state.llmPromptCopied = false;
   state.hasSavedCurrent = false;
+  state.pendingSave = false;
+  renderLlmReview();
   renderSources();
   updateActionState();
-  els.exportBtn.disabled = true;
-  els.saveVaultBtn.disabled = true;
+  els.exportBtn.disabled = !state.currentFileMap;
+  els.saveVaultBtn.disabled = !state.currentFileMap;
   els.copyBtn.disabled = true;
-  els.stats.textContent = `${state.files.length} source${state.files.length === 1 ? "" : "s"} loaded · 0 nodes · 0 edges`;
+  els.stats.textContent = state.currentFileMap
+    ? `${state.files.length} new source${state.files.length === 1 ? "" : "s"} loaded · existing wiki retained`
+    : `${state.files.length} source${state.files.length === 1 ? "" : "s"} loaded · 0 nodes · 0 edges`;
   updateWorkflowState();
   if (state.files.some((file) => file.type === "pdf" && file.extractionStatus !== "extracted")) {
     await extractPdfSources();
@@ -127,6 +141,7 @@ els.compileBtn.addEventListener("click", () => {
   state.selectedPath = null;
   state.currentFileMap = null;
   state.hasSavedCurrent = false;
+  state.pendingSave = true;
   renderVault();
   updateWorkflowState();
 });
@@ -146,7 +161,7 @@ els.exportBtn.addEventListener("click", () => {
   }
   if (state.currentFileMap) {
     download("margins-llm-wiki.json", JSON.stringify({
-      raw_sources: state.files.map(({ name, text }) => ({ name, text })),
+      raw_sources: allSourceFiles().map(({ name, text }) => ({ name, text })),
       files: Object.fromEntries(state.currentFileMap)
     }, null, 2));
     return;
@@ -219,7 +234,8 @@ async function loadExistingVault(handle) {
     readRawSourcesFromVault(handle)
   ]);
 
-  state.files = rawFiles;
+  state.vaultFiles = rawFiles;
+  state.files = [];
   renderSources();
   updateActionState();
 
@@ -232,6 +248,7 @@ async function loadExistingVault(handle) {
     state.currentMaterialQuestions = [];
     state.llmPromptCopied = false;
     state.hasSavedCurrent = true;
+    state.pendingSave = false;
     renderWikiFiles(fileMap);
     renderOperatingLayer(fileMap);
     renderAcceptedLlmEditState();
@@ -258,6 +275,7 @@ function clearLoadedWiki() {
   state.llmSelectedPath = null;
   state.currentMaterialQuestions = [];
   state.hasSavedCurrent = false;
+  state.pendingSave = false;
   renderWikiFiles(new Map());
   renderOperatingLayer(new Map());
   els.editList.className = "edit-list empty";
@@ -283,24 +301,32 @@ async function saveCurrentVault() {
   els.saveVaultBtn.textContent = "Saving...";
 
   try {
-    const writtenRaw = await writeRawSources(vault, state.files);
+    const pendingRaw = state.files;
+    const sourceCount = allSourceFiles().length;
+    const writtenRaw = pendingRaw.length ? await writeRawSources(vault, pendingRaw) : 0;
     const writtenFiles = await writeFileMap(vault, state.currentFileMap);
     await writeTextFile(vault, "wiki/.margins/export-summary.json", JSON.stringify({
       saved_at: new Date().toISOString(),
       vault: state.vaultName,
       raw_sources: writtenRaw,
       generated_files: writtenFiles,
-      source_count: state.files.length,
+      new_source_count: pendingRaw.length,
+      source_count: sourceCount,
       file_count: state.currentFileMap.size,
       write_mode: "direct-vault-save",
-      warning: state.files.length === 0
+      warning: sourceCount === 0
         ? "No raw source files were loaded in the browser when this folder was written."
         : ""
     }, null, 2));
+    state.vaultFiles = mergeSourceFiles(state.vaultFiles, pendingRaw.map((file) => ({ ...file, sourceScope: "vault" })));
+    state.files = [];
+    renderSources();
     state.hasSavedCurrent = true;
-    els.stats.textContent = state.files.length === 0
-      ? `Saved ${writtenFiles} wiki/operating files to ${state.vaultName}, but no raw sources were loaded.`
-      : `Saved ${writtenFiles} wiki/operating file${writtenFiles === 1 ? "" : "s"} + ${writtenRaw} raw source${writtenRaw === 1 ? "" : "s"} to ${state.vaultName}`;
+    state.pendingSave = false;
+    state.llmPromptCopied = false;
+    els.stats.textContent = pendingRaw.length === 0
+      ? `Saved ${writtenFiles} wiki/operating files to ${state.vaultName}`
+      : `Saved ${writtenFiles} wiki/operating file${writtenFiles === 1 ? "" : "s"} + ${writtenRaw} new raw source${writtenRaw === 1 ? "" : "s"} to ${state.vaultName}`;
     els.saveVaultBtn.textContent = "Saved";
     setTimeout(() => { els.saveVaultBtn.textContent = originalText; }, 1500);
   } catch (error) {
@@ -338,8 +364,8 @@ els.llmInput.addEventListener("input", () => {
     els.reviewReply.value = "";
   }
   state.llmFiles = parsed;
-  state.currentFileMap = null;
   state.hasSavedCurrent = false;
+  state.pendingSave = false;
   els.saveVaultBtn.disabled = true;
   els.exportBtn.disabled = true;
   renderLlmReview();
@@ -348,8 +374,8 @@ els.llmInput.addEventListener("input", () => {
 els.parseLlmBtn.addEventListener("click", () => {
   state.llmFiles = parseLlmFiles(els.llmInput.value);
   els.reviewReply.value = "";
-  state.currentFileMap = null;
   state.hasSavedCurrent = false;
+  state.pendingSave = false;
   els.saveVaultBtn.disabled = true;
   els.exportBtn.disabled = true;
   renderLlmReview();
@@ -374,7 +400,7 @@ els.acceptLlmBtn.addEventListener("click", () => {
 
 async function copyLlmIngestPrompt() {
   if (state.files.length === 0) return;
-  await navigator.clipboard.writeText(buildLlmIngestPrompt(state.files));
+  await navigator.clipboard.writeText(buildLlmIngestPrompt(state.files, state.currentFileMap));
   state.llmPromptCopied = true;
   els.llmBtn.textContent = "Copied";
   setTimeout(() => { els.llmBtn.textContent = "Copy LLM ingest prompt"; }, 1100);
@@ -409,35 +435,65 @@ async function copyReviewResponsePrompt() {
 
 function acceptLlmFiles() {
   if (state.llmFiles.size === 0) return false;
+  const acceptedCount = state.llmFiles.size;
   state.vault = null;
-  state.currentFileMap = new Map(state.llmFiles);
+  state.currentFileMap = mergeFileMaps(state.currentFileMap, state.llmFiles);
   state.selectedPath = null;
   state.hasSavedCurrent = false;
+  state.pendingSave = true;
+  state.llmFiles = new Map();
+  state.currentMaterialQuestions = [];
   renderWikiFiles(state.currentFileMap);
   renderOperatingLayer(state.currentFileMap);
   renderAcceptedLlmEditState();
   drawGraph(graphFromFileMap(state.currentFileMap));
   els.exportBtn.disabled = false;
   els.saveVaultBtn.disabled = false;
+  els.acceptLlmBtn.disabled = true;
+  els.repairLlmBtn.disabled = true;
   els.copyBtn.disabled = true;
+  els.llmStatus.textContent = `Accepted ${acceptedCount} returned file${acceptedCount === 1 ? "" : "s"} into the current wiki. Save to write the vault.`;
   activateTab("wiki");
   updateWorkflowState();
   return true;
 }
 
+function mergeFileMaps(baseFileMap, changedFileMap) {
+  const merged = new Map(baseFileMap || []);
+  for (const [path, body] of changedFileMap.entries()) {
+    merged.set(path, body);
+  }
+  return merged;
+}
+
 function renderSources() {
-  if (state.files.length === 0) {
+  const files = allSourceFiles();
+  if (files.length === 0) {
     els.sourceList.className = "source-list empty";
     els.sourceList.textContent = "No sources loaded.";
     return;
   }
   els.sourceList.className = "source-list";
-  els.sourceList.innerHTML = state.files.map((file) => `
+  els.sourceList.innerHTML = files.map((file) => `
     <div class="source-item ${sourceClass(file)}">
       <strong>${escapeHtml(file.name)}</strong>
       <span>${escapeHtml(sourceStatus(file))}</span>
     </div>
   `).join("");
+}
+
+function allSourceFiles() {
+  const byName = new Map();
+  for (const file of state.vaultFiles) byName.set(file.name, file);
+  for (const file of state.files) byName.set(file.name, file);
+  return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function mergeSourceFiles(existing, incoming) {
+  const byName = new Map();
+  for (const file of existing) byName.set(file.name, file);
+  for (const file of incoming) byName.set(file.name, file);
+  return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function updateReviewModeHelp() {
@@ -493,19 +549,21 @@ function workflowStep() {
     };
   }
 
+  if (state.pendingSave) {
+    return {
+      action: "save",
+      label: "Save to vault",
+      guidance: `The wiki is accepted. Save it into ${state.vaultName}.`
+    };
+  }
+
   if (state.files.length === 0) {
     return {
       action: "sources",
       label: "Add documents",
-      guidance: `Vault selected: ${state.vaultName}. Now drop documents onto Sources or add files.`
-    };
-  }
-
-  if (state.hasSavedCurrent) {
-    return {
-      action: "sources",
-      label: "Add more documents",
-      guidance: `Loaded ${state.vaultName}. You can add another document whenever you're ready.`
+      guidance: state.currentFileMap
+        ? `Loaded ${state.vaultName}. Add another document to grow this vault.`
+        : `Vault selected: ${state.vaultName}. Now drop documents onto Sources or add files.`
     };
   }
 
@@ -523,14 +581,6 @@ function workflowStep() {
       action: "extract",
       label: "Extract PDF text",
       guidance: "Some PDFs still need readable text before the language model can organize them."
-    };
-  }
-
-  if (state.currentFileMap) {
-    return {
-      action: "save",
-      label: "Save to vault",
-      guidance: `The wiki is accepted. Save it into ${state.vaultName}.`
     };
   }
 
@@ -558,7 +608,9 @@ function workflowStep() {
       label: "Accept and save",
       guidance: questionCount
         ? `${questionCount} optional review question${questionCount === 1 ? "" : "s"} found. Answer only if something looks wrong; otherwise save.`
-        : "Clean LLM output is ready. Accept it and write the vault."
+        : state.currentFileMap
+          ? "Clean incremental update is ready. Merge it into the vault and save."
+          : "Clean LLM output is ready. Accept it and write the vault."
     };
   }
 
@@ -581,10 +633,12 @@ function workflowStep() {
   const failedPdfCount = state.files.filter((file) => file.type === "pdf" && !file.text).length;
   return {
     action: "copyPrompt",
-    label: "Organize with LLM",
+    label: state.currentFileMap ? "Update vault with LLM" : "Organize with LLM",
     guidance: failedPdfCount
       ? `${failedPdfCount} PDF${failedPdfCount === 1 ? "" : "s"} need to be attached in the LLM chat. The copied prompt will list them.`
-      : "Copy one prompt for the language model. When API mode exists, this step becomes automatic."
+      : state.currentFileMap
+        ? "Copy one prompt with the existing vault context plus the new source. The returned files will merge into the vault."
+        : "Copy one prompt for the language model. When API mode exists, this step becomes automatic."
   };
 }
 
@@ -605,6 +659,7 @@ function renderVault() {
   els.stats.textContent = `${vault.manifest.counts.raw_sources} sources · ${vault.wiki.graph.nodes.length} nodes · ${vault.wiki.graph.edges.length} edges`;
   state.currentFileMap = fileMap;
   state.hasSavedCurrent = false;
+  state.pendingSave = true;
   renderWikiFiles(fileMap);
 
   renderOperatingLayer(fileMap);
@@ -1157,7 +1212,9 @@ async function extractPdfSources() {
   els.extractBtn.textContent = "Extract PDF text";
   renderSources();
   updateActionState();
-  els.stats.textContent = `${state.files.length} source${state.files.length === 1 ? "" : "s"} loaded · 0 nodes · 0 edges`;
+  els.stats.textContent = state.currentFileMap
+    ? `${state.files.length} new source${state.files.length === 1 ? "" : "s"} ready · existing wiki retained`
+    : `${state.files.length} source${state.files.length === 1 ? "" : "s"} loaded · 0 nodes · 0 edges`;
   updateWorkflowState();
 }
 
@@ -1196,16 +1253,17 @@ function sourceClass(file) {
 }
 
 function sourceStatus(file) {
+  const prefix = file.sourceScope === "pending" ? "new · " : file.sourceScope === "vault" ? "in vault · " : "";
   if (file.text) {
     const suffix = file.type === "pdf" ? " extracted" : "";
-    return `${wordCount(file.text)} words${suffix}`;
+    return `${prefix}${wordCount(file.text)} words${suffix}`;
   }
-  if (file.type === "pdf" && file.extractionStatus === "extracting") return "extracting text...";
+  if (file.type === "pdf" && file.extractionStatus === "extracting") return `${prefix}extracting text...`;
   if (file.type === "pdf" && file.extractionStatus === "failed") {
-    return `extraction failed: ${file.extractionError || "needs text extraction or LLM attachment"}`;
+    return `${prefix}extraction failed: ${file.extractionError || "needs text extraction or LLM attachment"}`;
   }
-  if (file.type === "pdf") return "needs text extraction or LLM attachment";
-  return "0 words";
+  if (file.type === "pdf") return `${prefix}needs text extraction or LLM attachment`;
+  return `${prefix}0 words`;
 }
 
 function normalizeSelectedFiles(files) {
@@ -1229,22 +1287,33 @@ function normalizeSelectedFiles(files) {
   });
 }
 
-function buildLlmIngestPrompt(files) {
+function buildLlmIngestPrompt(files, existingFileMap = null) {
   const textFiles = files.filter((file) => file.text.trim());
   const attachmentFiles = files.filter((file) => !file.text.trim());
   const attachmentList = attachmentFiles.map((file) => `- ${file.name}`).join("\n") || "- none";
   const sourceBlocks = textFiles.map((file) => (
     `## Source: ${file.name}\n\n${file.text.trim()}`
   )).join("\n\n---\n\n") || "_No extracted text sources were available._";
+  const incremental = existingFileMap && hasVaultWikiContent(existingFileMap);
+  const existingVaultContext = incremental
+    ? `\n\nCurrent vault context:\nThe following files already exist in the user's vault. Treat them as the current wiki state. Preserve them unless the new source requires a specific update.\n\n${serializeVaultContext(existingFileMap)}`
+    : "";
+  const outputMode = incremental
+    ? `This is an incremental ingest into an existing vault. Return only files that should be created or replaced. Margins will merge returned files into the current vault. Include wiki/index.md, wiki/.margins/ingest-report.md, wiki/.margins/edit-log.jsonl, and any existing concept/entity/synthesis/source pages only if they need updates. Do not return unchanged files.`
+    : `This is a fresh ingest. Return the complete starter file set for the vault.`;
 
   return `You are operating Margins, a local-first personal wiki compiler.
 
 Goal:
 Turn raw sources into a useful wiki, not a chat transcript and not a generic file organizer. Preserve raw sources as evidence. Create source pages first, then only create durable concept/entity/synthesis pages when the source material actually supports them.
 
+Mode:
+${outputMode}
+
 Use this operating context as law:
 
 ${wikiSchemaPack()}
+${existingVaultContext}
 
 The model behavior should match this operating philosophy:
 - The wiki is the user's external memory. Correct recall matters more than producing many nodes.
@@ -1278,7 +1347,7 @@ voice: claude-draft
 Markdown body here.
 \`\`\`
 
-Use one fenced block per file. Return files in this structure:
+Use one fenced block per returned file. Use this structure:
 - wiki/sources/source-{slug}.md
 - wiki/concepts/{slug}.md
 - wiki/entities/{slug}.md
@@ -1335,6 +1404,40 @@ Operating-layer files:
 Extracted text sources:
 
 ${sourceBlocks}`;
+}
+
+function serializeVaultContext(fileMap) {
+  const entries = [...fileMap.entries()]
+    .filter(([path]) => shouldIncludeInVaultContext(path))
+    .sort(([left], [right]) => contextPathRank(left) - contextPathRank(right) || left.localeCompare(right));
+
+  return entries.map(([path, body]) => {
+    const budget = path.startsWith("wiki/sources/") ? 2400 : 1800;
+    return `\`\`\`margins-file path="${path}"\n${truncateForPrompt(body, budget)}\n\`\`\``;
+  }).join("\n\n") || "_No existing wiki context was loaded._";
+}
+
+function shouldIncludeInVaultContext(path) {
+  return isWikiPagePath(path) ||
+    path.startsWith("commands/") ||
+    path.startsWith("agents/") ||
+    path === "operator-manual.md" ||
+    path === "query-cookbook.md" ||
+    path === "wiki/.margins/ingest-report.md";
+}
+
+function contextPathRank(path) {
+  if (path === "wiki/index.md") return 0;
+  if (path.startsWith("wiki/sources/")) return 1;
+  if (path.startsWith("wiki/concepts/")) return 2;
+  if (path.startsWith("wiki/entities/")) return 3;
+  if (path.startsWith("wiki/synthesis/")) return 4;
+  return 5;
+}
+
+function truncateForPrompt(body, maxChars) {
+  if (body.length <= maxChars) return body;
+  return `${body.slice(0, maxChars).trim()}\n\n[Truncated for prompt. Preserve this file unless the new source clearly requires an update.]`;
 }
 
 function wikiSchemaPack() {
@@ -1432,7 +1535,7 @@ Use this operating context as law:
 ${wikiSchemaPack()}
 
 Your task:
-1. Regenerate the complete file set, not a patch.
+1. Regenerate the complete returned file set, not a diff patch.
 2. Keep the exact \`\`\`margins-file path="..."\`\`\` fenced block format.
 3. Fix every warning listed below.
 4. Remove all :contentReference, oaicite, hidden attachment ids, and turn references.
@@ -1454,7 +1557,7 @@ ${serializeLlmFiles(fileMap)}`;
 function buildReviewResponsePrompt(fileMap, questions, reply, reviewMode) {
   return `You are operating Margins, a local-first personal wiki compiler.
 
-The user is responding conversationally to review questions about the generated wiki. Use their reply as judgment, then regenerate the complete file set.
+The user is responding conversationally to review questions about generated wiki files. Use their reply as judgment, then regenerate the complete returned file set.
 
 Current review mode: ${reviewModeLabel(reviewMode)}
 
@@ -1472,7 +1575,7 @@ ${reply}
 
 Task:
 1. Apply the user's guidance conservatively to the wiki files below.
-2. Return the complete replacement file set, not a patch.
+2. Return complete replacement contents for each file you return, not a diff patch.
 3. Keep the exact \`\`\`margins-file path="..."\`\`\` fenced block format.
 4. Prefer fewer, stronger concept/entity/synthesis pages over many weak pages.
 5. Demote nodes the user does not want into source-page sections, "Mentioned but missing", or draft synthesis notes as appropriate.
@@ -1668,6 +1771,7 @@ async function readRawSourceDirectory(rootHandle, path, files) {
 
   for await (const [name, handle] of dir.entries()) {
     const childPath = `${path}/${name}`;
+    if (name.startsWith(".")) continue;
     if (handle.kind === "directory") {
       await readRawSourceDirectory(rootHandle, childPath, files);
     } else if (name !== "README.md") {
@@ -1693,7 +1797,8 @@ async function rawSourceFromFileHandle(fileHandle, name) {
     browserFile: file,
     type: isPdf ? "pdf" : "text",
     extractionStatus: isPdf ? "needed" : "ready",
-    extractionError: ""
+    extractionError: "",
+    sourceScope: "vault"
   };
 }
 

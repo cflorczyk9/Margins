@@ -44,6 +44,7 @@ The browser app has two compile paths:
 - `Copy LLM ingest prompt` creates a Claude/ChatGPT handoff prompt. Use this after extraction; failed PDFs are listed as attachments.
 - `LLM Review` parses Claude/ChatGPT output returned as `margins-file` fenced blocks and lets you preview it before accepting it as the current wiki.
 - `Create vault` scaffolds the selected folder with the expected vault structure. `Open vault` selects an existing local vault and loads its existing wiki files back into the app. `Save changes` writes the accepted wiki plus original raw sources directly into the selected vault using the browser File System Access API.
+- Incremental ingest keeps the loaded vault as context, sends only the new source batch to the language model, and merges returned `margins-file` blocks into the existing wiki.
 - `Review Mode` controls how many material judgment questions Margins asks: Auto-file, Suggested review, or Strict review. You can answer those questions in plain English and copy a review response prompt back to the language model for revised files.
 
 ## Compile the sample vault
