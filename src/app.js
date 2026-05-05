@@ -15,6 +15,7 @@ const state = {
   vault: null,
   selectedPath: null,
   currentFileMap: null,
+  loadedFileMap: new Map(),
   theme: initialTheme,
   reviewMode: localStorage.getItem("margins-review-mode") || "suggested",
   llmFiles: new Map(),
@@ -68,6 +69,17 @@ const els = {
   editList: document.getElementById("edit-list")
 };
 
+els.workflowPanel = document.querySelector(".workflow-panel");
+els.changeSummary = document.createElement("div");
+els.changeSummary.id = "change-summary";
+els.changeSummary.className = "mini-list";
+els.workflowPanel.appendChild(els.changeSummary);
+
+els.changePreview = document.createElement("div");
+els.changePreview.id = "change-preview";
+els.changePreview.className = "mini-list";
+els.llmStatus.after(els.changePreview);
+
 els.themeToggle.checked = state.theme === "dark";
 els.folderInput.addEventListener("change", handleSourceSelection);
 els.fileInput.addEventListener("change", handleSourceSelection);
@@ -120,6 +132,7 @@ async function setSourceFiles(files) {
   state.hasSavedCurrent = false;
   state.pendingSave = false;
   renderLlmReview();
+  renderChangePreview();
   renderSources();
   updateActionState();
   els.exportBtn.disabled = !state.currentFileMap;
@@ -189,6 +202,8 @@ async function createVault() {
     const handle = await window.showDirectoryPicker({ mode: "readwrite" });
     await scaffoldVault(handle);
     setActiveVault(handle, handle.name);
+    state.loadedFileMap = await readVaultFileMap(handle);
+    renderChangePreview();
     els.stats.textContent = `Created vault structure in: ${handle.name}`;
     return handle;
   } catch (error) {
@@ -235,6 +250,7 @@ async function loadExistingVault(handle) {
   ]);
 
   state.vaultFiles = rawFiles;
+  state.loadedFileMap = new Map(fileMap);
   state.files = [];
   renderSources();
   updateActionState();
@@ -253,6 +269,7 @@ async function loadExistingVault(handle) {
     renderOperatingLayer(fileMap);
     renderAcceptedLlmEditState();
     drawGraph(graphFromFileMap(fileMap));
+    renderChangePreview();
     els.exportBtn.disabled = false;
     els.saveVaultBtn.disabled = false;
     els.copyBtn.disabled = true;
@@ -262,6 +279,7 @@ async function loadExistingVault(handle) {
   }
 
   clearLoadedWiki();
+  renderChangePreview();
   els.stats.textContent = rawFiles.length
     ? `Opened ${state.vaultName}: ${rawFiles.length} raw source${rawFiles.length === 1 ? "" : "s"} loaded`
     : `Opened vault: ${state.vaultName}`;
@@ -284,6 +302,7 @@ function clearLoadedWiki() {
   els.exportBtn.disabled = true;
   els.saveVaultBtn.disabled = true;
   els.copyBtn.disabled = true;
+  renderChangePreview();
   updateWorkflowState();
 }
 
@@ -320,6 +339,7 @@ async function saveCurrentVault() {
     }, null, 2));
     state.vaultFiles = mergeSourceFiles(state.vaultFiles, pendingRaw.map((file) => ({ ...file, sourceScope: "vault" })));
     state.files = [];
+    state.loadedFileMap = new Map(state.currentFileMap);
     renderSources();
     state.hasSavedCurrent = true;
     state.pendingSave = false;
@@ -328,6 +348,7 @@ async function saveCurrentVault() {
       ? `Saved ${writtenFiles} wiki/operating files to ${state.vaultName}`
       : `Saved ${writtenFiles} wiki/operating file${writtenFiles === 1 ? "" : "s"} + ${writtenRaw} new raw source${writtenRaw === 1 ? "" : "s"} to ${state.vaultName}`;
     els.saveVaultBtn.textContent = "Saved";
+    renderChangePreview();
     setTimeout(() => { els.saveVaultBtn.textContent = originalText; }, 1500);
   } catch (error) {
     if (error.name !== "AbortError") {
@@ -369,6 +390,7 @@ els.llmInput.addEventListener("input", () => {
   els.saveVaultBtn.disabled = true;
   els.exportBtn.disabled = true;
   renderLlmReview();
+  renderChangePreview();
 });
 
 els.parseLlmBtn.addEventListener("click", () => {
@@ -379,6 +401,7 @@ els.parseLlmBtn.addEventListener("click", () => {
   els.saveVaultBtn.disabled = true;
   els.exportBtn.disabled = true;
   renderLlmReview();
+  renderChangePreview();
 });
 
 els.repairLlmBtn.addEventListener("click", async () => {
@@ -447,6 +470,7 @@ function acceptLlmFiles() {
   renderOperatingLayer(state.currentFileMap);
   renderAcceptedLlmEditState();
   drawGraph(graphFromFileMap(state.currentFileMap));
+  renderChangePreview();
   els.exportBtn.disabled = false;
   els.saveVaultBtn.disabled = false;
   els.acceptLlmBtn.disabled = true;
@@ -456,6 +480,118 @@ function acceptLlmFiles() {
   activateTab("wiki");
   updateWorkflowState();
   return true;
+}
+
+function renderChangePreview() {
+  const parsedMode = state.llmFiles.size > 0;
+  const unsavedMode = !parsedMode && state.currentFileMap && state.pendingSave;
+  const baseMap = parsedMode
+    ? state.currentFileMap || new Map()
+    : state.loadedFileMap || new Map();
+  const targetMap = parsedMode ? state.llmFiles : state.currentFileMap;
+  const fileChanges = targetMap
+    ? (parsedMode ? patchChangePlan(baseMap, targetMap) : fullChangePlan(baseMap, targetMap))
+    : [];
+  const rawChanges = (parsedMode || unsavedMode) ? rawSourceChangePlan() : [];
+  const visibleChanges = fileChanges.filter((change) => change.status !== "unchanged");
+  const summaryChanges = parsedMode ? fileChanges : visibleChanges;
+
+  if (!parsedMode && !unsavedMode) {
+    els.changeSummary.innerHTML = "";
+    els.changePreview.innerHTML = "";
+    return;
+  }
+
+  const title = parsedMode ? "Returned files" : "Save preview";
+  const createCount = summaryChanges.filter((change) => change.status === "create").length;
+  const overwriteCount = summaryChanges.filter((change) => change.status === "overwrite").length;
+  const unchangedCount = summaryChanges.filter((change) => change.status === "unchanged").length;
+  const rawCreateCount = rawChanges.filter((change) => change.status === "create").length;
+  const rawOverwriteCount = rawChanges.filter((change) => change.status === "overwrite").length;
+  const summaryParts = [
+    createCount ? `${createCount} new` : "",
+    overwriteCount ? `${overwriteCount} overwrite` : "",
+    rawCreateCount ? `${rawCreateCount} raw new` : "",
+    rawOverwriteCount ? `${rawOverwriteCount} raw overwrite` : "",
+    parsedMode && unchangedCount ? `${unchangedCount} unchanged` : ""
+  ].filter(Boolean);
+  const summaryText = summaryParts.join(" · ") || "No file changes detected";
+
+  els.changeSummary.innerHTML = `
+    <div class="mini-card">
+      <strong>${escapeHtml(title)}</strong><br>
+      <span>${escapeHtml(summaryText)}</span>
+    </div>
+  `;
+
+  const detailChanges = [
+    ...summaryChanges.map((change) => ({ ...change, kind: "wiki/ops" })),
+    ...rawChanges.map((change) => ({ ...change, kind: "raw source" }))
+  ];
+
+  if (detailChanges.length === 0) {
+    els.changePreview.innerHTML = `
+      <div class="mini-card">
+        <strong>${escapeHtml(title)}</strong><br>
+        <span>No file changes detected before save.</span>
+      </div>
+    `;
+    return;
+  }
+
+  els.changePreview.innerHTML = `
+    <div class="mini-card">
+      <strong>${escapeHtml(title)}</strong><br>
+      <span>${escapeHtml(summaryText)}. Review these paths before accepting or saving.</span>
+    </div>
+    ${detailChanges.slice(0, 18).map((change) => `
+      <div class="mini-card">
+        <strong>${escapeHtml(changeStatusLabel(change.status))}: ${escapeHtml(change.path)}</strong><br>
+        <span>${escapeHtml(change.kind)}${change.words ? ` · ${change.words} words` : ""}</span>
+      </div>
+    `).join("")}
+    ${detailChanges.length > 18 ? `<div class="mini-card"><span>${detailChanges.length - 18} more file changes not shown here.</span></div>` : ""}
+  `;
+}
+
+function patchChangePlan(baseMap, patchMap) {
+  return [...patchMap.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([path, body]) => ({
+      path,
+      status: !baseMap.has(path) ? "create" : baseMap.get(path) === body ? "unchanged" : "overwrite",
+      words: wordCount(body)
+    }));
+}
+
+function fullChangePlan(baseMap, nextMap) {
+  return [...nextMap.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([path, body]) => ({
+      path,
+      status: !baseMap.has(path) ? "create" : baseMap.get(path) === body ? "unchanged" : "overwrite",
+      words: wordCount(body)
+    }));
+}
+
+function rawSourceChangePlan() {
+  const existing = new Set(state.vaultFiles.map((file) => file.name));
+  return state.files
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((file) => ({
+      path: rawSourceOutputPath(file.name),
+      status: existing.has(file.name) ? "overwrite" : "create",
+      words: wordCount(file.text || "")
+    }));
+}
+
+function changeStatusLabel(status) {
+  return {
+    create: "Create",
+    overwrite: "Overwrite",
+    unchanged: "Unchanged"
+  }[status] || status;
 }
 
 function mergeFileMaps(baseFileMap, changedFileMap) {
@@ -1299,7 +1435,7 @@ function buildLlmIngestPrompt(files, existingFileMap = null) {
     ? `\n\nCurrent vault context:\nThe following files already exist in the user's vault. Treat them as the current wiki state. Preserve them unless the new source requires a specific update.\n\n${serializeVaultContext(existingFileMap)}`
     : "";
   const outputMode = incremental
-    ? `This is an incremental ingest into an existing vault. Return only files that should be created or replaced. Margins will merge returned files into the current vault. Include wiki/index.md, wiki/.margins/ingest-report.md, wiki/.margins/edit-log.jsonl, and any existing concept/entity/synthesis/source pages only if they need updates. Do not return unchanged files.`
+    ? `This is an incremental ingest into an existing vault. Return only files that should be created or replaced. Margins will merge returned files into the current vault. Include wiki/index.md, wiki/.margins/manifest.json, wiki/.margins/ingest-report.md, wiki/.margins/edit-log.jsonl, and any existing concept/entity/synthesis/source pages only if they need updates. Do not return unchanged files.`
     : `This is a fresh ingest. Return the complete starter file set for the vault.`;
 
   return `You are operating Margins, a local-first personal wiki compiler.
@@ -1359,7 +1495,13 @@ Use one fenced block per returned file. Use this structure:
 - commands/query.md
 - commands/compile.md
 - commands/lint.md
+- commands/propose-edit.md
+- commands/apply-edit.md
 - agents/wiki-ingest.md
+- agents/wiki-compiler.md
+- agents/wiki-query.md
+- agents/wiki-editor.md
+- wiki/.margins/manifest.json
 - wiki/.margins/ingest-report.md
 - wiki/.margins/edit-log.jsonl
 
@@ -1398,7 +1540,8 @@ Operating-layer files:
 - operator-manual.md should teach a future language model how to read, query, edit, and avoid overreaching in this wiki.
 - query-cookbook.md should include practical lookup patterns.
 - commands/*.md should be short executable workflow specs.
-- agents/wiki-ingest.md should describe the conservative ingest workflow: source page first, direct-read propagation, inference refusal, and review before promotion.
+- agents/*.md should describe conservative recurring roles: ingest, compile, query, and editor.
+- wiki/.margins/manifest.json should describe the vault template, privacy posture, enabled commands, enabled agents, and generated counts.
 - wiki/.margins/ingest-report.md should summarize files created, links made, inferences refused, mentioned-but-missing candidates, and anything that needs user review.
 
 Extracted text sources:
