@@ -41,14 +41,15 @@
 
       <section class="rail-section structure-card">
         <div id="vault-tree" class="vault-tree">
-          <details class="sidebar-folder">
-            <summary><span>raw_sources</span><em>0</em></summary>
-            <button class="sidebar-file muted-file" type="button" disabled>No sources yet</button>
-          </details>
-          <details class="sidebar-folder">
-            <summary><span>wiki</span><em>0</em></summary>
-            <button class="sidebar-file muted-file" type="button" disabled>No wiki yet</button>
-          </details>
+          <div class="upload-stats">
+            <div class="section-kicker">Ingestion</div>
+            <div class="upload-stat-grid">
+              <div class="upload-stat"><strong>0</strong><span>parsed</span></div>
+              <div class="upload-stat"><strong>0</strong><span>ingested</span></div>
+              <div class="upload-stat"><strong>0</strong><span>pending</span></div>
+              <div class="upload-stat"><strong>0</strong><span>words</span></div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -156,7 +157,10 @@
               </div>
               <button id="doc-save-btn" type="button" disabled>Save</button>
             </div>
-            <textarea id="doc-body" class="doc-body vault-editor" spellcheck="false">Open raw_sources or wiki, then choose a file.</textarea>
+            <div class="vault-editor-shell">
+              <pre id="doc-highlight" class="doc-highlight" aria-hidden="true"></pre>
+              <textarea id="doc-body" class="doc-body vault-editor" spellcheck="false">Open raw_sources or wiki, then choose a file.</textarea>
+            </div>
           </article>
         </div>
       </section>

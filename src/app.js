@@ -86,6 +86,7 @@ const els = {
   docPath: document.getElementById("doc-path"),
   docTitle: document.getElementById("doc-title"),
   docMeta: document.getElementById("doc-meta"),
+  docHighlight: document.getElementById("doc-highlight"),
   docBody: document.getElementById("doc-body"),
   docSaveBtn: document.getElementById("doc-save-btn"),
   graphSvg: document.getElementById("graph-svg"),
@@ -138,11 +139,13 @@ hydrateApiControls();
 els.folderInput.addEventListener("change", handleSourceSelection);
 els.fileInput.addEventListener("change", handleSourceSelection);
 els.docBody?.addEventListener("input", handleVaultDocumentEdit);
+els.docBody?.addEventListener("scroll", syncDocHighlightScroll);
 els.docSaveBtn?.addEventListener("click", saveCurrentVault);
 els.reviewMode.value = state.reviewMode;
 updateReviewModeHelp();
 updateWorkflowState();
 renderVaultTree();
+renderDocHighlight();
 restoreRememberedVault();
 
 els.themeToggle.addEventListener("change", () => {
@@ -1076,112 +1079,84 @@ function renderSources() {
 
 function renderVaultTree(fileMap = state.currentFileMap) {
   if (!els.vaultTree) return;
-  const query = (els.vaultSearch?.value || "").trim().toLowerCase();
-  const entries = vaultSidebarEntries(fileMap || new Map()).filter((entry) => (
-    !query || entry.path.toLowerCase().includes(query)
-  ));
-
-  if (entries.length === 0) {
-    els.vaultTree.innerHTML = `
-      <details class="sidebar-folder">
-        <summary><span>raw_sources</span><em>0</em></summary>
-        <button class="sidebar-file muted-file" type="button" disabled>No sources yet</button>
-      </details>
-      <details class="sidebar-folder">
-        <summary><span>wiki</span><em>0</em></summary>
-        <button class="sidebar-file muted-file" type="button" disabled>No wiki yet</button>
-      </details>
-    `;
-    return;
-  }
-
-  els.vaultTree.innerHTML = renderSidebarFolderTree(entries);
-
-  els.vaultTree.querySelectorAll(".sidebar-file").forEach((item) => {
-    item.addEventListener("click", () => {
-      const path = item.dataset.path;
-      if (selectVaultPath(path)) activateTab("wiki");
-    });
-  });
-}
-
-function vaultSidebarEntries(fileMap) {
-  const rawEntries = allSourceFiles().map((file) => ({
-    path: rawSourceOutputPath(file.name),
-    kind: "raw"
-  }));
-  const fileEntries = [...fileMap.keys()]
-    .filter((path) => (
-      (path.startsWith("wiki/") && !path.startsWith("wiki/.margins/")) ||
-      path.startsWith("commands/") ||
-      path.startsWith("agents/") ||
-      path === "operator-manual.md" ||
-      path === "query-cookbook.md"
-    ))
-    .map((path) => ({ path: normalizeMarginsPath(path), kind: "vault" }));
-  return [...rawEntries, ...fileEntries].sort((left, right) => {
-    const order = (path) => (
-      path.startsWith("raw_sources/") ? 0 :
-        path.startsWith("wiki/") ? 1 :
-          path.startsWith("commands/") ? 2 :
-            path.startsWith("agents/") ? 3 : 4
-    );
-    return order(left.path) - order(right.path) || left.path.localeCompare(right.path);
-  });
-}
-
-function renderSidebarFolderTree(entries) {
-  const root = { folders: new Map(), files: [] };
-  for (const entry of entries) {
-    const parts = entry.path.split("/");
-    let node = root;
-    for (const part of parts.slice(0, -1)) {
-      if (!node.folders.has(part)) node.folders.set(part, { folders: new Map(), files: [] });
-      node = node.folders.get(part);
-    }
-    node.files.push(entry);
-  }
-
-  const folders = [...root.folders.entries()]
-    .sort(([left], [right]) => sidebarFolderOrder(left) - sidebarFolderOrder(right) || left.localeCompare(right))
-    .map(([name, node]) => renderSidebarFolder(name, node, 0))
-    .join("");
-  const rootFiles = root.files
-    .sort((left, right) => left.path.localeCompare(right.path))
-    .map((file) => renderSidebarFile(file, 0))
-    .join("");
-  return folders + rootFiles;
-}
-
-function renderSidebarFolder(name, node, depth, parentPath = "") {
-  const folderPath = parentPath ? `${parentPath}/${name}` : name;
-  const hasQuery = !!(els.vaultSearch?.value || "").trim();
-  const shouldOpen = hasQuery || state.selectedPath?.startsWith(`${folderPath}/`);
-  const count = vaultFolderCount(node);
-  const folders = [...node.folders.entries()]
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([childName, childNode]) => renderSidebarFolder(childName, childNode, depth + 1, folderPath))
-    .join("");
-  const files = node.files
-    .sort((left, right) => left.path.localeCompare(right.path))
-    .slice(0, 60)
-    .map((file) => renderSidebarFile(file, depth + 1))
-    .join("");
-  const more = node.files.length > 60 ? `<div class="sidebar-more" style="--depth: ${depth + 1}">${node.files.length - 60} more</div>` : "";
-  return `
-    <details class="sidebar-folder" style="--depth: ${depth}"${shouldOpen ? " open" : ""}>
-      <summary><span>${escapeHtml(name)}</span><em>${count}</em></summary>
-      ${folders}${files}${more}
-    </details>
+  const stats = ingestionStats(fileMap || new Map());
+  els.vaultTree.innerHTML = `
+    <div class="upload-stats">
+      <div class="section-kicker">Ingestion</div>
+      <div class="upload-stat-grid">
+        ${uploadStat("Parsed", stats.parsedFiles)}
+        ${uploadStat("Ingested", stats.ingestedFiles)}
+        ${uploadStat("Pending", stats.pendingFiles)}
+        ${uploadStat("Words", formatStatNumber(stats.totalWords))}
+      </div>
+      <div class="upload-meter">
+        <div class="upload-meter-label">
+          <span>Processed</span>
+          <strong>${stats.processedPercent}%</strong>
+        </div>
+        <div class="upload-bar" style="--progress: ${stats.processedPercent}%"><span></span></div>
+      </div>
+      <div class="upload-detail-list">
+        ${uploadDetail("Wiki notes", stats.wikiFiles)}
+        ${uploadDetail("Cited links", stats.graphEdges)}
+        ${uploadDetail("Needs extraction", stats.needsExtraction)}
+        ${uploadDetail("Unsaved edits", stats.unsavedEdits)}
+      </div>
+    </div>
   `;
 }
 
-function renderSidebarFile(file, depth) {
+function ingestionStats(fileMap) {
+  const sources = allSourceFiles();
+  const parsedFiles = sources.filter((file) => wordCount(file.text || "") > 0).length;
+  const pendingFiles = state.files.length;
+  const ingestedFiles = state.vaultFiles.length;
+  const totalWords = sources.reduce((sum, file) => sum + wordCount(file.text || ""), 0);
+  const needsExtraction = sources.filter((file) => file.type === "pdf" && !file.text).length;
+  const wikiFiles = [...fileMap.keys()].filter((path) => path.startsWith("wiki/") && !path.startsWith("wiki/.margins/")).length;
+  const graph = fileMap.size
+    ? (fileMap === state.currentFileMap && graphView.nodes.length ? graphView : graphFromFileMap(fileMap))
+    : { nodes: [], edges: [] };
+  const sourceTotal = sources.length;
+  const processedPercent = sourceTotal ? Math.round((parsedFiles / sourceTotal) * 100) : 0;
+  const unsavedEdits = state.hasUnsavedEdits
+    ? 1
+    : state.pendingSave
+      ? fullChangePlan(state.loadedFileMap || new Map(), fileMap).filter((change) => change.status !== "unchanged").length
+      : 0;
+  return {
+    parsedFiles,
+    pendingFiles,
+    ingestedFiles,
+    totalWords,
+    needsExtraction,
+    wikiFiles,
+    graphEdges: graph.edges.length,
+    unsavedEdits,
+    processedPercent
+  };
+}
+
+function uploadStat(label, value) {
   return `
-    <button class="sidebar-file" type="button" data-path="${escapeHtml(file.path)}" style="--depth: ${depth}">
-      <span>${escapeHtml(basename(file.path))}</span>
-    </button>
+    <div class="upload-stat">
+      <strong>${escapeHtml(value)}</strong>
+      <span>${escapeHtml(label)}</span>
+    </div>
   `;
+}
+
+function uploadDetail(label, value) {
+  return `
+    <div>
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(formatStatNumber(value))}</strong>
+    </div>
+  `;
+}
+
+function formatStatNumber(value) {
+  return Number(value || 0).toLocaleString("en-US");
 }
 
 function sidebarFolderOrder(name) {
@@ -1591,9 +1566,6 @@ function updateSelectedFileState(options = {}) {
   els.wikiTree?.querySelectorAll(".vault-file").forEach((item) => {
     item.classList.toggle("active", item.dataset.path === state.selectedPath);
   });
-  els.vaultTree?.querySelectorAll(".sidebar-file").forEach((item) => {
-    item.classList.toggle("active", item.dataset.path === state.selectedPath);
-  });
   if (!options.preserveFocus && document.activeElement !== els.docBody) {
     els.docBody?.focus({ preventScroll: true });
   }
@@ -1644,10 +1616,62 @@ function setDocBody(body, options = {}) {
     els.docBody.textContent = body || "";
   }
   els.docBody.classList.toggle("read-only", !!options.readOnly);
+  renderDocHighlight();
 }
 
 function docBodyValue() {
   return "value" in els.docBody ? els.docBody.value : els.docBody.textContent;
+}
+
+function renderDocHighlight() {
+  if (!els.docHighlight || !els.docBody) return;
+  els.docHighlight.innerHTML = highlightMarkdown(docBodyValue());
+  syncDocHighlightScroll();
+}
+
+function syncDocHighlightScroll() {
+  if (!els.docHighlight || !els.docBody) return;
+  els.docHighlight.scrollTop = els.docBody.scrollTop;
+  els.docHighlight.scrollLeft = els.docBody.scrollLeft;
+}
+
+function highlightMarkdown(body) {
+  const lines = String(body || "").split("\n");
+  let inFrontmatter = false;
+  return lines.map((line, index) => {
+    const trimmed = line.trim();
+    if (index === 0 && trimmed === "---") {
+      inFrontmatter = true;
+      return `<span class="markdown-frontmatter markdown-delimiter">${escapeHtml(line || " ")}</span>`;
+    }
+    if (inFrontmatter && trimmed === "---") {
+      inFrontmatter = false;
+      return `<span class="markdown-frontmatter markdown-delimiter">${escapeHtml(line || " ")}</span>`;
+    }
+    if (inFrontmatter) {
+      return `<span class="markdown-frontmatter">${highlightPropertyLine(line)}</span>`;
+    }
+    if (/^#{1,6}\s/.test(line)) {
+      return `<span class="markdown-heading">${highlightInlineMarkdown(line)}</span>`;
+    }
+    return `<span>${highlightInlineMarkdown(line || " ")}</span>`;
+  }).join("\n");
+}
+
+function highlightPropertyLine(line) {
+  const match = line.match(/^(\s*)([A-Za-z0-9_-]+)(:)(.*)$/);
+  if (!match) return highlightInlineMarkdown(line || " ");
+  const [, leading, key, colon, value] = match;
+  return `${escapeHtml(leading)}<span class="markdown-property-key">${escapeHtml(key)}</span><span class="markdown-property-punctuation">${escapeHtml(colon)}</span><span class="markdown-property-value">${highlightInlineMarkdown(value || "")}</span>`;
+}
+
+function highlightInlineMarkdown(value) {
+  return escapeHtml(value)
+    .replace(/(`[^`\n]+`)/g, '<span class="markdown-code">$1</span>')
+    .replace(/(\*\*[^*\n]+\*\*)/g, '<span class="markdown-strong">$1</span>')
+    .replace(/(\[\[[^\]\n]+\]\])/g, '<span class="markdown-link">$1</span>')
+    .replace(/(\[[^\]\n]+\]\([^)]+\))/g, '<span class="markdown-link">$1</span>')
+    .replace(/(https?:\/\/[^\s)]+)/g, '<span class="markdown-link">$1</span>');
 }
 
 function handleVaultDocumentEdit() {
@@ -1672,6 +1696,8 @@ function handleVaultDocumentEdit() {
   state.hasUnsavedEdits = true;
   state.pendingSave = true;
   setDocumentHeader(state.selectedPath, body, { kind: state.selectedKind, readOnly: false });
+  renderDocHighlight();
+  renderVaultTree(state.currentFileMap);
   updateSaveButtonState();
   renderChangePreview();
 }

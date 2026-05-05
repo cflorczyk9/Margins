@@ -1245,104 +1245,79 @@ button,
   padding-bottom: 12px;
 }
 
-.sidebar-folder {
-  color: var(--ink);
+.upload-stats {
+  display: grid;
+  gap: 14px;
 }
 
-.vault-tree .sidebar-folder summary {
+.upload-stats .section-kicker {
+  margin-bottom: 0;
+}
+
+.upload-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.upload-stat,
+.upload-detail-list > div {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--paper) 72%, transparent);
+  padding: 10px;
+}
+
+.upload-stat strong {
+  display: block;
+  color: var(--ink);
+  font-size: 21px;
+  font-weight: 760;
+  line-height: 1;
+}
+
+.upload-stat span,
+.upload-detail-list span,
+.upload-meter-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.upload-meter-label,
+.upload-detail-list > div {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 28px;
-  margin-bottom: 0;
-  padding: 4px 6px 4px calc(4px + var(--depth, 0) * 12px);
-  border-radius: 6px;
-  color: color-mix(in srgb, var(--ink) 80%, var(--muted));
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 520;
-  letter-spacing: 0;
-  line-height: 1.25;
-  list-style: none;
-  text-transform: none;
+  gap: 10px;
 }
 
-.vault-tree .sidebar-folder summary::-webkit-details-marker {
-  display: none;
-}
-
-.vault-tree .sidebar-folder summary::before {
-  content: "›";
-  flex: 0 0 auto;
-  margin-right: 7px;
-  color: var(--faint);
-  transform: rotate(0deg);
-}
-
-.vault-tree .sidebar-folder[open] > summary::before {
-  transform: rotate(90deg);
-}
-
-.vault-tree .sidebar-folder summary span,
-.sidebar-file span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.vault-tree .sidebar-folder summary span {
-  flex: 1 1 auto;
-}
-
-.vault-tree .sidebar-folder summary em,
-.sidebar-more {
-  flex: 0 0 auto;
-  color: var(--faint);
-  font-size: 11px;
-  font-style: normal;
-  font-weight: 600;
-}
-
-.sidebar-file {
-  width: 100%;
-  min-height: 27px;
-  justify-content: flex-start;
-  margin: 0;
-  padding: 4px 6px 4px calc(20px + var(--depth, 1) * 12px);
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  box-shadow: none;
-  color: color-mix(in srgb, var(--ink) 72%, var(--muted));
-  font-size: 13px;
-  font-weight: 400;
-  line-height: 1.3;
-  text-align: left;
-  opacity: 1;
-}
-
-.vault-tree .sidebar-folder summary:hover,
-.sidebar-file:hover,
-.sidebar-file.active {
-  background: color-mix(in srgb, var(--paper) 76%, transparent);
+.upload-meter-label strong,
+.upload-detail-list strong {
   color: var(--ink);
-  transform: none;
+  font-size: 12px;
+  font-weight: 760;
 }
 
-.sidebar-file:disabled,
-.muted-file {
-  color: var(--faint);
-  cursor: default;
+.upload-bar {
+  height: 6px;
+  margin-top: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--line);
 }
 
-.sidebar-file:disabled:hover,
-.muted-file:hover {
-  background: transparent;
+.upload-bar span {
+  display: block;
+  width: var(--progress, 0%);
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
 }
 
-.sidebar-more {
-  padding: 3px 6px 3px calc(20px + var(--depth, 1) * 12px);
+.upload-detail-list {
+  display: grid;
+  gap: 7px;
 }
 
 .advanced-panel {
@@ -1903,23 +1878,59 @@ button,
   white-space: nowrap;
 }
 
-.vault-editor {
+.vault-editor-shell {
+  position: relative;
   display: block;
   width: 100%;
   max-width: 780px;
   min-height: calc(100vh - 315px);
   margin: 0 auto;
+}
+
+.doc-highlight,
+.vault-editor {
+  width: 100%;
+  min-height: inherit;
   padding: 0 0 48px;
   border: 0;
   border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-  color: color-mix(in srgb, var(--ink) 92%, var(--muted));
   font-family: "Manrope", -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", sans-serif;
   font-size: 16px;
   line-height: 1.72;
+  tab-size: 2;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.doc-highlight {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  margin: 0;
+  overflow: auto;
+  color: color-mix(in srgb, var(--ink) 76%, var(--muted));
+  pointer-events: none;
+  scrollbar-width: none;
+}
+
+.doc-highlight::-webkit-scrollbar {
+  display: none;
+}
+
+.vault-editor {
+  position: relative;
+  z-index: 1;
+  display: block;
+  margin: 0;
+  background: transparent;
+  box-shadow: none;
+  color: transparent;
+  caret-color: var(--ink);
   outline: 0;
+  overflow: auto;
   resize: none;
+  -webkit-text-fill-color: transparent;
 }
 
 .vault-editor:focus {
@@ -1927,7 +1938,47 @@ button,
 }
 
 .vault-editor.read-only {
+  caret-color: transparent;
+}
+
+.vault-editor::selection {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.markdown-frontmatter,
+.markdown-heading,
+.markdown-strong {
+  color: var(--ink);
+  font-weight: 760;
+}
+
+.markdown-delimiter,
+.markdown-property-punctuation {
+  color: var(--faint);
+}
+
+.markdown-property-key {
+  color: color-mix(in srgb, var(--ink) 90%, var(--muted));
+  font-weight: 820;
+}
+
+.markdown-property-value {
   color: var(--muted);
+  font-weight: 620;
+}
+
+.markdown-link {
+  color: var(--accent);
+  font-weight: 690;
+  text-decoration: none;
+}
+
+.markdown-code {
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent-soft) 46%, transparent);
+  color: color-mix(in srgb, var(--ink) 86%, var(--muted));
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.92em;
 }
 
 @media (max-width: 980px) {
@@ -2006,7 +2057,7 @@ button,
     padding: 24px 18px 44px;
   }
 
-  .vault-editor {
+  .vault-editor-shell {
     min-height: 45vh;
   }
 }
