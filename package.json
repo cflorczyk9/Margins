@@ -1,0 +1,12 @@
+{
+  "name": "margins",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local-first raw-source-to-wiki compiler with an LLM operating layer.",
+  "scripts": {
+    "dev": "python3 -m http.server 5173",
+    "compile": "node src/cli.js sample/raw_sources sample/output",
+    "compile:custom": "node src/cli.js"
+  }
+}

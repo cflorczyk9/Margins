@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Margins</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="mark"></div>
+        <div>
+          <h1>Margins</h1>
+          <p>raw sources -> wiki -> operating layer</p>
+        </div>
+      </div>
+
+      <section class="panel">
+        <h2>1. Raw Sources</h2>
+        <p>Select a raw source folder, or add individual `.md`, `.txt`, and transcript files. PDFs can be included as placeholders for now.</p>
+        <label class="file-picker">
+          <input id="folder-input" type="file" webkitdirectory directory multiple>
+          <span>Select raw_sources folder</span>
+        </label>
+        <label class="file-picker">
+          <input id="file-input" type="file" multiple>
+          <span>Add individual files</span>
+        </label>
+        <div id="source-list" class="source-list empty">No sources loaded.</div>
+      </section>
+
+      <section class="panel">
+        <h2>2. Compile</h2>
+        <button id="compile-btn" class="primary" disabled>Compile wiki</button>
+        <button id="export-btn" disabled>Download vault JSON</button>
+        <button id="copy-btn" disabled>Copy operator manual</button>
+      </section>
+
+      <section class="panel muted-panel">
+        <h2>Active waits</h2>
+        <ul>
+          <li>Can literal local folders work?</li>
+          <li>Do users understand commands and agents?</li>
+          <li>Are edit proposals useful enough to accept?</li>
+        </ul>
+      </section>
+    </aside>
+
+    <main class="workspace">
+      <header class="topbar">
+        <div>
+          <h2>Karpathy Original</h2>
+          <p>Evidence stays raw. The wiki compounds. The operating layer constrains model behavior.</p>
+        </div>
+        <div id="stats" class="stats">0 sources · 0 nodes · 0 edges</div>
+      </header>
+
+      <nav class="tabs">
+        <button class="tab active" data-view="wiki">Wiki</button>
+        <button class="tab" data-view="graph">Graph</button>
+        <button class="tab" data-view="ops">Operating Layer</button>
+        <button class="tab" data-view="edits">Edit Proposals</button>
+      </nav>
+
+      <section id="wiki-view" class="view active">
+        <div class="split">
+          <div class="tree">
+            <h3>Generated wiki</h3>
+            <div id="wiki-tree" class="tree-list empty">Compile sources to generate wiki nodes.</div>
+          </div>
+          <article class="document">
+            <div id="doc-title" class="doc-title">No node selected</div>
+            <pre id="doc-body" class="doc-body">Select files, compile, then choose a generated node.</pre>
+          </article>
+        </div>
+      </section>
+
+      <section id="graph-view" class="view">
+        <div class="graph-wrap">
+          <svg id="graph-svg" viewBox="0 0 980 560" role="img" aria-label="Generated wiki graph"></svg>
+        </div>
+      </section>
+
+      <section id="ops-view" class="view">
+        <div class="ops-grid">
+          <article>
+            <h3>operator-manual.md</h3>
+            <pre id="operator-manual" class="doc-body"></pre>
+          </article>
+          <article>
+            <h3>query-cookbook.md</h3>
+            <pre id="query-cookbook" class="doc-body"></pre>
+          </article>
+          <article>
+            <h3>commands/</h3>
+            <div id="commands-list" class="mini-list"></div>
+          </article>
+          <article>
+            <h3>agents/</h3>
+            <div id="agents-list" class="mini-list"></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="edits-view" class="view">
+        <div id="edit-list" class="edit-list empty">Compile sources to generate edit proposals.</div>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="src/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,66 @@
+import { mkdir, readFile, writeFile, readdir, copyFile } from "node:fs/promises";
+import { dirname, join, relative } from "node:path";
+import { compileVault, vaultToFiles } from "./compiler.js";
+
+const [inputDir = "sample/raw_sources", outputDir = "sample/output"] = process.argv.slice(2);
+
+async function main() {
+  const files = await readRawSources(inputDir);
+  const vault = compileVault(files, { name: "Karpathy Original" });
+  const generated = vaultToFiles(vault);
+
+  await mkdir(outputDir, { recursive: true });
+  await copyRawSources(files, outputDir);
+  for (const [path, body] of generated.entries()) {
+    const outPath = join(outputDir, path);
+    await mkdir(dirname(outPath), { recursive: true });
+    await writeFile(outPath, body, "utf8");
+  }
+
+  console.log(`Compiled ${files.length} raw source${files.length === 1 ? "" : "s"} into ${outputDir}`);
+  console.log(`Generated ${generated.size} operating/wiki files.`);
+}
+
+async function readRawSources(dir) {
+  const paths = await walk(dir);
+  const files = [];
+  for (const path of paths) {
+    const name = relative(dir, path);
+    let text = "";
+    try {
+      text = await readFile(path, "utf8");
+    } catch {
+      text = "";
+    }
+    files.push({ name, text, path });
+  }
+  return files;
+}
+
+async function copyRawSources(files, outputDir) {
+  const rawDir = join(outputDir, "raw_sources");
+  await mkdir(rawDir, { recursive: true });
+  for (const file of files) {
+    const outPath = join(rawDir, file.name);
+    await mkdir(dirname(outPath), { recursive: true });
+    if (file.path) await copyFile(file.path, outPath);
+    else await writeFile(outPath, file.text || "", "utf8");
+  }
+}
+
+async function walk(dir) {
+  const entries = await readdir(dir, { withFileTypes: true });
+  const files = [];
+  for (const entry of entries) {
+    if (entry.name.startsWith(".")) continue;
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) files.push(...await walk(path));
+    else files.push(path);
+  }
+  return files;
+}
+
+main().catch((error) => {
+  console.error(error.message);
+  process.exit(1);
+});
