@@ -82,6 +82,28 @@ test("vault raw sources without source notes appear in the pending inbox", {
   }
 });
 
+test("pending source status copy avoids internal extraction jargon", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    const statuses = await page.evaluate(() => window.__marginsTest.seedSourceStatusCards());
+    const joined = statuses.join("\n");
+    assert.doesNotMatch(joined, /LLM attachment|0 words|DOCX text extraction/i);
+    assert.match(joined, /Word text was not readable/);
+    assert.match(joined, /PDF text not extracted yet/);
+    assert.match(joined, /2 words ready/);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
 async function assertSelected(page, label) {
   const pressed = await page.locator(".run-question .quick-answer", { hasText: label }).getAttribute("aria-pressed");
   assert.equal(pressed, "true");

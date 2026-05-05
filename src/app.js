@@ -1875,6 +1875,43 @@ raw_file: raw_sources/filed-note.md
       renderSources();
       renderVaultTree(fileMap);
       return state.files.map((file) => file.name);
+    },
+    seedSourceStatusCards() {
+      state.files = [
+        {
+          name: "pending-word.docx",
+          text: "",
+          type: "docx",
+          size: 12400,
+          sourceScope: "vault",
+          extractionStatus: "failed",
+          extractionError: "No readable text found in DOCX."
+        },
+        {
+          name: "pending-statement.pdf",
+          text: "",
+          type: "pdf",
+          size: 88000,
+          sourceScope: "vault",
+          extractionStatus: "needed",
+          extractionError: ""
+        },
+        {
+          name: "script/build.py",
+          text: "print('hello margins')\n",
+          type: "text",
+          size: 23,
+          sourceScope: "vault",
+          extractionStatus: "ready",
+          extractionError: ""
+        }
+      ];
+      state.vaultFiles = state.files;
+      state.currentFileMap = new Map([["wiki/index.md", "# Index\n"]]);
+      state.pendingSave = false;
+      state.processingInbox = false;
+      renderSources();
+      return [...document.querySelectorAll("#source-list .source-copy span")].map((node) => node.textContent);
     }
   };
 }
@@ -3541,24 +3578,24 @@ function sourceClass(file) {
 }
 
 function sourceStatus(file) {
-  const prefix = rawSourceAlreadySaved(file) && file.sourceScope === "pending"
-    ? "raw saved · "
-    : file.sourceScope === "pending" ? "new · " : file.sourceScope === "vault" ? "in vault · " : "";
-  const size = file.size ? `${formatFileSize(file.size)} · ` : "";
+  const prefix = rawSourceAlreadySaved(file) || file.sourceScope === "vault"
+    ? "raw source saved"
+    : "new source";
+  const size = file.size ? ` · ${formatFileSize(file.size)}` : "";
   if (file.text) {
-    const suffix = file.type === "pdf" || file.type === "docx" ? " extracted" : "";
-    return `${prefix}${size}${wordCount(file.text)} words${suffix}`;
+    const suffix = file.type === "pdf" || file.type === "docx" ? " extracted" : " ready";
+    return `${prefix}${size} · ${formatStatNumber(wordCount(file.text))} words${suffix}`;
   }
-  if (file.type === "pdf" && file.extractionStatus === "extracting") return `${prefix}extracting text...`;
+  if (file.type === "pdf" && file.extractionStatus === "extracting") return `${prefix}${size} · extracting PDF text...`;
   if (file.type === "pdf" && file.extractionStatus === "failed") {
-    return `${prefix}extraction failed: ${file.extractionError || "needs text extraction or LLM attachment"}`;
+    return `${prefix}${size} · PDF text was not readable`;
   }
-  if (file.type === "pdf") return `${prefix}needs text extraction or LLM attachment`;
+  if (file.type === "pdf") return `${prefix}${size} · PDF text not extracted yet`;
   if (file.type === "docx" && file.extractionStatus === "failed") {
-    return `${prefix}DOCX text extraction failed: ${file.extractionError || "needs conversion"}`;
+    return `${prefix}${size} · Word text was not readable`;
   }
-  if (file.type === "docx") return `${prefix}needs DOCX text extraction`;
-  return `${prefix}0 words`;
+  if (file.type === "docx") return `${prefix}${size} · Word text not extracted yet`;
+  return `${prefix}${size} · no readable text yet`;
 }
 
 function needsTextExtraction(file) {
@@ -4101,21 +4138,38 @@ async function readRawSourceDirectory(rootHandle, path, files) {
 async function rawSourceFromFileHandle(fileHandle, name) {
   const file = await fileHandle.getFile();
   const isPdf = /\.pdf$/i.test(name);
+  const isDocx = /\.docx$/i.test(name);
   let text = "";
-  if (!isPdf && isVaultTextPath(name)) {
+  let extractionStatus = "ready";
+  let extractionError = "";
+  if (isPdf) {
+    extractionStatus = "needed";
+  } else if (isDocx) {
+    try {
+      text = await extractDocxText(file);
+      extractionStatus = text ? "extracted" : "failed";
+      extractionError = text ? "" : "No readable text found in DOCX.";
+    } catch (error) {
+      text = "";
+      extractionStatus = "failed";
+      extractionError = error.message || "DOCX extraction failed.";
+    }
+  } else if (isReadableSourceTextPath(name)) {
     try {
       text = await file.text();
     } catch {
       text = "";
+      extractionStatus = "failed";
+      extractionError = "Text could not be read.";
     }
   }
   return {
     name,
     text,
     browserFile: file,
-    type: isPdf ? "pdf" : "text",
-    extractionStatus: isPdf ? "needed" : "ready",
-    extractionError: "",
+    type: isPdf ? "pdf" : isDocx ? "docx" : "text",
+    extractionStatus,
+    extractionError,
     sourceScope: "vault"
   };
 }
@@ -4127,6 +4181,10 @@ async function readTextHandle(fileHandle) {
 
 function isVaultTextPath(path) {
   return /\.(md|txt|json|jsonl)$/i.test(path);
+}
+
+function isReadableSourceTextPath(path) {
+  return /\.(md|markdown|txt|json|jsonl|csv|tsv|py|js|jsx|ts|tsx|html|css|xml|yaml|yml|log|eml|vtt|srt)$/i.test(path);
 }
 
 async function writeRawSources(rootHandle, files) {
