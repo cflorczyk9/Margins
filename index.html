@@ -113,15 +113,15 @@
           </div>
         </section>
 
-        <section class="queue-panel">
+        <section id="queue-panel" class="queue-panel" hidden>
           <div class="section-head">
             <div>
               <span class="section-kicker">Pending</span>
-              <h3>Files ready to file</h3>
+              <h3>New documents</h3>
             </div>
             <button id="save-vault-btn" class="primary shadow-action" disabled>Save</button>
           </div>
-          <div id="source-list" class="source-list empty">No sources loaded.</div>
+          <div id="source-list" class="source-list empty">No new documents loaded.</div>
         </section>
 
         <section id="inline-review-panel" class="inline-review-panel" hidden>
@@ -137,12 +137,15 @@
       <section id="wiki-view" class="view">
         <div class="split">
           <div class="tree">
-            <h3>Generated wiki</h3>
-            <div id="wiki-tree" class="tree-list empty">Compile sources to generate wiki nodes.</div>
+            <h3>Vault</h3>
+            <div id="wiki-tree" class="tree-list empty">Open a vault to browse files.</div>
           </div>
           <article class="document">
-            <div id="doc-title" class="doc-title">No node selected</div>
-            <pre id="doc-body" class="doc-body">Select files, compile, then choose a generated node.</pre>
+            <div class="doc-toolbar">
+              <div id="doc-title" class="doc-title">No file selected</div>
+              <button id="doc-save-btn" type="button" disabled>Save changes</button>
+            </div>
+            <textarea id="doc-body" class="doc-body vault-editor" spellcheck="false">Open raw_sources or wiki, then choose a file.</textarea>
           </article>
         </div>
       </section>

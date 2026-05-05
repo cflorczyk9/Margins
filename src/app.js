@@ -14,9 +14,11 @@ const API_SECRET_STORAGE_KEY = "margins.apiSecret.v1";
 
 const state = {
   files: [],
+  editedRawFiles: new Map(),
   vaultFiles: [],
   vault: null,
   selectedPath: null,
+  selectedKind: "",
   currentFileMap: null,
   loadedFileMap: new Map(),
   theme: initialTheme,
@@ -26,6 +28,7 @@ const state = {
   currentMaterialQuestions: [],
   llmPromptCopied: false,
   hasSavedCurrent: false,
+  hasUnsavedEdits: false,
   pendingSave: false,
   vaultHandle: null,
   rememberedVaultHandle: null,
@@ -66,6 +69,7 @@ const els = {
   sourceDropZone: document.getElementById("source-drop-zone"),
   folderInput: document.getElementById("folder-input"),
   fileInput: document.getElementById("file-input"),
+  queuePanel: document.getElementById("queue-panel"),
   sourceList: document.getElementById("source-list"),
   extractBtn: document.getElementById("extract-btn"),
   compileBtn: document.getElementById("compile-btn"),
@@ -80,6 +84,7 @@ const els = {
   wikiTree: document.getElementById("wiki-tree"),
   docTitle: document.getElementById("doc-title"),
   docBody: document.getElementById("doc-body"),
+  docSaveBtn: document.getElementById("doc-save-btn"),
   graphSvg: document.getElementById("graph-svg"),
   graphSelection: document.getElementById("graph-selection"),
   graphSelectionMeta: document.getElementById("graph-selection-meta"),
@@ -129,6 +134,8 @@ updateThemeToggleLabel();
 hydrateApiControls();
 els.folderInput.addEventListener("change", handleSourceSelection);
 els.fileInput.addEventListener("change", handleSourceSelection);
+els.docBody?.addEventListener("input", handleVaultDocumentEdit);
+els.docSaveBtn?.addEventListener("click", saveCurrentVault);
 els.reviewMode.value = state.reviewMode;
 updateReviewModeHelp();
 updateWorkflowState();
@@ -428,10 +435,10 @@ function setActiveVault(handle, name) {
   state.vaultHandle = handle;
   state.rememberedVaultHandle = handle;
   state.vaultName = name;
-  els.createVaultBtn.textContent = `Vault: ${shortLabel(name)}`;
-  els.openVaultBtn.textContent = "Open another vault";
+  els.createVaultBtn.textContent = "Create vault";
+  els.openVaultBtn.textContent = "Change vault";
   updateSaveButtonState();
-  updateVaultStatus(`Connected: ${name}`);
+  updateVaultStatus(name);
   saveVaultHandle(handle).catch(() => {});
   updateWorkflowState();
 }
@@ -482,6 +489,7 @@ async function loadExistingVault(handle) {
   ]);
 
   state.vaultFiles = rawFiles;
+  state.editedRawFiles = new Map();
   state.loadedFileMap = new Map(fileMap);
   state.files = [];
   renderSources();
@@ -492,11 +500,13 @@ async function loadExistingVault(handle) {
     state.vault = null;
     state.currentFileMap = fileMap;
     state.selectedPath = null;
+    state.selectedKind = "";
     state.llmFiles = new Map();
     state.llmSelectedPath = null;
     state.currentMaterialQuestions = [];
     state.llmPromptCopied = false;
     state.hasSavedCurrent = true;
+    state.hasUnsavedEdits = false;
     state.pendingSave = false;
     renderWikiFiles(fileMap);
     renderOperatingLayer(fileMap);
@@ -523,10 +533,13 @@ function clearLoadedWiki() {
   state.vault = null;
   state.currentFileMap = null;
   state.selectedPath = null;
+  state.selectedKind = "";
+  state.editedRawFiles = new Map();
   state.llmFiles = new Map();
   state.llmSelectedPath = null;
   state.currentMaterialQuestions = [];
   state.hasSavedCurrent = false;
+  state.hasUnsavedEdits = false;
   state.pendingSave = false;
   renderWikiFiles(new Map());
   renderOperatingLayer(new Map());
@@ -595,11 +608,13 @@ async function saveCurrentVault() {
   if (!vault) return;
 
   els.saveVaultBtn.disabled = true;
+  if (els.docSaveBtn) els.docSaveBtn.disabled = true;
   const originalText = els.saveVaultBtn.textContent;
   els.saveVaultBtn.textContent = "Saving...";
+  if (els.docSaveBtn) els.docSaveBtn.textContent = "Saving...";
 
   try {
-    const pendingRaw = state.files;
+    const pendingRaw = mergeSourceFiles(state.files, [...state.editedRawFiles.values()]);
     const sourceCount = allSourceFiles().length;
     const writtenRaw = pendingRaw.length ? await writeRawSources(vault, pendingRaw) : 0;
     const reviewNotes = els.reviewReply.value.trim();
@@ -622,10 +637,12 @@ async function saveCurrentVault() {
     }, null, 2));
     state.vaultFiles = mergeSourceFiles(state.vaultFiles, pendingRaw.map((file) => ({ ...file, sourceScope: "vault" })));
     state.files = [];
+    state.editedRawFiles = new Map();
     state.loadedFileMap = new Map(state.currentFileMap);
     renderSources();
     renderVaultTree(state.currentFileMap);
     state.hasSavedCurrent = true;
+    state.hasUnsavedEdits = false;
     state.pendingSave = false;
     state.llmPromptCopied = false;
     els.reviewReply.value = "";
@@ -633,13 +650,21 @@ async function saveCurrentVault() {
       ? `Saved ${writtenFiles} wiki/operating files to ${state.vaultName}`
       : `Saved ${writtenFiles} wiki/operating file${writtenFiles === 1 ? "" : "s"} + ${writtenRaw} new raw source${writtenRaw === 1 ? "" : "s"} to ${state.vaultName}`;
     els.saveVaultBtn.textContent = "Saved";
+    if (els.docSaveBtn) els.docSaveBtn.textContent = "Saved";
+    renderWikiFiles(state.currentFileMap);
+    activateTab("wiki");
     renderChangePreview();
-    setTimeout(updateSaveButtonState, 1500);
+    setTimeout(() => {
+      els.saveVaultBtn.textContent = originalText;
+      if (els.docSaveBtn) els.docSaveBtn.textContent = "Save changes";
+      updateSaveButtonState();
+    }, 1500);
   } catch (error) {
     if (error.name !== "AbortError") {
       els.stats.textContent = `Vault save failed: ${error.message || "unknown error"}`;
     }
     els.saveVaultBtn.textContent = originalText;
+    if (els.docSaveBtn) els.docSaveBtn.textContent = "Save changes";
   } finally {
     updateSaveButtonState();
     updateWorkflowState();
@@ -906,7 +931,7 @@ function excerptForQuestion(text, max) {
 
 function renderChangePreview() {
   const parsedMode = state.llmFiles.size > 0;
-  const unsavedMode = !parsedMode && state.currentFileMap && state.pendingSave;
+  const unsavedMode = !parsedMode && state.currentFileMap && (state.pendingSave || state.hasUnsavedEdits);
   const baseMap = parsedMode
     ? state.currentFileMap || new Map()
     : state.loadedFileMap || new Map();
@@ -1000,7 +1025,7 @@ function fullChangePlan(baseMap, nextMap) {
 
 function rawSourceChangePlan() {
   const existing = new Set(state.vaultFiles.map((file) => file.name));
-  return state.files
+  return mergeSourceFiles(state.files, [...state.editedRawFiles.values()])
     .slice()
     .sort((a, b) => a.name.localeCompare(b.name))
     .map((file) => ({
@@ -1027,10 +1052,11 @@ function mergeFileMaps(baseFileMap, changedFileMap) {
 }
 
 function renderSources() {
-  const files = allSourceFiles();
+  const files = state.files;
+  if (els.queuePanel) els.queuePanel.hidden = files.length === 0;
   if (files.length === 0) {
     els.sourceList.className = "source-list empty";
-    els.sourceList.textContent = "Drop files above and they will appear here before Margins writes anything.";
+    els.sourceList.textContent = "No new documents loaded.";
     return;
   }
   els.sourceList.className = "source-list";
@@ -1070,11 +1096,7 @@ function renderVaultTree(fileMap = state.currentFileMap) {
   els.vaultTree.querySelectorAll(".vault-tree-file").forEach((item) => {
     item.addEventListener("click", () => {
       const path = item.dataset.path;
-      if (!state.currentFileMap?.has(path)) return;
-      activateTab("wiki");
-      state.selectedPath = path;
-      els.docTitle.textContent = path;
-      els.docBody.textContent = state.currentFileMap.get(path);
+      if (selectVaultPath(path)) activateTab("wiki");
     });
   });
 }
@@ -1096,7 +1118,13 @@ function allSourceFiles() {
   const byName = new Map();
   for (const file of state.vaultFiles) byName.set(file.name, file);
   for (const file of state.files) byName.set(file.name, file);
+  for (const file of state.editedRawFiles.values()) byName.set(file.name, file);
   return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function rawFileForPath(path) {
+  const normalizedPath = rawSourceOutputPath(path.replace(/^raw_sources\//, ""));
+  return allSourceFiles().find((file) => rawSourceOutputPath(file.name) === normalizedPath) || null;
 }
 
 function mergeSourceFiles(existing, incoming) {
@@ -1149,6 +1177,7 @@ async function runWorkflowStep() {
 
 function updateWorkflowState() {
   const step = workflowStep();
+  els.workflowPanel?.classList.toggle("vault-connected", !!state.vaultHandle);
   els.workflowGuidance.textContent = step.guidance;
   els.workflowBtn.textContent = step.label;
   els.workflowBtn.disabled = !!step.disabled;
@@ -1174,7 +1203,7 @@ function workflowStep() {
     return {
       action: "save",
       label: "Write local vault",
-      guidance: `Review is ready. Write these files into ${state.vaultName}.`
+      guidance: `Ready to update ${state.vaultName}.`
     };
   }
 
@@ -1183,8 +1212,8 @@ function workflowStep() {
       action: "sources",
       label: "Add documents",
       guidance: state.currentFileMap
-        ? `Loaded ${state.vaultName}. Add another document to grow this vault.`
-        : `Vault selected: ${state.vaultName}. Now drop documents onto Sources or add files.`
+        ? `Connected to ${state.vaultName}.`
+        : `Connected to ${state.vaultName}.`
     };
   }
 
@@ -1353,36 +1382,176 @@ function renderAcceptedLlmEditState() {
 
 function renderWikiFiles(fileMap) {
   const query = (els.vaultSearch?.value || "").trim().toLowerCase();
-  const entries = [...fileMap.entries()].filter(([path, body]) => (
-    isWikiPagePath(path) &&
-    (!query || path.toLowerCase().includes(query) || body.toLowerCase().includes(query))
+  const entries = vaultBrowserEntries(fileMap || new Map()).filter((entry) => (
+    !query || entry.path.toLowerCase().includes(query) || entry.body.toLowerCase().includes(query)
   ));
-  els.wikiTree.className = "tree-list";
-  els.wikiTree.innerHTML = entries.map(([path, body]) => `
-    <div class="tree-item" data-path="${escapeHtml(path)}">
-      <strong>${escapeHtml(path)}</strong>
-      <span>${wordCount(body)} words</span>
-    </div>
-  `).join("");
 
-  els.wikiTree.querySelectorAll(".tree-item").forEach((item) => {
+  if (entries.length === 0) {
+    els.wikiTree.className = "tree-list empty";
+    els.wikiTree.textContent = "Open a vault or add documents to browse raw_sources and wiki.";
+    els.docTitle.textContent = "No file selected";
+    setDocBody("Open raw_sources or wiki, then choose a file.", { readOnly: true });
+    if (els.docSaveBtn) els.docSaveBtn.disabled = true;
+    return;
+  }
+
+  els.wikiTree.className = "vault-file-browser";
+  els.wikiTree.innerHTML = renderVaultFolderTree(entries);
+
+  els.wikiTree.querySelectorAll(".vault-file").forEach((item) => {
     item.addEventListener("click", () => {
-      state.selectedPath = item.dataset.path;
-      els.docTitle.textContent = state.selectedPath;
-      els.docBody.textContent = fileMap.get(state.selectedPath);
+      selectVaultPath(item.dataset.path);
     });
   });
 
-  if (entries[0]) {
-    state.selectedPath = entries[0][0];
-    els.docTitle.textContent = entries[0][0];
-    els.docBody.textContent = entries[0][1];
-  } else {
-    els.wikiTree.className = "tree-list empty";
-    els.wikiTree.textContent = "No wiki Markdown files found.";
-    els.docTitle.textContent = "No node selected";
-    els.docBody.textContent = "Paste LLM output or compile sources to generate wiki nodes.";
+  if (state.selectedPath && entries.some((entry) => entry.path === state.selectedPath)) {
+    selectVaultPath(state.selectedPath, { preserveFocus: true });
+    return;
   }
+
+  state.selectedPath = null;
+  state.selectedKind = "";
+  els.docTitle.textContent = "No file selected";
+  setDocBody("Choose a file from raw_sources or wiki.", { readOnly: true });
+  if (els.docSaveBtn) els.docSaveBtn.disabled = true;
+}
+
+function vaultBrowserEntries(fileMap) {
+  const rawEntries = allSourceFiles().map((file) => ({
+    path: rawSourceOutputPath(file.name),
+    body: file.text || (file.type === "pdf" ? "PDF source preserved in raw_sources. Text extraction has not been saved for this file yet." : ""),
+    kind: "raw",
+    editable: file.type !== "pdf" || !!file.text
+  }));
+  const wikiEntries = [...fileMap.entries()]
+    .filter(([path]) => path.startsWith("wiki/") && !path.startsWith("wiki/.margins/"))
+    .map(([path, body]) => ({
+      path: normalizeMarginsPath(path),
+      body,
+      kind: "wiki",
+      editable: true
+    }));
+  return [...rawEntries, ...wikiEntries].sort((left, right) => left.path.localeCompare(right.path));
+}
+
+function renderVaultFolderTree(entries) {
+  const root = { folders: new Map(), files: [] };
+  for (const entry of entries) {
+    const parts = entry.path.split("/");
+    let node = root;
+    for (const part of parts.slice(0, -1)) {
+      if (!node.folders.has(part)) node.folders.set(part, { folders: new Map(), files: [] });
+      node = node.folders.get(part);
+    }
+    node.files.push(entry);
+  }
+  return [...root.folders.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([name, node]) => renderVaultFolder(name, node, 0))
+    .join("");
+}
+
+function renderVaultFolder(name, node, depth) {
+  const count = vaultFolderCount(node);
+  const folders = [...node.folders.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([childName, childNode]) => renderVaultFolder(childName, childNode, depth + 1))
+    .join("");
+  const files = node.files
+    .sort((left, right) => left.path.localeCompare(right.path))
+    .map((file) => `
+      <button class="vault-file" type="button" data-path="${escapeHtml(file.path)}" style="--depth: ${depth + 1}">
+        <span>${escapeHtml(basename(file.path))}</span>
+        <em>${escapeHtml(file.kind.toUpperCase())}</em>
+      </button>
+    `).join("");
+  return `
+    <details class="vault-folder" style="--depth: ${depth}">
+      <summary><span>${escapeHtml(name)}</span><em>${count}</em></summary>
+      ${folders}${files}
+    </details>
+  `;
+}
+
+function vaultFolderCount(node) {
+  let count = node.files.length;
+  for (const child of node.folders.values()) count += vaultFolderCount(child);
+  return count;
+}
+
+function selectVaultPath(path, options = {}) {
+  const normalizedPath = normalizeMarginsPath(path);
+  const rawFile = rawFileForPath(normalizedPath);
+  if (rawFile) {
+    state.selectedPath = rawSourceOutputPath(rawFile.name);
+    state.selectedKind = "raw";
+    els.docTitle.textContent = state.selectedPath;
+    setDocBody(rawFile.text || "PDF source preserved in raw_sources. Text extraction has not been saved for this file yet.", {
+      readOnly: rawFile.type === "pdf" && !rawFile.text
+    });
+    updateSelectedFileState(options);
+    return true;
+  }
+
+  if (state.currentFileMap?.has(normalizedPath)) {
+    state.selectedPath = normalizedPath;
+    state.selectedKind = normalizedPath.startsWith("wiki/") ? "wiki" : "system";
+    els.docTitle.textContent = normalizedPath;
+    setDocBody(state.currentFileMap.get(normalizedPath), { readOnly: false });
+    updateSelectedFileState(options);
+    return true;
+  }
+
+  return false;
+}
+
+function updateSelectedFileState(options = {}) {
+  els.wikiTree?.querySelectorAll(".vault-file").forEach((item) => {
+    item.classList.toggle("active", item.dataset.path === state.selectedPath);
+  });
+  if (!options.preserveFocus && document.activeElement !== els.docBody) {
+    els.docBody?.focus({ preventScroll: true });
+  }
+  updateSaveButtonState();
+}
+
+function setDocBody(body, options = {}) {
+  if ("value" in els.docBody) {
+    els.docBody.value = body || "";
+    els.docBody.readOnly = !!options.readOnly;
+  } else {
+    els.docBody.textContent = body || "";
+  }
+  els.docBody.classList.toggle("read-only", !!options.readOnly);
+}
+
+function docBodyValue() {
+  return "value" in els.docBody ? els.docBody.value : els.docBody.textContent;
+}
+
+function handleVaultDocumentEdit() {
+  if (!state.selectedPath || els.docBody.readOnly) return;
+  const body = docBodyValue();
+  if (state.selectedKind === "raw") {
+    const file = rawFileForPath(state.selectedPath);
+    if (!file) return;
+    file.text = body;
+    state.editedRawFiles.set(file.name, {
+      ...file,
+      text: body,
+      browserFile: null,
+      extractionStatus: "ready",
+      sourceScope: "vault"
+    });
+  } else if (state.currentFileMap?.has(state.selectedPath)) {
+    state.currentFileMap.set(state.selectedPath, body);
+  } else {
+    return;
+  }
+  state.hasUnsavedEdits = true;
+  state.pendingSave = true;
+  updateSaveButtonState();
+  renderChangePreview();
 }
 
 function renderLlmReview() {
@@ -2044,9 +2213,7 @@ function openGraphNode(node) {
   const path = graphNodePath(node);
   if (!path || !state.currentFileMap?.has(path)) return;
   activateTab("wiki");
-  state.selectedPath = path;
-  els.docTitle.textContent = path;
-  els.docBody.textContent = state.currentFileMap.get(path);
+  selectVaultPath(path);
 }
 
 function resetGraphCamera() {
@@ -2303,9 +2470,15 @@ function updateActionState() {
 function updateSaveButtonState() {
   if (!els.saveVaultBtn) return;
   const canPrepare = state.files.length > 0 && !state.pendingSave;
-  const canSave = state.pendingSave && state.currentFileMap;
+  const canSave = (state.pendingSave || state.hasUnsavedEdits) && state.currentFileMap;
   els.saveVaultBtn.disabled = !(canPrepare || canSave);
   els.saveVaultBtn.textContent = canSave ? "Write vault" : "Save";
+  if (els.docSaveBtn) {
+    els.docSaveBtn.disabled = !canSave;
+    if (els.docSaveBtn.textContent !== "Saving..." && els.docSaveBtn.textContent !== "Saved") {
+      els.docSaveBtn.textContent = "Save changes";
+    }
+  }
 }
 
 function sourceClass(file) {
