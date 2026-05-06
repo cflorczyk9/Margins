@@ -2997,3 +2997,392 @@ button,
     linear-gradient(145deg, color-mix(in srgb, var(--paper) 90%, #2a1a1a), var(--paper-soft));
   box-shadow: 0 18px 60px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
+
+/* Product shell parity: Claude demo left rail with real local-vault behavior. */
+:root,
+[data-theme="light"] {
+  --bg: #faf7f2;
+  --sidebar: #faf7f2;
+  --paper: #ffffff;
+  --paper-soft: #f5f1ea;
+  --control: #ffffff;
+  --ink: #1a1612;
+  --muted: #847a6b;
+  --faint: #aaa092;
+  --line: #e8e2d6;
+  --line-strong: #d8d0bf;
+  --accent: #b85c38;
+  --accent-dark: #9f4a2d;
+  --accent-soft: rgba(184, 92, 56, 0.10);
+  --on-accent: #ffffff;
+  --green: #5b7d57;
+  --blue: #5a6390;
+  --purple: #8c5a96;
+  --amber: #d97a4f;
+  --edge: #d8d0bf;
+  --shadow-sm: 0 1px 0 rgba(26, 22, 18, 0.04);
+  --shadow-md: 0 1px 0 rgba(26, 22, 18, 0.04), 0 6px 18px rgba(26, 22, 18, 0.04);
+  --shadow-lg: 0 1px 0 rgba(26, 22, 18, 0.06), 0 12px 36px rgba(26, 22, 18, 0.10);
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Inter, system-ui, sans-serif;
+  font-size: 14.5px;
+  line-height: 1.5;
+  letter-spacing: 0;
+}
+
+.app-shell {
+  height: 100vh;
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 248px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.sidebar {
+  grid-column: 1;
+  grid-row: 1;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  padding: 22px 18px;
+  gap: 4px;
+  background: var(--sidebar);
+  border-right: 1px solid var(--line);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 9px;
+  margin: 0 0 28px;
+  padding: 0 0 0 6px;
+}
+
+.brand-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  background: linear-gradient(135deg, var(--accent), #d97a4f);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 1px 2px rgba(184, 92, 56, 0.25);
+}
+
+.brand-name {
+  color: var(--ink);
+  font-size: 16.5px;
+  font-weight: 600;
+}
+
+.nav-section-label {
+  margin: 14px 0 6px;
+  padding: 0 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.nav {
+  display: grid;
+  gap: 1px;
+}
+
+.nav .tab {
+  width: 100%;
+  min-height: 34px;
+  justify-content: flex-start;
+  gap: 10px;
+  margin: 0;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  box-shadow: none;
+  color: color-mix(in srgb, var(--ink) 75%, var(--muted));
+  font-size: 14px;
+  font-weight: 450;
+}
+
+.nav .tab svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  opacity: 0.72;
+}
+
+.nav .tab:hover {
+  transform: none;
+  background: var(--paper-soft);
+  color: var(--ink);
+  border-color: transparent;
+}
+
+.nav .tab.active {
+  background: var(--paper);
+  color: var(--ink);
+  border-bottom-color: transparent;
+  box-shadow: var(--shadow-sm);
+  font-weight: 550;
+}
+
+.nav .tab.active svg {
+  color: var(--accent);
+  opacity: 1;
+}
+
+.vault-card {
+  margin-top: 22px;
+}
+
+.workspace {
+  grid-column: 2;
+  grid-row: 1;
+  display: block;
+  height: 100vh;
+  min-width: 0;
+  overflow: auto;
+  background: var(--bg);
+}
+
+.view {
+  min-height: 100%;
+  background: var(--bg);
+}
+
+#inbox-view,
+#entities-view {
+  padding: 28px 44px 140px;
+}
+
+.inbox-copy,
+.entity-workspace {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.inbox-copy {
+  margin-bottom: 22px;
+}
+
+.inbox-copy h2,
+.page-head h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 26px;
+  line-height: 1.16;
+  font-weight: 600;
+}
+
+.inbox-copy p,
+.meta-row,
+.entity-empty-state p {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.inbox-copy p {
+  max-width: 620px;
+  margin-top: 4px;
+}
+
+.inbox-drop {
+  max-width: 720px;
+  min-height: auto;
+  margin: 0 auto 28px;
+  padding: 28px 24px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 14px;
+  background: var(--paper);
+  box-shadow: none;
+}
+
+.inbox-drop::before,
+.inbox-drop::after {
+  content: none;
+}
+
+.inbox-drop.dragging,
+.inbox-drop:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent-soft) 44%, var(--paper));
+}
+
+.drop-mark {
+  width: 36px;
+  height: 36px;
+  margin: 0 auto 10px;
+  border-radius: 10px;
+  background:
+    linear-gradient(var(--accent), var(--accent)) 17px 9px / 2px 17px no-repeat,
+    linear-gradient(45deg, transparent 0 42%, var(--accent) 43% 57%, transparent 58%) 12px 8px / 12px 12px no-repeat,
+    var(--accent-soft);
+}
+
+.inbox-drop h3 {
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.28;
+  font-weight: 550;
+}
+
+.inbox-drop p,
+.drop-formats {
+  font-size: 13px;
+}
+
+.drop-actions .primary-picker span {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--bg);
+}
+
+.queue-panel,
+.inline-review-panel {
+  max-width: 720px;
+}
+
+.entity-empty-state {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  margin-top: 28px;
+  padding: 42px 24px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 14px;
+  background: var(--paper);
+  text-align: center;
+}
+
+.empty-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background:
+    radial-gradient(circle at 13px 13px, var(--accent) 0 5px, transparent 5.5px),
+    radial-gradient(circle at 23px 22px, color-mix(in srgb, var(--accent) 62%, var(--paper)) 0 4px, transparent 4.5px),
+    var(--accent-soft);
+}
+
+.entity-empty-state h3 {
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+#wiki-view {
+  padding: 28px 36px 80px;
+}
+
+.files-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  max-width: 1100px;
+  margin: 0 auto 18px;
+}
+
+.files-head .page-head {
+  margin: 0;
+}
+
+.vault-search {
+  width: min(360px, 42vw);
+  justify-self: auto;
+}
+
+.vault-workspace {
+  max-width: 1100px;
+  height: calc(100vh - 128px);
+  margin: 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--paper);
+  box-shadow: var(--shadow-card, var(--shadow-md));
+}
+
+.vault-navigator {
+  background: var(--paper-soft);
+  border-right-color: var(--line);
+}
+
+.vault-document {
+  background: var(--paper);
+}
+
+.app-status {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper-soft);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.sidebar > .theme-toggle {
+  margin-top: 10px;
+  padding-top: 12px;
+}
+
+@media (max-width: 900px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+    overflow: auto;
+  }
+
+  .sidebar {
+    position: relative;
+    grid-column: 1;
+    grid-row: 1;
+    height: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .nav {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .nav .tab {
+    justify-content: center;
+  }
+
+  .workspace {
+    grid-column: 1;
+    grid-row: 2;
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+  }
+
+  #inbox-view,
+  #entities-view,
+  #wiki-view {
+    padding: 22px 16px 48px;
+  }
+
+  .files-head {
+    display: grid;
+  }
+
+  .vault-search {
+    width: 100%;
+  }
+
+  .vault-workspace {
+    height: auto;
+    min-height: 70vh;
+    grid-template-columns: 1fr;
+  }
+}
