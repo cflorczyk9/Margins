@@ -100,6 +100,7 @@ const els = {
   fileInput: document.getElementById("file-input"),
   queuePanel: document.getElementById("queue-panel"),
   sourceList: document.getElementById("source-list"),
+  entityBrowser: document.getElementById("entity-browser"),
   extractBtn: document.getElementById("extract-btn"),
   compileBtn: document.getElementById("compile-btn"),
   llmBtn: document.getElementById("llm-btn"),
@@ -4443,11 +4444,14 @@ Related to [[connor]].
         ["wiki/entities/connor.md", `---
 type: entity
 summary: Connor entity.
+tags: [person, test]
+updated: 2026-05-06
 ---
 
 # Connor
 `]
       ]);
+      renderVaultTree(state.currentFileMap);
       drawGraph(graphFromFileMap(state.currentFileMap));
       activateTab("graph");
       const rootStyle = getComputedStyle(document.documentElement);
@@ -5163,7 +5167,8 @@ function isSourceReviewReady(file) {
 }
 
 function renderVaultTree(fileMap = state.currentFileMap) {
-  if (!els.vaultTree) return;
+  renderEntities(fileMap || new Map());
+  if (!els.vaultTree || els.vaultTree.hidden) return;
   const stats = ingestionStats(fileMap || new Map());
   els.vaultTree.innerHTML = `
     <div class="upload-stats">
@@ -5183,6 +5188,131 @@ function renderVaultTree(fileMap = state.currentFileMap) {
       </div>
     </div>
   `;
+}
+
+function renderEntities(fileMap = state.currentFileMap) {
+  if (!els.entityBrowser) return;
+  const records = entityRecordsFromFileMap(fileMap || new Map());
+  if (records.length === 0) {
+    els.entityBrowser.className = "entity-empty-state";
+    els.entityBrowser.innerHTML = `
+      <div class="empty-icon" aria-hidden="true"></div>
+      <h3>No entities loaded</h3>
+      <p>Open a local vault or ingest a source. Margins will only show entities backed by real vault files.</p>
+    `;
+    return;
+  }
+
+  els.entityBrowser.className = "entity-grid";
+  els.entityBrowser.innerHTML = records.map((record) => `
+    <button class="entity-card" type="button" data-entity-path="${escapeHtml(record.path)}">
+      <div class="entity-card-top">
+        <span class="entity-vibe ${escapeHtml(entityVibeClass(record))}"></span>
+        <strong>${escapeHtml(record.title)}</strong>
+        <span class="type-tag">${escapeHtml(record.typeLabel)}</span>
+      </div>
+      <p>${escapeHtml(record.summary || "No summary yet.")}</p>
+      <div class="entity-card-meta">
+        <span>${escapeHtml(record.bucketLabel)}</span>
+        ${record.updated ? `<span>${escapeHtml(record.updated)}</span>` : ""}
+        ${record.connectionCount ? `<span>${escapeHtml(record.connectionCount)} link${record.connectionCount === 1 ? "" : "s"}</span>` : ""}
+      </div>
+      ${record.tags.length ? `
+        <div class="entity-card-tags">
+          ${record.tags.slice(0, 4).map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}
+        </div>
+      ` : ""}
+    </button>
+  `).join("");
+
+  els.entityBrowser.querySelectorAll("[data-entity-path]").forEach((card) => {
+    card.addEventListener("click", () => {
+      activateTab("wiki");
+      selectVaultPath(card.dataset.entityPath);
+    });
+  });
+}
+
+function entityRecordsFromFileMap(fileMap) {
+  return [...fileMap.entries()]
+    .filter(([path, body]) => isEntityPagePath(path, body))
+    .map(([path, body]) => entityRecord(path, body))
+    .filter(Boolean)
+    .sort(entityRecordSort)
+    .slice(0, 80);
+}
+
+function isEntityPagePath(path, body) {
+  if (!path.startsWith("wiki/") || !path.endsWith(".md")) return false;
+  if (path.startsWith("wiki/.margins/") || path.startsWith("wiki/_templates/")) return false;
+  if (isBucketOverviewPath(path)) return false;
+  const fields = frontmatterFields(body);
+  const type = String(fields.type || "").toLowerCase();
+  if (["entity", "person", "company", "project", "concept", "school", "advisor", "family"].includes(type)) return true;
+  return /^wiki\/(entities|personal|projects|career|ideas|school)\//.test(path) &&
+    !/^wiki\/(ideas|projects|career|school)\/source[-/]/.test(path);
+}
+
+function entityRecord(path, body) {
+  const context = wikiContextRecord(path, body);
+  const typeLabel = entityTypeLabel(context.type, path);
+  const title = cleanSummary(context.title || titleFromSlug(basename(path).replace(/\.md$/, "")));
+  if (!title || /^(entities|projects|ideas|career|school|personal)$/i.test(title)) return null;
+  const summary = cleanSummary(context.summary || excerptForQuestion(bodyWithoutFrontmatter(body), 180));
+  const tags = [...new Set([
+    ...context.tags,
+    context.bucket,
+    context.status,
+    context.priority
+  ].filter(Boolean).map((tag) => String(tag).replace(/^#/, "")))];
+  return {
+    path,
+    title,
+    summary: clampSentence(summary, 220),
+    typeLabel,
+    bucketLabel: entityBucketLabel(path, context.bucket),
+    updated: context.updated || "",
+    tags,
+    connectionCount: context.keyLinks.length
+  };
+}
+
+function entityRecordSort(left, right) {
+  const leftDate = Date.parse(left.updated || "");
+  const rightDate = Date.parse(right.updated || "");
+  if (Number.isFinite(leftDate) || Number.isFinite(rightDate)) {
+    return (Number.isFinite(rightDate) ? rightDate : 0) - (Number.isFinite(leftDate) ? leftDate : 0);
+  }
+  return left.title.localeCompare(right.title);
+}
+
+function entityTypeLabel(type, path) {
+  const normalized = String(type || "").toLowerCase();
+  if (normalized === "entity") return "Entity";
+  if (normalized === "person") return "Person";
+  if (normalized === "company") return "Company";
+  if (normalized === "project") return "Project";
+  if (normalized === "concept") return "Concept";
+  if (normalized === "school") return "School";
+  if (path.startsWith("wiki/personal/")) return "Person";
+  if (path.startsWith("wiki/projects/")) return "Project";
+  if (path.startsWith("wiki/ideas/")) return "Idea";
+  if (path.startsWith("wiki/career/")) return "Career";
+  if (path.startsWith("wiki/school/")) return "School";
+  return titleFromSlug(normalized || "entity");
+}
+
+function entityBucketLabel(path, bucket) {
+  const folder = path.split("/")[1] || bucket || "wiki";
+  return titleFromSlug(bucket || folder);
+}
+
+function entityVibeClass(record) {
+  const label = `${record.typeLabel} ${record.bucketLabel}`.toLowerCase();
+  if (/person|career|school/.test(label)) return "person";
+  if (/project|company/.test(label)) return "project";
+  if (/concept|idea/.test(label)) return "idea";
+  return "neutral";
 }
 
 function ingestionStats(fileMap) {

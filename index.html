@@ -55,20 +55,6 @@
         <button id="workflow-btn" class="primary">Choose vault folder</button>
       </section>
 
-      <section class="rail-section structure-card">
-        <div id="vault-tree" class="vault-tree">
-          <div class="upload-stats">
-            <div class="section-kicker">Ingestion</div>
-            <div class="upload-stat-grid">
-              <div class="upload-stat"><strong>0</strong><span>parsed</span></div>
-              <div class="upload-stat"><strong>0</strong><span>ingested</span></div>
-              <div class="upload-stat"><strong>0</strong><span>pending</span></div>
-              <div class="upload-stat"><strong>0</strong><span>words</span></div>
-            </div>
-          </div>
-        </div>
-      </section>
-
       <details class="rail-section advanced-panel">
         <summary>Advanced</summary>
         <div class="section-kicker">API</div>
@@ -141,6 +127,7 @@
       </label>
 
       <div id="stats" class="app-status" role="status">No local vault connected.</div>
+      <div id="vault-tree" hidden></div>
     </aside>
 
     <main class="workspace">
