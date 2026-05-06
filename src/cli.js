@@ -36,7 +36,7 @@ async function cleanGeneratedOutput(outputDir, generated) {
 
 function cleanupTargetForGeneratedPath(path) {
   const normalized = String(path || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
-  if (!normalized || normalized.startsWith("raw_sources/")) return "";
+  if (!normalized || normalized.startsWith("raw/") || normalized.startsWith("raw_sources/")) return "";
   const parts = normalized.split("/");
   if (parts[0] === "wiki" && parts.length >= 3) return `${parts[0]}/${parts[1]}`;
   if (parts[0] === "commands" || parts[0] === "agents") return parts[0];
@@ -60,7 +60,7 @@ async function readRawSources(dir) {
 }
 
 async function copyRawSources(files, outputDir) {
-  const rawDir = join(outputDir, "raw_sources");
+  const rawDir = join(outputDir, "raw");
   await mkdir(rawDir, { recursive: true });
   for (const file of files) {
     const outPath = join(rawDir, file.name);

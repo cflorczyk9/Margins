@@ -5,7 +5,7 @@ Margins is a local-first raw-source-to-wiki compiler for LLMs.
 It turns:
 
 ```text
-raw_sources/
+raw/
 ```
 
 into:
@@ -68,7 +68,7 @@ This writes a generated V1 vault to `sample/output`:
 
 ```text
 sample/output/
-  raw_sources/
+  raw/
   wiki/
     .margins/
       manifest.json
@@ -86,7 +86,7 @@ The CLI compile command rewrites generated wiki and operating-layer paths in its
 ## Compile your own folder
 
 ```bash
-npm run compile:custom -- /path/to/raw_sources /path/to/output
+npm run compile:custom -- /path/to/raw /path/to/output
 ```
 
 ## Run tests
