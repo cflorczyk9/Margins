@@ -91,6 +91,61 @@ test("process button processes only the selected pending source", {
   }
 });
 
+test("processing checklist advances while Gemini is still reviewing", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => {
+      window.fetch = async () => new Promise((resolve) => {
+        setTimeout(() => resolve(new Response(JSON.stringify({
+          candidates: [{
+            finishReason: "STOP",
+            content: {
+              parts: [{ text: JSON.stringify({
+                summary: {
+                  overview: "Saved report should become a source note.",
+                  bullets: ["The report has enough context to file."]
+                },
+                takeaways: [],
+                connections: [],
+                asks: []
+              }) }]
+            }
+          }],
+          usageMetadata: {
+            promptTokenCount: 80,
+            candidatesTokenCount: 40,
+            thoughtsTokenCount: 0,
+            totalTokenCount: 120
+          }
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })), 180);
+      });
+      window.__marginsTest.setIngestProgressDelays([0, 25, 60, 95]);
+      window.__marginsTest.seedVaultPdfAttachmentSource();
+    });
+
+    const card = page.locator(".source-item", { hasText: "saved-report.pdf" });
+    await card.getByRole("button", { name: "Process" }).click();
+    await card.getByText("Saving PDF to raw").waitFor();
+    await card.getByText(/Reading PDF/).waitFor();
+    await card.getByText("Margins is comparing it against your brain").waitFor();
+    await card.getByText("Building the source page, links, and review flags").waitFor();
+    await page.locator(".source-item.ready-to-write", { hasText: "saved-report.pdf" }).waitFor();
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
 test("approve files the selected processed source", {
   skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
 }, async () => {
@@ -226,11 +281,11 @@ test("readable PDFs fall back to local review when Gemini is rate limited", {
 
     const pendingText = await page.locator("#source-list").innerText();
     assert.doesNotMatch(pendingText, /Review did not finish/);
-    assert.match(pendingText, /Gemini is rate-limited right now/);
+    assert.match(pendingText, /Margins review is rate-limited right now/);
     assert.match(pendingText, /showing the local review/);
     assert.match(pendingText, /Retry later for model-generated questions/);
     assert.match(pendingText, /Local review ready/);
-    assert.doesNotMatch(pendingText, /Gemini reviewed/);
+    assert.doesNotMatch(pendingText, /Margins reviewed/);
     await page.locator(".run-action-row").getByRole("button", { name: "Approve" }).waitFor();
   } finally {
     await browser.close();
@@ -273,13 +328,96 @@ test("malformed Gemini fallback does not invent financial extraction", {
     await card.waitFor();
 
     const cardText = normalizeText(await card.innerText());
-    assert.match(cardText, /Gemini returned a malformed review/);
+    assert.match(cardText, /Margins received a malformed review/);
     assert.doesNotMatch(cardText, /Financial details/);
     assert.doesNotMatch(cardText, /Financial source/);
     assert.doesNotMatch(cardText, /Should Margins keep extracted figures and account details/);
     assert.doesNotMatch(cardText, /Keep demo figures/);
     const sourceNote = await page.evaluate(() => window.__marginsTest.sourceNoteBody("coleman-brokerage-2026-03.pdf"));
     assert.doesNotMatch(sourceNote, /## Financial Details/);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("Gemini ingest review retries once when output is cut off", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => {
+      window.__geminiCalls = [];
+      window.fetch = async (_url, options) => {
+        const body = JSON.parse(options.body);
+        window.__geminiCalls.push(body.generationConfig);
+        const first = window.__geminiCalls.length === 1;
+        return new Response(JSON.stringify({
+          candidates: [{
+            finishReason: first ? "MAX_TOKENS" : "STOP",
+            content: {
+              parts: [{
+                text: first
+                  ? "{\"summary\":{\"overview\":\"cut off before the object closed\""
+                  : JSON.stringify({
+                    summary: {
+                      overview: "Saved report should become a source note.",
+                      bullets: ["The retry returned a complete JSON review."]
+                    },
+                    takeaways: [],
+                    connections: [],
+                    filingSteps: [
+                      "Reading PDF — 2 pages, ~20 words",
+                      "Created Saved Report as a new source",
+                      "Prepared source page · 1 flagged for review"
+                    ],
+                    asks: []
+                  })
+              }]
+            }
+          }],
+          usageMetadata: {
+            promptTokenCount: 80,
+            candidatesTokenCount: first ? 2048 : 80,
+            thoughtsTokenCount: 0,
+            totalTokenCount: first ? 2128 : 160
+          }
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        });
+      };
+      window.__marginsTest.setApiGuard({
+        enabled: true,
+        maxRequests: 20,
+        maxOutputTokens: 512,
+        maxSessionTokens: 250000,
+        maxSessionUsd: 1,
+        minRequestDelaySeconds: 0,
+        maxRequestsPerWindow: 10,
+        requestWindowSeconds: 1
+      });
+      window.__marginsTest.seedVaultPdfAttachmentSource();
+    });
+
+    await page.locator(".source-item", { hasText: "saved-report.pdf" }).getByRole("button", { name: "Process" }).click();
+    const card = page.locator(".source-item.ready-to-write", { hasText: "saved-report.pdf" });
+    await card.waitFor();
+
+    const cardText = normalizeText(await card.innerText());
+    assert.match(cardText, /Margins reviewed/);
+    assert.match(cardText, /The retry returned a complete JSON review/);
+    assert.doesNotMatch(cardText, /malformed review/);
+    assert.doesNotMatch(cardText, /cut off before complete JSON/);
+    const calls = await page.evaluate(() => window.__geminiCalls);
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0].maxOutputTokens >= 8192, true);
+    assert.equal(calls[1].maxOutputTokens >= 12288, true);
   } finally {
     await browser.close();
     await server.close();
@@ -331,7 +469,7 @@ test("partial Gemini review uses local summary without misclassifying business D
     await card.waitFor();
 
     const cardText = normalizeText(await card.innerText());
-    assert.match(cardText, /Gemini reviewed the source but did not return a card summary/);
+    assert.match(cardText, /Margins reviewed the source, but no card summary came back/);
     assert.match(cardText, /Zoom transcript from April 2026/);
     assert.match(cardText, /Should this Booth conversation stay active for follow-up tracking/);
     assert.doesNotMatch(cardText, /Model review failed/);
@@ -379,7 +517,7 @@ test("local fallback does not label motivational money talk as financial", {
 
     const cardText = normalizeText(await card.innerText());
     const summaryText = normalizeText(await card.locator(".run-summary").innerText());
-    assert.match(cardText, /Gemini reviewed the source but did not return a card summary/);
+    assert.match(cardText, /Margins reviewed the source, but no card summary came back/);
     assert.match(summaryText, /16 Brutal Life Lessons for Ambitious People - Michael Smoak/);
     assert.match(summaryText, /Michael Smoak is a mindset coach/);
     assert.doesNotMatch(summaryText, /title:/);
@@ -465,7 +603,7 @@ test("Gemini financial review renders account figures and transactions", {
     await card.waitFor();
 
     const cardText = normalizeText(await card.innerText());
-    assert.match(cardText, /Gemini reviewed/);
+    assert.match(cardText, /Margins reviewed/);
     assert.match(cardText, /Financial details/);
     assert.match(cardText, /Charles Schwab · brokerage statement · owner: Sarah Coleman · last4: 4321 · 2026-03/);
     assert.match(cardText, /Total account value .* \$128,430\.52/);
@@ -554,7 +692,7 @@ test("Gemini review parser accepts common near-schema variants", {
     await card.waitFor();
 
     const cardText = normalizeText(await card.innerText());
-    assert.match(cardText, /Gemini reviewed/);
+    assert.match(cardText, /Margins reviewed/);
     assert.match(cardText, /Use this Booth source as a relationship and product-market context note/);
     assert.match(cardText, /Primary: Booth is discussing marketing and product-management fit/);
     assert.match(cardText, /Amazon account strategy is context, not a financial account statement/);
@@ -732,6 +870,47 @@ test("Gemini review shows concise summary bullets and model questions", {
               confidence: "high"
             }
           ],
+          filingPlan: {
+            whySaved: [
+              "This source changes how Connor tracks the Larry relationship and possible operating-role opportunity.",
+              "It should connect to the existing relationship context before becoming a follow-up surface."
+            ],
+            candidateFiles: [
+              {
+                path: "wiki/relationships/larry-abrahams.md",
+                reason: "Larry is the central relationship in the source.",
+                priority: "high"
+              },
+              {
+                path: "wiki/index.md",
+                reason: "Use the index to keep the source connected to the current wiki graph.",
+                priority: "medium"
+              }
+            ],
+            placement: {
+              bucket: "career",
+              path: "wiki/career/source-2026-05-06-larry-opportunity-call.md",
+              title: "Larry opportunity call",
+              reason: "The source is career/opportunity context, not a durable concept yet.",
+              alternatives: ["wiki/ideas/source-2026-05-06-larry-opportunity-call.md"]
+            },
+            tags: ["source", "career", "opportunity", "relationship"],
+            regionTag: "region/build",
+            typeTag: "meeting",
+            typeTagNote: "",
+            promotion: {
+              candidate: "operating-role-opportunity",
+              recommendation: "Wait for another source before creating a concept page.",
+              reason: "One call is enough for a source note but not a durable concept."
+            }
+          },
+          filingSteps: [
+            "Reading TXT — ~10 words",
+            "Detected 1 entity · 1 already in your brain",
+            "Created Larry opportunity call as a new source",
+            "Updated Larry Abrahams · connected the source to relationship context",
+            "Prepared source page · 1 entity update · 1 flagged for review"
+          ],
           asks: [
             {
               kind: "Follow-up",
@@ -782,18 +961,27 @@ test("Gemini review shows concise summary bullets and model questions", {
     assert.match(calls[0].url, /generativelanguage\.googleapis\.com/);
     assert.match(calls[0].body.contents[0].parts[0].text, /compact pending-card review/i);
     assert.match(calls[0].body.contents[0].parts[0].text, /Always fill summary\.overview and summary\.bullets/i);
+    assert.match(calls[0].body.contents[0].parts[0].text, /filing judgment/i);
+    assert.match(calls[0].body.contents[0].parts[0].text, /candidateFiles/i);
+    assert.match(calls[0].body.contents[0].parts[0].text, /filingSteps/i);
     assert.match(calls[0].body.contents[0].parts[0].text, /asks-only response is incomplete/i);
     assert.match(calls[0].body.contents[0].parts[0].text, /Do not infer finance from isolated words/i);
     assert.deepEqual(calls[0].body.generationConfig.responseSchema.required, [
       "summary",
       "takeaways",
       "connections",
-      "financialDetails",
       "asks"
     ]);
+    assert.equal(calls[0].body.generationConfig.maxOutputTokens >= 8192, true);
 
     const card = page.locator(".source-item.ready-to-write", { hasText: "model-source-1.txt" });
-    await card.getByText("Gemini reviewed", { exact: true }).waitFor();
+    await card.getByText("Margins reviewed", { exact: true }).waitFor();
+    await card.getByText("Filing judgment").waitFor();
+    await card.getByText("wiki/career/source-2026-05-06-larry-opportunity-call.md").waitFor();
+    await card.getByText("Files Margins checked").waitFor();
+    await card.locator(".plan-file-row").getByText("wiki/relationships/larry-abrahams.md", { exact: true }).waitFor();
+    await card.getByText("Detected 1 entity · 1 already in your brain").waitFor();
+    await card.getByText("Updated Larry Abrahams · connected the source to relationship context").waitFor();
     await card.getByText("Use this call as an opportunity source note").waitFor();
     await card.getByText("Opportunity: Larry is sharing a possible CFO").waitFor();
     await card.getByText("Do not promote every company mention").waitFor();
@@ -801,6 +989,14 @@ test("Gemini review shows concise summary bullets and model questions", {
     await card.getByText("Should Margins treat this as an active opportunity to track?").waitFor();
     await card.getByRole("button", { name: "Track it" }).click();
     await card.getByText("Answered: Track it").waitFor();
+    assert.equal(
+      await page.evaluate(() => window.__marginsTest.sourceNotePath("model-source-1.txt")),
+      "wiki/career/source-2026-05-06-larry-opportunity-call.md"
+    );
+    const sourceNote = await page.evaluate(() => window.__marginsTest.sourceNoteBody("model-source-1.txt"));
+    assert.match(sourceNote, /bucket: career/);
+    assert.match(sourceNote, /tags: \[source, career, opportunity, relationship, region\/build, meeting\]/);
+    assert.match(sourceNote, /## Filing Judgment/);
 
     const timings = await page.evaluate(() => window.__marginsTest.modelTimings());
     assert.equal(timings.length, 1);
@@ -912,6 +1108,30 @@ test("Gemini ingest prompt includes relevant existing wiki nodes outside generat
   }
 });
 
+test("filing checklist labels Margins review and ignores generic source links", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    const text = await page.evaluate(() => window.__marginsTest.seedNoisyFilingChecklist());
+    assert.match(text, /Margins reviewed/);
+    assert.match(text, /Detected 2 entities · 2 already in your brain/);
+    assert.match(text, /Linked to Workspace Map and Interface Decisions/);
+    assert.doesNotMatch(text, /entitys/);
+    assert.doesNotMatch(text, /Linked to display/);
+    assert.doesNotMatch(text, /subjects and results/);
+    assert.doesNotMatch(text, /Gemini reviewed/);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
 test("Gemini DOCX call review does not collapse a no-question response into a wall of text", {
   skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
 }, async () => {
@@ -972,24 +1192,24 @@ test("Gemini DOCX call review does not collapse a no-question response into a wa
     assert.match(calls[0].body.contents[0].parts[0].text, /Return 0-2 specific asks/);
     assert.match(calls[0].body.contents[0].parts[0].text, /summary\.overview/);
     assert.match(calls[0].body.contents[0].parts[0].text, /summary\.bullets/);
+    assert.match(calls[0].body.contents[0].parts[0].text, /filingSteps/);
     assert.match(calls[0].body.contents[0].parts[0].text, /Name: pending-word\.docx/);
     assert.match(calls[0].body.contents[0].parts[0].text, /Type: docx/);
     assert.deepEqual(calls[0].body.generationConfig.responseSchema.required, [
       "summary",
       "takeaways",
       "connections",
-      "financialDetails",
       "asks"
     ]);
     assert.equal(calls[0].body.contents[0].parts.some((part) => part.inline_data?.mime_type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"), true);
 
-    await card.getByText("Gemini reviewed", { exact: true }).waitFor();
+    await card.getByText("Margins reviewed", { exact: true }).waitFor();
     assert.equal(await card.locator(".run-brief-points li").count() >= 3, true);
     const visibleSummary = normalizeText(await card.locator(".run-summary").innerText());
     assert.equal(visibleSummary.length < 700, true);
 
     const cardText = normalizeText(await card.innerText());
-    assert.match(cardText, /Gemini reviewed the source but did not return follow-up questions/);
+    assert.match(cardText, /Margins found no required follow-up questions/);
     await card.getByText("Review complete.").waitFor();
     await card.getByRole("button", { name: "Approve" }).waitFor();
     assert.doesNotMatch(cardText, /Should Margins keep this conversation active/);
@@ -1023,7 +1243,7 @@ test("image-only PDFs show a friendly Gemini rate-limit retry state", {
     await page.getByText("Review did not finish").waitFor();
 
     const pendingText = await page.locator("#source-list").innerText();
-    assert.match(pendingText, /Gemini quota or rate limit reached/);
+    assert.match(pendingText, /Margins review is rate-limited right now/);
     assert.match(pendingText, /Retry/);
     assert.doesNotMatch(pendingText, /HTTP 429/);
   } finally {
@@ -1075,6 +1295,64 @@ test("vault raw sources without source notes appear in the pending inbox", {
     assert.match(pendingText, /unfiled-note\.md/);
     assert.doesNotMatch(pendingText, /^filed-note\.md$/m);
     assert.equal(await page.locator(".upload-stats").count(), 0);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("activity tab separates pending raw sources from recent source cards", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    const activity = await page.evaluate(() => window.__marginsTest.seedActivitySections());
+    assert.match(activity.pendingText, /unfiled-note\.md/);
+    assert.doesNotMatch(activity.pendingText, /^filed-note\.md$/m);
+    assert.match(activity.recentText, /Filed Activity Note/);
+    assert.match(activity.recentText, /Older Activity Note/);
+
+    assert.equal(await page.locator("#recent-activity-list .activity-card").count(), 2);
+    await page.locator(".activity-card", { hasText: "Filed Activity Note" }).click();
+    assert.equal(await page.locator(".tab.active").innerText(), "Files");
+    assert.match(await page.locator("#doc-path").innerText(), /wiki \/ projects/);
+    assert.match(await page.locator("#doc-title").innerText(), /source-2026-05-06-filed-note/);
+
+    await page.getByRole("button", { name: "Activity" }).click();
+    await page.locator(".activity-pill", { hasText: "Briefly" }).first().click();
+    assert.equal(await page.locator(".tab.active").innerText(), "Files");
+    assert.match(await page.locator("#doc-title").innerText(), /briefly/);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("recent activity pages in batches of twelve and treats date-only values as local days", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    const activity = await page.evaluate(() => window.__marginsTest.seedManyRecentActivitySources(30));
+    assert.equal(activity.cardCount, 12);
+    assert.match(activity.recentText, /Show 12 more/);
+    assert.match(await page.locator(".activity-card", { hasText: "Recent Activity 01" }).locator(".activity-card-date").innerText(), /yesterday/);
+
+    await page.getByRole("button", { name: "Show 12 more" }).click();
+    assert.equal(await page.locator("#recent-activity-list .activity-card").count(), 24);
+    await page.getByRole("button", { name: "Show all 30" }).click();
+    assert.equal(await page.locator("#recent-activity-list .activity-card").count(), 30);
+    assert.equal(await page.locator(".activity-section-actions").count(), 0);
   } finally {
     await browser.close();
     await server.close();
@@ -1354,7 +1632,7 @@ test("workflow reconnect button opens the remembered vault", {
   }
 });
 
-test("imported documents are immediately saved to raw_sources and survive reload", {
+test("imported documents are immediately saved to raw and survive reload", {
   skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
 }, async () => {
   const server = await startStaticServer();
@@ -1366,6 +1644,7 @@ test("imported documents are immediately saved to raw_sources and survive reload
 
     const result = await page.evaluate(() => window.__marginsTest.importSourceAndReloadFromRaw());
     assert.equal(result.rawBody, "Persisted raw body\n");
+    assert.equal(result.legacyRawExists, false);
     assert.deepEqual(result.savedBeforeReload, ["incoming-note.md"]);
     assert.equal(result.scopeBeforeReload, "vault");
     assert.deepEqual(result.pendingAfterReload, ["incoming-note.md"]);
