@@ -1134,6 +1134,51 @@ test("entities tab falls back to real concept pages when no entity folder exists
   }
 });
 
+test("entities tab filters by real wiki type and tag facets", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => window.__marginsTest.seedConceptOnlyVault());
+    await page.getByRole("button", { name: "Entities" }).click();
+    await page.locator("#entity-controls:not([hidden])").waitFor();
+
+    assert.match(await page.locator("#entity-meta").innerText(), /3 in your brain/);
+    assert.match(await page.locator("#entity-type-filters").innerText(), /All\s+3/);
+    assert.match(await page.locator("#entity-tag-filters").innerText(), /build\s+2/);
+
+    await page.locator('[data-entity-filter-kind="tag"][data-entity-filter-value="build"]').click();
+    let entitiesText = await page.locator("#entity-browser").innerText();
+    assert.match(entitiesText, /Setup Efficiency/);
+    assert.match(entitiesText, /Margins Product/);
+    assert.doesNotMatch(entitiesText, /Networking Plan/);
+
+    await page.locator('[data-entity-filter-kind="tag"][data-entity-filter-value="margins"]').click();
+    entitiesText = await page.locator("#entity-browser").innerText();
+    assert.match(entitiesText, /Margins Product/);
+    assert.doesNotMatch(entitiesText, /Setup Efficiency|Networking Plan/);
+
+    await page.locator('[data-entity-filter-kind="type"][data-entity-filter-value="Project"]').click();
+    entitiesText = await page.locator("#entity-browser").innerText();
+    assert.match(entitiesText, /Margins Product/);
+    assert.doesNotMatch(entitiesText, /Setup Efficiency|Networking Plan/);
+
+    await page.locator('[data-entity-filter-kind="all"]').click();
+    await page.locator("#entity-search").fill("networking");
+    entitiesText = await page.locator("#entity-browser").innerText();
+    assert.match(entitiesText, /Networking Plan/);
+    assert.doesNotMatch(entitiesText, /Setup Efficiency|Margins Product/);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
 test("imported documents are immediately saved to raw_sources and survive reload", {
   skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
 }, async () => {

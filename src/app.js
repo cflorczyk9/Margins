@@ -48,7 +48,10 @@ const state = {
   ingestAnswers: new Map(),
   ingestErrors: new Map(),
   modelTimings: loadModelTimingLog(),
-  expandedSummaries: new Set()
+  expandedSummaries: new Set(),
+  entityQuery: "",
+  entityFilterKind: "all",
+  entityFilterValue: ""
 };
 
 const apiThrottle = {
@@ -100,6 +103,11 @@ const els = {
   fileInput: document.getElementById("file-input"),
   queuePanel: document.getElementById("queue-panel"),
   sourceList: document.getElementById("source-list"),
+  entityMeta: document.getElementById("entity-meta"),
+  entityControls: document.getElementById("entity-controls"),
+  entitySearch: document.getElementById("entity-search"),
+  entityTypeFilters: document.getElementById("entity-type-filters"),
+  entityTagFilters: document.getElementById("entity-tag-filters"),
   entityBrowser: document.getElementById("entity-browser"),
   extractBtn: document.getElementById("extract-btn"),
   compileBtn: document.getElementById("compile-btn"),
@@ -197,6 +205,20 @@ els.workflowBtn.addEventListener("click", () => withBusyOperation("workflow step
 els.vaultSearch?.addEventListener("input", () => {
   renderVaultTree();
   if (state.currentFileMap) renderWikiFiles(state.currentFileMap);
+});
+els.entitySearch?.addEventListener("input", () => {
+  state.entityQuery = els.entitySearch.value;
+  renderEntities(state.currentFileMap || new Map());
+});
+els.entityTypeFilters?.addEventListener("click", handleEntityFilterClick);
+els.entityTagFilters?.addEventListener("click", handleEntityFilterClick);
+document.addEventListener("keydown", (event) => {
+  const activeEntities = document.getElementById("entities-view")?.classList.contains("active");
+  if (!activeEntities || !els.entitySearch || els.entityControls?.hidden) return;
+  if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "f") return;
+  event.preventDefault();
+  els.entitySearch.focus();
+  els.entitySearch.select();
 });
 els.graphOpenNodeBtn?.addEventListener("click", openSelectedGraphNode);
 els.saveApiKeyBtn.addEventListener("click", saveApiControls);
@@ -2704,25 +2726,47 @@ function frontmatterFields(body) {
   const match = String(body || "").match(/^---\n([\s\S]*?)\n---\n/);
   if (!match) return {};
   const fields = {};
+  let listKey = "";
   for (const line of match[1].split("\n")) {
+    const item = line.match(/^\s*-\s*(.*)$/);
+    if (listKey && item) {
+      if (!Array.isArray(fields[listKey])) fields[listKey] = [];
+      fields[listKey].push(yamlScalar(item[1]));
+      continue;
+    }
     const field = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
-    if (!field) continue;
-    fields[field[1]] = field[2].trim().replace(/^"(.*)"$/, "$1");
+    if (!field) {
+      listKey = "";
+      continue;
+    }
+    const value = field[2].trim();
+    if (!value) {
+      fields[field[1]] = "";
+      listKey = field[1];
+      continue;
+    }
+    fields[field[1]] = yamlScalar(value);
+    listKey = "";
   }
   return fields;
 }
 
 function frontmatterList(value) {
+  if (Array.isArray(value)) return value.map((item) => yamlScalar(item)).filter(Boolean);
   const raw = String(value || "").trim();
   if (!raw) return [];
   if (raw.startsWith("[") && raw.endsWith("]")) {
     return raw
       .slice(1, -1)
       .split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/)
-      .map((item) => item.trim().replace(/^['"]|['"]$/g, ""))
+      .map((item) => yamlScalar(item))
       .filter(Boolean);
   }
-  return raw.split(",").map((item) => item.trim()).filter(Boolean);
+  return raw.split(",").map((item) => yamlScalar(item)).filter(Boolean);
+}
+
+function yamlScalar(value) {
+  return String(value || "").trim().replace(/^['"]|['"]$/g, "");
 }
 
 function bodyWithoutFrontmatter(body) {
@@ -4492,6 +4536,30 @@ updated: 2026-05-06
 
 This page is real concept-backed vault content.
 `],
+        ["wiki/projects/margins-product.md", `---
+type: project
+summary: Product parity work for the Margins app.
+tags: [build, margins]
+updated: 2026-05-05
+---
+
+# Margins Product
+
+Real project-backed vault content about making Margins usable.
+`],
+        ["wiki/ideas/networking-plan.md", `---
+type: concept
+summary: Lightweight follow-up system for people and opportunities.
+tags:
+  - people
+  - workflow
+updated: 2026-04-26
+---
+
+# Networking Plan
+
+Keep the #people surface moving without losing context.
+`],
         ["wiki/sources/source-only.md", `---
 type: source
 summary: Source page that should not render as an entity card.
@@ -5228,7 +5296,12 @@ function renderVaultTree(fileMap = state.currentFileMap) {
 function renderEntities(fileMap = state.currentFileMap) {
   if (!els.entityBrowser) return;
   const records = entityRecordsFromFileMap(fileMap || new Map());
+  syncEntityFilter(records);
+  renderEntitySummary(records);
+  renderEntityFilters(records);
+
   if (records.length === 0) {
+    if (els.entityControls) els.entityControls.hidden = true;
     els.entityBrowser.className = "entity-empty-state";
     els.entityBrowser.innerHTML = `
       <div class="empty-icon" aria-hidden="true"></div>
@@ -5238,8 +5311,20 @@ function renderEntities(fileMap = state.currentFileMap) {
     return;
   }
 
+  if (els.entityControls) els.entityControls.hidden = false;
+  const filteredRecords = filterEntityRecords(records);
+  if (filteredRecords.length === 0) {
+    els.entityBrowser.className = "entity-empty-state";
+    els.entityBrowser.innerHTML = `
+      <div class="empty-icon" aria-hidden="true"></div>
+      <h3>No matching entities</h3>
+      <p>Try a different search, type, or wiki tag.</p>
+    `;
+    return;
+  }
+
   els.entityBrowser.className = "entity-grid";
-  els.entityBrowser.innerHTML = records.map((record) => `
+  els.entityBrowser.innerHTML = filteredRecords.map((record) => `
     <button class="entity-card" type="button" data-entity-path="${escapeHtml(record.path)}">
       <div class="entity-card-top">
         <span class="entity-vibe ${escapeHtml(entityVibeClass(record))}"></span>
@@ -5268,13 +5353,167 @@ function renderEntities(fileMap = state.currentFileMap) {
   });
 }
 
+function renderEntitySummary(records) {
+  if (!els.entityMeta) return;
+  if (records.length === 0) {
+    els.entityMeta.textContent = "People, projects, companies, and ideas from the connected vault.";
+    return;
+  }
+  const activeThisWeek = records.filter((record) => isEntityActiveThisWeek(record.updated)).length;
+  const pinned = records.filter((record) => entityHasPinnedSignal(record)).length;
+  els.entityMeta.textContent = [
+    `${records.length} in your brain`,
+    `${activeThisWeek} active this week`,
+    `${pinned} pinned`
+  ].join(" · ");
+}
+
+function syncEntityFilter(records) {
+  if (state.entityFilterKind === "all") return;
+  const stillAvailable = state.entityFilterKind === "type"
+    ? records.some((record) => record.typeLabel === state.entityFilterValue)
+    : records.some((record) => record.filterTags.includes(state.entityFilterValue));
+  if (stillAvailable) return;
+  state.entityFilterKind = "all";
+  state.entityFilterValue = "";
+}
+
+function renderEntityFilters(records) {
+  if (els.entitySearch && els.entitySearch.value !== state.entityQuery) {
+    els.entitySearch.value = state.entityQuery;
+  }
+  if (records.length === 0) {
+    if (els.entityTypeFilters) els.entityTypeFilters.innerHTML = "";
+    if (els.entityTagFilters) els.entityTagFilters.innerHTML = "";
+    return;
+  }
+  if (els.entityTypeFilters) {
+    const typeFacets = entityTypeFacets(records);
+    els.entityTypeFilters.innerHTML = typeFacets.map((facet) => renderEntityChip(facet)).join("");
+  }
+  if (els.entityTagFilters) {
+    const tagFacets = entityTagFacets(records);
+    els.entityTagFilters.hidden = tagFacets.length === 0;
+    els.entityTagFilters.innerHTML = tagFacets.map((facet) => renderEntityChip(facet)).join("");
+  }
+}
+
+function renderEntityChip(facet) {
+  const active = isEntityFilterActive(facet.kind, facet.value);
+  return `
+    <button class="entity-chip ${active ? "active" : ""}" type="button" data-entity-filter-kind="${escapeHtml(facet.kind)}" data-entity-filter-value="${escapeHtml(facet.value)}" aria-pressed="${active ? "true" : "false"}">
+      <span>${escapeHtml(facet.label)}</span>
+      <span>${escapeHtml(String(facet.count))}</span>
+    </button>
+  `;
+}
+
+function handleEntityFilterClick(event) {
+  const button = event.target.closest("[data-entity-filter-kind]");
+  if (!button) return;
+  state.entityFilterKind = button.dataset.entityFilterKind || "all";
+  state.entityFilterValue = button.dataset.entityFilterValue || "";
+  if (state.entityFilterKind === "all") state.entityFilterValue = "";
+  renderEntities(state.currentFileMap || new Map());
+}
+
+function isEntityFilterActive(kind, value) {
+  if (kind === "all") return state.entityFilterKind === "all";
+  return state.entityFilterKind === kind && state.entityFilterValue === value;
+}
+
+function filterEntityRecords(records) {
+  const query = String(state.entityQuery || "").trim().toLowerCase();
+  return records.filter((record) => {
+    if (state.entityFilterKind === "type" && record.typeLabel !== state.entityFilterValue) return false;
+    if (state.entityFilterKind === "tag" && !record.filterTags.includes(state.entityFilterValue)) return false;
+    if (!query) return true;
+    const searchable = [
+      record.title,
+      record.summary,
+      record.typeLabel,
+      record.bucketLabel,
+      ...record.tags
+    ].join(" ").toLowerCase();
+    return searchable.includes(query);
+  });
+}
+
+function entityTypeFacets(records) {
+  const counts = countBy(records, (record) => record.typeLabel);
+  const typeOrder = ["Person", "Company", "Project", "Concept", "Idea", "School", "Career", "Synthesis", "Entity"];
+  const orderedTypes = [...counts.entries()]
+    .sort((left, right) => {
+      const leftIndex = typeOrder.indexOf(left[0]);
+      const rightIndex = typeOrder.indexOf(right[0]);
+      const leftRank = leftIndex === -1 ? typeOrder.length : leftIndex;
+      const rightRank = rightIndex === -1 ? typeOrder.length : rightIndex;
+      return leftRank - rightRank || right[1] - left[1] || left[0].localeCompare(right[0]);
+    });
+  return [
+    { kind: "all", value: "", label: "All", count: records.length },
+    ...orderedTypes.map(([label, count]) => ({
+      kind: "type",
+      value: label,
+      label: pluralEntityTypeLabel(label),
+      count
+    }))
+  ];
+}
+
+function entityTagFacets(records) {
+  return [...countBy(records.flatMap((record) => record.filterTags), (tag) => tag).entries()]
+    .filter(([tag]) => tag)
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .slice(0, 10)
+    .map(([tag, count]) => ({
+      kind: "tag",
+      value: tag,
+      label: tag,
+      count
+    }));
+}
+
+function countBy(items, keyForItem) {
+  const counts = new Map();
+  items.forEach((item) => {
+    const key = keyForItem(item);
+    if (!key) return;
+    counts.set(key, (counts.get(key) || 0) + 1);
+  });
+  return counts;
+}
+
+function pluralEntityTypeLabel(label) {
+  return {
+    Person: "People",
+    Company: "Companies",
+    Project: "Projects",
+    Concept: "Concepts",
+    Idea: "Ideas",
+    School: "School",
+    Career: "Career",
+    Synthesis: "Synthesis",
+    Entity: "Entities"
+  }[label] || `${label}s`;
+}
+
+function isEntityActiveThisWeek(updated) {
+  const timestamp = Date.parse(updated || "");
+  if (!Number.isFinite(timestamp)) return false;
+  return Date.now() - timestamp <= 7 * 24 * 60 * 60 * 1000;
+}
+
+function entityHasPinnedSignal(record) {
+  return record.priority === "pinned" || record.status === "pinned" || record.tags.includes("pinned");
+}
+
 function entityRecordsFromFileMap(fileMap) {
   return [...fileMap.entries()]
     .filter(([path, body]) => isEntityPagePath(path, body))
     .map(([path, body]) => entityRecord(path, body))
     .filter(Boolean)
-    .sort(entityRecordSort)
-    .slice(0, 80);
+    .sort(entityRecordSort);
 }
 
 function isEntityPagePath(path, body) {
@@ -5305,12 +5544,16 @@ function entityRecord(path, body) {
   const title = cleanSummary(context.title || titleFromSlug(basename(path).replace(/\.md$/, "")));
   if (!title || /^(entities|projects|ideas|career|school|personal)$/i.test(title)) return null;
   const summary = cleanSummary(context.summary || excerptForQuestion(bodyWithoutFrontmatter(body), 180));
-  const tags = [...new Set([
+  const filterTags = uniqueEntityTags([
     ...context.tags,
+    ...extractInlineTags(body)
+  ]);
+  const tags = [...new Set([
+    ...filterTags,
     context.bucket,
     context.status,
     context.priority
-  ].filter(Boolean).map((tag) => String(tag).replace(/^#/, "")))];
+  ].filter(Boolean).map(normalizeEntityTag).filter(Boolean))];
   return {
     path,
     title,
@@ -5318,9 +5561,39 @@ function entityRecord(path, body) {
     typeLabel,
     bucketLabel: entityBucketLabel(path, context.bucket),
     updated: context.updated || "",
+    status: normalizeEntityTag(context.status),
+    priority: normalizeEntityTag(context.priority),
     tags,
+    filterTags,
     connectionCount: context.keyLinks.length
   };
+}
+
+function extractInlineTags(body) {
+  const text = bodyWithoutFrontmatter(body)
+    .replace(/```[\s\S]*?```/g, " ")
+    .split("\n")
+    .filter((line) => !/^#{1,6}\s/.test(line.trim()))
+    .join("\n");
+  const tags = [];
+  const pattern = /(^|[\s([{])#([A-Za-z0-9][A-Za-z0-9/_-]{0,64})\b/g;
+  let match;
+  while ((match = pattern.exec(text)) !== null) {
+    tags.push(match[2]);
+  }
+  return tags;
+}
+
+function uniqueEntityTags(tags) {
+  return [...new Set(tags.map(normalizeEntityTag).filter(Boolean))];
+}
+
+function normalizeEntityTag(tag) {
+  return String(tag || "")
+    .trim()
+    .replace(/^#/, "")
+    .replace(/^['"]|['"]$/g, "")
+    .toLowerCase();
 }
 
 function entityRecordSort(left, right) {
