@@ -1125,7 +1125,7 @@ test("entities tab falls back to real concept pages when no entity folder exists
 
     const entitiesText = await page.locator("#entity-browser").innerText();
     assert.match(entitiesText, /Setup Efficiency/);
-    assert.match(entitiesText, /Concept/);
+    assert.match(entitiesText, /CONCEPT/);
     assert.doesNotMatch(entitiesText, /No entities loaded/);
     assert.doesNotMatch(entitiesText, /Source Only|Index/);
   } finally {
@@ -1151,6 +1151,9 @@ test("entities tab filters by real wiki type and tag facets", {
     assert.match(await page.locator("#entity-meta").innerText(), /3 in your brain/);
     assert.match(await page.locator("#entity-type-filters").innerText(), /All\s+3/);
     assert.match(await page.locator("#entity-tag-filters").innerText(), /build\s+2/);
+    assert.equal(await page.locator(".entity-card-tags").count(), 0);
+    assert.match(await page.locator(".entity-section-head").first().innerText(), /PINNED/);
+    assert.match(await page.locator(".entity-card", { hasText: "Margins Product" }).innerText(), /Next: Ship the Claude-style entity card model/);
 
     await page.locator('[data-entity-filter-kind="tag"][data-entity-filter-value="build"]').click();
     let entitiesText = await page.locator("#entity-browser").innerText();

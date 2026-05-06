@@ -4555,6 +4555,8 @@ type: project
 summary: Product parity work for the Margins app.
 tags: [build, margins]
 updated: 2026-05-05
+priority: pinned
+next_move: Ship the Claude-style entity card model.
 ---
 
 # Margins Product
@@ -4595,6 +4597,8 @@ bucket: career
 summary: Career opportunity with product and founder context.
 tags: [build, riviera]
 updated: 2026-05-06
+priority: pinned
+next_move: Keep the Riviera relationship warm.
 ---
 
 # Riviera
@@ -5381,27 +5385,8 @@ function renderEntities(fileMap = state.currentFileMap) {
     return;
   }
 
-  els.entityBrowser.className = "entity-grid";
-  els.entityBrowser.innerHTML = filteredRecords.map((record) => `
-    <button class="entity-card" type="button" data-entity-path="${escapeHtml(record.path)}">
-      <div class="entity-card-top">
-        <span class="entity-vibe ${escapeHtml(entityVibeClass(record))}"></span>
-        <strong>${escapeHtml(record.title)}</strong>
-        <span class="type-tag">${escapeHtml(record.typeLabel)}</span>
-      </div>
-      <p>${escapeHtml(record.summary || "No summary yet.")}</p>
-      <div class="entity-card-meta">
-        <span>${escapeHtml(record.bucketLabel)}</span>
-        ${record.updated ? `<span>${escapeHtml(record.updated)}</span>` : ""}
-        ${record.connectionCount ? `<span>${escapeHtml(record.connectionCount)} link${record.connectionCount === 1 ? "" : "s"}</span>` : ""}
-      </div>
-      ${record.tags.length ? `
-        <div class="entity-card-tags">
-          ${record.tags.slice(0, 4).map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}
-        </div>
-      ` : ""}
-    </button>
-  `).join("");
+  els.entityBrowser.className = "entity-board";
+  els.entityBrowser.innerHTML = renderEntitySections(filteredRecords);
 
   els.entityBrowser.querySelectorAll("[data-entity-path]").forEach((card) => {
     card.addEventListener("click", () => {
@@ -5411,13 +5396,62 @@ function renderEntities(fileMap = state.currentFileMap) {
   });
 }
 
+function renderEntitySections(records) {
+  const query = String(state.entityQuery || "").trim();
+  const filtered = query || state.entityFilterKind !== "all";
+  if (filtered) {
+    return `
+      ${renderEntitySectionHead("Results", `${records.length} shown`)}
+      <div class="entity-grid">${records.map(renderEntityCard).join("")}</div>
+    `;
+  }
+
+  const pinned = records.filter(entityHasPinnedSignal).slice(0, 6);
+  const pinnedPaths = new Set(pinned.map((record) => record.path));
+  const recent = records.filter((record) => !pinnedPaths.has(record.path));
+  const sections = [];
+  if (pinned.length) {
+    sections.push(renderEntitySectionHead("Pinned", "Manage ->"));
+    sections.push(`<div class="entity-grid">${pinned.map(renderEntityCard).join("")}</div>`);
+  }
+  if (recent.length) {
+    sections.push(renderEntitySectionHead("Recently Active", `Show all ${records.length} ->`));
+    sections.push(`<div class="entity-grid">${recent.map(renderEntityCard).join("")}</div>`);
+  }
+  return sections.join("");
+}
+
+function renderEntitySectionHead(title, action = "") {
+  return `
+    <div class="entity-section-head">
+      <h3>${escapeHtml(title)}</h3>
+      ${action ? `<span>${escapeHtml(action)}</span>` : ""}
+    </div>
+  `;
+}
+
+function renderEntityCard(record) {
+  return `
+    <button class="entity-card" type="button" data-entity-path="${escapeHtml(record.path)}">
+      <div class="entity-card-top">
+        <span class="entity-vibe ${escapeHtml(entityVibeClass(record))}"></span>
+        <strong>${escapeHtml(record.title)}</strong>
+        <span class="type-tag">${escapeHtml(record.typeLabel)}</span>
+      </div>
+      ${record.meta ? `<div class="entity-card-meta-line">${escapeHtml(record.meta)}</div>` : ""}
+      <p class="entity-card-summary">${escapeHtml(record.summary || "No summary yet.")}</p>
+      ${record.nextAction ? `<div class="entity-card-next"><span>Next:</span> ${escapeHtml(record.nextAction)}</div>` : ""}
+    </button>
+  `;
+}
+
 function renderEntitySummary(records) {
   if (!els.entityMeta) return;
   if (records.length === 0) {
     els.entityMeta.textContent = "People, projects, companies, and ideas from the connected vault.";
     return;
   }
-  const activeThisWeek = records.filter((record) => isEntityActiveThisWeek(record.updated)).length;
+  const activeThisWeek = records.filter((record) => isEntityActiveThisWeek(record.lastTouch || record.updated)).length;
   const pinned = records.filter((record) => entityHasPinnedSignal(record)).length;
   els.entityMeta.textContent = [
     `${records.length} in your brain`,
@@ -5503,7 +5537,7 @@ function filterEntityRecords(records) {
 
 function entityTypeFacets(records) {
   const counts = countBy(records, (record) => record.typeLabel);
-  const typeOrder = ["Person", "Company", "Project", "Concept", "Idea", "School", "Career", "Synthesis", "Entity"];
+  const typeOrder = ["Person", "Advisor", "Company", "Project", "Concept", "Idea", "School", "Career", "Synthesis", "Entity"];
   const orderedTypes = [...counts.entries()]
     .sort((left, right) => {
       const leftIndex = typeOrder.indexOf(left[0]);
@@ -5549,6 +5583,7 @@ function countBy(items, keyForItem) {
 function pluralEntityTypeLabel(label) {
   return {
     Person: "People",
+    Advisor: "Advisors",
     Company: "Companies",
     Project: "Projects",
     Concept: "Concepts",
@@ -5602,14 +5637,16 @@ function isFolderIndexPath(path) {
 
 function entityRecord(path, body) {
   const context = wikiContextRecord(path, body);
-  const typeLabel = entityTypeLabel(context.type, path);
+  const fields = frontmatterFields(body);
   const title = cleanSummary(context.title || titleFromSlug(basename(path).replace(/\.md$/, "")));
   if (!title || /^(entities|projects|ideas|career|school|personal)$/i.test(title)) return null;
-  const summary = cleanSummary(context.summary || excerptForQuestion(bodyWithoutFrontmatter(body), 180));
   const filterTags = uniqueEntityTags([
     ...context.tags,
     ...extractInlineTags(body)
   ]);
+  const typeLabel = entityTypeLabel(context.type, path, fields, filterTags, context.bucket);
+  const summary = cleanSummary(entityField(fields, "card_summary", "one_line", "one_liner") || context.summary || excerptForQuestion(bodyWithoutFrontmatter(body), 180));
+  const lastTouch = entityField(fields, "last_contact", "last_touch", "updated", "created") || context.updated || "";
   const tags = [...new Set([
     ...filterTags,
     context.bucket,
@@ -5619,16 +5656,125 @@ function entityRecord(path, body) {
   return {
     path,
     title,
-    summary: clampSentence(summary, 220),
+    summary: clampSentence(summary, 180),
     typeLabel,
     bucketLabel: entityBucketLabel(path, context.bucket),
     updated: context.updated || "",
+    lastTouch,
+    meta: entityMetaLine(fields, context, filterTags, lastTouch),
+    nextAction: entityNextAction(fields, body),
     status: normalizeEntityTag(context.status),
     priority: normalizeEntityTag(context.priority),
     tags,
     filterTags,
     connectionCount: context.keyLinks.length
   };
+}
+
+function entityField(fields, ...names) {
+  for (const name of names) {
+    const value = fields?.[name];
+    if (Array.isArray(value)) {
+      const joined = value.map((item) => cleanSummary(item)).filter(Boolean).join(", ");
+      if (joined) return joined;
+    } else if (String(value || "").trim()) {
+      return cleanSummary(value);
+    }
+  }
+  return "";
+}
+
+function entityMetaLine(fields, context, tags, lastTouch) {
+  const descriptors = [];
+  const role = shortEntityDescriptor(entityField(fields, "role", "job", "position"));
+  const firm = shortEntityDescriptor(entityField(fields, "firm", "company", "organization", "org"));
+  const category = shortEntityDescriptor(entityField(fields, "category"));
+  const relationship = shortEntityDescriptor(entityField(fields, "relationship"));
+  const status = shortEntityDescriptor(firstStatusPart(entityField(fields, "status")));
+
+  if (role && firm && !/independent advisor/i.test(firm)) descriptors.push(`${role} at ${firm}`);
+  else if (role) descriptors.push(role);
+  else if (firm) descriptors.push(firm);
+
+  for (const descriptor of [category, relationship, status, entityTagDescriptor(tags, context.bucket)]) {
+    if (!descriptor || descriptors.some((item) => item.toLowerCase() === descriptor.toLowerCase())) continue;
+    descriptors.push(descriptor);
+    if (descriptors.length >= 2) break;
+  }
+
+  const touch = lastTouchPhrase(lastTouch);
+  if (touch) descriptors.push(touch);
+  return descriptors.slice(0, touch ? 3 : 2).join(" · ");
+}
+
+function shortEntityDescriptor(value) {
+  return cleanSummary(value)
+    .replace(/\s*\([^)]*\)\s*$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function firstStatusPart(value) {
+  return String(value || "").split(",")[0].trim();
+}
+
+function entityTagDescriptor(tags, bucket) {
+  const stop = new Set([
+    "active",
+    "advisor",
+    "aged",
+    "briefly",
+    "company",
+    "concept",
+    "contact",
+    "entity",
+    "fresh",
+    "old",
+    "peak",
+    "person",
+    "pinned",
+    "project",
+    "recent",
+    "source",
+    "vibrance/aged",
+    "vibrance/fresh",
+    "vibrance/old",
+    "vibrance/peak",
+    "vibrance/recent"
+  ]);
+  const tag = tags.find((item) => {
+    const normalized = normalizeEntityTag(item);
+    return normalized && !stop.has(normalized) && !normalized.startsWith("region/") && !normalized.startsWith("vibrance/");
+  });
+  if (tag) return titleFromSlug(tag.replace(/\//g, "-"));
+  return titleFromSlug(bucket || "wiki");
+}
+
+function lastTouchPhrase(value) {
+  const timestamp = Date.parse(value || "");
+  if (!Number.isFinite(timestamp)) return "";
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const then = new Date(timestamp);
+  const thenDay = new Date(then.getFullYear(), then.getMonth(), then.getDate()).getTime();
+  const days = Math.round((today - thenDay) / (24 * 60 * 60 * 1000));
+  if (days <= 0) return "last touch today";
+  if (days === 1) return "last touch yesterday";
+  if (days < 14) return `last touch ${days}d ago`;
+  if (days < 60) return `last touch ${Math.round(days / 7)}w ago`;
+  return `last touch ${then.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+}
+
+function entityNextAction(fields, body) {
+  const direct = entityField(fields, "next_move", "next", "follow_up", "action", "todo");
+  if (direct) return clampSentence(direct, 96);
+  const section = bodyWithoutFrontmatter(body).match(/^##\s+(?:Next|Next move|Follow[- ]?up|Action)\b[^\n]*\n([\s\S]*?)(?=\n##\s|$)/im);
+  if (!section?.[1]) return "";
+  const line = section[1]
+    .split("\n")
+    .map((item) => item.replace(/^[-*]\s*/, "").trim())
+    .find(Boolean);
+  return clampSentence(line || "", 96);
 }
 
 function extractInlineTags(body) {
@@ -5667,13 +5813,25 @@ function entityRecordSort(left, right) {
   return left.title.localeCompare(right.title);
 }
 
-function entityTypeLabel(type, path) {
+function entityTypeLabel(type, path, fields = {}, tags = [], bucket = "") {
   const normalized = String(type || "").toLowerCase();
-  if (normalized === "entity") return "Entity";
+  const tagSet = new Set(tags.map(normalizeEntityTag));
+  const category = normalizeEntityTag(entityField(fields, "category"));
+  const role = normalizeEntityTag(entityField(fields, "role"));
+  const folder = normalizeEntityTag(bucket || path.split("/")[1] || "");
+  if (normalized === "entity") {
+    if (tagSet.has("advisor") || category === "coach" || /advisor|coach/.test(role)) return "Advisor";
+    if (tagSet.has("person") || tagSet.has("contact") || path.startsWith("wiki/personal/")) return "Person";
+    if (tagSet.has("company") || tagSet.has("firm") || tagSet.has("family-office") || tagSet.has("wealth-management")) return "Company";
+    if (tagSet.has("project") || tagSet.has("startup") || folder === "projects") return "Project";
+    if (tagSet.has("concept") || folder === "concepts" || folder === "ideas") return "Concept";
+    return "Entity";
+  }
   if (normalized === "person") return "Person";
   if (normalized === "company") return "Company";
   if (normalized === "project") return "Project";
   if (normalized === "concept") return "Concept";
+  if (normalized === "advisor") return "Advisor";
   if (normalized === "school") return "School";
   if (path.startsWith("wiki/personal/")) return "Person";
   if (path.startsWith("wiki/projects/")) return "Project";
@@ -5689,11 +5847,18 @@ function entityBucketLabel(path, bucket) {
 }
 
 function entityVibeClass(record) {
-  const label = `${record.typeLabel} ${record.bucketLabel}`.toLowerCase();
-  if (/person|career|school/.test(label)) return "person";
-  if (/project|company/.test(label)) return "project";
-  if (/concept|idea/.test(label)) return "idea";
-  return "neutral";
+  for (const vibe of ["peak", "fresh", "recent", "aged", "old"]) {
+    if (record.filterTags.includes(`vibrance/${vibe}`) || record.filterTags.includes(vibe)) return vibe;
+  }
+  const timestamp = Date.parse(record.lastTouch || record.updated || "");
+  if (Number.isFinite(timestamp)) {
+    const days = Math.max(0, Math.round((Date.now() - timestamp) / (24 * 60 * 60 * 1000)));
+    if (days <= 2) return "peak";
+    if (days <= 7) return "fresh";
+    if (days <= 30) return "recent";
+    if (days <= 90) return "aged";
+  }
+  return "old";
 }
 
 function ingestionStats(fileMap) {
