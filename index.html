@@ -10,26 +10,28 @@
 <body>
   <div class="app-shell">
     <aside class="sidebar">
-      <div class="sidebar-brand">
-      <div class="brand-lockup">
-        <div class="mark" aria-hidden="true"></div>
-        <h1>margins</h1>
-      </div>
+      <div class="brand">
+        <div class="brand-dot" aria-hidden="true"></div>
+        <div class="brand-name">margins</div>
       </div>
 
-      <nav class="tabs" aria-label="Primary views">
-        <button class="tab active" data-view="inbox">Inbox</button>
-        <button class="tab" data-view="wiki">Vault</button>
-        <button class="tab" data-view="graph">Graph</button>
+      <div class="nav-section-label">Workspace</div>
+      <nav class="tabs nav" aria-label="Primary views">
+        <button class="tab active" data-view="inbox" data-label="Activity">Inbox</button>
+        <button class="tab" data-view="wiki" data-label="Files">Vault</button>
+        <button class="tab" data-view="graph" data-label="Graph">Graph</button>
       </nav>
 
-      <div class="sidebar-note">
-        <strong>Plain files underneath.</strong>
-        <span>Everything writes back to a local markdown vault you can open in Obsidian.</span>
-      </div>
+      <div class="nav-section-label pinned-label">Pinned</div>
+      <nav class="pinned-nav" aria-label="Pinned entities">
+        <button type="button"><span class="pin-dot bob"></span>Bob Casey</button>
+        <button type="button"><span class="pin-dot briefly"></span>Briefly</button>
+        <button type="button"><span class="pin-dot ellis"></span>Ellis Rutili</button>
+        <button type="button"><span class="pin-dot margins"></span>Margins v2</button>
+      </nav>
 
       <section class="rail-section vault-card">
-        <div class="section-kicker">Vault</div>
+        <div class="label"><span class="pulse"></span>Local vault</div>
         <p id="vault-status" class="vault-status">No local vault connected.</p>
         <p id="workflow-guidance">Choose the folder Margins should remember.</p>
         <div class="rail-actions two">
@@ -52,6 +54,14 @@
           </div>
         </div>
       </section>
+
+      <div class="nav-spacer"></div>
+
+      <div class="discovery">
+        <div class="label"><span class="pulse"></span>A discovery</div>
+        <strong>Margins is not another vault.</strong>
+        It is the receipt layer that shows what changed, where it was filed, and why it matters.
+      </div>
 
       <details class="rail-section advanced-panel">
         <summary>Advanced</summary>
@@ -126,31 +136,19 @@
     </aside>
 
     <main class="workspace">
-      <header class="app-header">
-        <div class="workspace-title">
-          <h2>Today</h2>
-          <p>Upload, review, and file sources into your local vault.</p>
-        </div>
-      <label class="vault-search">
-        <span aria-hidden="true"></span>
-        <input id="vault-search" type="search" placeholder="Search your vault..." autocomplete="off">
-      </label>
-      <div class="header-actions">
-        <div id="stats" class="stats">0 sources · 0 nodes · 0 edges</div>
-      </div>
-    </header>
-
       <section id="inbox-view" class="view active">
-        <div class="inbox-copy">
-          <h2>What changed in your vault today?</h2>
-          <p>Drop a file, paste a transcript, or add a folder. Margins turns it into a reviewable source card, asks only what it needs, and files it locally.</p>
+        <div class="page-head">
+          <div>
+            <h1>Activity</h1>
+            <div class="meta-row">Today · upload, review, and file sources into your local vault</div>
+          </div>
+          <div id="stats" class="sub stats">0 sources · 0 nodes · 0 edges</div>
         </div>
 
         <section id="source-drop-zone" class="source-drop-zone inbox-drop" role="button" tabindex="0" aria-label="Choose files or drag them into Margins">
           <div class="drop-mark" aria-hidden="true"></div>
-          <h3>Drag and drop here</h3>
-          <p>or click to browse. Margins will preserve the raw file and show every proposed update.</p>
-          <div class="drop-formats">.txt · .md · .docx · .pdf · folders</div>
+          <h3>Drop a file, paste a link, or forward an email</h3>
+          <p>PDFs, transcripts, photos, voice notes, web clippings</p>
           <div class="drop-actions">
             <label class="file-picker primary-picker">
               <input id="file-input" type="file" multiple>
@@ -186,6 +184,19 @@
       </section>
 
       <section id="wiki-view" class="view">
+        <div class="page-head file-page-head">
+          <div>
+            <h1>Files</h1>
+            <div class="meta-row">Your brain, as plain markdown.</div>
+          </div>
+        </div>
+        <div class="ownership-callout">
+          <div class="icon" aria-hidden="true"></div>
+          <div class="body">
+            <strong>You own every file Margins creates.</strong>
+            <p>Raw sources stay in <code>raw_sources/</code>; summaries, entities, and project notes live as editable markdown in <code>wiki/</code>.</p>
+          </div>
+        </div>
         <div class="split vault-workspace">
           <div class="tree vault-navigator">
             <div class="vault-panel-title">
@@ -212,6 +223,12 @@
       </section>
 
       <section id="graph-view" class="view">
+        <div class="page-head graph-page-head">
+          <div>
+            <h1>Graph</h1>
+            <div class="meta-row">A diagnostic map of generated wiki nodes and citations.</div>
+          </div>
+        </div>
         <div class="graph-shell">
           <div class="graph-header">
             <div>
@@ -290,6 +307,12 @@
         </div>
       </section>
     </main>
+
+    <label class="chatbar">
+      <span class="hint">⌘K</span>
+      <input id="vault-search" type="search" placeholder="Ask Margins or search your vault..." autocomplete="off">
+      <button class="send" type="button" aria-label="Search vault">→</button>
+    </label>
   </div>
 
   <script type="module" src="src/app.js"></script>
