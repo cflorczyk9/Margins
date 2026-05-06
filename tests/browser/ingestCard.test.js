@@ -1074,7 +1074,36 @@ test("vault raw sources without source notes appear in the pending inbox", {
     const pendingText = await page.locator("#source-list").innerText();
     assert.match(pendingText, /unfiled-note\.md/);
     assert.doesNotMatch(pendingText, /^filed-note\.md$/m);
-    assert.match(await page.locator("#vault-tree").innerText(), /Pending\s+1|1\s+Pending/);
+    assert.equal(await page.locator(".upload-stats").count(), 0);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("entities tab renders real vault entity pages without sidebar ingestion stats", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => window.__marginsTest.seedGraphTheme("light"));
+    await page.getByRole("button", { name: "Entities" }).click();
+
+    await page.locator("#entities-view.active").waitFor();
+    const entitiesText = await page.locator("#entity-browser").innerText();
+    assert.match(entitiesText, /Connor/);
+    assert.match(entitiesText, /Connor entity/);
+    assert.doesNotMatch(entitiesText, /Bob Casey|Ellis Rutili|Centric WM/);
+    assert.equal(await page.locator(".upload-stats").count(), 0);
+
+    await page.locator(".entity-card", { hasText: "Connor" }).click();
+    await page.locator("#wiki-view.active").waitFor();
+    assert.match(await page.locator("#doc-title").innerText(), /connor/);
   } finally {
     await browser.close();
     await server.close();
