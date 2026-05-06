@@ -1110,6 +1110,30 @@ test("entities tab renders real vault entity pages without sidebar ingestion sta
   }
 });
 
+test("entities tab falls back to real concept pages when no entity folder exists", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => window.__marginsTest.seedConceptOnlyVault());
+    await page.getByRole("button", { name: "Entities" }).click();
+
+    const entitiesText = await page.locator("#entity-browser").innerText();
+    assert.match(entitiesText, /Setup Efficiency/);
+    assert.match(entitiesText, /Concept/);
+    assert.doesNotMatch(entitiesText, /No entities loaded/);
+    assert.doesNotMatch(entitiesText, /Source Only|Index/);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
 test("imported documents are immediately saved to raw_sources and survive reload", {
   skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
 }, async () => {

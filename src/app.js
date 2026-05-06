@@ -4470,6 +4470,41 @@ updated: 2026-05-06
         glowOpacity: glowStyle.opacity
       };
     },
+    seedConceptOnlyVault() {
+      state.currentFileMap = new Map([
+        ["wiki/index.md", `---
+type: index
+summary: Index page.
+---
+
+# Index
+
+[[setup-efficiency]]
+`],
+        ["wiki/concepts/setup-efficiency.md", `---
+type: concept
+summary: Improve the user's ability to get useful systems running quickly.
+tags: [build, workflow]
+updated: 2026-05-06
+---
+
+# Setup Efficiency
+
+This page is real concept-backed vault content.
+`],
+        ["wiki/sources/source-only.md", `---
+type: source
+summary: Source page that should not render as an entity card.
+---
+
+# Source Only
+`]
+      ]);
+      state.selectedPath = null;
+      renderVaultTree(state.currentFileMap);
+      renderWikiFiles(state.currentFileMap);
+      return document.querySelector("#entity-browser")?.innerText || "";
+    },
     graphState() {
       const activeView = [...document.querySelectorAll(".view")]
         .find((view) => view.classList.contains("active"))?.id || "";
@@ -5246,11 +5281,22 @@ function isEntityPagePath(path, body) {
   if (!path.startsWith("wiki/") || !path.endsWith(".md")) return false;
   if (path.startsWith("wiki/.margins/") || path.startsWith("wiki/_templates/")) return false;
   if (isBucketOverviewPath(path)) return false;
+  if (isFolderIndexPath(path)) return false;
+  if (path === "wiki/index.md" || /^wiki\/(ingest-tracker|log|wiki-stats)\.md$/.test(path)) return false;
+  if (path.startsWith("wiki/sources/")) return false;
+  if (/^wiki\/[^/]+\/source[-/]/.test(path)) return false;
+
   const fields = frontmatterFields(body);
-  const type = String(fields.type || "").toLowerCase();
-  if (["entity", "person", "company", "project", "concept", "school", "advisor", "family"].includes(type)) return true;
-  return /^wiki\/(entities|personal|projects|career|ideas|school)\//.test(path) &&
-    !/^wiki\/(ideas|projects|career|school)\/source[-/]/.test(path);
+  const type = String(fields.type || fields.kind || "").toLowerCase();
+  if (["source", "log", "index", "template"].includes(type)) return false;
+  if (["entity", "person", "company", "project", "concept", "school", "advisor", "family", "synthesis", "idea"].includes(type)) return true;
+  return /^wiki\/(concepts|entities|synthesis|personal|projects|career|ideas|school|coding)\//.test(path);
+}
+
+function isFolderIndexPath(path) {
+  const parts = path.split("/");
+  if (parts.length !== 3) return false;
+  return parts[2].replace(/\.md$/, "") === parts[1];
 }
 
 function entityRecord(path, body) {
