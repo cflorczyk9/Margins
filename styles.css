@@ -3007,6 +3007,8 @@ button,
   --paper-soft: #f5f1ea;
   --control: #ffffff;
   --ink: #1a1612;
+  --ink-2: #4a423a;
+  --ink-3: #847a6b;
   --muted: #847a6b;
   --faint: #aaa092;
   --line: #e8e2d6;
@@ -3031,7 +3033,7 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Inter, system-ui, sans-serif;
   font-size: 14.5px;
   line-height: 1.5;
-  letter-spacing: 0;
+  letter-spacing: -0.005em;
 }
 
 .app-shell {
@@ -3347,9 +3349,9 @@ body {
   border: 1px solid var(--line-strong);
   border-radius: 999px;
   background: var(--paper);
-  color: color-mix(in srgb, var(--ink) 78%, var(--muted));
+  color: var(--ink-2);
   padding: 0 12px;
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 500;
   line-height: 1;
   box-shadow: none;
@@ -3369,8 +3371,7 @@ body {
 .entity-chip.active {
   border-color: var(--ink);
   background: var(--ink);
-  color: var(--paper);
-  font-weight: 550;
+  color: var(--bg);
 }
 
 .entity-chip.active span:last-child {
@@ -3433,7 +3434,7 @@ body {
   margin: 0;
   color: var(--muted);
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 600;
   letter-spacing: 0.09em;
   line-height: 1.2;
   text-transform: uppercase;
@@ -3539,7 +3540,8 @@ body {
   overflow: hidden;
   color: var(--ink);
   font-size: 14.5px;
-  font-weight: 650;
+  font-weight: 600;
+  letter-spacing: -0.005em;
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3619,11 +3621,11 @@ body {
   border-radius: 999px;
   background: var(--paper-soft);
   color: var(--muted);
-  padding: 2px 8px;
+  padding: 1px 7px;
   font-size: 10px;
-  font-weight: 650;
+  font-weight: 600;
   letter-spacing: 0.08em;
-  line-height: 1.3;
+  line-height: 1.5;
   text-overflow: ellipsis;
   text-transform: uppercase;
   white-space: nowrap;
@@ -3638,7 +3640,7 @@ body {
 
 .entity-card-summary {
   margin: 0;
-  color: color-mix(in srgb, var(--ink) 76%, var(--muted));
+  color: var(--ink-2);
   font-size: 13px;
   font-weight: 500;
   line-height: 1.5;
@@ -3652,8 +3654,8 @@ body {
   margin-top: 2px;
   color: var(--accent);
   font-size: 12px;
-  font-weight: 600;
-  line-height: 1.4;
+  font-weight: 550;
+  line-height: 1.5;
   display: -webkit-box;
   overflow: hidden;
   -webkit-box-orient: vertical;
@@ -3794,7 +3796,7 @@ body {
   .entity-chip {
     min-height: 32px;
     padding: 0 12px;
-    font-size: 13px;
+    font-size: 12.5px;
   }
 
   .vault-workspace {
