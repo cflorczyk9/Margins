@@ -10,7 +10,7 @@ async function main() {
   const generated = vaultToFiles(vault);
 
   await mkdir(outputDir, { recursive: true });
-  await cleanGeneratedOutput(outputDir);
+  await cleanGeneratedOutput(outputDir, generated);
   await copyRawSources(files, outputDir);
   for (const [path, body] of generated.entries()) {
     const outPath = join(outputDir, path);
@@ -22,24 +22,25 @@ async function main() {
   console.log(`Generated ${generated.size} operating/wiki files.`);
 }
 
-async function cleanGeneratedOutput(outputDir) {
-  const generatedPaths = [
-    ".margins",
-    "wiki/.margins",
-    "wiki/sources",
-    "wiki/concepts",
-    "wiki/entities",
-    "wiki/synthesis",
-    "wiki/index.md",
-    "wiki/graph.json",
-    "commands",
-    "agents",
-    "operator-manual.md",
-    "query-cookbook.md"
-  ];
+async function cleanGeneratedOutput(outputDir, generated) {
+  const generatedPaths = new Set([".margins"]);
+  for (const path of generated.keys()) {
+    const target = cleanupTargetForGeneratedPath(path);
+    if (target) generatedPaths.add(target);
+  }
+
   for (const path of generatedPaths) {
     await rm(join(outputDir, path), { recursive: true, force: true });
   }
+}
+
+function cleanupTargetForGeneratedPath(path) {
+  const normalized = String(path || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+  if (!normalized || normalized.startsWith("raw_sources/")) return "";
+  const parts = normalized.split("/");
+  if (parts[0] === "wiki" && parts.length >= 3) return `${parts[0]}/${parts[1]}`;
+  if (parts[0] === "commands" || parts[0] === "agents") return parts[0];
+  return normalized;
 }
 
 async function readRawSources(dir) {

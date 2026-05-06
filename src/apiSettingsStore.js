@@ -1,4 +1,6 @@
-const STORAGE_KEY = "margins.apiSettings.v1";
+import { STORAGE_KEYS } from "./storageKeys.js";
+
+const STORAGE_KEY = STORAGE_KEYS.apiSettings;
 
 const DEFAULT_SETTINGS = Object.freeze({
   providerLabel: "",

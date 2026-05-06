@@ -1,7 +1,9 @@
-const DB_NAME = "margins-vault";
-const DB_VERSION = 1;
-const STORE_NAME = "handles";
-const HANDLE_KEY = "last-vault-directory";
+import { STORAGE_KEYS, VAULT_HANDLE_DB } from "./storageKeys.js";
+
+const DB_NAME = VAULT_HANDLE_DB.name;
+const DB_VERSION = VAULT_HANDLE_DB.version;
+const STORE_NAME = VAULT_HANDLE_DB.storeName;
+const HANDLE_KEY = STORAGE_KEYS.vaultHandle;
 
 export function hasFileSystemAccess(env = globalThis) {
   return Boolean(

@@ -110,6 +110,8 @@ test("approve files the selected processed source", {
     assert.doesNotMatch(pendingText, /script\/build\.py/);
     assert.match(pendingText, /pending-word\.docx/);
     assert.match(pendingText, /pending-statement\.pdf/);
+    assert.equal(await page.locator(".tab.active").innerText(), "Inbox");
+    assert.equal(await page.locator("#inbox-view").evaluate((node) => node.classList.contains("active")), true);
   } finally {
     await browser.close();
     await server.close();
@@ -225,7 +227,341 @@ test("readable PDFs fall back to local review when Gemini is rate limited", {
     const pendingText = await page.locator("#source-list").innerText();
     assert.doesNotMatch(pendingText, /Review did not finish/);
     assert.match(pendingText, /Gemini is rate-limited right now/);
+    assert.match(pendingText, /showing the local review/);
+    assert.match(pendingText, /Retry later for model-generated questions/);
+    assert.match(pendingText, /Local review ready/);
+    assert.doesNotMatch(pendingText, /Gemini reviewed/);
     await page.locator(".run-action-row").getByRole("button", { name: "Approve" }).waitFor();
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("malformed Gemini fallback does not invent financial extraction", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => {
+      window.fetch = async () => new Response(JSON.stringify({
+        candidates: [{
+          content: {
+            parts: [{ text: "I reviewed the PDF, but this is not JSON." }]
+          }
+        }],
+        usageMetadata: {
+          promptTokenCount: 80,
+          candidatesTokenCount: 20,
+          thoughtsTokenCount: 0,
+          totalTokenCount: 100
+        }
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+      window.__marginsTest.seedFinancialPdfSource();
+    });
+
+    await page.locator(".source-item", { hasText: "coleman-brokerage-2026-03.pdf" }).getByRole("button", { name: "Process" }).click();
+    const card = page.locator(".source-item.ready-to-write", { hasText: "coleman-brokerage-2026-03.pdf" });
+    await card.waitFor();
+
+    const cardText = normalizeText(await card.innerText());
+    assert.match(cardText, /Gemini returned a malformed review/);
+    assert.doesNotMatch(cardText, /Financial details/);
+    assert.doesNotMatch(cardText, /Financial source/);
+    assert.doesNotMatch(cardText, /Should Margins keep extracted figures and account details/);
+    assert.doesNotMatch(cardText, /Keep demo figures/);
+    const sourceNote = await page.evaluate(() => window.__marginsTest.sourceNoteBody("coleman-brokerage-2026-03.pdf"));
+    assert.doesNotMatch(sourceNote, /## Financial Details/);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("partial Gemini review uses local summary without misclassifying business DOCX as financial", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => {
+      window.fetch = async () => new Response(JSON.stringify({
+        candidates: [{
+          content: {
+            parts: [{
+              text: JSON.stringify({
+                asks: [{
+                  kind: "Follow-up",
+                  question: "Should this Booth conversation stay active for follow-up tracking?",
+                  whyAsk: "That changes whether the source is just context or an active relationship/project thread.",
+                  recommendation: "My take: track it if another Booth conversation is expected.",
+                  options: ["Track it", "Just file it", "Skip"]
+                }]
+              })
+            }]
+          }
+        }],
+        usageMetadata: {
+          promptTokenCount: 90,
+          candidatesTokenCount: 35,
+          thoughtsTokenCount: 0,
+          totalTokenCount: 125
+        }
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+      window.__marginsTest.seedBusinessDocxSource();
+    });
+
+    await page.locator(".source-item", { hasText: "Zoom in on Booth" }).getByRole("button", { name: "Process" }).click();
+    const card = page.locator(".source-item.ready-to-write", { hasText: "Zoom in on Booth" });
+    await card.waitFor();
+
+    const cardText = normalizeText(await card.innerText());
+    assert.match(cardText, /Gemini reviewed the source but did not return a card summary/);
+    assert.match(cardText, /Zoom transcript from April 2026/);
+    assert.match(cardText, /Should this Booth conversation stay active for follow-up tracking/);
+    assert.doesNotMatch(cardText, /Model review failed/);
+    assert.doesNotMatch(cardText, /financial account document/);
+    assert.doesNotMatch(cardText, /Financial source/);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("local fallback does not label motivational money talk as financial", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => {
+      window.fetch = async () => new Response(JSON.stringify({
+        candidates: [{
+          content: {
+            parts: [{ text: JSON.stringify({ asks: [] }) }]
+          }
+        }],
+        usageMetadata: {
+          promptTokenCount: 90,
+          candidatesTokenCount: 15,
+          thoughtsTokenCount: 0,
+          totalTokenCount: 105
+        }
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+      window.__marginsTest.seedMotivationalVideoSource();
+    });
+
+    await page.locator(".source-item", { hasText: "16 Brutal Life Lessons" }).getByRole("button", { name: "Process" }).click();
+    const card = page.locator(".source-item.ready-to-write", { hasText: "16 Brutal Life Lessons" });
+    await card.waitFor();
+
+    const cardText = normalizeText(await card.innerText());
+    const summaryText = normalizeText(await card.locator(".run-summary").innerText());
+    assert.match(cardText, /Gemini reviewed the source but did not return a card summary/);
+    assert.match(summaryText, /16 Brutal Life Lessons for Ambitious People - Michael Smoak/);
+    assert.match(summaryText, /Michael Smoak is a mindset coach/);
+    assert.doesNotMatch(summaryText, /title:/);
+    assert.doesNotMatch(summaryText, /source:/);
+    assert.doesNotMatch(summaryText, /tags:/);
+    assert.doesNotMatch(summaryText, /youtube\.com\/watch/);
+    assert.doesNotMatch(cardText, /Chase · financial account document/);
+    assert.doesNotMatch(cardText, /Financial details/);
+    assert.doesNotMatch(cardText, /Financial source/);
+    assert.doesNotMatch(cardText, /extracted figures and account details/);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("Gemini financial review renders account figures and transactions", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => {
+      window.fetch = async () => new Response(JSON.stringify({
+        candidates: [{
+          content: {
+            parts: [{
+              text: JSON.stringify({
+                missionFrame: {
+                  oneLine: "Use this brokerage statement as a structured financial source note.",
+                  sourceRole: "evidence",
+                  confidence: "high"
+                },
+                summary: {
+                  overview: "Charles Schwab brokerage demo statement for Sarah Coleman.",
+                  bullets: ["Contains account value, cash balance, holdings, and cash activity visible in the source."]
+                },
+                financialDetails: {
+                  accounts: [{
+                    institution: "Charles Schwab",
+                    owner: "Sarah Coleman",
+                    accountType: "brokerage statement",
+                    accountNumberLast4: "4321",
+                    period: "2026-03"
+                  }],
+                  figures: [
+                    { label: "Total account value", value: "$128,430.52", date: "2026-03", context: "Statement total account value." },
+                    { label: "Cash balance", value: "$4,220.17", date: "2026-03", context: "Cash balance visible in account summary." }
+                  ],
+                  holdings: [
+                    { symbol: "GOOG", quantity: "12 shares", value: "$24,600.00", context: "Visible holding row." }
+                  ],
+                  transactions: [
+                    { date: "2026-03-15", description: "Dividend GOOG", amount: "$125.33", type: "dividend" },
+                    { date: "2026-03-20", description: "Transfer from bank", amount: "$2,500.00", type: "transfer" }
+                  ],
+                  caveats: ["Document says demo/sample/not actual account."]
+                },
+                asks: []
+              })
+            }]
+          }
+        }],
+        usageMetadata: {
+          promptTokenCount: 100,
+          candidatesTokenCount: 120,
+          thoughtsTokenCount: 0,
+          totalTokenCount: 220
+        }
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+      window.__marginsTest.seedFinancialPdfSource();
+    });
+
+    await page.locator(".source-item", { hasText: "coleman-brokerage-2026-03.pdf" }).getByRole("button", { name: "Process" }).click();
+    const card = page.locator(".source-item.ready-to-write", { hasText: "coleman-brokerage-2026-03.pdf" });
+    await card.waitFor();
+
+    const cardText = normalizeText(await card.innerText());
+    assert.match(cardText, /Gemini reviewed/);
+    assert.match(cardText, /Financial details/);
+    assert.match(cardText, /Charles Schwab · brokerage statement · owner: Sarah Coleman · last4: 4321 · 2026-03/);
+    assert.match(cardText, /Total account value .* \$128,430\.52/);
+    assert.match(cardText, /Cash balance .* \$4,220\.17/);
+    assert.match(cardText, /GOOG · 12 shares · \$24,600\.00/);
+    assert.match(cardText, /2026-03-15 · dividend · Dividend GOOG · \$125\.33/);
+    assert.doesNotMatch(cardText, /Model review failed/);
+
+    const sourceNote = await page.evaluate(() => window.__marginsTest.sourceNoteBody("coleman-brokerage-2026-03.pdf"));
+    assert.match(sourceNote, /## Financial Details/);
+    assert.match(sourceNote, /### Transactions/);
+    assert.match(sourceNote, /Dividend GOOG/);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("Gemini review parser accepts common near-schema variants", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => {
+      window.fetch = async () => new Response(JSON.stringify({
+        candidates: [{
+          content: {
+            parts: [{
+              text: JSON.stringify({
+                source_review: {
+                  mission_frame: "Use this Booth source as a relationship and product-market context note.",
+                  key_takeaways: {
+                    primary: [{
+                      text: "Booth is discussing marketing and product-management fit with Connor.",
+                      why_it_matters: "This determines whether the note should stay active for follow-up."
+                    }],
+                    context: [
+                      "Amazon account strategy is context, not a financial account statement."
+                    ]
+                  },
+                  light_touch_notes: [
+                    "Do not promote every company mention from the transcript."
+                  ],
+                  related_pages: [{
+                    wiki_path: "wiki/relationships/booth.md",
+                    name: "Booth",
+                    rationale: "Booth is the central relationship in the source."
+                  }],
+                  proposed_updates: [{
+                    wiki_path: "wiki/relationships/booth.md",
+                    action: "add_backlink",
+                    rationale: "Connect the source to the relationship page."
+                  }],
+                  follow_up_questions: [{
+                    type: "Follow-up",
+                    prompt: "Should Booth stay in active relationship follow-up?",
+                    why_ask: "That changes whether the note is passive context or active tracking.",
+                    default: "My take: track it if another conversation is expected.",
+                    choices: "Track it|Just file it|Skip"
+                  }]
+                }
+              })
+            }]
+          }
+        }],
+        usageMetadata: {
+          promptTokenCount: 90,
+          candidatesTokenCount: 70,
+          thoughtsTokenCount: 0,
+          totalTokenCount: 160
+        }
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+      window.__marginsTest.seedBusinessDocxSource();
+    });
+
+    await page.locator(".source-item", { hasText: "Zoom in on Booth" }).getByRole("button", { name: "Process" }).click();
+    const card = page.locator(".source-item.ready-to-write", { hasText: "Zoom in on Booth" });
+    await card.waitFor();
+
+    const cardText = normalizeText(await card.innerText());
+    assert.match(cardText, /Gemini reviewed/);
+    assert.match(cardText, /Use this Booth source as a relationship and product-market context note/);
+    assert.match(cardText, /Primary: Booth is discussing marketing and product-management fit/);
+    assert.match(cardText, /Amazon account strategy is context, not a financial account statement/);
+    assert.match(cardText, /wiki\/relationships\/booth\.md · add_backlink/);
+    assert.match(cardText, /Should Booth stay in active relationship follow-up/);
+    assert.doesNotMatch(cardText, /did not return a card summary/);
+    assert.doesNotMatch(cardText, /Model review failed/);
   } finally {
     await browser.close();
     await server.close();
@@ -347,37 +683,70 @@ test("Gemini review shows concise summary bullets and model questions", {
       window.__geminiCalls = [];
       window.fetch = async (url, options = {}) => {
         window.__geminiCalls.push({ url: String(url), body: JSON.parse(options.body || "{}") });
+        const review = {
+          missionFrame: {
+            oneLine: "Use this call as an opportunity source note with a follow-up decision.",
+            sourceRole: "follow_up",
+            confidence: "high"
+          },
+          takeaways: [
+            {
+              relevance: "primary",
+              label: "Opportunity",
+              point: "Larry is sharing a possible CFO or chief-of-staff style opportunity.",
+              whyItMatters: "This changes whether the source should stay passive or become active tracking."
+            },
+            {
+              relevance: "secondary",
+              label: "Timing",
+              point: "The source includes context about timing, compensation, and risk.",
+              whyItMatters: "These details are useful for deciding whether to keep the conversation warm."
+            },
+            {
+              relevance: "context",
+              label: "Next move",
+              point: "Connor needs to decide whether another conversation is expected.",
+              whyItMatters: "That answer changes propagation into a follow-up surface."
+            }
+          ],
+          lightTouch: [
+            {
+              note: "Do not promote every company mention from the call.",
+              reason: "Some mentions are only context for this source."
+            }
+          ],
+          connections: [
+            {
+              path: "wiki/relationships/larry-abrahams.md",
+              title: "Larry Abrahams",
+              type: "existing",
+              relevance: "primary",
+              reason: "Larry is central to the source."
+            }
+          ],
+          propagation: [
+            {
+              targetPath: "wiki/relationships/larry-abrahams.md",
+              action: "add_backlink",
+              rationale: "Connect the source to Larry as the relationship context.",
+              confidence: "high"
+            }
+          ],
+          asks: [
+            {
+              kind: "Follow-up",
+              question: "Should Margins treat this as an active opportunity to track?",
+              whyAsk: "That changes whether the source becomes a task-like follow-up.",
+              recommendation: "My take: yes if you expect another conversation.",
+              options: ["Track it", "Just file it", "Skip"]
+            }
+          ]
+        };
         return new Response(JSON.stringify({
           candidates: [{
             content: {
               parts: [{
-                text: JSON.stringify({
-                  summary: {
-                    overview: "This call captures a business opportunity and the follow-up context around it.",
-                    bullets: [
-                      "Larry is sharing a possible CFO or chief-of-staff style opportunity.",
-                      "The source includes useful context about timing, compensation, and risk.",
-                      "The next useful step is deciding whether this should become an active follow-up."
-                    ]
-                  },
-                  connections: [
-                    {
-                      path: "wiki/relationships/larry-abrahams.md",
-                      title: "Larry Abrahams",
-                      type: "existing",
-                      reason: "Larry is central to the source."
-                    }
-                  ],
-                  questions: [
-                    {
-                      kind: "Follow-up",
-                      question: "Should Margins treat this as an active opportunity to track?",
-                      reason: "That changes whether the source becomes a task-like follow-up.",
-                      recommendation: "My take: yes if you expect another conversation.",
-                      options: ["Track it", "Just file it", "Skip"]
-                    }
-                  ]
-                })
+                text: `Here is the review:\n\`\`\`json\n${JSON.stringify(review).replace(/}$/, ",}")}\n\`\`\``
               }]
             }
           }],
@@ -411,14 +780,47 @@ test("Gemini review shows concise summary bullets and model questions", {
     const calls = await page.evaluate(() => window.__geminiCalls);
     assert.equal(calls.length, 1);
     assert.match(calls[0].url, /generativelanguage\.googleapis\.com/);
-    assert.match(calls[0].body.contents[0].parts[0].text, /Return 1-2 high-signal questions/);
+    assert.match(calls[0].body.contents[0].parts[0].text, /compact pending-card review/i);
+    assert.match(calls[0].body.contents[0].parts[0].text, /Always fill summary\.overview and summary\.bullets/i);
+    assert.match(calls[0].body.contents[0].parts[0].text, /asks-only response is incomplete/i);
+    assert.match(calls[0].body.contents[0].parts[0].text, /Do not infer finance from isolated words/i);
+    assert.deepEqual(calls[0].body.generationConfig.responseSchema.required, [
+      "summary",
+      "takeaways",
+      "connections",
+      "financialDetails",
+      "asks"
+    ]);
 
     const card = page.locator(".source-item.ready-to-write", { hasText: "model-source-1.txt" });
-    await card.getByText("Gemini reviewed").waitFor();
-    assert.equal(await card.locator(".run-brief-points li").count(), 3);
+    await card.getByText("Gemini reviewed", { exact: true }).waitFor();
+    await card.getByText("Use this call as an opportunity source note").waitFor();
+    await card.getByText("Opportunity: Larry is sharing a possible CFO").waitFor();
+    await card.getByText("Do not promote every company mention").waitFor();
+    await card.getByText("wiki/relationships/larry-abrahams.md · add_backlink").waitFor();
     await card.getByText("Should Margins treat this as an active opportunity to track?").waitFor();
     await card.getByRole("button", { name: "Track it" }).click();
     await card.getByText("Answered: Track it").waitFor();
+
+    const timings = await page.evaluate(() => window.__marginsTest.modelTimings());
+    assert.equal(timings.length, 1);
+    assert.equal(timings[0].purpose, "ingest_review");
+    assert.equal(timings[0].fileName, "model-source-1.txt");
+    assert.equal(timings[0].sourceType, "text");
+    assert.equal(timings[0].sourceSizeBytes, 74);
+    assert.ok(timings[0].sourceTextChars > 0);
+    assert.ok(timings[0].vaultContextFileCount > 0);
+    assert.equal(timings[0].provider, "gemini");
+    assert.equal(timings[0].httpStatus, 200);
+    assert.equal(timings[0].ok, true);
+    assert.equal(timings[0].parseOk, true);
+    assert.ok(timings[0].promptChars > 0);
+    assert.ok(Number.isFinite(timings[0].roundTripMs));
+    assert.ok(Number.isFinite(timings[0].totalMs));
+    assert.ok(timings[0].contentChars > 0);
+    const storedTimings = await page.evaluate(() => JSON.parse(localStorage.getItem("margins.modelTimings.v1") || "[]"));
+    assert.equal(storedTimings.length, 1);
+    assert.equal(storedTimings[0].fileName, "model-source-1.txt");
   } finally {
     await browser.close();
     await server.close();
@@ -566,24 +968,31 @@ test("Gemini DOCX call review does not collapse a no-question response into a wa
 
     const calls = await page.evaluate(() => window.__geminiCalls);
     assert.equal(calls.length, 1);
-    assert.match(calls[0].body.contents[0].parts[0].text, /Return 1-2 high-signal questions/);
+    assert.match(calls[0].body.contents[0].parts[0].text, /compact pending-card review/);
+    assert.match(calls[0].body.contents[0].parts[0].text, /Return 0-2 specific asks/);
+    assert.match(calls[0].body.contents[0].parts[0].text, /summary\.overview/);
+    assert.match(calls[0].body.contents[0].parts[0].text, /summary\.bullets/);
     assert.match(calls[0].body.contents[0].parts[0].text, /Name: pending-word\.docx/);
     assert.match(calls[0].body.contents[0].parts[0].text, /Type: docx/);
+    assert.deepEqual(calls[0].body.generationConfig.responseSchema.required, [
+      "summary",
+      "takeaways",
+      "connections",
+      "financialDetails",
+      "asks"
+    ]);
     assert.equal(calls[0].body.contents[0].parts.some((part) => part.inline_data?.mime_type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"), true);
 
-    await card.getByText("Gemini reviewed").waitFor();
+    await card.getByText("Gemini reviewed", { exact: true }).waitFor();
     assert.equal(await card.locator(".run-brief-points li").count() >= 3, true);
     const visibleSummary = normalizeText(await card.locator(".run-summary").innerText());
     assert.equal(visibleSummary.length < 700, true);
 
-    const actionableQuestions = await card.locator(".run-question").count();
     const cardText = normalizeText(await card.innerText());
-    const explicitNoQuestionsState = /model (returned|sent|provided) no questions|no model questions/i.test(cardText);
-    assert.ok(
-      actionableQuestions >= 1 || explicitNoQuestionsState,
-      "Expected a call-like DOCX to show an actionable follow-up, or a clear state that the model returned no questions."
-    );
-    assert.doesNotMatch(cardText, /Review complete\.\s+File this source into the vault\./);
+    assert.match(cardText, /Gemini reviewed the source but did not return follow-up questions/);
+    await card.getByText("Review complete.").waitFor();
+    await card.getByRole("button", { name: "Approve" }).waitFor();
+    assert.doesNotMatch(cardText, /Should Margins keep this conversation active/);
   } finally {
     await browser.close();
     await server.close();
@@ -666,6 +1075,161 @@ test("vault raw sources without source notes appear in the pending inbox", {
     assert.match(pendingText, /unfiled-note\.md/);
     assert.doesNotMatch(pendingText, /^filed-note\.md$/m);
     assert.match(await page.locator("#vault-tree").innerText(), /Pending\s+1|1\s+Pending/);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("imported documents are immediately saved to raw_sources and survive reload", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    const result = await page.evaluate(() => window.__marginsTest.importSourceAndReloadFromRaw());
+    assert.equal(result.rawBody, "Persisted raw body\n");
+    assert.deepEqual(result.savedBeforeReload, ["incoming-note.md"]);
+    assert.equal(result.scopeBeforeReload, "vault");
+    assert.deepEqual(result.pendingAfterReload, ["incoming-note.md"]);
+    assert.equal(result.sourceScopeAfterReload, "vault");
+    assert.match(result.sourceListText, /incoming-note\.md/);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("vault save removes generated files that left the working file map", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    const result = await page.evaluate(() => window.__marginsTest.saveWithDeletedGeneratedPath());
+    assert.equal(result.oldExists, false);
+    assert.equal(result.keptBody, "# Kept source updated\n");
+    assert.equal(result.loadedHasOld, false);
+    assert.equal(result.pendingSave, false);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("LLM utility view is visible when activated", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    const state = await page.evaluate(() => window.__marginsTest.showLlmView());
+    assert.deepEqual(state, { active: true, hidden: false });
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("graph tab follows the active app theme", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    const light = await page.evaluate(() => window.__marginsTest.seedGraphTheme("light"));
+    const dark = await page.evaluate(() => window.__marginsTest.seedGraphTheme("dark"));
+
+    assert.equal(light.theme, "light");
+    assert.equal(dark.theme, "dark");
+    assert.notEqual(light.wrapBg, dark.wrapBg);
+    assert.notEqual(light.headerBg, dark.headerBg);
+    assert.notEqual(light.backdropFill, dark.backdropFill);
+    assert.equal(Number(light.glowOpacity) < 0.2, true);
+    assert.equal(Number(dark.glowOpacity) < 0.2, true);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("graph interactions use hover emphasis, fine zoom, click-open, and linked drag pull", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => window.__marginsTest.seedGraphTheme("light"));
+    await page.waitForFunction(() => window.__marginsTest.graphState().alpha < 0.08);
+    assert.equal((await page.evaluate(() => window.__marginsTest.graphState())).activeEdges, 0);
+    const hovered = await page.evaluate(() => window.__marginsTest.movePointerToGraphNode("concepts/setup-efficiency"));
+    assert.ok(hovered.activeEdges > 0);
+    const cleared = await page.evaluate(() => window.__marginsTest.movePointerOutsideGraph());
+    assert.equal(cleared.activeEdges, 0);
+
+    const zoomed = await page.evaluate(() => window.__marginsTest.wheelGraph(20).transform.k);
+    assert.ok(zoomed > 0.96 && zoomed < 0.995, `Expected fine zoom step, got ${zoomed}`);
+
+    await page.evaluate(() => window.__marginsTest.seedGraphTheme("light"));
+    await page.waitForFunction(() => window.__marginsTest.graphState().alpha < 0.08);
+    const beforeDrag = await page.evaluate(() => window.__marginsTest.graphState().nodes["entities/connor"]);
+    await page.evaluate(() => window.__marginsTest.dragGraphNode("concepts/setup-efficiency", 150, 24));
+    await page.waitForTimeout(180);
+    const afterDrag = await page.evaluate(() => window.__marginsTest.graphState().nodes["entities/connor"]);
+    assert.ok(Math.hypot(afterDrag.x - beforeDrag.x, afterDrag.y - beforeDrag.y) > 2);
+
+    await page.evaluate(() => window.__marginsTest.seedGraphTheme("light"));
+    await page.waitForFunction(() => window.__marginsTest.graphState().alpha < 0.08);
+    const opened = await page.evaluate(() => window.__marginsTest.clickGraphNode("concepts/setup-efficiency"));
+    assert.equal(opened.activeView, "wiki-view");
+    assert.equal(opened.selectedPath, "wiki/concepts/setup-efficiency.md");
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("hung model requests time out into a retryable inbox state", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => {
+      window.fetch = async () => new Promise(() => {});
+      window.__marginsTest.setApiRequestTimeout(50);
+      window.__marginsTest.seedVaultPdfAttachmentSource();
+    });
+
+    await page.locator(".source-item", { hasText: "saved-report.pdf" }).getByRole("button", { name: "Process" }).click();
+    await page.getByText(/timed out after 1 seconds/i).waitFor();
+    const pendingText = await page.locator("#source-list").innerText();
+    assert.match(pendingText, /Review did not finish/);
+    assert.match(pendingText, /Retry/);
   } finally {
     await browser.close();
     await server.close();

@@ -61,12 +61,21 @@ const ENTITY_STOP_LOWER = new Set([
   "markdown instructions"
 ]);
 
+export function localDateString(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export function compileVault(files, options = {}) {
-  const today = options.today || new Date().toISOString().slice(0, 10);
+  const today = options.today || localDateString();
   const normalized = files.map((file, index) => normalizeFile(file, index));
   const sourceNodes = normalized.map((file) => buildSourceNode(file, today));
-  const conceptNodes = buildConceptNodes(sourceNodes, today);
-  const entityNodes = buildEntityNodes(sourceNodes, today);
+  const candidateConcepts = buildConceptNodes(sourceNodes, today);
+  const candidateEntities = buildEntityNodes(sourceNodes, today);
+  const conceptNodes = options.promoteHeuristicCandidates ? candidateConcepts : [];
+  const entityNodes = options.promoteHeuristicCandidates ? candidateEntities : [];
   const synthesisNodes = buildSynthesisNodes(sourceNodes, conceptNodes, today);
   const edges = buildEdges(sourceNodes, conceptNodes, entityNodes, synthesisNodes);
   const graph = {
@@ -120,6 +129,8 @@ export function compileVault(files, options = {}) {
       source_nodes: sourceNodes.length,
       concept_nodes: conceptNodes.length,
       entity_nodes: entityNodes.length,
+      candidate_concepts: candidateConcepts.length,
+      candidate_entities: candidateEntities.length,
       synthesis_nodes: synthesisNodes.length,
       edges: edges.length,
       structural_files: structuralLayer.fileCount
@@ -152,6 +163,8 @@ export function compileVault(files, options = {}) {
       sourceNodes,
       conceptNodes,
       entityNodes,
+      candidateConcepts,
+      candidateEntities,
       synthesisNodes,
       edges,
       editProposals
@@ -582,7 +595,7 @@ Use headings shaped like \`## [YYYY-MM-DD] ingest\` so agents can grep the log w
 ## [${today}] ingest
 
 - Registered ${files.length} raw source${files.length === 1 ? "" : "s"}.
-- Created ${sourceNodes.length} source page${sourceNodes.length === 1 ? "" : "s"}, ${conceptNodes.length} concept candidate${conceptNodes.length === 1 ? "" : "s"}, ${entityNodes.length} entity candidate${entityNodes.length === 1 ? "" : "s"}, and ${synthesisNodes.length} synthesis page${synthesisNodes.length === 1 ? "" : "s"}.
+- Created ${sourceNodes.length} source page${sourceNodes.length === 1 ? "" : "s"}, ${conceptNodes.length} concept page${conceptNodes.length === 1 ? "" : "s"}, ${entityNodes.length} entity page${entityNodes.length === 1 ? "" : "s"}, and ${synthesisNodes.length} synthesis page${synthesisNodes.length === 1 ? "" : "s"}.
 - Queued ${editProposals.length} proposal${editProposals.length === 1 ? "" : "s"} in \`wiki/.margins/edit-log.jsonl\`.
 - Updated \`wiki/ingest-tracker.md\`, bucket overviews, and \`wiki/wiki-stats.md\`.
 
@@ -1086,7 +1099,18 @@ function buildEditProposals(concepts, entities, synthesis, today) {
   return proposals;
 }
 
-function buildIngestReport({ today, files, sourceNodes, conceptNodes, entityNodes, synthesisNodes, edges, editProposals }) {
+function buildIngestReport({
+  today,
+  files,
+  sourceNodes,
+  conceptNodes,
+  entityNodes,
+  candidateConcepts = conceptNodes,
+  candidateEntities = entityNodes,
+  synthesisNodes,
+  edges,
+  editProposals
+}) {
   const unsupported = files.filter((file) => file.unsupported);
   const lowText = files.filter((file) => !file.unsupported && file.wordCount < 20);
   return `# Ingest Report
@@ -1098,8 +1122,10 @@ Compiler: local heuristic
 
 - Raw sources registered: ${files.length}
 - Source pages created: ${sourceNodes.length}
-- Concept candidates created: ${conceptNodes.length}
-- Entity candidates created: ${entityNodes.length}
+- Concept pages created: ${conceptNodes.length}
+- Entity pages created: ${entityNodes.length}
+- Report-only concept candidates: ${candidateConcepts.length}
+- Report-only entity candidates: ${candidateEntities.length}
 - Synthesis pages created: ${synthesisNodes.length}
 - Graph edges created: ${edges.length}
 - Edit proposals queued: ${editProposals.length}
@@ -1110,16 +1136,24 @@ ${sourceNodes.map((source) => `- wiki/sources/${source.slug}.md from raw_sources
 
 ## Candidate Concepts
 
-${conceptNodes.map((concept) => `- [[${concept.slug}]] from ${concept.sources.length} source node${concept.sources.length === 1 ? "" : "s"}`).join("\n") || "- _(none)_"}
+${candidateConcepts.map(candidateReportLine).join("\n") || "- _(none)_"}
 
 ## Candidate Entities
 
-${entityNodes.map((entity) => `- [[${entity.slug}]] from ${entity.sources.length} source node${entity.sources.length === 1 ? "" : "s"}`).join("\n") || "- _(none)_"}
+${candidateEntities.map(candidateReportLine).join("\n") || "- _(none)_"}
+
+## Mentioned But Missing
+
+${[
+  ...candidateConcepts.map((concept) => `- Concept: ${concept.title} (${concept.sources.map((source) => `[[${source}]]`).join(", ")})`),
+  ...candidateEntities.map((entity) => `- Entity: ${entity.title} (${entity.sources.map((source) => `[[${source}]]`).join(", ")})`)
+].join("\n") || "- _(none)_"}
 
 ## Inferences Refused
 
-- Entity pages remain candidates. Roles, relationships, priorities, and next moves require user confirmation.
-- Concept pages are stubs until a model or user expands them from cited source nodes.
+- Local heuristic concept/entity detections remain report-only candidates until a user or model explicitly promotes them.
+- Entity roles, relationships, priorities, and next moves require user confirmation.
+- Concept pages should be created only when they are useful durable retrieval surfaces across future sources.
 - Unsupported or low-text files are not summarized beyond registration.
 
 ## Needs Review
@@ -1130,6 +1164,13 @@ ${[
   ...(editProposals.length > 0 ? [`- Review ${editProposals.length} proposed edit${editProposals.length === 1 ? "" : "s"} in wiki/.margins/edit-log.jsonl.`] : [])
 ].join("\n") || "- No immediate review flags."}
 `;
+}
+
+function candidateReportLine(candidate) {
+  const sources = candidate.sources?.length
+    ? candidate.sources.map((source) => `[[${source}]]`).join(", ")
+    : "_(no source links)_";
+  return `- ${candidate.title} from ${candidate.sources?.length || 0} source node${candidate.sources?.length === 1 ? "" : "s"}: ${sources}`;
 }
 
 function buildIndex(vault) {

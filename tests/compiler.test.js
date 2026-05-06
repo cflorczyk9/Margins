@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import test from "node:test";
-import { compileVault, vaultToFiles } from "../src/compiler.js";
+import { compileVault, localDateString, vaultToFiles } from "../src/compiler.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -53,6 +53,36 @@ test("vaultToFiles emits V1 metadata only under wiki/.margins", () => {
   assert.equal(manifest.paths.ingest_tracker, "wiki/ingest-tracker.md");
 });
 
+test("local heuristic candidates stay in the ingest report until promoted", () => {
+  const vault = compileVault([
+    {
+      name: "candidate-note.md",
+      text: [
+        "Alice Morgan discussed how a language model should support a local first wiki.",
+        "The language model should help with raw sources, operator manual upkeep, and query cookbook maintenance."
+      ].join(" ")
+    }
+  ], { today: "2026-05-05", name: "Candidate Vault" });
+  const files = vaultToFiles(vault);
+  const report = files.get("wiki/.margins/ingest-report.md");
+
+  assert.equal(files instanceof Map, true);
+  assert.equal(files.has("wiki/concepts/language-model.md"), false);
+  assert.equal(files.has("wiki/entities/alice-morgan.md"), false);
+  assert.equal(vault.manifest.counts.concept_nodes, 0);
+  assert.equal(vault.manifest.counts.entity_nodes, 0);
+  assert.ok(vault.manifest.counts.candidate_concepts > 0);
+  assert.ok(vault.manifest.counts.candidate_entities > 0);
+  assert.match(report, /Report-only concept candidates: [1-9]/);
+  assert.match(report, /Language Model/);
+  assert.match(report, /Alice Morgan/);
+  assert.match(report, /Mentioned But Missing/);
+});
+
+test("localDateString formats local calendar dates instead of UTC slices", () => {
+  assert.equal(localDateString(new Date(2026, 0, 2, 3, 4, 5)), "2026-01-02");
+});
+
 test("sample compile creates useful V1 output without generic sample candidates", async () => {
   const outputDir = await mkdtemp(join(tmpdir(), "margins-compile-"));
   try {
@@ -62,6 +92,9 @@ test("sample compile creates useful V1 output without generic sample candidates"
     await writeFile(join(outputDir, "wiki/concepts/without.md"), "# stale", "utf8");
     await mkdir(join(outputDir, "wiki/entities"), { recursive: true });
     await writeFile(join(outputDir, "wiki/entities/if.md"), "# stale", "utf8");
+    await writeFile(join(outputDir, "wiki/log.md"), "# stale log", "utf8");
+    await writeFile(join(outputDir, "wiki/wiki-stats.md"), "# stale stats", "utf8");
+    await writeFile(join(outputDir, "CLAUDE.md"), "# stale claude", "utf8");
 
     await execFileAsync("node", ["src/cli.js", "sample/raw_sources", outputDir], {
       cwd: new URL("..", import.meta.url)
@@ -92,6 +125,11 @@ test("sample compile creates useful V1 output without generic sample candidates"
 
     const log = await readFile(join(outputDir, "wiki/log.md"), "utf8");
     assert.match(log, /## \[\d{4}-\d{2}-\d{2}\] ingest/);
+    assert.doesNotMatch(log, /stale log/);
+    const stats = await readFile(join(outputDir, "wiki/wiki-stats.md"), "utf8");
+    assert.doesNotMatch(stats, /stale stats/);
+    const generatedClaudeMd = await readFile(join(outputDir, "CLAUDE.md"), "utf8");
+    assert.doesNotMatch(generatedClaudeMd, /stale claude/);
 
     const conceptDirNames = await execFileAsync("find", [join(outputDir, "wiki/concepts"), "-maxdepth", "1", "-type", "f", "-name", "*.md"]);
     const conceptFiles = conceptDirNames.stdout;
