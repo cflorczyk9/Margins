@@ -218,6 +218,7 @@ els.entitySearch?.addEventListener("input", () => {
 els.entityTypeFilters?.addEventListener("click", handleEntityFilterClick);
 els.entityTagFilters?.addEventListener("click", handleEntityFilterClick);
 els.entityBrowser?.addEventListener("click", handleEntityBrowserActionClick);
+els.entityBrowser?.addEventListener("keydown", handleEntityBrowserKeydown);
 document.addEventListener("keydown", (event) => {
   const activeEntities = document.getElementById("entities-view")?.classList.contains("active");
   if (!activeEntities || !els.entitySearch || els.entityControls?.hidden) return;
@@ -4734,6 +4735,42 @@ tags: [source, riviera]
         entityText: document.querySelector("#entity-browser")?.innerText || ""
       };
     },
+    async seedEntityPinningVault() {
+      const handle = createMemoryVaultHandle();
+      await writeTextFile(handle, "wiki/entities/pin-target.md", `---
+type: entity
+summary: Entity that starts in recently active and can be pinned.
+tags: [company]
+updated: 2026-05-06
+---
+
+# Pin Target
+
+Entity that starts in recently active and can be pinned.
+`);
+      await writeTextFile(handle, "wiki/entities/pinned-target.md", `---
+type: entity
+summary: Entity that starts pinned and can be unpinned.
+tags: [person]
+priority: pinned
+updated: 2026-05-05
+---
+
+# Pinned Target
+
+Entity that starts pinned and can be unpinned.
+`);
+      setActiveVault(handle, "Pinning Test Vault");
+      await loadExistingVault(handle);
+      return {
+        currentFileCount: state.currentFileMap?.size || 0,
+        entityText: document.querySelector("#entity-browser")?.innerText || ""
+      };
+    },
+    async readVaultText(path) {
+      if (!state.vaultHandle) return "";
+      return testReadTextFile(state.vaultHandle, path);
+    },
     async prepareRememberedVaultReconnect() {
       const handle = createMemoryVaultHandle();
       await writeTextFile(handle, "wiki/projects/reconnect-project.md", `---
@@ -5533,13 +5570,6 @@ function renderEntities(fileMap = state.currentFileMap) {
 
   els.entityBrowser.className = "entity-board";
   els.entityBrowser.innerHTML = renderEntitySections(filteredRecords);
-
-  els.entityBrowser.querySelectorAll("[data-entity-path]").forEach((card) => {
-    card.addEventListener("click", () => {
-      activateTab("wiki");
-      selectVaultPath(card.dataset.entityPath);
-    });
-  });
 }
 
 function renderEntitySections(records) {
@@ -5563,7 +5593,7 @@ function renderEntitySections(records) {
   if (pinned.length) {
     sections.push(`
       <section class="entity-section" data-entity-section="pinned">
-        ${renderEntitySectionHead("Pinned", "Manage ->")}
+        ${renderEntitySectionHead("Pinned")}
         <div class="entity-grid">${pinned.map(renderEntityCard).join("")}</div>
       </section>
     `);
@@ -5608,17 +5638,22 @@ function renderEntitySectionHead(title, action = "") {
 }
 
 function renderEntityCard(record) {
+  const pinned = entityHasPinnedSignal(record);
+  const pinAction = pinned ? "Unpin" : "Pin";
   return `
-    <button class="entity-card" type="button" data-entity-path="${escapeHtml(record.path)}">
+    <article class="entity-card" role="button" tabindex="0" data-entity-path="${escapeHtml(record.path)}">
       <div class="entity-card-top">
         <span class="entity-vibe ${escapeHtml(entityVibeClass(record))}"></span>
         <strong>${escapeHtml(record.title)}</strong>
+        <button class="entity-pin-button ${pinned ? "active" : ""}" type="button" data-entity-pin-path="${escapeHtml(record.path)}" aria-pressed="${pinned ? "true" : "false"}" aria-label="${escapeHtml(`${pinAction} ${record.title}`)}" title="${escapeHtml(pinAction)}">
+          <span aria-hidden="true">${escapeHtml(pinned ? "Pinned" : "Pin")}</span>
+        </button>
         <span class="type-tag">${escapeHtml(record.typeLabel)}</span>
       </div>
       ${record.meta ? `<div class="entity-card-meta-line">${escapeHtml(record.meta)}</div>` : ""}
       <p class="entity-card-summary">${escapeHtml(record.summary || "No summary yet.")}</p>
       ${record.nextAction ? `<div class="entity-card-next"><span>Next:</span> ${escapeHtml(record.nextAction)}</div>` : ""}
-    </button>
+    </article>
   `;
 }
 
@@ -5708,25 +5743,163 @@ function handleEntityFilterClick(event) {
   renderEntities(activeEntityFileMap());
 }
 
-function handleEntityBrowserActionClick(event) {
+async function handleEntityBrowserActionClick(event) {
   const button = event.target.closest("[data-entity-list-action]");
-  if (!button) return;
+  if (button) {
+    event.preventDefault();
+    event.stopPropagation();
+    const totalCount = Math.max(0, Number(button.dataset.entityRecentTotal) || 0);
+    if (button.dataset.entityListAction === "show-more-recent") {
+      state.entityRecentVisibleCount = Math.min(
+        totalCount,
+        Math.max(ENTITY_RECENT_PAGE_SIZE, state.entityRecentVisibleCount) + ENTITY_RECENT_PAGE_SIZE
+      );
+    } else if (button.dataset.entityListAction === "show-all-recent") {
+      state.entityRecentVisibleCount = totalCount;
+    }
+    renderEntities(activeEntityFileMap());
+    return;
+  }
+
+  const pinButton = event.target.closest("[data-entity-pin-path]");
+  if (pinButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    await withBusyOperation("entity pin", () => toggleEntityPin(pinButton.dataset.entityPinPath));
+    return;
+  }
+
+  const card = event.target.closest("[data-entity-path]");
+  if (card && els.entityBrowser?.contains(card)) {
+    activateTab("wiki");
+    selectVaultPath(card.dataset.entityPath);
+  }
+}
+
+function handleEntityBrowserKeydown(event) {
+  if (!["Enter", " "].includes(event.key)) return;
+  if (event.target.closest("button, input, textarea, select, a")) return;
+  const card = event.target.closest("[data-entity-path]");
+  if (!card || !els.entityBrowser?.contains(card)) return;
   event.preventDefault();
-  event.stopPropagation();
-  const totalCount = Math.max(0, Number(button.dataset.entityRecentTotal) || 0);
-  if (button.dataset.entityListAction === "show-more-recent") {
-    state.entityRecentVisibleCount = Math.min(
-      totalCount,
-      Math.max(ENTITY_RECENT_PAGE_SIZE, state.entityRecentVisibleCount) + ENTITY_RECENT_PAGE_SIZE
-    );
-  } else if (button.dataset.entityListAction === "show-all-recent") {
-    state.entityRecentVisibleCount = totalCount;
+  activateTab("wiki");
+  selectVaultPath(card.dataset.entityPath);
+}
+
+async function toggleEntityPin(path) {
+  const normalizedPath = normalizeMarginsPath(path);
+  if (!normalizedPath || !state.currentFileMap?.has(normalizedPath)) return false;
+  if (!state.vaultHandle) {
+    els.stats.textContent = "Open a vault before pinning entities.";
+    return false;
+  }
+
+  const currentBody = state.currentFileMap.get(normalizedPath);
+  const record = entityRecord(normalizedPath, currentBody);
+  if (!record) return false;
+  const shouldPin = !entityHasPinnedSignal(record);
+  const nextBody = entityPinnedBody(currentBody, shouldPin);
+  if (nextBody === currentBody) return false;
+
+  const granted = await requestVaultPermission(state.vaultHandle);
+  if (!granted) {
+    updateVaultStatus("Pinning needs vault write permission.");
+    return false;
+  }
+
+  await writeTextFile(state.vaultHandle, normalizedPath, nextBody);
+  state.currentFileMap.set(normalizedPath, nextBody);
+  state.loadedFileMap.set(normalizedPath, nextBody);
+  if (state.selectedPath === normalizedPath) {
+    setDocumentHeader(normalizedPath, nextBody, { kind: state.selectedKind || "wiki", readOnly: false });
+    setDocBody(nextBody, { readOnly: false });
   }
   renderEntities(activeEntityFileMap());
+  renderWikiFiles(state.currentFileMap);
+  drawGraph(graphFromFileMap(state.currentFileMap));
+  els.stats.textContent = `${shouldPin ? "Pinned" : "Unpinned"} ${record.title}`;
+  updateSaveButtonState();
+  return true;
 }
 
 function activeEntityFileMap() {
   return state.currentFileMap || state.entityFileMap || new Map();
+}
+
+function entityPinnedBody(body, shouldPin) {
+  const source = String(body || "");
+  const match = source.match(/^---\n([\s\S]*?)\n---\n?/);
+  if (!match) {
+    return shouldPin ? `---\npriority: pinned\n---\n\n${source}` : source;
+  }
+
+  const frontmatter = shouldPin
+    ? setPinnedFrontmatterField(match[1])
+    : removePinnedFrontmatterSignals(match[1]);
+  return `---\n${frontmatter}${frontmatter.endsWith("\n") ? "" : "\n"}---\n${source.slice(match[0].length)}`;
+}
+
+function setPinnedFrontmatterField(frontmatter) {
+  const lines = frontmatter.split("\n");
+  let foundPriority = false;
+  const nextLines = lines
+    .filter((line) => !/^pinned:\s*/i.test(line))
+    .map((line) => {
+      if (/^priority:\s*/i.test(line)) {
+        foundPriority = true;
+        return "priority: pinned";
+      }
+      return line;
+    });
+  if (!foundPriority) nextLines.push("priority: pinned");
+  return nextLines.join("\n");
+}
+
+function removePinnedFrontmatterSignals(frontmatter) {
+  const lines = frontmatter.split("\n");
+  const nextLines = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const field = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+    if (!field) {
+      nextLines.push(line);
+      continue;
+    }
+
+    const key = field[1].toLowerCase();
+    const value = yamlScalar(field[2]).toLowerCase();
+    if ((key === "priority" || key === "status") && value === "pinned") continue;
+    if (key === "pinned") continue;
+    if (key === "tags") {
+      if (field[2].trim()) {
+        const tags = frontmatterList(field[2]).filter((tag) => normalizeEntityTag(tag) !== "pinned");
+        if (tags.length) nextLines.push(`tags: [${tags.map(yamlInlineScalar).join(", ")}]`);
+        continue;
+      }
+
+      const listItems = [];
+      let cursor = index + 1;
+      while (cursor < lines.length && /^\s*-\s*/.test(lines[cursor])) {
+        const tag = yamlScalar(lines[cursor].replace(/^\s*-\s*/, ""));
+        if (normalizeEntityTag(tag) !== "pinned") listItems.push(lines[cursor]);
+        cursor += 1;
+      }
+      if (listItems.length) {
+        nextLines.push(line);
+        nextLines.push(...listItems);
+      }
+      index = cursor - 1;
+      continue;
+    }
+
+    nextLines.push(line);
+  }
+  return nextLines.filter((line, index, list) => line.trim() || index < list.length - 1).join("\n");
+}
+
+function yamlInlineScalar(value) {
+  const text = String(value || "").trim();
+  return /^[A-Za-z0-9_/-]+$/.test(text) ? text : JSON.stringify(text);
 }
 
 function isEntityFilterActive(kind, value) {
@@ -5818,7 +5991,7 @@ function isEntityActiveThisWeek(updated) {
 }
 
 function entityHasPinnedSignal(record) {
-  return record.priority === "pinned" || record.status === "pinned" || record.tags.includes("pinned");
+  return Boolean(record.pinnedFlag) || record.priority === "pinned" || record.status === "pinned" || record.tags.includes("pinned");
 }
 
 function entityRecordsFromFileMap(fileMap) {
@@ -5879,12 +6052,17 @@ function entityRecord(path, body) {
     lastTouch,
     meta: entityMetaLine(fields, context, filterTags, lastTouch),
     nextAction: entityNextAction(fields, body),
+    pinnedFlag: isPinnedFrontmatterValue(fields.pinned),
     status: normalizeEntityTag(context.status),
     priority: normalizeEntityTag(context.priority),
     tags,
     filterTags,
     connectionCount: context.keyLinks.length
   };
+}
+
+function isPinnedFrontmatterValue(value) {
+  return /^(true|yes|1|pinned)$/i.test(String(value || "").trim());
 }
 
 function entityField(fields, ...names) {
