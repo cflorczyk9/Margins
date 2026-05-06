@@ -1208,6 +1208,36 @@ test("entities filters keep broad wiki-folder vaults loaded", {
   }
 });
 
+test("workflow reconnect button opens the remembered vault", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    const before = await page.evaluate(() => window.__marginsTest.prepareRememberedVaultReconnect());
+    assert.equal(before.workflowButton, "Reconnect vault");
+    assert.equal(before.currentFileCount, 0);
+
+    await page.locator("#workflow-btn").click();
+    await page.waitForFunction(() => window.__marginsTest.workflowSnapshot().currentFileCount > 0);
+
+    const after = await page.evaluate(() => window.__marginsTest.workflowSnapshot());
+    assert.equal(after.vaultName, "Browser Test Vault");
+    assert.match(after.vaultStatus, /Browser Test Vault/);
+    assert.match(after.workflowButton, /Add documents/);
+
+    await page.getByRole("button", { name: "Entities" }).click();
+    assert.match(await page.locator("#entity-browser").innerText(), /Reconnect Project/);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
 test("imported documents are immediately saved to raw_sources and survive reload", {
   skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
 }, async () => {

@@ -202,7 +202,7 @@ els.themeToggle.addEventListener("change", () => {
 
 globalThis.__marginsRunAnswer = setIngestReviewAnswer;
 
-els.workflowBtn.addEventListener("click", () => withBusyOperation("workflow step", runWorkflowStep));
+els.workflowBtn.addEventListener("click", handleWorkflowButtonClick);
 els.vaultSearch?.addEventListener("input", () => {
   renderVaultTree();
   if (state.currentFileMap) renderWikiFiles(state.currentFileMap);
@@ -4634,6 +4634,45 @@ tags: [source, riviera]
         entityText: document.querySelector("#entity-browser")?.innerText || ""
       };
     },
+    async prepareRememberedVaultReconnect() {
+      const handle = createMemoryVaultHandle();
+      await writeTextFile(handle, "wiki/projects/reconnect-project.md", `---
+type: project
+summary: Remembered vault project loaded through the reconnect workflow.
+tags: [build, reconnect]
+updated: 2026-05-06
+priority: pinned
+next_move: Confirm reconnect loads the previous vault.
+---
+
+# Reconnect Project
+`);
+      state.vaultHandle = null;
+      state.rememberedVaultHandle = handle;
+      state.vaultName = "";
+      state.currentFileMap = null;
+      state.loadedFileMap = new Map();
+      state.vaultFiles = [];
+      state.files = [];
+      state.pendingSave = false;
+      state.hasUnsavedEdits = false;
+      state.hasSavedCurrent = false;
+      updateVaultStatus(`Last vault: ${handle.name}. Click Reconnect to open it.`);
+      renderVaultTree(new Map());
+      renderWikiFiles(new Map());
+      updateWorkflowState();
+      return this.workflowSnapshot();
+    },
+    workflowSnapshot() {
+      return {
+        workflowButton: els.workflowBtn?.textContent || "",
+        workflowGuidance: els.workflowGuidance?.textContent || "",
+        vaultStatus: els.vaultStatus?.textContent || "",
+        currentFileCount: state.currentFileMap?.size || 0,
+        vaultName: state.vaultName || "",
+        entityText: document.querySelector("#entity-browser")?.innerText || ""
+      };
+    },
     graphState() {
       const activeView = [...document.querySelectorAll(".view")]
         .find((view) => view.classList.contains("active"))?.id || "";
@@ -5289,6 +5328,12 @@ function memoryDirectory(name) {
     },
     entries() {
       return entries.entries();
+    },
+    async queryPermission() {
+      return "granted";
+    },
+    async requestPermission() {
+      return "granted";
     },
     async removeEntry(childName) {
       entries.delete(childName);
@@ -5955,8 +6000,13 @@ function updateReviewModeHelp() {
   }[state.reviewMode] || "";
 }
 
-async function runWorkflowStep() {
+async function handleWorkflowButtonClick() {
   const step = workflowStep();
+  if (step.disabled) return;
+  await withBusyOperation(step.label, () => runWorkflowStep(step));
+}
+
+async function runWorkflowStep(step = workflowStep()) {
   if (step.disabled) return;
 
   if (step.action === "vault") {
