@@ -3,647 +3,54 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>margins</title>
+  <title>Margins</title>
   <link rel="stylesheet" href="styles.css">
   <script src="./node_modules/mammoth/mammoth.browser.min.js"></script>
 </head>
 <body>
-  <div class="app demo-shell">
+  <div class="app-shell">
+    <header class="app-header">
+      <div class="brand-lockup">
+        <div class="mark" aria-hidden="true"></div>
+        <h1>margins</h1>
+      </div>
+      <label class="vault-search">
+        <span aria-hidden="true"></span>
+        <input id="vault-search" type="search" placeholder="Search your vault..." autocomplete="off">
+      </label>
+      <div class="header-actions">
+        <div id="stats" class="stats">0 sources · 0 nodes · 0 edges</div>
+      </div>
+    </header>
 
-    <!-- ============ SIDEBAR ============ -->
     <aside class="sidebar">
-      <div class="brand">
-        <div class="brand-dot" aria-hidden="true"></div>
-        <div class="brand-name">margins</div>
-      </div>
-
-      <!-- Vault add-on (only thing in sidebar not in demo) -->
-      <div class="sidebar-vault">
-        <div class="nav-section-label">Vault</div>
-        <div id="vault-status" class="vault-status">No vault connected</div>
+      <section class="rail-section vault-card">
+        <div class="section-kicker">Vault</div>
+        <p id="vault-status" class="vault-status">No local vault connected.</p>
+        <p id="workflow-guidance">Choose the folder Margins should remember.</p>
         <div class="rail-actions two">
-          <button id="create-vault-btn" type="button">Create</button>
-          <button id="open-vault-btn" type="button">Open</button>
+          <button id="create-vault-btn">Create</button>
+          <button id="open-vault-btn">Open</button>
         </div>
-      </div>
+        <button id="workflow-btn" class="primary">Choose vault folder</button>
+      </section>
 
-      <div class="nav-section-label">Workspace</div>
-      <nav class="nav demo-nav" aria-label="Primary views">
-        <a class="active" data-view-target="activity">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="14" y2="18"/></svg>
-          Activity
-        </a>
-        <a data-view-target="entities">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3"/><path d="M5 21v-1a7 7 0 0 1 14 0v1"/></svg>
-          Entities
-        </a>
-        <a data-view-target="files">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-          Files
-        </a>
-      </nav>
-
-      <div class="nav-section-label tags-label">Tags</div>
-      <div id="tag-rail" class="tag-rail" aria-label="Associated tags"></div>
-
-      <div class="nav-spacer"></div>
-
-      <div class="discovery">
-        <div class="label"><span class="pulse"></span> A discovery</div>
-        <strong>Bob Casey</strong> and <strong>Mark Loh</strong> both surfaced this week as founder-offer evaluators. Worth a thought?
-      </div>
-
-      <button id="settings-open-btn" class="sidebar-settings-btn" type="button" aria-label="Settings">⚙ Settings</button>
-    </aside>
-
-    <!-- ============ MAIN ============ -->
-    <main class="main">
-      <div class="main-inner">
-
-        <!-- ============ CONNECT-VAULT GATE (shown when no vault) ============ -->
-        <section id="connect-gate" class="connect-gate">
-          <div class="connect-card">
-            <div class="connect-icon" aria-hidden="true">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-            </div>
-            <h2>Connect a vault to begin</h2>
-            <p>Margins reads and writes plain markdown to a folder you choose. Open an existing vault or create a new one — your files stay on your machine.</p>
-            <div class="connect-actions">
-              <button id="gate-create-btn" type="button" class="primary">Create vault</button>
-              <button id="gate-open-btn" type="button">Open existing</button>
+      <section class="rail-section structure-card">
+        <div id="vault-tree" class="vault-tree">
+          <div class="upload-stats">
+            <div class="section-kicker">Ingestion</div>
+            <div class="upload-stat-grid">
+              <div class="upload-stat"><strong>0</strong><span>parsed</span></div>
+              <div class="upload-stat"><strong>0</strong><span>ingested</span></div>
+              <div class="upload-stat"><strong>0</strong><span>pending</span></div>
+              <div class="upload-stat"><strong>0</strong><span>words</span></div>
             </div>
           </div>
-        </section>
-
-        <!-- ============ ACTIVITY VIEW ============ -->
-        <section id="activity-view" class="view" data-view="activity">
-          <div class="page-head">
-            <div>
-              <h1>Activity</h1>
-              <div class="meta-row" id="activity-meta">Drop a file to ingest your first source.</div>
-            </div>
-            <div class="sub" id="stats"></div>
-          </div>
-
-          <!-- Upload zone -->
-          <div class="upload" id="upload" role="button" tabindex="0">
-            <div class="upload-icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            </div>
-            <div class="upload-title">Drop a file, paste a link, or forward an email</div>
-            <div class="upload-sub">PDFs, transcripts, photos, voice notes, web clippings</div>
-            <button class="upload-cta" id="demoBtn">Try a demo upload</button>
-          </div>
-
-          <!-- Streaming view (hidden by default) -->
-          <div class="streaming" id="streaming" hidden>
-            <div class="stream-head">
-              <div class="stream-thumb">PDF</div>
-              <div class="stream-meta">
-                <div class="stream-title">briefly-centric-pilot-agreement-v3.pdf</div>
-                <div class="stream-sub">2.3 MB · uploaded just now</div>
-              </div>
-              <div class="stream-status" id="streamStatus"><span class="dot"></span> Reading</div>
-            </div>
-            <div class="stream-lines" id="streamLines"></div>
-            <div class="stream-actions" id="streamActions" hidden>
-              <button class="primary" data-action="entity">Open <span class="stream-pill" style="background:rgba(255,255,255,0.18);color:#fff;">Centric WM</span></button>
-              <button data-action="ask">Ask Margins about this PDF</button>
-              <button data-action="dismiss">Done</button>
-            </div>
-          </div>
-
-          <!-- Card wall — populated from real vault sources once connected -->
-          <div class="wall" id="wall"></div>
-
-          <!-- Empty state when vault is connected but has no sources -->
-          <div id="activity-empty" class="activity-empty" hidden>
-            <p>No sources yet. Drop a file above to ingest your first one.</p>
-          </div>
-        </section>
-
-        <!-- ============ ENTITIES VIEW ============ -->
-        <section id="entities-view" class="view" data-view="entities" hidden>
-          <div class="page-head">
-            <div>
-              <h1>Entities</h1>
-              <div class="meta-row">287 in your brain · 23 active this week · 6 pinned</div>
-            </div>
-          </div>
-
-          <div class="toolbar-row">
-            <div class="search">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              <input placeholder="Find a person, project, idea…" />
-              <kbd>⌘F</kbd>
-            </div>
-          </div>
-
-          <div class="chips">
-            <button class="chip active">All <span class="ct">287</span></button>
-            <button class="chip">People <span class="ct">112</span></button>
-            <button class="chip">Companies <span class="ct">38</span></button>
-            <button class="chip">Projects <span class="ct">14</span></button>
-            <button class="chip">Concepts <span class="ct">61</span></button>
-            <button class="chip">Sources <span class="ct">62</span></button>
-          </div>
-
-          <div class="chips" style="margin-top:10px;">
-            <button class="chip">briefly <span class="ct">38</span></button>
-            <button class="chip">riviera <span class="ct">9</span></button>
-            <button class="chip">compete <span class="ct">14</span></button>
-            <button class="chip">intel <span class="ct">22</span></button>
-            <button class="chip">people <span class="ct">67</span></button>
-            <button class="chip">build <span class="ct">12</span></button>
-            <button class="chip">ideas <span class="ct">28</span></button>
-            <button class="chip">self <span class="ct">18</span></button>
-          </div>
-
-          <div class="section-head">
-            <h3>Pinned</h3>
-            <span class="more">Manage →</span>
-          </div>
-
-          <div class="pinned-grid">
-            <div class="pinned-card" data-name="Bob Casey">
-              <div class="row1">
-                <span class="vibe peak"></span>
-                <span class="name">Bob Casey</span>
-                <span class="type-tag">Person</span>
-              </div>
-              <div class="meta">Founder, Riviera (Chicago) · last touch 2d ago</div>
-              <div class="summary">Riviera closed-out 5/3. Stay-in-touch relationship; not waiting on anything.</div>
-              <div class="next">Next: quarterly check-in</div>
-            </div>
-
-            <div class="pinned-card" data-name="Ellis Rutili">
-              <div class="row1">
-                <span class="vibe peak"></span>
-                <span class="name">Ellis Rutili</span>
-                <span class="type-tag">Person</span>
-              </div>
-              <div class="meta">Champion at Centric WM · last touch 5d ago</div>
-              <div class="summary">Pilot terms locked: $125/seat, 60–90d, brief-only scope. Action-routing as #1 future ask.</div>
-              <div class="next">Next: send pilot agreement v3</div>
-            </div>
-
-            <div class="pinned-card" data-name="Briefly">
-              <div class="row1">
-                <span class="vibe peak"></span>
-                <span class="name">Briefly</span>
-                <span class="type-tag">Project</span>
-              </div>
-              <div class="meta">Vertical product · maintenance cadence · last touch today</div>
-              <div class="summary">Centric pilot in flight. Three branches: portfolio compare, email→CRM, meeting prep. Branch #2 most aligned.</div>
-              <div class="next">Next: ship pilot agreement, hold Ihor freeze</div>
-            </div>
-
-            <div class="pinned-card" data-name="Margins v2">
-              <div class="row1">
-                <span class="vibe peak"></span>
-                <span class="name">Margins v2</span>
-                <span class="type-tag">Project</span>
-              </div>
-              <div class="meta">Lead build · Repo-MVP first · last touch today</div>
-              <div class="summary">Student-first hero, Supabase cloud, ingestion-as-iteration. Four screens: Activity / Chat / Entities / Files.</div>
-              <div class="next">Next: ship Repo-MVP, find first 10 users</div>
-            </div>
-
-            <div class="pinned-card" data-name="Mark Loh">
-              <div class="row1">
-                <span class="vibe fresh"></span>
-                <span class="name">Mark Loh</span>
-                <span class="type-tag">Advisor</span>
-              </div>
-              <div class="meta">Sales/product advisor · travel-services PE rollups · last touch 4d ago</div>
-              <div class="summary">Three diagnostic questions for any founder offer: 6mo/1yr success, raise breakdown, hiring slate.</div>
-              <div class="next">Next: monthly catch-up</div>
-            </div>
-
-            <div class="pinned-card" data-name="Centric WM">
-              <div class="row1">
-                <span class="vibe fresh"></span>
-                <span class="name">Centric WM</span>
-                <span class="type-tag">Company</span>
-              </div>
-              <div class="meta">Pilot #1 partner · uses Orion · last touch 5d ago</div>
-              <div class="summary">Champion is Ellis (operations). Real buyer is Virgil Rutili (founder, uncle, in HubSpot but never contacted).</div>
-              <div class="next">Next: Ellis sells up to Virgil</div>
-            </div>
-          </div>
-
-          <div class="section-head">
-            <h3>Recently active</h3>
-            <span class="more">Show all 287 →</span>
-          </div>
-
-          <div class="entity-list">
-            <div class="entity-row" data-name="Ihor Romanchuk">
-              <span class="vibe fresh"></span>
-              <div class="name-col">
-                <div class="name">Ihor Romanchuk <span class="type-tag">Person</span></div>
-                <div class="summary">Most pivotal collaborator. Engagement minimal until pilot revenue.</div>
-              </div>
-              <div class="last">3d ago</div>
-              <span class="arrow">→</span>
-            </div>
-            <div class="entity-row" data-name="Halluminate">
-              <span class="vibe fresh"></span>
-              <div class="name-col">
-                <div class="name">Halluminate <span class="type-tag">Company</span></div>
-                <div class="summary">YC S25, $1.3M ARR. RL environments for FS. Peer founder, not competitor.</div>
-              </div>
-              <div class="last">3d ago</div>
-              <span class="arrow">→</span>
-            </div>
-            <div class="entity-row" data-name="Affinity">
-              <span class="vibe fresh"></span>
-              <div class="name-col">
-                <div class="name">Affinity <span class="type-tag">Company</span></div>
-                <div class="summary">$2K/user/yr. Relationship graph for VC/PE/IB. Briefly's pricing analog.</div>
-              </div>
-              <div class="last">6d ago</div>
-              <span class="arrow">→</span>
-            </div>
-            <div class="entity-row" data-name="UChicago Booth">
-              <span class="vibe recent"></span>
-              <div class="name-col">
-                <div class="name">UChicago Booth <span class="type-tag">School</span></div>
-                <div class="summary">MBA Sep 2026. Polsky / NVC / ETA. Booth-deferral fork pending traction signal.</div>
-              </div>
-              <div class="last">7d ago</div>
-              <span class="arrow">→</span>
-            </div>
-            <div class="entity-row" data-name="Anthropic">
-              <span class="vibe fresh"></span>
-              <div class="name-col">
-                <div class="name">Anthropic <span class="type-tag">Company</span></div>
-                <div class="summary">Native memory shipped Mar 2026. Killed broad memory pitch; opens portability + vertical posture.</div>
-              </div>
-              <div class="last">2d ago</div>
-              <span class="arrow">→</span>
-            </div>
-            <div class="entity-row" data-name="Riviera">
-              <span class="vibe recent"></span>
-              <div class="name-col">
-                <div class="name">Riviera <span class="type-tag">Company</span></div>
-                <div class="summary">Bob Casey's firm. Closed-out 5/3. Don't surface Margins until equity terms settled (resolved).</div>
-              </div>
-              <div class="last">2d ago</div>
-              <span class="arrow">→</span>
-            </div>
-            <div class="entity-row" data-name="Matt Gullotta">
-              <span class="vibe recent"></span>
-              <div class="name-col">
-                <div class="name">Matt Gullotta <span class="type-tag">Person</span></div>
-                <div class="summary">Real estate dev. Wants Obsidian + AI second-brain setup. Building Blueprint contact.</div>
-              </div>
-              <div class="last">8d ago</div>
-              <span class="arrow">→</span>
-            </div>
-            <div class="entity-row" data-name="Chiara Learmonth">
-              <span class="vibe recent"></span>
-              <div class="name-col">
-                <div class="name">Chiara Learmonth <span class="type-tag">Person</span></div>
-                <div class="summary">Med school. Obsidian + Copilot single vault. Six core prompts. Margins persona #2.</div>
-              </div>
-              <div class="last">7d ago</div>
-              <span class="arrow">→</span>
-            </div>
-            <div class="entity-row" data-name="Greg Deldicque">
-              <span class="vibe aged"></span>
-              <div class="name-col">
-                <div class="name">Greg Deldicque <span class="type-tag">Mentor</span></div>
-                <div class="summary">Italy-based. Founder Enex Technologies. Predates Briefly; protect accordingly.</div>
-              </div>
-              <div class="last">14d ago</div>
-              <span class="arrow">→</span>
-            </div>
-            <div class="entity-row" data-name="Joel Florczyk">
-              <span class="vibe recent"></span>
-              <div class="name-col">
-                <div class="name">Joel Florczyk <span class="type-tag">Family</span></div>
-                <div class="summary">Connor's father. Persistence-model anchor. M&T legacy network.</div>
-              </div>
-              <div class="last">9d ago</div>
-              <span class="arrow">→</span>
-            </div>
-          </div>
-        </section>
-
-        <!-- ============ FILES VIEW ============ -->
-        <section id="files-view" class="view" data-view="files" hidden>
-          <div class="page-head">
-            <div>
-              <h1>Files</h1>
-              <div class="meta-row">Your brain, as plain markdown.</div>
-            </div>
-          </div>
-
-          <div class="ownership-callout">
-            <div class="icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6"/><path d="M9 13h6"/><path d="M9 17h4"/></svg>
-            </div>
-            <div class="body">
-              <strong>You own these files.</strong>
-              <p>Margins writes plain markdown to <code>~/margins/vault</code>. Open them in Obsidian, Cursor, VS Code, Apple Notes — anything. Export to a ZIP or sync to Git anytime. If Margins disappears tomorrow, you keep your brain.</p>
-            </div>
-          </div>
-
-          <div class="file-stats">
-            <div class="stat-block">
-              <span class="num">287</span>
-              <span class="lbl">Files</span>
-            </div>
-            <div class="stat-block">
-              <span class="num">4.2 MB</span>
-              <span class="lbl">Total size</span>
-            </div>
-            <div class="stat-block">
-              <span class="num">just now</span>
-              <span class="lbl">Last sync</span>
-            </div>
-            <div class="stat-block">
-              <span class="num" style="color: var(--good);">●</span>
-              <span class="lbl">Auto-sync on</span>
-            </div>
-            <div class="spacer"></div>
-            <div class="actions">
-              <button>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                Export ZIP
-              </button>
-              <button>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4"/></svg>
-                Sync settings
-              </button>
-              <button>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
-                Open in editor
-              </button>
-            </div>
-          </div>
-
-          <div class="file-layout">
-            <div class="file-tree" id="fileTree">
-              <div class="tree-folder root">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-                margins/vault
-              </div>
-
-              <div class="tree-folder" data-folder>
-                <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-                entities
-              </div>
-              <div class="tree-children">
-                <div class="tree-folder" data-folder>
-                  <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-                  briefly
-                </div>
-                <div class="tree-children">
-                  <div class="tree-file" data-file="briefly">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                    briefly.md
-                  </div>
-                  <div class="tree-file" data-file="ellis">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                    ellis-rutili.md
-                  </div>
-                  <div class="tree-file" data-file="centric">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                    centric-wm.md
-                  </div>
-                  <div class="tree-file" data-file="ihor">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                    ihor-romanchuk.md
-                  </div>
-                </div>
-                <div class="tree-folder" data-folder>
-                  <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-                  people
-                </div>
-                <div class="tree-children">
-                  <div class="tree-file active" data-file="bob">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                    bob-casey.md
-                  </div>
-                  <div class="tree-file" data-file="mark">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                    mark-loh.md
-                  </div>
-                  <div class="tree-file" data-file="matt">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                    matt-gullotta.md
-                  </div>
-                </div>
-                <div class="tree-folder" data-folder>
-                  <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-                  ideas
-                </div>
-                <div class="tree-children">
-                  <div class="tree-file" data-file="margins">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                    margins-v2.md
-                  </div>
-                </div>
-              </div>
-
-              <div class="tree-folder" data-folder>
-                <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-                sources
-              </div>
-              <div class="tree-children">
-                <div class="tree-file" data-file="src-walk">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                  2026-05-04-walk-margins-thinking.md
-                </div>
-                <div class="tree-file" data-file="src-bob">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                  2026-05-03-bob-casey-closeout.md
-                </div>
-                <div class="tree-file" data-file="src-ellis">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                  2026-04-30-ellis-centric-visit.md
-                </div>
-                <div class="tree-file" data-file="src-affinity">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                  2026-04-28-affinity-pricing-teardown.md
-                </div>
-              </div>
-
-              <div class="tree-folder" data-folder>
-                <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-                daily
-              </div>
-              <div class="tree-children">
-                <div class="tree-file" data-file="daily-today">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                  2026-05-05.md
-                </div>
-                <div class="tree-file" data-file="daily-yest">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                  2026-05-04.md
-                </div>
-              </div>
-            </div>
-
-            <div class="file-preview" id="filePreview"></div>
-          </div>
-        </section>
-
-        <!-- ============ HIDDEN UTILITY VIEWS (preserve IDs for app.js) ============ -->
-        <nav class="compat-tabs" hidden aria-hidden="true">
-          <button class="tab active" data-view="inbox" type="button">Inbox</button>
-          <button class="tab" data-view="wiki" type="button">Vault</button>
-          <button class="tab" data-view="graph" type="button">Graph</button>
-          <button class="tab" data-view="llm" type="button">LLM</button>
-        </nav>
-
-        <section id="inbox-view" class="view utility-view" hidden aria-hidden="true">
-          <section id="source-drop-zone" class="source-drop-zone inbox-drop" role="button" tabindex="0">
-            <div class="drop-actions">
-              <label class="file-picker primary-picker">
-                <input id="file-input" type="file" multiple>
-                <span>Choose files</span>
-              </label>
-              <label class="file-picker">
-                <input id="folder-input" type="file" webkitdirectory directory multiple>
-                <span>Choose folder</span>
-              </label>
-            </div>
-          </section>
-          <section id="queue-panel" class="queue-panel" hidden>
-            <button id="bulk-ingest-btn" class="bulk-ingest-btn" type="button" disabled>Bulk ingest</button>
-            <button id="save-vault-btn" class="primary shadow-action" disabled hidden>Process</button>
-            <div id="source-list" class="source-list empty">No new documents loaded.</div>
-          </section>
-          <section id="inline-review-panel" class="inline-review-panel" hidden></section>
-          <button id="workflow-btn" class="primary" hidden>Choose vault folder</button>
-          <p id="workflow-guidance" hidden>Choose the folder Margins should remember.</p>
-          <div id="vault-tree" hidden></div>
-        </section>
-
-        <section id="wiki-view" class="view utility-view" hidden aria-hidden="true">
-          <div id="doc-path" class="doc-path">Vault</div>
-          <div id="doc-title" class="doc-title">No file selected</div>
-          <div id="doc-meta" class="doc-meta">No file selected</div>
-          <button id="doc-save-btn" type="button" disabled>Save</button>
-          <pre id="doc-highlight" class="doc-highlight"></pre>
-          <textarea id="doc-body" class="doc-body" spellcheck="false"></textarea>
-          <span id="vault-tree-count">0 files</span>
-          <div id="wiki-tree" class="tree-list empty"></div>
-        </section>
-
-        <section id="graph-view" class="view utility-view" hidden aria-hidden="true">
-          <div class="graph-shell">
-            <div class="graph-header">
-              <div>
-                <h3>Vault graph</h3>
-                <p>Compatibility surface for graph interactions.</p>
-              </div>
-              <div id="graph-selection" class="graph-selection" hidden>
-                <span id="graph-selection-meta">Node</span>
-                <strong id="graph-selection-title">No node selected</strong>
-                <button id="graph-open-node-btn" type="button">Open</button>
-              </div>
-            </div>
-            <div class="graph-wrap">
-              <svg id="graph-svg" viewBox="0 0 980 560"></svg>
-            </div>
-          </div>
-        </section>
-
-        <section id="llm-view" class="view utility-view" hidden aria-hidden="true">
-          <textarea id="llm-input" class="llm-input" spellcheck="false"></textarea>
-          <button id="parse-llm-btn">Parse files</button>
-          <button id="repair-llm-btn" disabled>Copy repair prompt</button>
-          <button id="accept-llm-btn" class="primary" disabled>Accept wiki</button>
-          <div id="llm-status" class="status-line">No LLM output parsed yet.</div>
-          <div id="review-questions" class="review-list empty"></div>
-          <textarea id="review-reply" class="review-reply" spellcheck="true"></textarea>
-          <button id="review-response-btn" disabled>Copy review response prompt</button>
-          <div id="llm-file-list" class="tree-list empty"></div>
-          <div id="llm-preview-title" class="doc-title">No LLM file selected</div>
-          <pre id="llm-preview-body" class="doc-body"></pre>
-        </section>
-
-        <section id="ops-view" class="view utility-view" hidden aria-hidden="true">
-          <pre id="operator-manual" class="doc-body"></pre>
-          <pre id="query-cookbook" class="doc-body"></pre>
-          <div id="commands-list" class="mini-list"></div>
-          <div id="agents-list" class="mini-list"></div>
-          <div id="edit-list" class="edit-list empty"></div>
-        </section>
-      </div>
-
-      <!-- chat bar -->
-      <div class="chatbar">
-        <span class="hint">⌘K</span>
-        <input id="vault-search" type="search" placeholder="Ask Margins anything about your stuff…" autocomplete="off">
-        <button class="send" type="button" aria-label="send">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="13 6 19 12 13 18"/></svg>
-        </button>
-      </div>
-    </main>
-
-    <!-- entity panel -->
-    <div class="scrim" id="scrim"></div>
-    <aside class="entity-panel" id="entityPanel">
-      <button class="close" id="entityClose">✕</button>
-      <span class="entity-tag">Person</span>
-      <div class="entity-name" id="entityName">Bob Casey</div>
-      <div style="font-size:13.5px;color:var(--ink-3);">Founder, Riviera (Chicago) · Booth professor · IGSB-legacy SBM</div>
-
-      <div class="entity-section">
-        <h4>Snapshot</h4>
-        <ul class="entity-snap">
-          <li><strong>Status:</strong> Riviera closed-out 5/3. Stay-in-touch relationship; not waiting on anything.</li>
-          <li><strong>Last interaction:</strong> Email 5/3 — acknowledged gracious decline.</li>
-          <li><strong>Next move:</strong> No action. Casual quarterly check-in cadence.</li>
-          <li><strong>Watch:</strong> Don't surface Margins to Bob until equity terms resolved (settled now, but stale rule retained for safety).</li>
-        </ul>
-      </div>
-
-      <div class="entity-section">
-        <h4>Recent in your brain</h4>
-        <div class="entity-source-row">
-          <span>Bob Casey — re: Riviera follow-up</span>
-          <span class="when">2d ago</span>
         </div>
-        <div class="entity-source-row">
-          <span>5/2 reply — gracious decline draft</span>
-          <span class="when">3d ago</span>
-        </div>
-        <div class="entity-source-row">
-          <span>5/1 call — Bob slowed down (8w–8mo)</span>
-          <span class="when">4d ago</span>
-        </div>
-        <div class="entity-source-row">
-          <span>Bob's founding-team offer — original framing</span>
-          <span class="when">3w ago</span>
-        </div>
-      </div>
+      </section>
 
-      <button class="entity-ask">Ask Margins about Bob Casey →</button>
-    </aside>
-  </div>
-
-  <!-- Settings drawer (gear button → open) -->
-  <div class="settings-scrim" id="settings-scrim"></div>
-  <aside class="settings-drawer" id="settings-drawer" aria-hidden="true">
-    <div class="settings-header">
-      <h3>Settings</h3>
-      <button class="close" id="settings-close-btn" type="button">✕</button>
-    </div>
-
-    <div class="settings-body">
-      <div class="settings-section">
+      <details class="rail-section advanced-panel">
+        <summary>Advanced</summary>
         <div class="section-kicker">API</div>
         <select id="api-provider" class="select-control" aria-label="API provider">
           <option value="gemini" selected>Gemini</option>
@@ -658,29 +65,47 @@
           <button id="clear-api-key-btn">Clear</button>
         </div>
         <p id="api-key-status" class="status-line">Key is stored locally when configured.</p>
-      </div>
-
-      <div class="settings-section">
-        <div class="section-kicker">Spend guard</div>
-        <label class="api-guard-toggle">
-          <input id="api-guard-enabled" type="checkbox" checked>
-          <span>Enabled</span>
-        </label>
-        <div class="api-guard-grid">
-          <label><span>Requests</span><input id="api-max-requests" class="text-control" type="number" min="1" step="1" value="20"></label>
-          <label><span>Output tokens</span><input id="api-max-output-tokens" class="text-control" type="number" min="128" step="128" value="2048"></label>
-          <label><span>Session tokens</span><input id="api-max-session-tokens" class="text-control" type="number" min="1000" step="1000" value="250000"></label>
-          <label><span>Session $</span><input id="api-max-session-usd" class="text-control" type="number" min="0.01" step="0.01" value="1.00"></label>
-          <label><span>Delay sec</span><input id="api-min-request-delay" class="text-control" type="number" min="0" step="0.5" value="2"></label>
-          <label><span>10 sec cap</span><input id="api-max-window-requests" class="text-control" type="number" min="1" step="1" value="3"></label>
+        <div class="api-guard">
+          <label class="api-guard-toggle">
+            <input id="api-guard-enabled" type="checkbox" checked>
+            <span>Spend guard</span>
+          </label>
+          <div class="api-guard-grid">
+            <label>
+              <span>Requests</span>
+              <input id="api-max-requests" class="text-control" type="number" min="1" step="1" value="20">
+            </label>
+            <label>
+              <span>Output tokens</span>
+              <input id="api-max-output-tokens" class="text-control" type="number" min="128" step="128" value="2048">
+            </label>
+            <label>
+              <span>Session tokens</span>
+              <input id="api-max-session-tokens" class="text-control" type="number" min="1000" step="1000" value="250000">
+            </label>
+            <label>
+              <span>Session $</span>
+              <input id="api-max-session-usd" class="text-control" type="number" min="0.01" step="0.01" value="1.00">
+            </label>
+            <label>
+              <span>Delay sec</span>
+              <input id="api-min-request-delay" class="text-control" type="number" min="0" step="0.5" value="2">
+            </label>
+            <label>
+              <span>10 sec cap</span>
+              <input id="api-max-window-requests" class="text-control" type="number" min="1" step="1" value="3">
+            </label>
+          </div>
+          <div class="rail-actions two">
+            <button id="reset-api-usage-btn" type="button">Reset usage</button>
+          </div>
+          <p id="api-guard-status" class="status-line">Local session usage: $0.00.</p>
         </div>
-        <div class="rail-actions two">
-          <button id="reset-api-usage-btn" type="button">Reset usage</button>
-        </div>
-        <p id="api-guard-status" class="status-line">Local session usage: $0.00.</p>
-      </div>
-
-      <div class="settings-section">
+        <button id="extract-btn" disabled>Extract PDF text</button>
+        <button id="compile-btn" disabled>Local compile</button>
+        <button id="llm-btn" disabled>Copy LLM ingest prompt</button>
+        <button id="export-btn" disabled>Download vault JSON</button>
+        <button id="copy-btn" disabled>Copy operator manual</button>
         <div class="section-kicker">Review</div>
         <select id="review-mode" class="select-control">
           <option value="suggested" selected>Suggested review</option>
@@ -688,28 +113,173 @@
           <option value="strict">Strict review</option>
         </select>
         <p id="review-mode-help">Ask only about durable wiki decisions, with a recommended default.</p>
-      </div>
+      </details>
 
-      <div class="settings-section">
-        <div class="section-kicker">Tools</div>
-        <button id="extract-btn" disabled>Extract PDF text</button>
-        <button id="compile-btn" disabled>Local compile</button>
-        <button id="llm-btn" disabled>Copy LLM ingest prompt</button>
-        <button id="export-btn" disabled>Download vault JSON</button>
-        <button id="copy-btn" disabled>Copy operator manual</button>
-      </div>
+      <label class="theme-toggle" title="Switch color theme">
+        <input id="theme-toggle" type="checkbox">
+        <span id="theme-toggle-label">Light mode</span>
+      </label>
+    </aside>
 
-      <div class="settings-section">
-        <div class="section-kicker">Theme</div>
-        <label class="theme-toggle">
-          <input id="theme-toggle" type="checkbox">
-          <span id="theme-toggle-label">Light mode</span>
-        </label>
-      </div>
-    </div>
-  </aside>
+    <main class="workspace">
+      <nav class="tabs" aria-label="Primary views">
+        <button class="tab active" data-view="inbox">Inbox</button>
+        <button class="tab" data-view="wiki">Vault</button>
+        <button class="tab" data-view="graph">Graph</button>
+      </nav>
+
+      <section id="inbox-view" class="view active">
+        <div class="inbox-copy">
+          <h2>Inbox</h2>
+          <p>Drop a file, paste a transcript, or add a folder. Margins reads what comes in, asks only what it needs, and files it locally.</p>
+        </div>
+
+        <section id="source-drop-zone" class="source-drop-zone inbox-drop" role="button" tabindex="0" aria-label="Choose files or drag them into Margins">
+          <div class="drop-mark" aria-hidden="true"></div>
+          <h3>Drag and drop here</h3>
+          <p>or click to browse</p>
+          <div class="drop-formats">.txt · .md · .docx · .pdf · folders</div>
+          <div class="drop-actions">
+            <label class="file-picker primary-picker">
+              <input id="file-input" type="file" multiple>
+              <span>Choose files</span>
+            </label>
+            <label class="file-picker">
+              <input id="folder-input" type="file" webkitdirectory directory multiple>
+              <span>Choose folder</span>
+            </label>
+          </div>
+        </section>
+
+        <section id="queue-panel" class="queue-panel" hidden>
+          <div class="section-head">
+            <div>
+              <span class="section-kicker">Pending</span>
+              <h3>New documents</h3>
+            </div>
+            <button id="bulk-ingest-btn" class="bulk-ingest-btn" type="button" disabled>Bulk ingest</button>
+            <button id="save-vault-btn" class="primary shadow-action" disabled hidden>Process</button>
+          </div>
+          <div id="source-list" class="source-list empty">No new documents loaded.</div>
+        </section>
+
+        <section id="inline-review-panel" class="inline-review-panel" hidden>
+          <div class="section-head">
+            <div>
+              <span class="section-kicker">Quick check</span>
+              <h3>Before Margins files this</h3>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <section id="wiki-view" class="view">
+        <div class="split vault-workspace">
+          <div class="tree vault-navigator">
+            <div class="vault-panel-title">
+              <h3>Vault</h3>
+              <span id="vault-tree-count">0 files</span>
+            </div>
+            <div id="wiki-tree" class="tree-list empty">Open a vault to browse files.</div>
+          </div>
+          <article class="document vault-document">
+            <div id="doc-path" class="doc-path">Vault</div>
+            <div class="doc-toolbar">
+              <div class="doc-heading">
+                <div id="doc-title" class="doc-title">No file selected</div>
+                <div id="doc-meta" class="doc-meta">No file selected</div>
+              </div>
+              <button id="doc-save-btn" type="button" disabled>Save</button>
+            </div>
+            <div class="vault-editor-shell">
+              <pre id="doc-highlight" class="doc-highlight" aria-hidden="true"></pre>
+              <textarea id="doc-body" class="doc-body vault-editor" spellcheck="false">Open raw_sources or wiki, then choose a file.</textarea>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section id="graph-view" class="view">
+        <div class="graph-shell">
+          <div class="graph-header">
+            <div>
+              <h3>Knowledge graph</h3>
+              <p>Nodes and cited links generated from the current vault.</p>
+            </div>
+            <div id="graph-selection" class="graph-selection" hidden>
+              <span id="graph-selection-meta">Node</span>
+              <strong id="graph-selection-title">No node selected</strong>
+              <button id="graph-open-node-btn" type="button">Open</button>
+            </div>
+          </div>
+          <div class="graph-wrap">
+            <svg id="graph-svg" viewBox="0 0 980 560" role="img" aria-label="Generated wiki graph"></svg>
+          </div>
+        </div>
+      </section>
+
+      <section id="llm-view" class="view utility-view" hidden>
+        <div id="review-view" class="review-layout">
+          <article class="review-compose">
+            <div class="section-head">
+              <div>
+                <span class="section-kicker">Model return</span>
+                <h3>Review incoming files</h3>
+              </div>
+            </div>
+            <textarea id="llm-input" class="llm-input" spellcheck="false" placeholder="Paste model output here. Expected format: fenced blocks starting with ```margins-file path=&quot;wiki/sources/source-example.md&quot;."></textarea>
+            <div class="button-row">
+              <button id="parse-llm-btn">Parse files</button>
+              <button id="repair-llm-btn" disabled>Copy repair prompt</button>
+              <button id="accept-llm-btn" class="primary" disabled>Accept wiki</button>
+            </div>
+            <div id="llm-status" class="status-line">No LLM output parsed yet.</div>
+            <div class="quick-review">
+              <div id="review-questions" class="review-list empty">Parse LLM output to see material review questions.</div>
+              <textarea id="review-reply" class="review-reply" spellcheck="true" placeholder="Answer quickly: yes, no, accept defaults, or add a short correction."></textarea>
+              <button id="review-response-btn" disabled>Copy review response prompt</button>
+            </div>
+          </article>
+
+          <div class="tree parsed-tree">
+            <h3>Returned files</h3>
+            <div id="llm-file-list" class="tree-list empty">Paste output and parse to review files.</div>
+          </div>
+
+          <article class="document preview-document">
+            <div id="llm-preview-title" class="doc-title">No LLM file selected</div>
+            <pre id="llm-preview-body" class="doc-body">Paste model output, then click Parse files.</pre>
+          </article>
+        </div>
+      </section>
+
+      <section id="ops-view" class="view utility-view" hidden>
+        <div class="ops-grid">
+          <article>
+            <h3>operator-manual.md</h3>
+            <pre id="operator-manual" class="doc-body"></pre>
+          </article>
+          <article>
+            <h3>query-cookbook.md</h3>
+            <pre id="query-cookbook" class="doc-body"></pre>
+          </article>
+          <article>
+            <h3>commands/</h3>
+            <div id="commands-list" class="mini-list"></div>
+          </article>
+          <article>
+            <h3>agents/</h3>
+            <div id="agents-list" class="mini-list"></div>
+          </article>
+          <article class="edit-proposals">
+            <h3>Edit proposals</h3>
+            <div id="edit-list" class="edit-list empty">Compile sources to generate edit proposals.</div>
+          </article>
+        </div>
+      </section>
+    </main>
+  </div>
 
   <script type="module" src="src/app.js"></script>
-  <script type="module" src="src/demo.js"></script>
 </body>
 </html>
