@@ -110,7 +110,7 @@ test("approve files the selected processed source", {
     assert.doesNotMatch(pendingText, /script\/build\.py/);
     assert.match(pendingText, /pending-word\.docx/);
     assert.match(pendingText, /pending-statement\.pdf/);
-    assert.equal(await page.locator(".tab.active").innerText(), "Inbox");
+    assert.equal(await page.locator(".tab.active").innerText(), "Activity");
     assert.equal(await page.locator("#inbox-view").evaluate((node) => node.classList.contains("active")), true);
   } finally {
     await browser.close();
