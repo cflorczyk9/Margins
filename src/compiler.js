@@ -113,7 +113,7 @@ export function compileVault(files, options = {}) {
       requires_secrets: false
     },
     paths: {
-      raw_sources: "raw_sources/",
+      raw_sources: "raw/",
       wiki: "wiki/",
       root_instructions: "CLAUDE.md",
       ingest_tracker: "wiki/ingest-tracker.md",
@@ -137,7 +137,7 @@ export function compileVault(files, options = {}) {
     },
     raw_sources: normalized.map((file) => ({
       id: file.id,
-      path: `raw_sources/${file.name}`,
+      path: `raw/${file.name}`,
       words: file.wordCount,
       unsupported: file.unsupported
     })),
@@ -246,12 +246,12 @@ created: ${today}
 updated: ${today}
 event_date: ${today}
 voice: claude-draft
-raw_file: raw_sources/${file.name}
+raw_file: raw/${file.name}
 ---
 
 # Source: ${title}
 
-Raw file: \`raw_sources/${file.name}\`
+Raw file: \`raw/${file.name}\`
 
 ## Summary
 
@@ -545,7 +545,7 @@ function buildIngestTracker({ today, files, sourceNodes, conceptNodes, entityNod
     const notes = raw.unsupported
       ? "Original preserved; add text extraction before relying on summary."
       : "Source page generated from extracted text.";
-    return `| ${tableCell(`raw_sources/${raw.name}`)} | ${status} | [[${source.slug}]] | ${connected.map((node) => `[[${node.slug}]]`).join(", ") || "-"} | ${raw.wordCount} | ${tableCell(notes)} |`;
+    return `| ${tableCell(`raw/${raw.name}`)} | ${status} | [[${source.slug}]] | ${connected.map((node) => `[[${node.slug}]]`).join(", ") || "-"} | ${raw.wordCount} | ${tableCell(notes)} |`;
   }).join("\n");
 
   return `---
@@ -655,7 +655,7 @@ Generated: ${today}
 
 ## Fattest Raw Sources
 
-${fattest.map((file) => `- \`raw_sources/${file.name}\` — ${file.wordCount} words${file.unsupported ? " (needs extraction)" : ""}`).join("\n") || "- _(none)_"}
+${fattest.map((file) => `- \`raw/${file.name}\` — ${file.wordCount} words${file.unsupported ? " (needs extraction)" : ""}`).join("\n") || "- _(none)_"}
 
 ## Maintenance Checks
 
@@ -745,7 +745,7 @@ raw_file:
 
 # Source: Title
 
-Raw file: \`raw_sources/example.md\`
+Raw file: \`raw/example.md\`
 
 ## Summary
 
@@ -960,7 +960,7 @@ Maintain an LLM-operable wiki from raw sources. Preserve evidence, create useful
 
 ## Rules
 
-1. Raw sources are evidence. Never mutate \`raw_sources/\`.
+1. Raw sources are evidence. Never mutate \`raw/\`.
 2. The wiki is the compounding layer. Source, concept, entity, synthesis, tracker, log, stats, and bucket overview pages can evolve.
 3. Cite or label. Every factual claim must cite a source node or be marked as synthesis.
 4. Ask before inferring roles, motives, relationships, numbers, dates, or next moves.
@@ -1132,7 +1132,7 @@ Compiler: local heuristic
 
 ## Files Created
 
-${sourceNodes.map((source) => `- wiki/sources/${source.slug}.md from raw_sources/${source.rawFile}`).join("\n") || "- _(none)_"}
+${sourceNodes.map((source) => `- wiki/sources/${source.slug}.md from raw/${source.rawFile}`).join("\n") || "- _(none)_"}
 
 ## Candidate Concepts
 
@@ -1159,8 +1159,8 @@ ${[
 ## Needs Review
 
 ${[
-  ...unsupported.map((file) => `- Extract text from raw_sources/${file.name} before relying on its summary.`),
-  ...lowText.map((file) => `- Add more text to raw_sources/${file.name}; only ${file.wordCount} words were available.`),
+  ...unsupported.map((file) => `- Extract text from raw/${file.name} before relying on its summary.`),
+  ...lowText.map((file) => `- Add more text to raw/${file.name}; only ${file.wordCount} words were available.`),
   ...(editProposals.length > 0 ? [`- Review ${editProposals.length} proposed edit${editProposals.length === 1 ? "" : "s"} in wiki/.margins/edit-log.jsonl.`] : [])
 ].join("\n") || "- No immediate review flags."}
 `;
