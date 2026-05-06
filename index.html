@@ -181,8 +181,17 @@
           <div class="page-head">
             <div>
               <h2>Entities</h2>
-              <div class="meta-row">People, projects, companies, and ideas from the connected vault.</div>
+              <div id="entity-meta" class="meta-row">People, projects, companies, and ideas from the connected vault.</div>
             </div>
+          </div>
+          <div id="entity-controls" class="entity-controls" hidden>
+            <label class="entity-search">
+              <span aria-hidden="true"></span>
+              <input id="entity-search" type="search" placeholder="Find a person, project, idea..." autocomplete="off">
+              <kbd>⌘F</kbd>
+            </label>
+            <div id="entity-type-filters" class="entity-chip-row" aria-label="Entity type filters"></div>
+            <div id="entity-tag-filters" class="entity-chip-row entity-tag-row" aria-label="Popular wiki tag filters"></div>
           </div>
           <section id="entity-browser" class="entity-empty-state">
             <div class="empty-icon" aria-hidden="true"></div>
