@@ -158,12 +158,22 @@
           <div class="section-head">
             <div>
               <span class="section-kicker">Pending</span>
-              <h3>New documents</h3>
+              <h3>Raw sources not ingested</h3>
             </div>
             <button id="bulk-ingest-btn" class="bulk-ingest-btn" type="button" disabled>Bulk ingest</button>
             <button id="save-vault-btn" class="primary shadow-action" disabled hidden>Process</button>
           </div>
-          <div id="source-list" class="source-list empty">No new documents loaded.</div>
+          <div id="source-list" class="source-list empty">No pending raw sources.</div>
+        </section>
+
+        <section id="recent-activity-panel" class="recent-activity-panel">
+          <div class="section-head">
+            <div>
+              <span class="section-kicker">Recent</span>
+              <h3>Recent activity</h3>
+            </div>
+          </div>
+          <div id="recent-activity-list" class="activity-card-wall empty">Open a vault to see recently ingested source notes.</div>
         </section>
 
         <section id="inline-review-panel" class="inline-review-panel" hidden>
@@ -235,7 +245,7 @@
             </div>
             <div class="vault-editor-shell">
               <pre id="doc-highlight" class="doc-highlight" aria-hidden="true"></pre>
-              <textarea id="doc-body" class="doc-body vault-editor" spellcheck="false">Open raw_sources or wiki, then choose a file.</textarea>
+              <textarea id="doc-body" class="doc-body vault-editor" spellcheck="false">Open raw or wiki, then choose a file.</textarea>
             </div>
           </article>
         </div>

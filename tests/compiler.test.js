@@ -36,7 +36,7 @@ test("vaultToFiles emits V1 metadata only under wiki/.margins", () => {
   assert.match(files.get("CLAUDE.md"), /Closed-Set Operation Vocabulary/);
   assert.match(files.get("CLAUDE.md"), /ingest \| query \| compile \| lint \| update/);
   assert.match(files.get("CLAUDE.md"), /wiki\/ingest-tracker\.md/);
-  assert.match(files.get("wiki/ingest-tracker.md"), /raw_sources\/note\.md/);
+  assert.match(files.get("wiki/ingest-tracker.md"), /raw\/note\.md/);
   assert.match(files.get("wiki/ingest-tracker.md"), /\[\[source-note\]\]/);
   assert.match(files.get("wiki/log.md"), /Allowed ops: ingest \| query \| compile \| lint \| update/);
   assert.match(files.get("wiki/log.md"), /## \[2026-05-05\] ingest/);
@@ -120,7 +120,7 @@ test("sample compile creates useful V1 output without generic sample candidates"
     assert.match(claudeMd, /voice: claude-draft/);
 
     const tracker = await readFile(join(outputDir, "wiki/ingest-tracker.md"), "utf8");
-    assert.match(tracker, /raw_sources\/margins-product-call\.txt/);
+    assert.match(tracker, /raw\/margins-product-call\.txt/);
     assert.match(tracker, /\| ingested \|/);
 
     const log = await readFile(join(outputDir, "wiki/log.md"), "utf8");
