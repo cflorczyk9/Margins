@@ -11,6 +11,7 @@ const statusEl  = document.getElementById('streamStatus');
 const actions   = document.getElementById('streamActions');
 const wall      = document.getElementById('wall');
 const activityEmpty = document.getElementById('activity-empty');
+const tagRail = document.getElementById('tag-rail');
 
 function htmlEscape(value) {
   return String(value ?? '')
@@ -28,8 +29,52 @@ function iconClass(type = '') {
   return 'txt';
 }
 
+function tagLabel(tag) {
+  return typeof tag === 'string' ? tag : tag?.label || tag?.title || '';
+}
+
+function tagCount(tag) {
+  return typeof tag === 'object' && tag ? Number(tag.count || 0) : 0;
+}
+
+function connectionLabel(source) {
+  return typeof source === 'string' ? source : source?.title || source?.label || source?.path || '';
+}
+
+function aggregateTags(items = []) {
+  const counts = new Map();
+  items.forEach(item => {
+    (item.tags || []).forEach(tag => {
+      const label = tagLabel(tag).trim();
+      if (!label) return;
+      counts.set(label, (counts.get(label) || 0) + 1);
+    });
+  });
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 9)
+    .map(([label, count]) => ({ label, count }));
+}
+
+function renderTagRail(tags = []) {
+  if (!tagRail) return;
+  const visibleTags = tags
+    .map(tag => ({ label: tagLabel(tag).trim(), count: tagCount(tag) }))
+    .filter(tag => tag.label)
+    .slice(0, 9);
+  tagRail.innerHTML = visibleTags.map(tag => `
+    <button type="button">
+      ${htmlEscape(tag.label)}
+      ${tag.count ? `<span>${htmlEscape(tag.count)}</span>` : ''}
+    </button>
+  `).join('');
+  bindActivityCards(tagRail);
+}
+
 function renderActivityCard(item) {
-  const tags = (item.tags || []).filter(Boolean).slice(0, 6);
+  const tags = (item.tags || []).map(tagLabel).filter(Boolean).slice(0, 6);
+  const connections = (item.connectedSources || []).map(connectionLabel).filter(Boolean).slice(0, 4);
+  const connectedCount = Number(item.connectedCount || connections.length || 0);
   const status = item.statusLabel || (item.isPending ? 'Pending review' : 'Filed source');
   const action = item.actionLabel && item.fileName ? `
     <button class="card-action" type="button" data-source-action="process" data-source-file="${htmlEscape(item.fileName)}" ${item.actionDisabled ? 'disabled' : ''}>
@@ -50,8 +95,15 @@ function renderActivityCard(item) {
           ${tags.map(tag => `<span class="pill">${htmlEscape(tag)}</span>`).join('')}
         </div>
       ` : ''}
+      ${connections.length ? `
+        <div class="card-connections">
+          <span>Connected sources</span>
+          ${connections.map(source => `<button type="button">${htmlEscape(source)}</button>`).join('')}
+        </div>
+      ` : ''}
       <div class="card-foot">
         <span class="stat">${htmlEscape(status)}</span>
+        ${connectedCount ? `<span class="stat">Connected to <strong>${htmlEscape(connectedCount)}</strong> sources</span>` : ''}
       </div>
       ${action}
     </div>
@@ -61,6 +113,7 @@ function renderActivityCard(item) {
 function renderActivity(payload = {}) {
   if (!wall) return;
   const items = Array.isArray(payload.items) ? payload.items : [];
+  renderTagRail(Array.isArray(payload.tags) ? payload.tags : aggregateTags(items));
   if (items.length === 0) {
     wall.innerHTML = '';
     if (activityEmpty) activityEmpty.removeAttribute('hidden');
@@ -216,6 +269,14 @@ function bindActivityCards(root = document) {
     item.dataset.activityBound = 'true';
     item.addEventListener('click', (event) => {
       if (item.matches('[data-source-action]')) return;
+      event.stopPropagation();
+      openEntity(item.textContent.replace(/\s+\d+$/, '').trim());
+    });
+  });
+  root.querySelectorAll?.('.demo-shell .card-connections button, .card-connections button, .demo-shell .tag-rail button, .tag-rail button').forEach(item => {
+    if (item.dataset.activityBound === 'true') return;
+    item.dataset.activityBound = 'true';
+    item.addEventListener('click', (event) => {
       event.stopPropagation();
       openEntity(item.textContent.replace(/\s+\d+$/, '').trim());
     });

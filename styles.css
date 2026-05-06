@@ -5748,6 +5748,26 @@ pre.doc-body,
   --ease-soft: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+[data-theme="dark"] .demo-shell {
+  --bg: #17130f;
+  --surface: #211c17;
+  --surface-2: #2a241e;
+  --border: #3d342a;
+  --border-strong: #5b4d3f;
+  --ink: #f6efe5;
+  --ink-2: #d6c8b7;
+  --ink-3: #a99a86;
+  --accent: #d97a4f;
+  --accent-soft: rgba(217, 122, 79, 0.14);
+  --accent-softer: rgba(217, 122, 79, 0.07);
+  --accent-line: rgba(217, 122, 79, 0.28);
+  --paper: var(--surface);
+  --paper-soft: var(--surface-2);
+  --graph-surface: var(--surface);
+  --graph-canvas: var(--surface-2);
+  --graph-header: var(--surface);
+}
+
 .demo-shell, .demo-shell * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
 body {
@@ -6217,7 +6237,10 @@ body {
   text-transform: uppercase;
 }
 .demo-shell .card-connections button {
+  width: auto;
+  max-width: min(220px, 100%);
   min-height: 24px;
+  margin-top: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
   background: var(--surface-2);
@@ -6226,6 +6249,9 @@ body {
   font-size: 12px;
   font-weight: 500;
   padding: 2px 9px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   cursor: pointer;
 }
 .demo-shell .card-connections button:hover {
@@ -7060,8 +7086,10 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  width: auto;
   max-width: 100%;
   min-height: 26px;
+  margin-top: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
   background: var(--surface);
