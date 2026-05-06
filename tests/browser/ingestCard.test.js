@@ -1263,6 +1263,41 @@ test("recently active entities page in batches of twelve", {
   }
 });
 
+test("entity card pin controls write priority metadata to the vault", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => window.__marginsTest.seedEntityPinningVault());
+    await page.getByRole("button", { name: "Entities" }).click();
+
+    const pinTarget = page.locator(".entity-card", { hasText: "Pin Target" });
+    await pinTarget.getByRole("button", { name: "Pin Pin Target" }).click();
+    await page.waitForFunction(() => document.querySelector('[data-entity-section="pinned"]')?.innerText.includes("Pin Target"));
+
+    let body = await page.evaluate(() => window.__marginsTest.readVaultText("wiki/entities/pin-target.md"));
+    assert.match(body, /^priority:\s*pinned$/m);
+    assert.match(await page.locator('[data-entity-section="pinned"]').innerText(), /Pin Target/);
+    assert.equal(await page.locator('[data-entity-section="recent"] .entity-card', { hasText: "Pin Target" }).count(), 0);
+
+    const pinnedTarget = page.locator(".entity-card", { hasText: "Pinned Target" });
+    await pinnedTarget.getByRole("button", { name: "Unpin Pinned Target" }).click();
+    await page.waitForFunction(() => document.querySelector('[data-entity-section="recent"]')?.innerText.includes("Pinned Target"));
+
+    body = await page.evaluate(() => window.__marginsTest.readVaultText("wiki/entities/pinned-target.md"));
+    assert.doesNotMatch(body, /^priority:\s*pinned$/m);
+    assert.match(await page.locator('[data-entity-section="recent"]').innerText(), /Pinned Target/);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
 test("entities filters keep broad wiki-folder vaults loaded", {
   skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
 }, async () => {
