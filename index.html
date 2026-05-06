@@ -9,21 +9,25 @@
 </head>
 <body>
   <div class="app-shell">
-    <header class="app-header">
+    <aside class="sidebar">
+      <div class="sidebar-brand">
       <div class="brand-lockup">
         <div class="mark" aria-hidden="true"></div>
         <h1>margins</h1>
       </div>
-      <label class="vault-search">
-        <span aria-hidden="true"></span>
-        <input id="vault-search" type="search" placeholder="Search your vault..." autocomplete="off">
-      </label>
-      <div class="header-actions">
-        <div id="stats" class="stats">0 sources · 0 nodes · 0 edges</div>
       </div>
-    </header>
 
-    <aside class="sidebar">
+      <nav class="tabs" aria-label="Primary views">
+        <button class="tab active" data-view="inbox">Inbox</button>
+        <button class="tab" data-view="wiki">Vault</button>
+        <button class="tab" data-view="graph">Graph</button>
+      </nav>
+
+      <div class="sidebar-note">
+        <strong>Plain files underneath.</strong>
+        <span>Everything writes back to a local markdown vault you can open in Obsidian.</span>
+      </div>
+
       <section class="rail-section vault-card">
         <div class="section-kicker">Vault</div>
         <p id="vault-status" class="vault-status">No local vault connected.</p>
@@ -122,22 +126,30 @@
     </aside>
 
     <main class="workspace">
-      <nav class="tabs" aria-label="Primary views">
-        <button class="tab active" data-view="inbox">Inbox</button>
-        <button class="tab" data-view="wiki">Vault</button>
-        <button class="tab" data-view="graph">Graph</button>
-      </nav>
+      <header class="app-header">
+        <div class="workspace-title">
+          <h2>Today</h2>
+          <p>Upload, review, and file sources into your local vault.</p>
+        </div>
+      <label class="vault-search">
+        <span aria-hidden="true"></span>
+        <input id="vault-search" type="search" placeholder="Search your vault..." autocomplete="off">
+      </label>
+      <div class="header-actions">
+        <div id="stats" class="stats">0 sources · 0 nodes · 0 edges</div>
+      </div>
+    </header>
 
       <section id="inbox-view" class="view active">
         <div class="inbox-copy">
-          <h2>Inbox</h2>
-          <p>Drop a file, paste a transcript, or add a folder. Margins reads what comes in, asks only what it needs, and files it locally.</p>
+          <h2>What changed in your vault today?</h2>
+          <p>Drop a file, paste a transcript, or add a folder. Margins turns it into a reviewable source card, asks only what it needs, and files it locally.</p>
         </div>
 
         <section id="source-drop-zone" class="source-drop-zone inbox-drop" role="button" tabindex="0" aria-label="Choose files or drag them into Margins">
           <div class="drop-mark" aria-hidden="true"></div>
           <h3>Drag and drop here</h3>
-          <p>or click to browse</p>
+          <p>or click to browse. Margins will preserve the raw file and show every proposed update.</p>
           <div class="drop-formats">.txt · .md · .docx · .pdf · folders</div>
           <div class="drop-actions">
             <label class="file-picker primary-picker">
