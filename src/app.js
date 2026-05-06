@@ -51,7 +51,8 @@ const state = {
   expandedSummaries: new Set(),
   entityQuery: "",
   entityFilterKind: "all",
-  entityFilterValue: ""
+  entityFilterValue: "",
+  entityFileMap: null
 };
 
 const apiThrottle = {
@@ -208,7 +209,7 @@ els.vaultSearch?.addEventListener("input", () => {
 });
 els.entitySearch?.addEventListener("input", () => {
   state.entityQuery = els.entitySearch.value;
-  renderEntities(state.currentFileMap || new Map());
+  renderEntities(activeEntityFileMap());
 });
 els.entityTypeFilters?.addEventListener("click", handleEntityFilterClick);
 els.entityTagFilters?.addEventListener("click", handleEntityFilterClick);
@@ -837,6 +838,7 @@ function clearLoadedWiki() {
   state.llmFiles = new Map();
   state.llmSelectedPath = null;
   state.currentMaterialQuestions = [];
+  state.entityFileMap = null;
   state.hasSavedCurrent = false;
   state.hasUnsavedEdits = false;
   state.pendingSave = false;
@@ -854,7 +856,19 @@ function clearLoadedWiki() {
 }
 
 function hasVaultWikiContent(fileMap) {
-  return [...fileMap.keys()].some((path) => /^wiki\/(sources|concepts|entities|synthesis)\/[^/]+\.md$/.test(path));
+  return [...fileMap.entries()].some(([path, body]) => (
+    isContextWikiPagePath(path) &&
+    !isFolderIndexPath(path) &&
+    !isSourceOnlyWikiPage(path, body)
+  ));
+}
+
+function isSourceOnlyWikiPage(path, body) {
+  if (path === "wiki/index.md" || /^wiki\/(ingest-tracker|log|wiki-stats)\.md$/.test(path)) return true;
+  if (path.startsWith("wiki/sources/") || /^wiki\/[^/]+\/source[-/]/.test(path)) return true;
+  if (isBucketOverviewPath(path)) return true;
+  const type = String(frontmatterFields(body).type || "").toLowerCase();
+  return ["source", "log", "index", "template"].includes(type);
 }
 
 async function handleSaveAndOrganize() {
@@ -4573,6 +4587,49 @@ summary: Source page that should not render as an entity card.
       renderWikiFiles(state.currentFileMap);
       return document.querySelector("#entity-browser")?.innerText || "";
     },
+    async loadBroadWikiVault() {
+      const handle = createMemoryVaultHandle();
+      await writeTextFile(handle, "wiki/career/riviera.md", `---
+type: entity
+bucket: career
+summary: Career opportunity with product and founder context.
+tags: [build, riviera]
+updated: 2026-05-06
+---
+
+# Riviera
+
+Real career note outside the generated entity folders.
+`);
+      await writeTextFile(handle, "wiki/personal/bob-casey.md", `---
+type: entity
+bucket: personal
+summary: Founder relationship attached to the Riviera opportunity.
+tags:
+  - people
+  - riviera
+updated: 2026-05-04
+---
+
+# Bob Casey
+
+Person note that should stay loaded when an entity facet is clicked.
+`);
+      await writeTextFile(handle, "wiki/career/source-2026-05-01-bob-casey.md", `---
+type: source
+summary: Source note that should not render as an entity card.
+tags: [source, riviera]
+---
+
+# Source: Bob Casey
+`);
+      setActiveVault(handle, "Broad Wiki Vault");
+      await loadExistingVault(handle);
+      return {
+        currentFileCount: state.currentFileMap?.size || 0,
+        entityText: document.querySelector("#entity-browser")?.innerText || ""
+      };
+    },
     graphState() {
       const activeView = [...document.querySelectorAll(".view")]
         .find((view) => view.classList.contains("active"))?.id || "";
@@ -5296,6 +5353,7 @@ function renderVaultTree(fileMap = state.currentFileMap) {
 function renderEntities(fileMap = state.currentFileMap) {
   if (!els.entityBrowser) return;
   const records = entityRecordsFromFileMap(fileMap || new Map());
+  state.entityFileMap = records.length ? new Map(fileMap || []) : null;
   syncEntityFilter(records);
   renderEntitySummary(records);
   renderEntityFilters(records);
@@ -5414,7 +5472,11 @@ function handleEntityFilterClick(event) {
   state.entityFilterKind = button.dataset.entityFilterKind || "all";
   state.entityFilterValue = button.dataset.entityFilterValue || "";
   if (state.entityFilterKind === "all") state.entityFilterValue = "";
-  renderEntities(state.currentFileMap || new Map());
+  renderEntities(activeEntityFileMap());
+}
+
+function activeEntityFileMap() {
+  return state.currentFileMap || state.entityFileMap || new Map();
 }
 
 function isEntityFilterActive(kind, value) {
