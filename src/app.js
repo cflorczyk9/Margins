@@ -13,6 +13,7 @@ const initialTheme = localStorage.getItem(STORAGE_KEYS.theme) || "light";
 document.documentElement.dataset.theme = initialTheme;
 let apiSecretHydrationPromise = null;
 const API_REQUEST_TIMEOUT_MS = 60_000;
+const ENTITY_RECENT_PAGE_SIZE = 12;
 let apiRequestTimeoutMs = API_REQUEST_TIMEOUT_MS;
 let activeOperation = "";
 
@@ -52,7 +53,9 @@ const state = {
   entityQuery: "",
   entityFilterKind: "all",
   entityFilterValue: "",
-  entityFileMap: null
+  entityFileMap: null,
+  entityRecentVisibleCount: ENTITY_RECENT_PAGE_SIZE,
+  entityRecentSourceKey: ""
 };
 
 const apiThrottle = {
@@ -209,10 +212,12 @@ els.vaultSearch?.addEventListener("input", () => {
 });
 els.entitySearch?.addEventListener("input", () => {
   state.entityQuery = els.entitySearch.value;
+  resetEntityRecentLimit();
   renderEntities(activeEntityFileMap());
 });
 els.entityTypeFilters?.addEventListener("click", handleEntityFilterClick);
 els.entityTagFilters?.addEventListener("click", handleEntityFilterClick);
+els.entityBrowser?.addEventListener("click", handleEntityBrowserActionClick);
 document.addEventListener("keydown", (event) => {
   const activeEntities = document.getElementById("entities-view")?.classList.contains("active");
   if (!activeEntities || !els.entitySearch || els.entityControls?.hidden) return;
@@ -4629,6 +4634,61 @@ ${summary}
       renderWikiFiles(state.currentFileMap);
       return document.querySelector("#entity-controls")?.innerText || "";
     },
+    seedManyRecentEntities() {
+      const pinned = [
+        ["wiki/people/pinned-one.md", "Pinned One", "Pinned relationship one."],
+        ["wiki/projects/pinned-two.md", "Pinned Two", "Pinned project two."]
+      ];
+      const recent = Array.from({ length: 30 }, (_, index) => {
+        const number = String(index + 1).padStart(2, "0");
+        return [
+          `wiki/entities/recent-entity-${number}.md`,
+          `Recent Entity ${number}`,
+          `Recent entity ${number} summary.`,
+          `2026-05-${number}`
+        ];
+      });
+      state.currentFileMap = new Map([
+        ["wiki/index.md", `---
+type: index
+summary: Many recent entity test index.
+---
+
+# Index
+`],
+        ...pinned.map(([path, title, summary], index) => [path, `---
+type: entity
+summary: ${summary}
+tags: [person]
+priority: pinned
+updated: 2026-05-0${index + 1}
+---
+
+# ${title}
+
+${summary}
+`]),
+        ...recent.map(([path, title, summary, updated]) => [path, `---
+type: entity
+summary: ${summary}
+tags: [company]
+updated: ${updated}
+---
+
+# ${title}
+
+${summary}
+`])
+      ]);
+      state.entityFilterKind = "all";
+      state.entityFilterValue = "";
+      state.entityQuery = "";
+      resetEntityRecentLimit();
+      state.selectedPath = null;
+      renderVaultTree(state.currentFileMap);
+      renderWikiFiles(state.currentFileMap);
+      return document.querySelector("#entity-browser")?.innerText || "";
+    },
     async loadBroadWikiVault() {
       const handle = createMemoryVaultHandle();
       await writeTextFile(handle, "wiki/career/riviera.md", `---
@@ -5443,6 +5503,7 @@ function renderEntities(fileMap = state.currentFileMap) {
   if (!els.entityBrowser) return;
   const records = entityRecordsFromFileMap(fileMap || new Map());
   state.entityFileMap = records.length ? new Map(fileMap || []) : null;
+  syncEntityRecentSource(records);
   syncEntityFilter(records);
   renderEntitySummary(records);
   renderEntityFilters(records);
@@ -5486,24 +5547,55 @@ function renderEntitySections(records) {
   const filtered = query || state.entityFilterKind !== "all";
   if (filtered) {
     return `
-      ${renderEntitySectionHead("Results", `${records.length} shown`)}
-      <div class="entity-grid">${records.map(renderEntityCard).join("")}</div>
+      <section class="entity-section" data-entity-section="results">
+        ${renderEntitySectionHead("Results", `${records.length} shown`)}
+        <div class="entity-grid">${records.map(renderEntityCard).join("")}</div>
+      </section>
     `;
   }
 
   const pinned = records.filter(entityHasPinnedSignal).slice(0, 6);
   const pinnedPaths = new Set(pinned.map((record) => record.path));
   const recent = records.filter((record) => !pinnedPaths.has(record.path));
+  const visibleRecentCount = visibleEntityRecentCount(recent.length);
+  const visibleRecent = recent.slice(0, visibleRecentCount);
   const sections = [];
   if (pinned.length) {
-    sections.push(renderEntitySectionHead("Pinned", "Manage ->"));
-    sections.push(`<div class="entity-grid">${pinned.map(renderEntityCard).join("")}</div>`);
+    sections.push(`
+      <section class="entity-section" data-entity-section="pinned">
+        ${renderEntitySectionHead("Pinned", "Manage ->")}
+        <div class="entity-grid">${pinned.map(renderEntityCard).join("")}</div>
+      </section>
+    `);
   }
   if (recent.length) {
-    sections.push(renderEntitySectionHead("Recently Active", `Show all ${records.length} ->`));
-    sections.push(`<div class="entity-grid">${recent.map(renderEntityCard).join("")}</div>`);
+    const actionLabel = recent.length > visibleRecentCount ? `${visibleRecentCount} of ${recent.length}` : "";
+    sections.push(`
+      <section class="entity-section" data-entity-section="recent">
+        ${renderEntitySectionHead("Recently Active", actionLabel)}
+        <div class="entity-grid">${visibleRecent.map(renderEntityCard).join("")}</div>
+        ${renderEntityRecentActions(visibleRecentCount, recent.length)}
+      </section>
+    `);
   }
   return sections.join("");
+}
+
+function renderEntityRecentActions(visibleCount, totalCount) {
+  if (visibleCount >= totalCount) return "";
+  const remaining = totalCount - visibleCount;
+  const nextCount = Math.min(ENTITY_RECENT_PAGE_SIZE, remaining);
+  const showMoreLabel = remaining > ENTITY_RECENT_PAGE_SIZE ? `Show ${nextCount} more` : `Show remaining ${remaining}`;
+  return `
+    <div class="entity-section-actions">
+      <button class="entity-list-button primary" type="button" data-entity-list-action="show-more-recent" data-entity-recent-total="${escapeHtml(String(totalCount))}">
+        ${escapeHtml(showMoreLabel)}
+      </button>
+      <button class="entity-list-button" type="button" data-entity-list-action="show-all-recent" data-entity-recent-total="${escapeHtml(String(totalCount))}">
+        Show all ${escapeHtml(String(totalCount))}
+      </button>
+    </div>
+  `;
 }
 
 function renderEntitySectionHead(title, action = "") {
@@ -5555,6 +5647,27 @@ function syncEntityFilter(records) {
   state.entityFilterValue = "";
 }
 
+function syncEntityRecentSource(records) {
+  const sourceKey = records.map((record) => record.path).join("\n");
+  if (sourceKey === state.entityRecentSourceKey) return;
+  state.entityRecentSourceKey = sourceKey;
+  resetEntityRecentLimit();
+}
+
+function resetEntityRecentLimit() {
+  state.entityRecentVisibleCount = ENTITY_RECENT_PAGE_SIZE;
+}
+
+function visibleEntityRecentCount(totalCount) {
+  if (totalCount <= ENTITY_RECENT_PAGE_SIZE) return totalCount;
+  const requested = Math.max(
+    ENTITY_RECENT_PAGE_SIZE,
+    Number(state.entityRecentVisibleCount) || ENTITY_RECENT_PAGE_SIZE
+  );
+  state.entityRecentVisibleCount = Math.min(requested, totalCount);
+  return state.entityRecentVisibleCount;
+}
+
 function renderEntityFilters(records) {
   if (els.entitySearch && els.entitySearch.value !== state.entityQuery) {
     els.entitySearch.value = state.entityQuery;
@@ -5591,6 +5704,24 @@ function handleEntityFilterClick(event) {
   state.entityFilterKind = button.dataset.entityFilterKind || "all";
   state.entityFilterValue = button.dataset.entityFilterValue || "";
   if (state.entityFilterKind === "all") state.entityFilterValue = "";
+  resetEntityRecentLimit();
+  renderEntities(activeEntityFileMap());
+}
+
+function handleEntityBrowserActionClick(event) {
+  const button = event.target.closest("[data-entity-list-action]");
+  if (!button) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const totalCount = Math.max(0, Number(button.dataset.entityRecentTotal) || 0);
+  if (button.dataset.entityListAction === "show-more-recent") {
+    state.entityRecentVisibleCount = Math.min(
+      totalCount,
+      Math.max(ENTITY_RECENT_PAGE_SIZE, state.entityRecentVisibleCount) + ENTITY_RECENT_PAGE_SIZE
+    );
+  } else if (button.dataset.entityListAction === "show-all-recent") {
+    state.entityRecentVisibleCount = totalCount;
+  }
   renderEntities(activeEntityFileMap());
 }
 

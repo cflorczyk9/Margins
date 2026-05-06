@@ -1222,6 +1222,47 @@ test("entity filter chips wrap as one continuous control set", {
   }
 });
 
+test("recently active entities page in batches of twelve", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => window.__marginsTest.seedManyRecentEntities());
+    await page.getByRole("button", { name: "Entities" }).click();
+    const recentSection = page.locator('[data-entity-section="recent"]');
+    await recentSection.waitFor();
+
+    assert.equal(await recentSection.locator(".entity-card").count(), 12);
+    let recentText = await recentSection.innerText();
+    assert.match(recentText, /12 of 30/);
+    assert.match(recentText, /Recent Entity 30/);
+    assert.doesNotMatch(recentText, /Recent Entity 18/);
+
+    await recentSection.getByRole("button", { name: "Show 12 more" }).click();
+    await page.waitForFunction(() => document.querySelectorAll('[data-entity-section="recent"] .entity-card').length === 24);
+    assert.equal(await recentSection.locator(".entity-card").count(), 24);
+    recentText = await recentSection.innerText();
+    assert.match(recentText, /24 of 30/);
+    assert.match(recentText, /Recent Entity 18/);
+    assert.doesNotMatch(recentText, /Recent Entity 06/);
+
+    await recentSection.getByRole("button", { name: "Show all 30" }).click();
+    await page.waitForFunction(() => document.querySelectorAll('[data-entity-section="recent"] .entity-card').length === 30);
+    assert.equal(await recentSection.locator(".entity-card").count(), 30);
+    recentText = await recentSection.innerText();
+    assert.match(recentText, /Recent Entity 01/);
+    assert.equal(await recentSection.locator(".entity-section-actions").count(), 0);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
 test("entities filters keep broad wiki-folder vaults loaded", {
   skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
 }, async () => {
