@@ -10,9 +10,7 @@ const lines     = document.getElementById('streamLines');
 const statusEl  = document.getElementById('streamStatus');
 const actions   = document.getElementById('streamActions');
 const wall      = document.getElementById('wall');
-const tagRail   = document.getElementById('tag-rail');
-const fallbackWallHtml = wall?.innerHTML || '';
-const fallbackTagRailHtml = tagRail?.innerHTML || '';
+const activityEmpty = document.getElementById('activity-empty');
 
 function htmlEscape(value) {
   return String(value ?? '')
@@ -20,41 +18,6 @@ function htmlEscape(value) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
-}
-
-function renderTagRail(tags = []) {
-  if (!tagRail) return;
-  const cleanTags = tags
-    .map(tag => typeof tag === 'string' ? { label: tag, count: 1 } : tag)
-    .filter(tag => tag?.label)
-    .slice(0, 9);
-
-  if (cleanTags.length === 0) {
-    tagRail.innerHTML = fallbackTagRailHtml;
-    return;
-  }
-
-  tagRail.innerHTML = cleanTags.map(tag => `
-    <button type="button">
-      ${htmlEscape(tag.label)}
-      <span>${htmlEscape(tag.count || 1)}</span>
-    </button>
-  `).join('');
-  bindActivityCards(tagRail);
-}
-
-function aggregateActivityTags(items = []) {
-  const counts = new Map();
-  items.forEach(item => {
-    (item.tags || []).forEach(tag => {
-      const label = String(tag || '').trim();
-      if (!label) return;
-      counts.set(label, (counts.get(label) || 0) + 1);
-    });
-  });
-  return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .map(([label, count]) => ({ label, count }));
 }
 
 function iconClass(type = '') {
@@ -67,8 +30,6 @@ function iconClass(type = '') {
 
 function renderActivityCard(item) {
   const tags = (item.tags || []).filter(Boolean).slice(0, 6);
-  const connected = (item.connectedSources || []).filter(Boolean).slice(0, 4);
-  const connectedCount = item.connectedCount ?? connected.length;
   const status = item.statusLabel || (item.isPending ? 'Pending review' : 'Filed source');
   const action = item.actionLabel && item.fileName ? `
     <button class="card-action" type="button" data-source-action="process" data-source-file="${htmlEscape(item.fileName)}" ${item.actionDisabled ? 'disabled' : ''}>
@@ -89,15 +50,8 @@ function renderActivityCard(item) {
           ${tags.map(tag => `<span class="pill">${htmlEscape(tag)}</span>`).join('')}
         </div>
       ` : ''}
-      ${connected.length ? `
-        <div class="card-connections">
-          <span>Connected sources</span>
-          ${connected.map(source => `<button type="button">${htmlEscape(source)}</button>`).join('')}
-        </div>
-      ` : ''}
       <div class="card-foot">
         <span class="stat">${htmlEscape(status)}</span>
-        <span class="stat">Connected to <strong>${htmlEscape(connectedCount)}</strong> source${connectedCount === 1 ? '' : 's'}</span>
       </div>
       ${action}
     </div>
@@ -108,24 +62,21 @@ function renderActivity(payload = {}) {
   if (!wall) return;
   const items = Array.isArray(payload.items) ? payload.items : [];
   if (items.length === 0) {
-    wall.innerHTML = fallbackWallHtml;
-    bindActivityCards(wall);
-    renderTagRail(payload.tags || []);
+    wall.innerHTML = '';
+    if (activityEmpty) activityEmpty.removeAttribute('hidden');
     return;
   }
-
+  if (activityEmpty) activityEmpty.setAttribute('hidden', '');
   wall.innerHTML = items.map(renderActivityCard).join('');
   bindActivityCards(wall);
-  renderTagRail(payload.tags || aggregateActivityTags(items));
 }
 
-globalThis.__marginsDemo = {
-  renderActivity,
-  renderTagRail
-};
+globalThis.__marginsDemo = { renderActivity };
 
 if (globalThis.__marginsActivityPayload) {
   renderActivity(globalThis.__marginsActivityPayload);
+} else {
+  renderActivity({ items: [] });
 }
 
 const steps = [
@@ -201,14 +152,8 @@ function landCard() {
         <span class="pill">Briefly</span>
         <span class="pill">pilot agreement</span>
       </div>
-      <div class="card-connections">
-        <span>Connected sources</span>
-        <button type="button">4/28 pilot draft</button>
-        <button type="button">Ellis 4/30 transcript</button>
-      </div>
       <div class="card-foot">
         <span class="stat"><strong>5</strong> entities updated · <span style="color:var(--accent);font-weight:600;">1 flagged</span></span>
-        <span class="stat">Connected to <strong>12</strong> sources</span>
       </div>`;
     wall.insertBefore(newCard, wall.firstChild);
     bindActivityCards(newCard);
@@ -266,7 +211,7 @@ function bindActivityCards(root = document) {
       openEntity(fromSlug || card.querySelector('.card-title')?.textContent.trim() || 'Bob Casey');
     });
   });
-  root.querySelectorAll?.('.demo-shell .pill, .pill, .card-connections button, .tag-rail button').forEach(item => {
+  root.querySelectorAll?.('.demo-shell .pill, .pill').forEach(item => {
     if (item.dataset.activityBound === 'true') return;
     item.dataset.activityBound = 'true';
     item.addEventListener('click', (event) => {
@@ -282,13 +227,42 @@ bindActivityCards(document);
 const discovery = document.querySelector('.demo-shell .discovery');
 if (discovery) discovery.addEventListener('click', () => openEntity('Bob Casey'));
 
-// pinned shortcuts in sidebar
-document.querySelectorAll('[data-pinned]').forEach(a => {
-  a.addEventListener('click', (e) => {
-    e.preventDefault();
-    openEntity(a.dataset.pinned);
+// -------- connect-vault gate ----------
+const appShell = document.querySelector('.app.demo-shell');
+const gateCreateBtn = document.getElementById('gate-create-btn');
+const gateOpenBtn = document.getElementById('gate-open-btn');
+const sidebarCreateBtn = document.getElementById('create-vault-btn');
+const sidebarOpenBtn = document.getElementById('open-vault-btn');
+const vaultStatusEl = document.getElementById('vault-status');
+
+function setNoVault(noVault) {
+  if (!appShell) return;
+  appShell.classList.toggle('no-vault', !!noVault);
+}
+// boot: vault unconnected until app.js says otherwise
+setNoVault(true);
+
+if (gateCreateBtn && sidebarCreateBtn) {
+  gateCreateBtn.addEventListener('click', () => sidebarCreateBtn.click());
+}
+if (gateOpenBtn && sidebarOpenBtn) {
+  gateOpenBtn.addEventListener('click', () => sidebarOpenBtn.click());
+}
+
+document.addEventListener('margins:vault-connected', () => setNoVault(false));
+document.addEventListener('margins:vault-disconnected', () => setNoVault(true));
+
+// vault-status text changes (e.g., remembered handle restored before module load) — fall back to text watch
+if (vaultStatusEl) {
+  const observer = new MutationObserver(() => {
+    const txt = vaultStatusEl.textContent.trim();
+    if (txt && !/^no vault/i.test(txt)) setNoVault(false);
   });
-});
+  observer.observe(vaultStatusEl, { childList: true, characterData: true, subtree: true });
+  // initial state check in case app.js already set status
+  const txt = vaultStatusEl.textContent.trim();
+  if (txt && !/^no vault/i.test(txt)) setNoVault(false);
+}
 
 // -------- view switching ----------
 const views = document.querySelectorAll('.demo-shell .view:not(.utility-view)');

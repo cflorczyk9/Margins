@@ -43,23 +43,6 @@
         </a>
       </nav>
 
-      <div class="nav-section-label" style="margin-top:22px;">Pinned</div>
-      <nav class="nav demo-nav" aria-label="Pinned entities">
-        <a data-pinned="Bob Casey"><span style="width:6px;height:6px;border-radius:50%;background:#b85c38;display:inline-block;"></span> Bob Casey</a>
-        <a data-pinned="Briefly"><span style="width:6px;height:6px;border-radius:50%;background:#5b7d57;display:inline-block;"></span> Briefly</a>
-        <a data-pinned="Ellis Rutili"><span style="width:6px;height:6px;border-radius:50%;background:#5a6390;display:inline-block;"></span> Ellis Rutili</a>
-        <a data-pinned="Margins v2"><span style="width:6px;height:6px;border-radius:50%;background:#8c5a96;display:inline-block;"></span> Margins v2</a>
-      </nav>
-
-      <div class="nav-section-label" style="margin-top:22px;">Tags</div>
-      <div id="tag-rail" class="tag-rail" aria-label="Current source tags">
-        <button type="button">Margins v2 <span>4</span></button>
-        <button type="button">Briefly <span>3</span></button>
-        <button type="button">strategic direction <span>2</span></button>
-        <button type="button">Bob Casey <span>2</span></button>
-        <button type="button">Centric WM <span>2</span></button>
-      </div>
-
       <div class="nav-spacer"></div>
 
       <div class="discovery">
@@ -74,14 +57,29 @@
     <main class="main">
       <div class="main-inner">
 
+        <!-- ============ CONNECT-VAULT GATE (shown when no vault) ============ -->
+        <section id="connect-gate" class="connect-gate">
+          <div class="connect-card">
+            <div class="connect-icon" aria-hidden="true">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            </div>
+            <h2>Connect a vault to begin</h2>
+            <p>Margins reads and writes plain markdown to a folder you choose. Open an existing vault or create a new one — your files stay on your machine.</p>
+            <div class="connect-actions">
+              <button id="gate-create-btn" type="button" class="primary">Create vault</button>
+              <button id="gate-open-btn" type="button">Open existing</button>
+            </div>
+          </div>
+        </section>
+
         <!-- ============ ACTIVITY VIEW ============ -->
         <section id="activity-view" class="view" data-view="activity">
           <div class="page-head">
             <div>
               <h1>Activity</h1>
-              <div class="meta-row">Tuesday, May 5 · 4 ingests this week · 23 entity updates</div>
+              <div class="meta-row" id="activity-meta">Drop a file to ingest your first source.</div>
             </div>
-            <div class="sub" id="stats">All sources</div>
+            <div class="sub" id="stats"></div>
           </div>
 
           <!-- Upload zone -->
@@ -112,100 +110,12 @@
             </div>
           </div>
 
-          <!-- Card wall -->
-          <div class="wall" id="wall">
-            <div class="card" data-entity="ellis-rutili">
-              <div class="card-top">
-                <span class="source-icon aud">VOICE</span>
-                <div class="card-title">5/4 walk — afternoon thinking on Margins</div>
-                <div class="card-date">yesterday</div>
-              </div>
-              <div class="card-summary">Connor talked through the Margins-vs-Briefly consolidation. Confirmed: Margins is the architecture, Briefly is the vertical. Margins web app needs to ship its own reader since most users won't run Obsidian.</div>
-              <div class="card-pills">
-                <span class="pill">Margins v2</span>
-                <span class="pill">Briefly</span>
-                <span class="pill">strategic direction</span>
-              </div>
-              <div class="card-connections">
-                <span>Connected sources</span>
-                <button type="button">Briefly consolidation notes</button>
-                <button type="button">Margins v2 architecture</button>
-              </div>
-              <div class="card-foot">
-                <span class="stat"><strong>4</strong> entities updated</span>
-                <span class="stat">Connected to <strong>11</strong> sources</span>
-              </div>
-            </div>
+          <!-- Card wall — populated from real vault sources once connected -->
+          <div class="wall" id="wall"></div>
 
-            <div class="card" data-entity="bob-casey">
-              <div class="card-top">
-                <span class="source-icon eml">EMAIL</span>
-                <div class="card-title">Bob Casey — re: Riviera follow-up</div>
-                <div class="card-date">2d</div>
-              </div>
-              <div class="card-summary">Bob acknowledged the gracious decline. Stay-in-touch closeout, no equity terms pending. 401(k) rollover unblocked as of 5/3.</div>
-              <div class="card-pills">
-                <span class="pill">Bob Casey</span>
-                <span class="pill">Riviera</span>
-                <span class="pill">MS 401(k)</span>
-              </div>
-              <div class="card-connections">
-                <span>Connected sources</span>
-                <button type="button">5/2 reply draft</button>
-                <button type="button">5/1 Bob call notes</button>
-              </div>
-              <div class="card-foot">
-                <span class="stat"><strong>3</strong> entities updated</span>
-                <span class="stat">Connected to <strong>8</strong> sources</span>
-              </div>
-            </div>
-
-            <div class="card" data-entity="ellis-rutili">
-              <div class="card-top">
-                <span class="source-icon txt">TXT</span>
-                <div class="card-title">Ellis 4/30 Centric WM visit transcript</div>
-                <div class="card-date">5d</div>
-              </div>
-              <div class="card-summary">Ellis named action-item routing as the #1 pilot ask. Centric uses Orion for portfolio reporting. Pilot scope: Ellis + 1–2 advisors at $125/seat, 60–90 days.</div>
-              <div class="card-pills">
-                <span class="pill">Ellis Rutili</span>
-                <span class="pill">Centric WM</span>
-                <span class="pill">Briefly</span>
-                <span class="pill">Orion</span>
-              </div>
-              <div class="card-connections">
-                <span>Connected sources</span>
-                <button type="button">Centric WM</button>
-                <button type="button">Briefly pilot scope</button>
-              </div>
-              <div class="card-foot">
-                <span class="stat"><strong>6</strong> entities updated</span>
-                <span class="stat">Connected to <strong>14</strong> sources</span>
-              </div>
-            </div>
-
-            <div class="card">
-              <div class="card-top">
-                <span class="source-icon pdf">PDF</span>
-                <div class="card-title">Affinity pricing teardown</div>
-                <div class="card-date">6d</div>
-              </div>
-              <div class="card-summary">$2K/user/year, 1,700 customers, relationship graph + email/calendar ingest for VC/PE/IB. Pricing anchor: Briefly should land near Affinity, not Wealthbox.</div>
-              <div class="card-pills">
-                <span class="pill">Affinity</span>
-                <span class="pill">Briefly pricing</span>
-                <span class="pill">competitive landscape</span>
-              </div>
-              <div class="card-connections">
-                <span>Connected sources</span>
-                <button type="button">Briefly pricing notes</button>
-                <button type="button">Competitive landscape Q1</button>
-              </div>
-              <div class="card-foot">
-                <span class="stat"><strong>2</strong> entities updated</span>
-                <span class="stat">Connected to <strong>5</strong> sources</span>
-              </div>
-            </div>
+          <!-- Empty state when vault is connected but has no sources -->
+          <div id="activity-empty" class="activity-empty" hidden>
+            <p>No sources yet. Drop a file above to ingest your first one.</p>
           </div>
         </section>
 
@@ -628,12 +538,22 @@
         </section>
 
         <section id="graph-view" class="view utility-view" hidden aria-hidden="true">
-          <div id="graph-selection" class="graph-selection" hidden>
-            <span id="graph-selection-meta">Node</span>
-            <strong id="graph-selection-title">No node selected</strong>
-            <button id="graph-open-node-btn" type="button">Open</button>
+          <div class="graph-shell">
+            <div class="graph-header">
+              <div>
+                <h3>Vault graph</h3>
+                <p>Compatibility surface for graph interactions.</p>
+              </div>
+              <div id="graph-selection" class="graph-selection" hidden>
+                <span id="graph-selection-meta">Node</span>
+                <strong id="graph-selection-title">No node selected</strong>
+                <button id="graph-open-node-btn" type="button">Open</button>
+              </div>
+            </div>
+            <div class="graph-wrap">
+              <svg id="graph-svg" viewBox="0 0 980 560"></svg>
+            </div>
           </div>
-          <svg id="graph-svg" viewBox="0 0 980 560"></svg>
         </section>
 
         <section id="llm-view" class="view utility-view" hidden aria-hidden="true">
@@ -704,17 +624,6 @@
         <div class="entity-source-row">
           <span>Bob's founding-team offer — original framing</span>
           <span class="when">3w ago</span>
-        </div>
-      </div>
-
-      <div class="entity-section">
-        <h4>Connected to</h4>
-        <div class="entity-related">
-          <span class="pill">Riviera</span>
-          <span class="pill">Mark Loh</span>
-          <span class="pill">UChicago Booth</span>
-          <span class="pill">SBM</span>
-          <span class="pill">MS 401(k)</span>
         </div>
       </div>
 

@@ -718,6 +718,7 @@ function setActiveVault(handle, name) {
   updateVaultStatus(name);
   saveVaultHandle(handle).catch(() => {});
   updateWorkflowState();
+  document.dispatchEvent(new CustomEvent("margins:vault-connected", { detail: { name } }));
 }
 
 function updateVaultStatus(message) {
@@ -4531,6 +4532,11 @@ function cleanSummary(value) {
 
 function installTestHooks() {
   if (!new URLSearchParams(location.search).has("marginsTest")) return;
+  document.documentElement.dataset.marginsTest = "1";
+  const compatTabs = document.querySelector(".compat-tabs");
+  compatTabs?.removeAttribute("hidden");
+  compatTabs?.setAttribute("aria-hidden", "false");
+  activateTab("inbox");
   globalThis.__marginsTest = {
     seedIngestCard({ summary, questions = [], connections = [] } = {}) {
       const file = {
@@ -7640,7 +7646,10 @@ function activateTab(view) {
   document.querySelectorAll(".view").forEach((item) => {
     const active = item.id === `${view}-view`;
     item.classList.toggle("active", active);
-    if (item.classList.contains("utility-view")) item.hidden = !active;
+    if (item.classList.contains("utility-view")) {
+      item.hidden = !active;
+      item.setAttribute("aria-hidden", active ? "false" : "true");
+    }
   });
   if (view === "graph" && graphView.nodes.length) {
     startGraphSimulation(0.16);

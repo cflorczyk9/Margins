@@ -6918,6 +6918,94 @@ body {
   margin-bottom: 14px;
 }
 
+/* ---------- connect-vault gate ---------- */
+.demo-shell #connect-gate { display: none; }
+.demo-shell.no-vault #connect-gate { display: flex; }
+.demo-shell.no-vault .view { display: none !important; }
+.demo-shell.no-vault .chatbar { display: none; }
+
+.demo-shell .connect-gate {
+  align-items: center;
+  justify-content: center;
+  min-height: calc(100vh - 80px);
+  padding: 60px 24px;
+}
+.demo-shell .connect-card {
+  max-width: 460px;
+  width: 100%;
+  text-align: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 44px 36px;
+  box-shadow: var(--shadow-card);
+}
+.demo-shell .connect-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 18px;
+}
+.demo-shell .connect-card h2 {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0 0 10px;
+  color: var(--ink);
+}
+.demo-shell .connect-card p {
+  font-size: 14px;
+  color: var(--ink-2);
+  line-height: 1.55;
+  margin: 0 0 22px;
+}
+.demo-shell .connect-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+.demo-shell .connect-actions button {
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  padding: 9px 18px;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: background 140ms var(--ease-soft), border-color 140ms var(--ease-soft), color 140ms var(--ease-soft);
+}
+.demo-shell .connect-actions button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.demo-shell .connect-actions button.primary {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--bg);
+}
+.demo-shell .connect-actions button.primary:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.demo-shell .activity-empty {
+  padding: 28px 24px;
+  text-align: center;
+  color: var(--ink-3);
+  font-size: 14px;
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-card);
+}
+
 /* sidebar vault add-on */
 .demo-shell .sidebar-vault {
   background: var(--surface);
@@ -7157,3 +7245,33 @@ body {
 
 /* hide utility-views from primary nav */
 .demo-shell .utility-view { display: none !important; }
+
+html[data-margins-test="1"] .demo-shell .main-inner > .view:not(.utility-view),
+html[data-margins-test="1"] .demo-shell .chatbar,
+html[data-margins-test="1"] .demo-shell .entity-panel,
+html[data-margins-test="1"] .settings-drawer,
+html[data-margins-test="1"] .settings-scrim {
+  display: none !important;
+}
+
+html[data-margins-test="1"] .demo-shell .compat-tabs {
+  display: flex !important;
+  gap: 8px;
+  padding: 12px 18px;
+}
+
+html[data-margins-test="1"] .demo-shell .compat-tabs .tab {
+  width: auto;
+}
+
+html[data-margins-test="1"] .demo-shell .utility-view.active {
+  display: block !important;
+}
+
+html[data-margins-test="1"] .demo-shell #inbox-view,
+html[data-margins-test="1"] .demo-shell #wiki-view,
+html[data-margins-test="1"] .demo-shell #graph-view,
+html[data-margins-test="1"] .demo-shell #llm-view,
+html[data-margins-test="1"] .demo-shell #ops-view {
+  padding: 18px;
+}
