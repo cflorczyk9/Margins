@@ -1182,6 +1182,46 @@ test("entities tab filters by real wiki type and tag facets", {
   }
 });
 
+test("entity filter chips wrap as one continuous control set", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1180, height: 820 }, deviceScaleFactor: 1 });
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => window.__marginsTest.seedCrowdedEntityFacets());
+    await page.getByRole("button", { name: "Entities" }).click();
+    await page.locator("#entity-controls:not([hidden])").waitFor();
+
+    const layout = await page.evaluate(() => {
+      const chips = [...document.querySelectorAll(".entity-chip")].map((chip) => {
+        const rect = chip.getBoundingClientRect();
+        return {
+          text: chip.textContent.replace(/\s+/g, " ").trim(),
+          left: rect.left,
+          right: rect.right,
+          top: rect.top
+        };
+      });
+      return {
+        hubs: chips.find((chip) => /^Hubs 1$/.test(chip.text)),
+        briefly: chips.find((chip) => /^briefly \d+$/.test(chip.text))
+      };
+    });
+
+    assert.ok(layout.hubs, "expected a Hubs type chip");
+    assert.ok(layout.briefly, "expected a briefly tag chip");
+    assert.ok(Math.abs(layout.hubs.top - layout.briefly.top) < 6, "first tag chip should continue on the Hubs row");
+    assert.ok(layout.briefly.left > layout.hubs.right, "first tag chip should sit after Hubs, not start a new row");
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
 test("entities filters keep broad wiki-folder vaults loaded", {
   skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
 }, async () => {
