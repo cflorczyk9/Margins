@@ -1179,6 +1179,32 @@ test("entities tab filters by real wiki type and tag facets", {
   }
 });
 
+test("entities filters keep broad wiki-folder vaults loaded", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    const loaded = await page.evaluate(() => window.__marginsTest.loadBroadWikiVault());
+    assert.ok(loaded.currentFileCount > 0);
+    assert.match(loaded.entityText, /Riviera/);
+    assert.match(loaded.entityText, /Bob Casey/);
+
+    await page.getByRole("button", { name: "Entities" }).click();
+    await page.locator('[data-entity-filter-kind="tag"][data-entity-filter-value="build"]').click();
+    const filteredText = await page.locator("#entity-browser").innerText();
+    assert.match(filteredText, /Riviera/);
+    assert.doesNotMatch(filteredText, /Bob Casey|No entities loaded/);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
 test("imported documents are immediately saved to raw_sources and survive reload", {
   skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
 }, async () => {
