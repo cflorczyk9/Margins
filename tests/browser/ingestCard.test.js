@@ -110,7 +110,7 @@ test("approve files the selected processed source", {
     assert.doesNotMatch(pendingText, /script\/build\.py/);
     assert.match(pendingText, /pending-word\.docx/);
     assert.match(pendingText, /pending-statement\.pdf/);
-    assert.equal(await page.locator(".tab.active").innerText(), "Inbox");
+    assert.equal(await page.locator(".tab.active").innerText(), "Activity");
     assert.equal(await page.locator("#inbox-view").evaluate((node) => node.classList.contains("active")), true);
   } finally {
     await browser.close();
@@ -1074,7 +1074,280 @@ test("vault raw sources without source notes appear in the pending inbox", {
     const pendingText = await page.locator("#source-list").innerText();
     assert.match(pendingText, /unfiled-note\.md/);
     assert.doesNotMatch(pendingText, /^filed-note\.md$/m);
-    assert.match(await page.locator("#vault-tree").innerText(), /Pending\s+1|1\s+Pending/);
+    assert.equal(await page.locator(".upload-stats").count(), 0);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("entities tab renders real vault entity pages without sidebar ingestion stats", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => window.__marginsTest.seedGraphTheme("light"));
+    await page.getByRole("button", { name: "Entities" }).click();
+
+    await page.locator("#entities-view.active").waitFor();
+    const entitiesText = await page.locator("#entity-browser").innerText();
+    assert.match(entitiesText, /Connor/);
+    assert.match(entitiesText, /Connor entity/);
+    assert.doesNotMatch(entitiesText, /Bob Casey|Ellis Rutili|Centric WM/);
+    assert.equal(await page.locator(".upload-stats").count(), 0);
+
+    await page.locator(".entity-card", { hasText: "Connor" }).click();
+    await page.locator("#wiki-view.active").waitFor();
+    assert.match(await page.locator("#doc-title").innerText(), /connor/);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("entities tab falls back to real concept pages when no entity folder exists", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => window.__marginsTest.seedConceptOnlyVault());
+    await page.getByRole("button", { name: "Entities" }).click();
+
+    const entitiesText = await page.locator("#entity-browser").innerText();
+    assert.match(entitiesText, /Setup Efficiency/);
+    assert.match(entitiesText, /CONCEPT/);
+    assert.doesNotMatch(entitiesText, /No entities loaded/);
+    assert.doesNotMatch(entitiesText, /Source Only|Index/);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("entities tab filters by real wiki type and tag facets", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => window.__marginsTest.seedConceptOnlyVault());
+    await page.getByRole("button", { name: "Entities" }).click();
+    await page.locator("#entity-controls:not([hidden])").waitFor();
+
+    assert.match(await page.locator("#entity-meta").innerText(), /3 in your brain/);
+    assert.match(await page.locator("#entity-type-filters").innerText(), /All\s+3/);
+    assert.match(await page.locator("#entity-tag-filters").innerText(), /build\s+2/);
+    assert.equal(await page.locator(".entity-card-tags").count(), 0);
+    assert.match(await page.locator(".entity-section-head").first().innerText(), /PINNED/);
+    assert.match(await page.locator(".entity-card", { hasText: "Margins Product" }).innerText(), /Next: Ship the Claude-style entity card model/);
+
+    await page.locator('[data-entity-filter-kind="tag"][data-entity-filter-value="build"]').click();
+    let entitiesText = await page.locator("#entity-browser").innerText();
+    assert.match(entitiesText, /Setup Efficiency/);
+    assert.match(entitiesText, /Margins Product/);
+    assert.doesNotMatch(entitiesText, /Networking Plan/);
+
+    await page.locator('[data-entity-filter-kind="tag"][data-entity-filter-value="margins"]').click();
+    entitiesText = await page.locator("#entity-browser").innerText();
+    assert.match(entitiesText, /Margins Product/);
+    assert.doesNotMatch(entitiesText, /Setup Efficiency|Networking Plan/);
+
+    await page.locator('[data-entity-filter-kind="type"][data-entity-filter-value="Project"]').click();
+    entitiesText = await page.locator("#entity-browser").innerText();
+    assert.match(entitiesText, /Margins Product/);
+    assert.doesNotMatch(entitiesText, /Setup Efficiency|Networking Plan/);
+
+    await page.locator('[data-entity-filter-kind="all"]').click();
+    await page.locator("#entity-search").fill("networking");
+    entitiesText = await page.locator("#entity-browser").innerText();
+    assert.match(entitiesText, /Networking Plan/);
+    assert.doesNotMatch(entitiesText, /Setup Efficiency|Margins Product/);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("entity filter chips wrap as one continuous control set", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1180, height: 820 }, deviceScaleFactor: 1 });
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => window.__marginsTest.seedCrowdedEntityFacets());
+    await page.getByRole("button", { name: "Entities" }).click();
+    await page.locator("#entity-controls:not([hidden])").waitFor();
+
+    const layout = await page.evaluate(() => {
+      const chips = [...document.querySelectorAll(".entity-chip")].map((chip) => {
+        const rect = chip.getBoundingClientRect();
+        return {
+          text: chip.textContent.replace(/\s+/g, " ").trim(),
+          left: rect.left,
+          right: rect.right,
+          top: rect.top
+        };
+      });
+      return {
+        hubs: chips.find((chip) => /^Hubs 1$/.test(chip.text)),
+        briefly: chips.find((chip) => /^briefly \d+$/.test(chip.text))
+      };
+    });
+
+    assert.ok(layout.hubs, "expected a Hubs type chip");
+    assert.ok(layout.briefly, "expected a briefly tag chip");
+    assert.ok(Math.abs(layout.hubs.top - layout.briefly.top) < 6, "first tag chip should continue on the Hubs row");
+    assert.ok(layout.briefly.left > layout.hubs.right, "first tag chip should sit after Hubs, not start a new row");
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("recently active entities page in batches of twelve", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => window.__marginsTest.seedManyRecentEntities());
+    await page.getByRole("button", { name: "Entities" }).click();
+    const recentSection = page.locator('[data-entity-section="recent"]');
+    await recentSection.waitFor();
+
+    assert.equal(await recentSection.locator(".entity-card").count(), 12);
+    let recentText = await recentSection.innerText();
+    assert.match(recentText, /12 of 30/);
+    assert.match(recentText, /Recent Entity 30/);
+    assert.doesNotMatch(recentText, /Recent Entity 18/);
+
+    await recentSection.getByRole("button", { name: "Show 12 more" }).click();
+    await page.waitForFunction(() => document.querySelectorAll('[data-entity-section="recent"] .entity-card').length === 24);
+    assert.equal(await recentSection.locator(".entity-card").count(), 24);
+    recentText = await recentSection.innerText();
+    assert.match(recentText, /24 of 30/);
+    assert.match(recentText, /Recent Entity 18/);
+    assert.doesNotMatch(recentText, /Recent Entity 06/);
+
+    await recentSection.getByRole("button", { name: "Show all 30" }).click();
+    await page.waitForFunction(() => document.querySelectorAll('[data-entity-section="recent"] .entity-card').length === 30);
+    assert.equal(await recentSection.locator(".entity-card").count(), 30);
+    recentText = await recentSection.innerText();
+    assert.match(recentText, /Recent Entity 01/);
+    assert.equal(await recentSection.locator(".entity-section-actions").count(), 0);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("entity card pin controls write priority metadata to the vault", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => window.__marginsTest.seedEntityPinningVault());
+    await page.getByRole("button", { name: "Entities" }).click();
+
+    const pinTarget = page.locator(".entity-card", { hasText: "Pin Target" });
+    await pinTarget.getByRole("button", { name: "Pin Pin Target" }).click();
+    await page.waitForFunction(() => document.querySelector('[data-entity-section="pinned"]')?.innerText.includes("Pin Target"));
+
+    let body = await page.evaluate(() => window.__marginsTest.readVaultText("wiki/entities/pin-target.md"));
+    assert.match(body, /^priority:\s*pinned$/m);
+    assert.match(await page.locator('[data-entity-section="pinned"]').innerText(), /Pin Target/);
+    assert.equal(await page.locator('[data-entity-section="recent"] .entity-card', { hasText: "Pin Target" }).count(), 0);
+
+    const pinnedTarget = page.locator(".entity-card", { hasText: "Pinned Target" });
+    await pinnedTarget.getByRole("button", { name: "Unpin Pinned Target" }).click();
+    await page.waitForFunction(() => document.querySelector('[data-entity-section="recent"]')?.innerText.includes("Pinned Target"));
+
+    body = await page.evaluate(() => window.__marginsTest.readVaultText("wiki/entities/pinned-target.md"));
+    assert.doesNotMatch(body, /^priority:\s*pinned$/m);
+    assert.match(await page.locator('[data-entity-section="recent"]').innerText(), /Pinned Target/);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("entities filters keep broad wiki-folder vaults loaded", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    const loaded = await page.evaluate(() => window.__marginsTest.loadBroadWikiVault());
+    assert.ok(loaded.currentFileCount > 0);
+    assert.match(loaded.entityText, /Riviera/);
+    assert.match(loaded.entityText, /Bob Casey/);
+
+    await page.getByRole("button", { name: "Entities" }).click();
+    await page.locator('[data-entity-filter-kind="tag"][data-entity-filter-value="build"]').click();
+    const filteredText = await page.locator("#entity-browser").innerText();
+    assert.match(filteredText, /Riviera/);
+    assert.doesNotMatch(filteredText, /Bob Casey|No entities loaded/);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("workflow reconnect button opens the remembered vault", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    const before = await page.evaluate(() => window.__marginsTest.prepareRememberedVaultReconnect());
+    assert.equal(before.workflowButton, "Reconnect vault");
+    assert.equal(before.currentFileCount, 0);
+
+    await page.locator("#workflow-btn").click();
+    await page.waitForFunction(() => window.__marginsTest.workflowSnapshot().currentFileCount > 0);
+
+    const after = await page.evaluate(() => window.__marginsTest.workflowSnapshot());
+    assert.equal(after.vaultName, "Browser Test Vault");
+    assert.match(after.vaultStatus, /Browser Test Vault/);
+    assert.match(after.workflowButton, /Add documents/);
+
+    await page.getByRole("button", { name: "Entities" }).click();
+    assert.match(await page.locator("#entity-browser").innerText(), /Reconnect Project/);
   } finally {
     await browser.close();
     await server.close();

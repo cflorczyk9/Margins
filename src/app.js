@@ -13,6 +13,7 @@ const initialTheme = localStorage.getItem(STORAGE_KEYS.theme) || "light";
 document.documentElement.dataset.theme = initialTheme;
 let apiSecretHydrationPromise = null;
 const API_REQUEST_TIMEOUT_MS = 60_000;
+const ENTITY_RECENT_PAGE_SIZE = 12;
 let apiRequestTimeoutMs = API_REQUEST_TIMEOUT_MS;
 let activeOperation = "";
 
@@ -48,7 +49,13 @@ const state = {
   ingestAnswers: new Map(),
   ingestErrors: new Map(),
   modelTimings: loadModelTimingLog(),
-  expandedSummaries: new Set()
+  expandedSummaries: new Set(),
+  entityQuery: "",
+  entityFilterKind: "all",
+  entityFilterValue: "",
+  entityFileMap: null,
+  entityRecentVisibleCount: ENTITY_RECENT_PAGE_SIZE,
+  entityRecentSourceKey: ""
 };
 
 const apiThrottle = {
@@ -100,6 +107,12 @@ const els = {
   fileInput: document.getElementById("file-input"),
   queuePanel: document.getElementById("queue-panel"),
   sourceList: document.getElementById("source-list"),
+  entityMeta: document.getElementById("entity-meta"),
+  entityControls: document.getElementById("entity-controls"),
+  entitySearch: document.getElementById("entity-search"),
+  entityTypeFilters: document.getElementById("entity-type-filters"),
+  entityTagFilters: document.getElementById("entity-tag-filters"),
+  entityBrowser: document.getElementById("entity-browser"),
   extractBtn: document.getElementById("extract-btn"),
   compileBtn: document.getElementById("compile-btn"),
   llmBtn: document.getElementById("llm-btn"),
@@ -192,10 +205,27 @@ els.themeToggle.addEventListener("change", () => {
 
 globalThis.__marginsRunAnswer = setIngestReviewAnswer;
 
-els.workflowBtn.addEventListener("click", () => withBusyOperation("workflow step", runWorkflowStep));
+els.workflowBtn.addEventListener("click", handleWorkflowButtonClick);
 els.vaultSearch?.addEventListener("input", () => {
   renderVaultTree();
   if (state.currentFileMap) renderWikiFiles(state.currentFileMap);
+});
+els.entitySearch?.addEventListener("input", () => {
+  state.entityQuery = els.entitySearch.value;
+  resetEntityRecentLimit();
+  renderEntities(activeEntityFileMap());
+});
+els.entityTypeFilters?.addEventListener("click", handleEntityFilterClick);
+els.entityTagFilters?.addEventListener("click", handleEntityFilterClick);
+els.entityBrowser?.addEventListener("click", handleEntityBrowserActionClick);
+els.entityBrowser?.addEventListener("keydown", handleEntityBrowserKeydown);
+document.addEventListener("keydown", (event) => {
+  const activeEntities = document.getElementById("entities-view")?.classList.contains("active");
+  if (!activeEntities || !els.entitySearch || els.entityControls?.hidden) return;
+  if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "f") return;
+  event.preventDefault();
+  els.entitySearch.focus();
+  els.entitySearch.select();
 });
 els.graphOpenNodeBtn?.addEventListener("click", openSelectedGraphNode);
 els.saveApiKeyBtn.addEventListener("click", saveApiControls);
@@ -814,6 +844,7 @@ function clearLoadedWiki() {
   state.llmFiles = new Map();
   state.llmSelectedPath = null;
   state.currentMaterialQuestions = [];
+  state.entityFileMap = null;
   state.hasSavedCurrent = false;
   state.hasUnsavedEdits = false;
   state.pendingSave = false;
@@ -831,7 +862,19 @@ function clearLoadedWiki() {
 }
 
 function hasVaultWikiContent(fileMap) {
-  return [...fileMap.keys()].some((path) => /^wiki\/(sources|concepts|entities|synthesis)\/[^/]+\.md$/.test(path));
+  return [...fileMap.entries()].some(([path, body]) => (
+    isContextWikiPagePath(path) &&
+    !isFolderIndexPath(path) &&
+    !isSourceOnlyWikiPage(path, body)
+  ));
+}
+
+function isSourceOnlyWikiPage(path, body) {
+  if (path === "wiki/index.md" || /^wiki\/(ingest-tracker|log|wiki-stats)\.md$/.test(path)) return true;
+  if (path.startsWith("wiki/sources/") || /^wiki\/[^/]+\/source[-/]/.test(path)) return true;
+  if (isBucketOverviewPath(path)) return true;
+  const type = String(frontmatterFields(body).type || "").toLowerCase();
+  return ["source", "log", "index", "template"].includes(type);
 }
 
 async function handleSaveAndOrganize() {
@@ -2703,25 +2746,47 @@ function frontmatterFields(body) {
   const match = String(body || "").match(/^---\n([\s\S]*?)\n---\n/);
   if (!match) return {};
   const fields = {};
+  let listKey = "";
   for (const line of match[1].split("\n")) {
+    const item = line.match(/^\s*-\s*(.*)$/);
+    if (listKey && item) {
+      if (!Array.isArray(fields[listKey])) fields[listKey] = [];
+      fields[listKey].push(yamlScalar(item[1]));
+      continue;
+    }
     const field = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
-    if (!field) continue;
-    fields[field[1]] = field[2].trim().replace(/^"(.*)"$/, "$1");
+    if (!field) {
+      listKey = "";
+      continue;
+    }
+    const value = field[2].trim();
+    if (!value) {
+      fields[field[1]] = "";
+      listKey = field[1];
+      continue;
+    }
+    fields[field[1]] = yamlScalar(value);
+    listKey = "";
   }
   return fields;
 }
 
 function frontmatterList(value) {
+  if (Array.isArray(value)) return value.map((item) => yamlScalar(item)).filter(Boolean);
   const raw = String(value || "").trim();
   if (!raw) return [];
   if (raw.startsWith("[") && raw.endsWith("]")) {
     return raw
       .slice(1, -1)
       .split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/)
-      .map((item) => item.trim().replace(/^['"]|['"]$/g, ""))
+      .map((item) => yamlScalar(item))
       .filter(Boolean);
   }
-  return raw.split(",").map((item) => item.trim()).filter(Boolean);
+  return raw.split(",").map((item) => yamlScalar(item)).filter(Boolean);
+}
+
+function yamlScalar(value) {
+  return String(value || "").trim().replace(/^['"]|['"]$/g, "");
 }
 
 function bodyWithoutFrontmatter(body) {
@@ -4443,11 +4508,14 @@ Related to [[connor]].
         ["wiki/entities/connor.md", `---
 type: entity
 summary: Connor entity.
+tags: [person, test]
+updated: 2026-05-06
 ---
 
 # Connor
 `]
       ]);
+      renderVaultTree(state.currentFileMap);
       drawGraph(graphFromFileMap(state.currentFileMap));
       activateTab("graph");
       const rootStyle = getComputedStyle(document.documentElement);
@@ -4464,6 +4532,282 @@ summary: Connor entity.
         headerBg: headerStyle.backgroundColor,
         backdropFill: backdropStyle.fill,
         glowOpacity: glowStyle.opacity
+      };
+    },
+    seedConceptOnlyVault() {
+      state.currentFileMap = new Map([
+        ["wiki/index.md", `---
+type: index
+summary: Index page.
+---
+
+# Index
+
+[[setup-efficiency]]
+`],
+        ["wiki/concepts/setup-efficiency.md", `---
+type: concept
+summary: Improve the user's ability to get useful systems running quickly.
+tags: [build, workflow]
+updated: 2026-05-06
+---
+
+# Setup Efficiency
+
+This page is real concept-backed vault content.
+`],
+        ["wiki/projects/margins-product.md", `---
+type: project
+summary: Product parity work for the Margins app.
+tags: [build, margins]
+updated: 2026-05-05
+priority: pinned
+next_move: Ship the Claude-style entity card model.
+---
+
+# Margins Product
+
+Real project-backed vault content about making Margins usable.
+`],
+        ["wiki/ideas/networking-plan.md", `---
+type: concept
+summary: Lightweight follow-up system for people and opportunities.
+tags:
+  - people
+  - workflow
+updated: 2026-04-26
+---
+
+# Networking Plan
+
+Keep the #people surface moving without losing context.
+`],
+        ["wiki/sources/source-only.md", `---
+type: source
+summary: Source page that should not render as an entity card.
+---
+
+# Source Only
+`]
+      ]);
+      state.selectedPath = null;
+      renderVaultTree(state.currentFileMap);
+      renderWikiFiles(state.currentFileMap);
+      return document.querySelector("#entity-browser")?.innerText || "";
+    },
+    seedCrowdedEntityFacets() {
+      const specs = [
+        ["wiki/people/bob-casey.md", "person", "Bob Casey", ["briefly", "person", "vibrance/aged"], "Founder relationship attached to Riviera.", "2026-05-06"],
+        ["wiki/advisors/mark-loh.md", "advisor", "Mark Loh", ["briefly", "advisor", "vibrance/aged"], "Advisor note for product and sales.", "2026-05-05"],
+        ["wiki/companies/centric-wm.md", "company", "Centric WM", ["company", "riviera", "briefly"], "Pilot partner and buyer context.", "2026-05-04"],
+        ["wiki/projects/margins-v2.md", "project", "Margins v2", ["briefly", "region/briefly", "vibrance/recent"], "Product build note with next steps.", "2026-05-06"],
+        ["wiki/concepts/setup-efficiency.md", "concept", "Setup Efficiency", ["concept", "competitive-analysis", "vibrance/fresh"], "Concept note for faster setup.", "2026-05-03"],
+        ["wiki/ideas/pilot-shape.md", "idea", "Pilot Shape", ["briefly", "competitive-analysis"], "Idea note for pilot scope.", "2026-05-02"],
+        ["wiki/synthesis/product-map.md", "synthesis", "Product Map", ["concept", "region/briefly"], "Synthesis note across product work.", "2026-05-01"],
+        ["wiki/entities/riviera.md", "entity", "Riviera", ["riviera", "vibrance/aged"], "General entity note for Riviera.", "2026-04-30"],
+        ["wiki/entities/hub-briefly.md", "hub", "Briefly Hub", ["briefly", "region/briefly"], "Hub note for Briefly context.", "2026-04-29"]
+      ];
+      state.currentFileMap = new Map([
+        ["wiki/index.md", `---
+type: index
+summary: Crowded entity facet test index.
+---
+
+# Index
+`],
+        ...specs.map(([path, type, title, tags, summary, updated]) => [path, `---
+type: ${type}
+summary: ${summary}
+tags: [${tags.join(", ")}]
+updated: ${updated}
+---
+
+# ${title}
+
+${summary}
+`])
+      ]);
+      state.entityFilterKind = "all";
+      state.entityFilterValue = "";
+      state.entityQuery = "";
+      state.selectedPath = null;
+      renderVaultTree(state.currentFileMap);
+      renderWikiFiles(state.currentFileMap);
+      return document.querySelector("#entity-controls")?.innerText || "";
+    },
+    seedManyRecentEntities() {
+      const pinned = [
+        ["wiki/people/pinned-one.md", "Pinned One", "Pinned relationship one."],
+        ["wiki/projects/pinned-two.md", "Pinned Two", "Pinned project two."]
+      ];
+      const recent = Array.from({ length: 30 }, (_, index) => {
+        const number = String(index + 1).padStart(2, "0");
+        return [
+          `wiki/entities/recent-entity-${number}.md`,
+          `Recent Entity ${number}`,
+          `Recent entity ${number} summary.`,
+          `2026-05-${number}`
+        ];
+      });
+      state.currentFileMap = new Map([
+        ["wiki/index.md", `---
+type: index
+summary: Many recent entity test index.
+---
+
+# Index
+`],
+        ...pinned.map(([path, title, summary], index) => [path, `---
+type: entity
+summary: ${summary}
+tags: [person]
+priority: pinned
+updated: 2026-05-0${index + 1}
+---
+
+# ${title}
+
+${summary}
+`]),
+        ...recent.map(([path, title, summary, updated]) => [path, `---
+type: entity
+summary: ${summary}
+tags: [company]
+updated: ${updated}
+---
+
+# ${title}
+
+${summary}
+`])
+      ]);
+      state.entityFilterKind = "all";
+      state.entityFilterValue = "";
+      state.entityQuery = "";
+      resetEntityRecentLimit();
+      state.selectedPath = null;
+      renderVaultTree(state.currentFileMap);
+      renderWikiFiles(state.currentFileMap);
+      return document.querySelector("#entity-browser")?.innerText || "";
+    },
+    async loadBroadWikiVault() {
+      const handle = createMemoryVaultHandle();
+      await writeTextFile(handle, "wiki/career/riviera.md", `---
+type: entity
+bucket: career
+summary: Career opportunity with product and founder context.
+tags: [build, riviera]
+updated: 2026-05-06
+priority: pinned
+next_move: Keep the Riviera relationship warm.
+---
+
+# Riviera
+
+Real career note outside the generated entity folders.
+`);
+      await writeTextFile(handle, "wiki/personal/bob-casey.md", `---
+type: entity
+bucket: personal
+summary: Founder relationship attached to the Riviera opportunity.
+tags:
+  - people
+  - riviera
+updated: 2026-05-04
+---
+
+# Bob Casey
+
+Person note that should stay loaded when an entity facet is clicked.
+`);
+      await writeTextFile(handle, "wiki/career/source-2026-05-01-bob-casey.md", `---
+type: source
+summary: Source note that should not render as an entity card.
+tags: [source, riviera]
+---
+
+# Source: Bob Casey
+`);
+      setActiveVault(handle, "Broad Wiki Vault");
+      await loadExistingVault(handle);
+      return {
+        currentFileCount: state.currentFileMap?.size || 0,
+        entityText: document.querySelector("#entity-browser")?.innerText || ""
+      };
+    },
+    async seedEntityPinningVault() {
+      const handle = createMemoryVaultHandle();
+      await writeTextFile(handle, "wiki/entities/pin-target.md", `---
+type: entity
+summary: Entity that starts in recently active and can be pinned.
+tags: [company]
+updated: 2026-05-06
+---
+
+# Pin Target
+
+Entity that starts in recently active and can be pinned.
+`);
+      await writeTextFile(handle, "wiki/entities/pinned-target.md", `---
+type: entity
+summary: Entity that starts pinned and can be unpinned.
+tags: [person]
+priority: pinned
+updated: 2026-05-05
+---
+
+# Pinned Target
+
+Entity that starts pinned and can be unpinned.
+`);
+      setActiveVault(handle, "Pinning Test Vault");
+      await loadExistingVault(handle);
+      return {
+        currentFileCount: state.currentFileMap?.size || 0,
+        entityText: document.querySelector("#entity-browser")?.innerText || ""
+      };
+    },
+    async readVaultText(path) {
+      if (!state.vaultHandle) return "";
+      return testReadTextFile(state.vaultHandle, path);
+    },
+    async prepareRememberedVaultReconnect() {
+      const handle = createMemoryVaultHandle();
+      await writeTextFile(handle, "wiki/projects/reconnect-project.md", `---
+type: project
+summary: Remembered vault project loaded through the reconnect workflow.
+tags: [build, reconnect]
+updated: 2026-05-06
+priority: pinned
+next_move: Confirm reconnect loads the previous vault.
+---
+
+# Reconnect Project
+`);
+      state.vaultHandle = null;
+      state.rememberedVaultHandle = handle;
+      state.vaultName = "";
+      state.currentFileMap = null;
+      state.loadedFileMap = new Map();
+      state.vaultFiles = [];
+      state.files = [];
+      state.pendingSave = false;
+      state.hasUnsavedEdits = false;
+      state.hasSavedCurrent = false;
+      updateVaultStatus(`Last vault: ${handle.name}. Click Reconnect to open it.`);
+      renderVaultTree(new Map());
+      renderWikiFiles(new Map());
+      updateWorkflowState();
+      return this.workflowSnapshot();
+    },
+    workflowSnapshot() {
+      return {
+        workflowButton: els.workflowBtn?.textContent || "",
+        workflowGuidance: els.workflowGuidance?.textContent || "",
+        vaultStatus: els.vaultStatus?.textContent || "",
+        currentFileCount: state.currentFileMap?.size || 0,
+        vaultName: state.vaultName || "",
+        entityText: document.querySelector("#entity-browser")?.innerText || ""
       };
     },
     graphState() {
@@ -5122,6 +5466,12 @@ function memoryDirectory(name) {
     entries() {
       return entries.entries();
     },
+    async queryPermission() {
+      return "granted";
+    },
+    async requestPermission() {
+      return "granted";
+    },
     async removeEntry(childName) {
       entries.delete(childName);
     }
@@ -5163,7 +5513,8 @@ function isSourceReviewReady(file) {
 }
 
 function renderVaultTree(fileMap = state.currentFileMap) {
-  if (!els.vaultTree) return;
+  renderEntities(fileMap || new Map());
+  if (!els.vaultTree || els.vaultTree.hidden) return;
   const stats = ingestionStats(fileMap || new Map());
   els.vaultTree.innerHTML = `
     <div class="upload-stats">
@@ -5183,6 +5534,725 @@ function renderVaultTree(fileMap = state.currentFileMap) {
       </div>
     </div>
   `;
+}
+
+function renderEntities(fileMap = state.currentFileMap) {
+  if (!els.entityBrowser) return;
+  const records = entityRecordsFromFileMap(fileMap || new Map());
+  state.entityFileMap = records.length ? new Map(fileMap || []) : null;
+  syncEntityRecentSource(records);
+  syncEntityFilter(records);
+  renderEntitySummary(records);
+  renderEntityFilters(records);
+
+  if (records.length === 0) {
+    if (els.entityControls) els.entityControls.hidden = true;
+    els.entityBrowser.className = "entity-empty-state";
+    els.entityBrowser.innerHTML = `
+      <div class="empty-icon" aria-hidden="true"></div>
+      <h3>No entities loaded</h3>
+      <p>Open a local vault or ingest a source. Margins will only show entities backed by real vault files.</p>
+    `;
+    return;
+  }
+
+  if (els.entityControls) els.entityControls.hidden = false;
+  const filteredRecords = filterEntityRecords(records);
+  if (filteredRecords.length === 0) {
+    els.entityBrowser.className = "entity-empty-state";
+    els.entityBrowser.innerHTML = `
+      <div class="empty-icon" aria-hidden="true"></div>
+      <h3>No matching entities</h3>
+      <p>Try a different search, type, or wiki tag.</p>
+    `;
+    return;
+  }
+
+  els.entityBrowser.className = "entity-board";
+  els.entityBrowser.innerHTML = renderEntitySections(filteredRecords);
+}
+
+function renderEntitySections(records) {
+  const query = String(state.entityQuery || "").trim();
+  const filtered = query || state.entityFilterKind !== "all";
+  if (filtered) {
+    return `
+      <section class="entity-section" data-entity-section="results">
+        ${renderEntitySectionHead("Results", `${records.length} shown`)}
+        <div class="entity-grid">${records.map(renderEntityCard).join("")}</div>
+      </section>
+    `;
+  }
+
+  const pinned = records.filter(entityHasPinnedSignal).slice(0, 6);
+  const pinnedPaths = new Set(pinned.map((record) => record.path));
+  const recent = records.filter((record) => !pinnedPaths.has(record.path));
+  const visibleRecentCount = visibleEntityRecentCount(recent.length);
+  const visibleRecent = recent.slice(0, visibleRecentCount);
+  const sections = [];
+  if (pinned.length) {
+    sections.push(`
+      <section class="entity-section" data-entity-section="pinned">
+        ${renderEntitySectionHead("Pinned")}
+        <div class="entity-grid">${pinned.map(renderEntityCard).join("")}</div>
+      </section>
+    `);
+  }
+  if (recent.length) {
+    const actionLabel = recent.length > visibleRecentCount ? `${visibleRecentCount} of ${recent.length}` : "";
+    sections.push(`
+      <section class="entity-section" data-entity-section="recent">
+        ${renderEntitySectionHead("Recently Active", actionLabel)}
+        <div class="entity-grid">${visibleRecent.map(renderEntityCard).join("")}</div>
+        ${renderEntityRecentActions(visibleRecentCount, recent.length)}
+      </section>
+    `);
+  }
+  return sections.join("");
+}
+
+function renderEntityRecentActions(visibleCount, totalCount) {
+  if (visibleCount >= totalCount) return "";
+  const remaining = totalCount - visibleCount;
+  const nextCount = Math.min(ENTITY_RECENT_PAGE_SIZE, remaining);
+  const showMoreLabel = remaining > ENTITY_RECENT_PAGE_SIZE ? `Show ${nextCount} more` : `Show remaining ${remaining}`;
+  return `
+    <div class="entity-section-actions">
+      <button class="entity-list-button primary" type="button" data-entity-list-action="show-more-recent" data-entity-recent-total="${escapeHtml(String(totalCount))}">
+        ${escapeHtml(showMoreLabel)}
+      </button>
+      <button class="entity-list-button" type="button" data-entity-list-action="show-all-recent" data-entity-recent-total="${escapeHtml(String(totalCount))}">
+        Show all ${escapeHtml(String(totalCount))}
+      </button>
+    </div>
+  `;
+}
+
+function renderEntitySectionHead(title, action = "") {
+  return `
+    <div class="entity-section-head">
+      <h3>${escapeHtml(title)}</h3>
+      ${action ? `<span>${escapeHtml(action)}</span>` : ""}
+    </div>
+  `;
+}
+
+function renderEntityCard(record) {
+  const pinned = entityHasPinnedSignal(record);
+  const pinAction = pinned ? "Unpin" : "Pin";
+  return `
+    <article class="entity-card" role="button" tabindex="0" data-entity-path="${escapeHtml(record.path)}">
+      <div class="entity-card-top">
+        <span class="entity-vibe ${escapeHtml(entityVibeClass(record))}"></span>
+        <strong>${escapeHtml(record.title)}</strong>
+        <button class="entity-pin-button ${pinned ? "active" : ""}" type="button" data-entity-pin-path="${escapeHtml(record.path)}" aria-pressed="${pinned ? "true" : "false"}" aria-label="${escapeHtml(`${pinAction} ${record.title}`)}" title="${escapeHtml(pinAction)}">
+          <span aria-hidden="true">${escapeHtml(pinned ? "Pinned" : "Pin")}</span>
+        </button>
+        <span class="type-tag">${escapeHtml(record.typeLabel)}</span>
+      </div>
+      ${record.meta ? `<div class="entity-card-meta-line">${escapeHtml(record.meta)}</div>` : ""}
+      <p class="entity-card-summary">${escapeHtml(record.summary || "No summary yet.")}</p>
+      ${record.nextAction ? `<div class="entity-card-next"><span>Next:</span> ${escapeHtml(record.nextAction)}</div>` : ""}
+    </article>
+  `;
+}
+
+function renderEntitySummary(records) {
+  if (!els.entityMeta) return;
+  if (records.length === 0) {
+    els.entityMeta.textContent = "People, projects, companies, and ideas from the connected vault.";
+    return;
+  }
+  const activeThisWeek = records.filter((record) => isEntityActiveThisWeek(record.lastTouch || record.updated)).length;
+  const pinned = records.filter((record) => entityHasPinnedSignal(record)).length;
+  els.entityMeta.textContent = [
+    `${records.length} in your brain`,
+    `${activeThisWeek} active this week`,
+    `${pinned} pinned`
+  ].join(" · ");
+}
+
+function syncEntityFilter(records) {
+  if (state.entityFilterKind === "all") return;
+  const stillAvailable = state.entityFilterKind === "type"
+    ? records.some((record) => record.typeLabel === state.entityFilterValue)
+    : records.some((record) => record.filterTags.includes(state.entityFilterValue));
+  if (stillAvailable) return;
+  state.entityFilterKind = "all";
+  state.entityFilterValue = "";
+}
+
+function syncEntityRecentSource(records) {
+  const sourceKey = records.map((record) => record.path).join("\n");
+  if (sourceKey === state.entityRecentSourceKey) return;
+  state.entityRecentSourceKey = sourceKey;
+  resetEntityRecentLimit();
+}
+
+function resetEntityRecentLimit() {
+  state.entityRecentVisibleCount = ENTITY_RECENT_PAGE_SIZE;
+}
+
+function visibleEntityRecentCount(totalCount) {
+  if (totalCount <= ENTITY_RECENT_PAGE_SIZE) return totalCount;
+  const requested = Math.max(
+    ENTITY_RECENT_PAGE_SIZE,
+    Number(state.entityRecentVisibleCount) || ENTITY_RECENT_PAGE_SIZE
+  );
+  state.entityRecentVisibleCount = Math.min(requested, totalCount);
+  return state.entityRecentVisibleCount;
+}
+
+function renderEntityFilters(records) {
+  if (els.entitySearch && els.entitySearch.value !== state.entityQuery) {
+    els.entitySearch.value = state.entityQuery;
+  }
+  if (records.length === 0) {
+    if (els.entityTypeFilters) els.entityTypeFilters.innerHTML = "";
+    if (els.entityTagFilters) els.entityTagFilters.innerHTML = "";
+    return;
+  }
+  if (els.entityTypeFilters) {
+    const typeFacets = entityTypeFacets(records);
+    els.entityTypeFilters.innerHTML = typeFacets.map((facet) => renderEntityChip(facet)).join("");
+  }
+  if (els.entityTagFilters) {
+    const tagFacets = entityTagFacets(records);
+    els.entityTagFilters.hidden = tagFacets.length === 0;
+    els.entityTagFilters.innerHTML = tagFacets.map((facet) => renderEntityChip(facet)).join("");
+  }
+}
+
+function renderEntityChip(facet) {
+  const active = isEntityFilterActive(facet.kind, facet.value);
+  return `
+    <button class="entity-chip ${active ? "active" : ""}" type="button" data-entity-filter-kind="${escapeHtml(facet.kind)}" data-entity-filter-value="${escapeHtml(facet.value)}" aria-pressed="${active ? "true" : "false"}">
+      <span>${escapeHtml(facet.label)}</span>
+      <span>${escapeHtml(String(facet.count))}</span>
+    </button>
+  `;
+}
+
+function handleEntityFilterClick(event) {
+  const button = event.target.closest("[data-entity-filter-kind]");
+  if (!button) return;
+  state.entityFilterKind = button.dataset.entityFilterKind || "all";
+  state.entityFilterValue = button.dataset.entityFilterValue || "";
+  if (state.entityFilterKind === "all") state.entityFilterValue = "";
+  resetEntityRecentLimit();
+  renderEntities(activeEntityFileMap());
+}
+
+async function handleEntityBrowserActionClick(event) {
+  const button = event.target.closest("[data-entity-list-action]");
+  if (button) {
+    event.preventDefault();
+    event.stopPropagation();
+    const totalCount = Math.max(0, Number(button.dataset.entityRecentTotal) || 0);
+    if (button.dataset.entityListAction === "show-more-recent") {
+      state.entityRecentVisibleCount = Math.min(
+        totalCount,
+        Math.max(ENTITY_RECENT_PAGE_SIZE, state.entityRecentVisibleCount) + ENTITY_RECENT_PAGE_SIZE
+      );
+    } else if (button.dataset.entityListAction === "show-all-recent") {
+      state.entityRecentVisibleCount = totalCount;
+    }
+    renderEntities(activeEntityFileMap());
+    return;
+  }
+
+  const pinButton = event.target.closest("[data-entity-pin-path]");
+  if (pinButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    await withBusyOperation("entity pin", () => toggleEntityPin(pinButton.dataset.entityPinPath));
+    return;
+  }
+
+  const card = event.target.closest("[data-entity-path]");
+  if (card && els.entityBrowser?.contains(card)) {
+    activateTab("wiki");
+    selectVaultPath(card.dataset.entityPath);
+  }
+}
+
+function handleEntityBrowserKeydown(event) {
+  if (!["Enter", " "].includes(event.key)) return;
+  if (event.target.closest("button, input, textarea, select, a")) return;
+  const card = event.target.closest("[data-entity-path]");
+  if (!card || !els.entityBrowser?.contains(card)) return;
+  event.preventDefault();
+  activateTab("wiki");
+  selectVaultPath(card.dataset.entityPath);
+}
+
+async function toggleEntityPin(path) {
+  const normalizedPath = normalizeMarginsPath(path);
+  if (!normalizedPath || !state.currentFileMap?.has(normalizedPath)) return false;
+  if (!state.vaultHandle) {
+    els.stats.textContent = "Open a vault before pinning entities.";
+    return false;
+  }
+
+  const currentBody = state.currentFileMap.get(normalizedPath);
+  const record = entityRecord(normalizedPath, currentBody);
+  if (!record) return false;
+  const shouldPin = !entityHasPinnedSignal(record);
+  const nextBody = entityPinnedBody(currentBody, shouldPin);
+  if (nextBody === currentBody) return false;
+
+  const granted = await requestVaultPermission(state.vaultHandle);
+  if (!granted) {
+    updateVaultStatus("Pinning needs vault write permission.");
+    return false;
+  }
+
+  await writeTextFile(state.vaultHandle, normalizedPath, nextBody);
+  state.currentFileMap.set(normalizedPath, nextBody);
+  state.loadedFileMap.set(normalizedPath, nextBody);
+  if (state.selectedPath === normalizedPath) {
+    setDocumentHeader(normalizedPath, nextBody, { kind: state.selectedKind || "wiki", readOnly: false });
+    setDocBody(nextBody, { readOnly: false });
+  }
+  renderEntities(activeEntityFileMap());
+  renderWikiFiles(state.currentFileMap);
+  drawGraph(graphFromFileMap(state.currentFileMap));
+  els.stats.textContent = `${shouldPin ? "Pinned" : "Unpinned"} ${record.title}`;
+  updateSaveButtonState();
+  return true;
+}
+
+function activeEntityFileMap() {
+  return state.currentFileMap || state.entityFileMap || new Map();
+}
+
+function entityPinnedBody(body, shouldPin) {
+  const source = String(body || "");
+  const match = source.match(/^---\n([\s\S]*?)\n---\n?/);
+  if (!match) {
+    return shouldPin ? `---\npriority: pinned\n---\n\n${source}` : source;
+  }
+
+  const frontmatter = shouldPin
+    ? setPinnedFrontmatterField(match[1])
+    : removePinnedFrontmatterSignals(match[1]);
+  return `---\n${frontmatter}${frontmatter.endsWith("\n") ? "" : "\n"}---\n${source.slice(match[0].length)}`;
+}
+
+function setPinnedFrontmatterField(frontmatter) {
+  const lines = frontmatter.split("\n");
+  let foundPriority = false;
+  const nextLines = lines
+    .filter((line) => !/^pinned:\s*/i.test(line))
+    .map((line) => {
+      if (/^priority:\s*/i.test(line)) {
+        foundPriority = true;
+        return "priority: pinned";
+      }
+      return line;
+    });
+  if (!foundPriority) nextLines.push("priority: pinned");
+  return nextLines.join("\n");
+}
+
+function removePinnedFrontmatterSignals(frontmatter) {
+  const lines = frontmatter.split("\n");
+  const nextLines = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const field = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+    if (!field) {
+      nextLines.push(line);
+      continue;
+    }
+
+    const key = field[1].toLowerCase();
+    const value = yamlScalar(field[2]).toLowerCase();
+    if ((key === "priority" || key === "status") && value === "pinned") continue;
+    if (key === "pinned") continue;
+    if (key === "tags") {
+      if (field[2].trim()) {
+        const tags = frontmatterList(field[2]).filter((tag) => normalizeEntityTag(tag) !== "pinned");
+        if (tags.length) nextLines.push(`tags: [${tags.map(yamlInlineScalar).join(", ")}]`);
+        continue;
+      }
+
+      const listItems = [];
+      let cursor = index + 1;
+      while (cursor < lines.length && /^\s*-\s*/.test(lines[cursor])) {
+        const tag = yamlScalar(lines[cursor].replace(/^\s*-\s*/, ""));
+        if (normalizeEntityTag(tag) !== "pinned") listItems.push(lines[cursor]);
+        cursor += 1;
+      }
+      if (listItems.length) {
+        nextLines.push(line);
+        nextLines.push(...listItems);
+      }
+      index = cursor - 1;
+      continue;
+    }
+
+    nextLines.push(line);
+  }
+  return nextLines.filter((line, index, list) => line.trim() || index < list.length - 1).join("\n");
+}
+
+function yamlInlineScalar(value) {
+  const text = String(value || "").trim();
+  return /^[A-Za-z0-9_/-]+$/.test(text) ? text : JSON.stringify(text);
+}
+
+function isEntityFilterActive(kind, value) {
+  if (kind === "all") return state.entityFilterKind === "all";
+  return state.entityFilterKind === kind && state.entityFilterValue === value;
+}
+
+function filterEntityRecords(records) {
+  const query = String(state.entityQuery || "").trim().toLowerCase();
+  return records.filter((record) => {
+    if (state.entityFilterKind === "type" && record.typeLabel !== state.entityFilterValue) return false;
+    if (state.entityFilterKind === "tag" && !record.filterTags.includes(state.entityFilterValue)) return false;
+    if (!query) return true;
+    const searchable = [
+      record.title,
+      record.summary,
+      record.typeLabel,
+      record.bucketLabel,
+      ...record.tags
+    ].join(" ").toLowerCase();
+    return searchable.includes(query);
+  });
+}
+
+function entityTypeFacets(records) {
+  const counts = countBy(records, (record) => record.typeLabel);
+  const typeOrder = ["Person", "Advisor", "Company", "Project", "Concept", "Idea", "School", "Career", "Synthesis", "Entity"];
+  const orderedTypes = [...counts.entries()]
+    .sort((left, right) => {
+      const leftIndex = typeOrder.indexOf(left[0]);
+      const rightIndex = typeOrder.indexOf(right[0]);
+      const leftRank = leftIndex === -1 ? typeOrder.length : leftIndex;
+      const rightRank = rightIndex === -1 ? typeOrder.length : rightIndex;
+      return leftRank - rightRank || right[1] - left[1] || left[0].localeCompare(right[0]);
+    });
+  return [
+    { kind: "all", value: "", label: "All", count: records.length },
+    ...orderedTypes.map(([label, count]) => ({
+      kind: "type",
+      value: label,
+      label: pluralEntityTypeLabel(label),
+      count
+    }))
+  ];
+}
+
+function entityTagFacets(records) {
+  return [...countBy(records.flatMap((record) => record.filterTags), (tag) => tag).entries()]
+    .filter(([tag]) => tag)
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .slice(0, 10)
+    .map(([tag, count]) => ({
+      kind: "tag",
+      value: tag,
+      label: tag,
+      count
+    }));
+}
+
+function countBy(items, keyForItem) {
+  const counts = new Map();
+  items.forEach((item) => {
+    const key = keyForItem(item);
+    if (!key) return;
+    counts.set(key, (counts.get(key) || 0) + 1);
+  });
+  return counts;
+}
+
+function pluralEntityTypeLabel(label) {
+  return {
+    Person: "People",
+    Advisor: "Advisors",
+    Company: "Companies",
+    Project: "Projects",
+    Concept: "Concepts",
+    Idea: "Ideas",
+    School: "School",
+    Career: "Career",
+    Synthesis: "Synthesis",
+    Entity: "Entities"
+  }[label] || `${label}s`;
+}
+
+function isEntityActiveThisWeek(updated) {
+  const timestamp = Date.parse(updated || "");
+  if (!Number.isFinite(timestamp)) return false;
+  return Date.now() - timestamp <= 7 * 24 * 60 * 60 * 1000;
+}
+
+function entityHasPinnedSignal(record) {
+  return Boolean(record.pinnedFlag) || record.priority === "pinned" || record.status === "pinned" || record.tags.includes("pinned");
+}
+
+function entityRecordsFromFileMap(fileMap) {
+  return [...fileMap.entries()]
+    .filter(([path, body]) => isEntityPagePath(path, body))
+    .map(([path, body]) => entityRecord(path, body))
+    .filter(Boolean)
+    .sort(entityRecordSort);
+}
+
+function isEntityPagePath(path, body) {
+  if (!path.startsWith("wiki/") || !path.endsWith(".md")) return false;
+  if (path.startsWith("wiki/.margins/") || path.startsWith("wiki/_templates/")) return false;
+  if (isBucketOverviewPath(path)) return false;
+  if (isFolderIndexPath(path)) return false;
+  if (path === "wiki/index.md" || /^wiki\/(ingest-tracker|log|wiki-stats)\.md$/.test(path)) return false;
+  if (path.startsWith("wiki/sources/")) return false;
+  if (/^wiki\/[^/]+\/source[-/]/.test(path)) return false;
+
+  const fields = frontmatterFields(body);
+  const type = String(fields.type || fields.kind || "").toLowerCase();
+  if (["source", "log", "index", "template"].includes(type)) return false;
+  if (["entity", "person", "company", "project", "concept", "school", "advisor", "family", "synthesis", "idea"].includes(type)) return true;
+  return /^wiki\/(concepts|entities|synthesis|personal|projects|career|ideas|school|coding)\//.test(path);
+}
+
+function isFolderIndexPath(path) {
+  const parts = path.split("/");
+  if (parts.length !== 3) return false;
+  return parts[2].replace(/\.md$/, "") === parts[1];
+}
+
+function entityRecord(path, body) {
+  const context = wikiContextRecord(path, body);
+  const fields = frontmatterFields(body);
+  const title = cleanSummary(context.title || titleFromSlug(basename(path).replace(/\.md$/, "")));
+  if (!title || /^(entities|projects|ideas|career|school|personal)$/i.test(title)) return null;
+  const filterTags = uniqueEntityTags([
+    ...context.tags,
+    ...extractInlineTags(body)
+  ]);
+  const typeLabel = entityTypeLabel(context.type, path, fields, filterTags, context.bucket);
+  const summary = cleanSummary(entityField(fields, "card_summary", "one_line", "one_liner") || context.summary || excerptForQuestion(bodyWithoutFrontmatter(body), 180));
+  const lastTouch = entityField(fields, "last_contact", "last_touch", "updated", "created") || context.updated || "";
+  const tags = [...new Set([
+    ...filterTags,
+    context.bucket,
+    context.status,
+    context.priority
+  ].filter(Boolean).map(normalizeEntityTag).filter(Boolean))];
+  return {
+    path,
+    title,
+    summary: clampSentence(summary, 180),
+    typeLabel,
+    bucketLabel: entityBucketLabel(path, context.bucket),
+    updated: context.updated || "",
+    lastTouch,
+    meta: entityMetaLine(fields, context, filterTags, lastTouch),
+    nextAction: entityNextAction(fields, body),
+    pinnedFlag: isPinnedFrontmatterValue(fields.pinned),
+    status: normalizeEntityTag(context.status),
+    priority: normalizeEntityTag(context.priority),
+    tags,
+    filterTags,
+    connectionCount: context.keyLinks.length
+  };
+}
+
+function isPinnedFrontmatterValue(value) {
+  return /^(true|yes|1|pinned)$/i.test(String(value || "").trim());
+}
+
+function entityField(fields, ...names) {
+  for (const name of names) {
+    const value = fields?.[name];
+    if (Array.isArray(value)) {
+      const joined = value.map((item) => cleanSummary(item)).filter(Boolean).join(", ");
+      if (joined) return joined;
+    } else if (String(value || "").trim()) {
+      return cleanSummary(value);
+    }
+  }
+  return "";
+}
+
+function entityMetaLine(fields, context, tags, lastTouch) {
+  const descriptors = [];
+  const role = shortEntityDescriptor(entityField(fields, "role", "job", "position"));
+  const firm = shortEntityDescriptor(entityField(fields, "firm", "company", "organization", "org"));
+  const category = shortEntityDescriptor(entityField(fields, "category"));
+  const relationship = shortEntityDescriptor(entityField(fields, "relationship"));
+  const status = shortEntityDescriptor(firstStatusPart(entityField(fields, "status")));
+
+  if (role && firm && !/independent advisor/i.test(firm)) descriptors.push(`${role} at ${firm}`);
+  else if (role) descriptors.push(role);
+  else if (firm) descriptors.push(firm);
+
+  for (const descriptor of [category, relationship, status, entityTagDescriptor(tags, context.bucket)]) {
+    if (!descriptor || descriptors.some((item) => item.toLowerCase() === descriptor.toLowerCase())) continue;
+    descriptors.push(descriptor);
+    if (descriptors.length >= 2) break;
+  }
+
+  const touch = lastTouchPhrase(lastTouch);
+  if (touch) descriptors.push(touch);
+  return descriptors.slice(0, touch ? 3 : 2).join(" · ");
+}
+
+function shortEntityDescriptor(value) {
+  return cleanSummary(value)
+    .replace(/\s*\([^)]*\)\s*$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function firstStatusPart(value) {
+  return String(value || "").split(",")[0].trim();
+}
+
+function entityTagDescriptor(tags, bucket) {
+  const stop = new Set([
+    "active",
+    "advisor",
+    "aged",
+    "briefly",
+    "company",
+    "concept",
+    "contact",
+    "entity",
+    "fresh",
+    "old",
+    "peak",
+    "person",
+    "pinned",
+    "project",
+    "recent",
+    "source",
+    "vibrance/aged",
+    "vibrance/fresh",
+    "vibrance/old",
+    "vibrance/peak",
+    "vibrance/recent"
+  ]);
+  const tag = tags.find((item) => {
+    const normalized = normalizeEntityTag(item);
+    return normalized && !stop.has(normalized) && !normalized.startsWith("region/") && !normalized.startsWith("vibrance/");
+  });
+  if (tag) return titleFromSlug(tag.replace(/\//g, "-"));
+  return titleFromSlug(bucket || "wiki");
+}
+
+function lastTouchPhrase(value) {
+  const timestamp = Date.parse(value || "");
+  if (!Number.isFinite(timestamp)) return "";
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const then = new Date(timestamp);
+  const thenDay = new Date(then.getFullYear(), then.getMonth(), then.getDate()).getTime();
+  const days = Math.round((today - thenDay) / (24 * 60 * 60 * 1000));
+  if (days <= 0) return "last touch today";
+  if (days === 1) return "last touch yesterday";
+  if (days < 14) return `last touch ${days}d ago`;
+  if (days < 60) return `last touch ${Math.round(days / 7)}w ago`;
+  return `last touch ${then.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+}
+
+function entityNextAction(fields, body) {
+  const direct = entityField(fields, "next_move", "next", "follow_up", "action", "todo");
+  if (direct) return clampSentence(direct, 96);
+  const section = bodyWithoutFrontmatter(body).match(/^##\s+(?:Next|Next move|Follow[- ]?up|Action)\b[^\n]*\n([\s\S]*?)(?=\n##\s|$)/im);
+  if (!section?.[1]) return "";
+  const line = section[1]
+    .split("\n")
+    .map((item) => item.replace(/^[-*]\s*/, "").trim())
+    .find(Boolean);
+  return clampSentence(line || "", 96);
+}
+
+function extractInlineTags(body) {
+  const text = bodyWithoutFrontmatter(body)
+    .replace(/```[\s\S]*?```/g, " ")
+    .split("\n")
+    .filter((line) => !/^#{1,6}\s/.test(line.trim()))
+    .join("\n");
+  const tags = [];
+  const pattern = /(^|[\s([{])#([A-Za-z0-9][A-Za-z0-9/_-]{0,64})\b/g;
+  let match;
+  while ((match = pattern.exec(text)) !== null) {
+    tags.push(match[2]);
+  }
+  return tags;
+}
+
+function uniqueEntityTags(tags) {
+  return [...new Set(tags.map(normalizeEntityTag).filter(Boolean))];
+}
+
+function normalizeEntityTag(tag) {
+  return String(tag || "")
+    .trim()
+    .replace(/^#/, "")
+    .replace(/^['"]|['"]$/g, "")
+    .toLowerCase();
+}
+
+function entityRecordSort(left, right) {
+  const leftDate = Date.parse(left.updated || "");
+  const rightDate = Date.parse(right.updated || "");
+  if (Number.isFinite(leftDate) || Number.isFinite(rightDate)) {
+    return (Number.isFinite(rightDate) ? rightDate : 0) - (Number.isFinite(leftDate) ? leftDate : 0);
+  }
+  return left.title.localeCompare(right.title);
+}
+
+function entityTypeLabel(type, path, fields = {}, tags = [], bucket = "") {
+  const normalized = String(type || "").toLowerCase();
+  const tagSet = new Set(tags.map(normalizeEntityTag));
+  const category = normalizeEntityTag(entityField(fields, "category"));
+  const role = normalizeEntityTag(entityField(fields, "role"));
+  const folder = normalizeEntityTag(bucket || path.split("/")[1] || "");
+  if (normalized === "entity") {
+    if (tagSet.has("advisor") || category === "coach" || /advisor|coach/.test(role)) return "Advisor";
+    if (tagSet.has("person") || tagSet.has("contact") || path.startsWith("wiki/personal/")) return "Person";
+    if (tagSet.has("company") || tagSet.has("firm") || tagSet.has("family-office") || tagSet.has("wealth-management")) return "Company";
+    if (tagSet.has("project") || tagSet.has("startup") || folder === "projects") return "Project";
+    if (tagSet.has("concept") || folder === "concepts" || folder === "ideas") return "Concept";
+    return "Entity";
+  }
+  if (normalized === "person") return "Person";
+  if (normalized === "company") return "Company";
+  if (normalized === "project") return "Project";
+  if (normalized === "concept") return "Concept";
+  if (normalized === "advisor") return "Advisor";
+  if (normalized === "school") return "School";
+  if (path.startsWith("wiki/personal/")) return "Person";
+  if (path.startsWith("wiki/projects/")) return "Project";
+  if (path.startsWith("wiki/ideas/")) return "Idea";
+  if (path.startsWith("wiki/career/")) return "Career";
+  if (path.startsWith("wiki/school/")) return "School";
+  return titleFromSlug(normalized || "entity");
+}
+
+function entityBucketLabel(path, bucket) {
+  const folder = path.split("/")[1] || bucket || "wiki";
+  return titleFromSlug(bucket || folder);
+}
+
+function entityVibeClass(record) {
+  for (const vibe of ["peak", "fresh", "recent", "aged", "old"]) {
+    if (record.filterTags.includes(`vibrance/${vibe}`) || record.filterTags.includes(vibe)) return vibe;
+  }
+  const timestamp = Date.parse(record.lastTouch || record.updated || "");
+  if (Number.isFinite(timestamp)) {
+    const days = Math.max(0, Math.round((Date.now() - timestamp) / (24 * 60 * 60 * 1000)));
+    if (days <= 2) return "peak";
+    if (days <= 7) return "fresh";
+    if (days <= 30) return "recent";
+    if (days <= 90) return "aged";
+  }
+  return "old";
 }
 
 function ingestionStats(fileMap) {
@@ -5279,8 +6349,13 @@ function updateReviewModeHelp() {
   }[state.reviewMode] || "";
 }
 
-async function runWorkflowStep() {
+async function handleWorkflowButtonClick() {
   const step = workflowStep();
+  if (step.disabled) return;
+  await withBusyOperation(step.label, () => runWorkflowStep(step));
+}
+
+async function runWorkflowStep(step = workflowStep()) {
   if (step.disabled) return;
 
   if (step.action === "vault") {
