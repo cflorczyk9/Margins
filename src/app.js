@@ -4589,6 +4589,46 @@ summary: Source page that should not render as an entity card.
       renderWikiFiles(state.currentFileMap);
       return document.querySelector("#entity-browser")?.innerText || "";
     },
+    seedCrowdedEntityFacets() {
+      const specs = [
+        ["wiki/people/bob-casey.md", "person", "Bob Casey", ["briefly", "person", "vibrance/aged"], "Founder relationship attached to Riviera.", "2026-05-06"],
+        ["wiki/advisors/mark-loh.md", "advisor", "Mark Loh", ["briefly", "advisor", "vibrance/aged"], "Advisor note for product and sales.", "2026-05-05"],
+        ["wiki/companies/centric-wm.md", "company", "Centric WM", ["company", "riviera", "briefly"], "Pilot partner and buyer context.", "2026-05-04"],
+        ["wiki/projects/margins-v2.md", "project", "Margins v2", ["briefly", "region/briefly", "vibrance/recent"], "Product build note with next steps.", "2026-05-06"],
+        ["wiki/concepts/setup-efficiency.md", "concept", "Setup Efficiency", ["concept", "competitive-analysis", "vibrance/fresh"], "Concept note for faster setup.", "2026-05-03"],
+        ["wiki/ideas/pilot-shape.md", "idea", "Pilot Shape", ["briefly", "competitive-analysis"], "Idea note for pilot scope.", "2026-05-02"],
+        ["wiki/synthesis/product-map.md", "synthesis", "Product Map", ["concept", "region/briefly"], "Synthesis note across product work.", "2026-05-01"],
+        ["wiki/entities/riviera.md", "entity", "Riviera", ["riviera", "vibrance/aged"], "General entity note for Riviera.", "2026-04-30"],
+        ["wiki/entities/hub-briefly.md", "hub", "Briefly Hub", ["briefly", "region/briefly"], "Hub note for Briefly context.", "2026-04-29"]
+      ];
+      state.currentFileMap = new Map([
+        ["wiki/index.md", `---
+type: index
+summary: Crowded entity facet test index.
+---
+
+# Index
+`],
+        ...specs.map(([path, type, title, tags, summary, updated]) => [path, `---
+type: ${type}
+summary: ${summary}
+tags: [${tags.join(", ")}]
+updated: ${updated}
+---
+
+# ${title}
+
+${summary}
+`])
+      ]);
+      state.entityFilterKind = "all";
+      state.entityFilterValue = "";
+      state.entityQuery = "";
+      state.selectedPath = null;
+      renderVaultTree(state.currentFileMap);
+      renderWikiFiles(state.currentFileMap);
+      return document.querySelector("#entity-controls")?.innerText || "";
+    },
     async loadBroadWikiVault() {
       const handle = createMemoryVaultHandle();
       await writeTextFile(handle, "wiki/career/riviera.md", `---

@@ -3258,6 +3258,13 @@ body {
   margin-top: 44px;
 }
 
+.entity-filter-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+}
+
 .entity-search {
   position: relative;
   display: block;
@@ -3323,13 +3330,11 @@ body {
 }
 
 .entity-chip-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
+  display: contents;
 }
 
 .entity-tag-row {
-  margin-top: -2px;
+  margin-top: 0;
 }
 
 .entity-chip {
@@ -3687,7 +3692,7 @@ body {
     display: none;
   }
 
-  .entity-chip-row {
+  .entity-filter-wrap {
     gap: 8px;
   }
 
