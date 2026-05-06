@@ -171,7 +171,6 @@ ensureApiSecretReady();
 els.folderInput.addEventListener("change", handleSourceSelection);
 els.fileInput.addEventListener("change", handleSourceSelection);
 els.sourceList?.addEventListener("click", handleSourceActionClick);
-document.getElementById("wall")?.addEventListener("click", handleSourceActionClick);
 els.bulkIngestBtn?.addEventListener("click", () => withBusyOperation("bulk ingest", bulkIngestPendingSources));
 els.docBody?.addEventListener("input", handleVaultDocumentEdit);
 els.docBody?.addEventListener("scroll", syncDocHighlightScroll);
@@ -718,7 +717,6 @@ function setActiveVault(handle, name) {
   updateVaultStatus(name);
   saveVaultHandle(handle).catch(() => {});
   updateWorkflowState();
-  document.dispatchEvent(new CustomEvent("margins:vault-connected", { detail: { name } }));
 }
 
 function updateVaultStatus(message) {
@@ -3821,7 +3819,6 @@ function renderSources() {
   if (files.length === 0) {
     els.sourceList.className = "source-list empty";
     els.sourceList.textContent = "No new documents loaded.";
-    syncDemoActivitySurface(state.currentFileMap);
     return;
   }
   els.sourceList.className = "source-list";
@@ -3840,7 +3837,6 @@ function renderSources() {
     </div>
   `).join("");
   bindSourceListControls();
-  syncDemoActivitySurface(state.currentFileMap);
 }
 
 function renderSourceTimestamp(file) {
@@ -3866,215 +3862,6 @@ function formatSourceTimestamp(date) {
     hour: "numeric",
     minute: "2-digit"
   }).format(date);
-}
-
-function syncDemoActivitySurface(fileMap = state.currentFileMap) {
-  const normalizedMap = fileMap instanceof Map ? fileMap : new Map();
-  const items = uniqueActivityItems([
-    ...pendingActivityItems(normalizedMap),
-    ...filedActivityItems(normalizedMap)
-  ]).slice(0, 24);
-  const payload = {
-    items,
-    tags: aggregateActivityTags(items)
-  };
-  globalThis.__marginsActivityPayload = payload;
-  globalThis.__marginsDemo?.renderActivity?.(payload);
-}
-
-function uniqueActivityItems(items) {
-  const seen = new Set();
-  return items.filter((item) => {
-    const key = item.path || item.fileName || item.title;
-    if (!key || seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
-function pendingActivityItems(fileMap) {
-  return state.files.map((file) => {
-    const review = state.ingestReviews.get(file.name);
-    const ready = isSourceReviewReady(file);
-    const connections = activityConnectionTitles(review?.connections || []);
-    const tags = pendingActivityTags(file, review, connections);
-    const summary = ready
-      ? sourceIngestFullSummary(file) || sourceIngestSummaryBullets(file).join(" ")
-      : pendingReviewNote(file);
-    const date = sourceTimestampDate(file);
-    return {
-      fileName: file.name,
-      title: file.name,
-      typeLabel: sourceTypeLabel(file),
-      timestamp: date ? relativeActivityTimestamp(date) : "just now",
-      sortAt: date ? date.getTime() : Date.now(),
-      summary: summary || excerptForQuestion(file.text || "", 220) || "Margins is preparing this source for review.",
-      tags,
-      connectedSources: connections,
-      connectedCount: connections.length,
-      statusLabel: ready ? "Ready to file" : rawSourceAlreadySaved(file) ? "Raw source saved" : "Pending review",
-      actionLabel: sourceProcessLabel(file),
-      actionDisabled: sourceProcessDisabled(file),
-      primaryEntity: tags[0] || "",
-      isPending: true,
-      isFresh: ready,
-      path: `raw_sources/${file.name}`,
-      _fileMap: fileMap
-    };
-  });
-}
-
-function filedActivityItems(fileMap) {
-  return [...fileMap.entries()]
-    .filter(([path, body]) => isActivitySourcePath(path, body))
-    .map(([path, body]) => filedActivityItem(path, body, fileMap))
-    .sort((a, b) => (b.sortAt || 0) - (a.sortAt || 0) || a.title.localeCompare(b.title));
-}
-
-function isActivitySourcePath(path, body) {
-  if (!path.endsWith(".md")) return false;
-  if (path.startsWith("wiki/sources/")) return true;
-  return frontmatterFields(body).type === "source";
-}
-
-function filedActivityItem(path, body, fileMap) {
-  const frontmatter = frontmatterFields(body);
-  const title = markdownTitle(body) || titleFromSlug(basename(path).replace(/\.md$/, ""));
-  const rawFile = frontmatter.raw_file || body.match(/^raw_file:\s*(raw_sources\/.+)$/m)?.[1]?.trim() || "";
-  const date = activityDate(frontmatter.event_date || frontmatter.updated || frontmatter.created || dateFromSourcePath(path));
-  const connectedSources = activityConnectedSources(body, fileMap, path, title);
-  const tags = filedActivityTags(frontmatter, body, connectedSources);
-  return {
-    path,
-    title,
-    typeLabel: sourceTypeFromPath(rawFile || path),
-    timestamp: date ? relativeActivityTimestamp(date) : "filed",
-    sortAt: date ? date.getTime() : 0,
-    summary: cleanSummary(frontmatter.summary || extractSourceSummary(body) || excerptForQuestion(bodyWithoutFrontmatter(body), 220)),
-    tags,
-    connectedSources,
-    connectedCount: connectedSources.length,
-    statusLabel: `${tags.length || 0} tags associated`,
-    primaryEntity: tags[0] || title
-  };
-}
-
-function activityConnectionTitles(connections) {
-  return connections
-    .map((connection) => connection.title || titleFromSlug(basename(connection.path || "").replace(/\.md$/, "")))
-    .map(cleanSummary)
-    .filter(Boolean)
-    .slice(0, 8);
-}
-
-function activityConnectedSources(body, fileMap, currentPath, currentTitle) {
-  const linkLabels = extractWikiLinks(body)
-    .map(cleanWikiLinkLabel)
-    .filter(Boolean)
-    .map((link) => titleForLinkedActivity(link, fileMap))
-    .filter((title) => title && title !== currentTitle);
-  const unique = [...new Set(linkLabels)];
-  return unique.slice(0, 8);
-}
-
-function titleForLinkedActivity(link, fileMap) {
-  const normalized = normalizeActivityLinkPath(link);
-  const body = fileMap.get(normalized) || fileMap.get(`${normalized}.md`) || fileMap.get(`wiki/${normalized}.md`);
-  if (body) return markdownTitle(body) || titleFromSlug(basename(normalized).replace(/\.md$/, ""));
-  return titleFromSlug(basename(link).replace(/\.md$/, ""));
-}
-
-function normalizeActivityLinkPath(link) {
-  const clean = String(link || "").replace(/\\/g, "/").replace(/\.md$/, "");
-  if (clean.startsWith("wiki/")) return `${clean}.md`;
-  if (clean.includes("/")) return `wiki/${clean}.md`;
-  return `wiki/${clean}.md`;
-}
-
-function pendingActivityTags(file, review, connections) {
-  const tags = [
-    ...activityTagsFromConnections(connections),
-    ...(review?.propagation || []).map((item) => titleFromSlug(basename(item.targetPath || "").replace(/\.md$/, ""))),
-    sourceTypeLabel(file)
-  ];
-  return compactActivityTags(tags);
-}
-
-function filedActivityTags(frontmatter, body, connectedSources) {
-  const tags = [
-    ...frontmatterList(frontmatter.tags),
-    frontmatter.bucket,
-    ...activityTagsFromConnections(connectedSources),
-    ...extractHashTags(body)
-  ];
-  return compactActivityTags(tags);
-}
-
-function activityTagsFromConnections(connections) {
-  return (connections || []).map((connection) => typeof connection === "string" ? connection : connection?.title).filter(Boolean);
-}
-
-function compactActivityTags(tags) {
-  const generic = new Set(["source", "raw-source", "txt", "md", "markdown", "pdf", "docx"]);
-  return [...new Set(tags
-    .map((tag) => cleanSummary(tag).replace(/^wiki\s+/i, ""))
-    .filter((tag) => tag && !generic.has(tag.toLowerCase())))]
-    .slice(0, 8);
-}
-
-function extractHashTags(body) {
-  return [...String(body || "").matchAll(/(^|\s)#([A-Za-z][\w/-]+)/g)]
-    .map((match) => match[2])
-    .slice(0, 8);
-}
-
-function aggregateActivityTags(items) {
-  const counts = new Map();
-  for (const item of items) {
-    for (const tag of item.tags || []) {
-      counts.set(tag, (counts.get(tag) || 0) + 1);
-    }
-  }
-  return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .slice(0, 9)
-    .map(([label, count]) => ({ label, count }));
-}
-
-function dateFromSourcePath(path) {
-  return path.match(/\b(\d{4}-\d{2}-\d{2})\b/)?.[1] || "";
-}
-
-function activityDate(value) {
-  if (!value) return null;
-  const date = new Date(`${String(value).slice(0, 10)}T00:00:00`);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function relativeActivityTimestamp(date) {
-  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const days = Math.round((today - start) / 86400000);
-  if (days <= 0) return "today";
-  if (days === 1) return "yesterday";
-  if (days < 31) return `${days}d`;
-  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(date);
-}
-
-function sourceTypeFromPath(path) {
-  const ext = basename(path).split(".").pop()?.toLowerCase() || "";
-  return {
-    pdf: "PDF",
-    docx: "DOCX",
-    doc: "DOC",
-    md: "MD",
-    txt: "TXT",
-    eml: "EMAIL",
-    m4a: "VOICE",
-    mp3: "VOICE",
-    wav: "VOICE"
-  }[ext] || "TXT";
 }
 
 function bindSourceListControls() {
@@ -4532,11 +4319,6 @@ function cleanSummary(value) {
 
 function installTestHooks() {
   if (!new URLSearchParams(location.search).has("marginsTest")) return;
-  document.documentElement.dataset.marginsTest = "1";
-  const compatTabs = document.querySelector(".compat-tabs");
-  compatTabs?.removeAttribute("hidden");
-  compatTabs?.setAttribute("aria-hidden", "false");
-  activateTab("inbox");
   globalThis.__marginsTest = {
     seedIngestCard({ summary, questions = [], connections = [] } = {}) {
       const file = {
@@ -5381,7 +5163,6 @@ function isSourceReviewReady(file) {
 }
 
 function renderVaultTree(fileMap = state.currentFileMap) {
-  syncDemoActivitySurface(fileMap);
   if (!els.vaultTree) return;
   const stats = ingestionStats(fileMap || new Map());
   els.vaultTree.innerHTML = `
@@ -7646,10 +7427,7 @@ function activateTab(view) {
   document.querySelectorAll(".view").forEach((item) => {
     const active = item.id === `${view}-view`;
     item.classList.toggle("active", active);
-    if (item.classList.contains("utility-view")) {
-      item.hidden = !active;
-      item.setAttribute("aria-hidden", active ? "false" : "true");
-    }
+    if (item.classList.contains("utility-view")) item.hidden = !active;
   });
   if (view === "graph" && graphView.nodes.length) {
     startGraphSimulation(0.16);
