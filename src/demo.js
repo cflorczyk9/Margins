@@ -10,6 +10,123 @@ const lines     = document.getElementById('streamLines');
 const statusEl  = document.getElementById('streamStatus');
 const actions   = document.getElementById('streamActions');
 const wall      = document.getElementById('wall');
+const tagRail   = document.getElementById('tag-rail');
+const fallbackWallHtml = wall?.innerHTML || '';
+const fallbackTagRailHtml = tagRail?.innerHTML || '';
+
+function htmlEscape(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function renderTagRail(tags = []) {
+  if (!tagRail) return;
+  const cleanTags = tags
+    .map(tag => typeof tag === 'string' ? { label: tag, count: 1 } : tag)
+    .filter(tag => tag?.label)
+    .slice(0, 9);
+
+  if (cleanTags.length === 0) {
+    tagRail.innerHTML = fallbackTagRailHtml;
+    return;
+  }
+
+  tagRail.innerHTML = cleanTags.map(tag => `
+    <button type="button">
+      ${htmlEscape(tag.label)}
+      <span>${htmlEscape(tag.count || 1)}</span>
+    </button>
+  `).join('');
+  bindActivityCards(tagRail);
+}
+
+function aggregateActivityTags(items = []) {
+  const counts = new Map();
+  items.forEach(item => {
+    (item.tags || []).forEach(tag => {
+      const label = String(tag || '').trim();
+      if (!label) return;
+      counts.set(label, (counts.get(label) || 0) + 1);
+    });
+  });
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([label, count]) => ({ label, count }));
+}
+
+function iconClass(type = '') {
+  const clean = String(type).toLowerCase();
+  if (clean.includes('pdf')) return 'pdf';
+  if (clean.includes('email') || clean.includes('eml')) return 'eml';
+  if (clean.includes('voice') || clean.includes('audio')) return 'aud';
+  return 'txt';
+}
+
+function renderActivityCard(item) {
+  const tags = (item.tags || []).filter(Boolean).slice(0, 6);
+  const connected = (item.connectedSources || []).filter(Boolean).slice(0, 4);
+  const connectedCount = item.connectedCount ?? connected.length;
+  const status = item.statusLabel || (item.isPending ? 'Pending review' : 'Filed source');
+  const action = item.actionLabel && item.fileName ? `
+    <button class="card-action" type="button" data-source-action="process" data-source-file="${htmlEscape(item.fileName)}" ${item.actionDisabled ? 'disabled' : ''}>
+      ${htmlEscape(item.actionLabel)}
+    </button>
+  ` : '';
+
+  return `
+    <div class="card ${item.isFresh ? 'fresh' : ''}" data-entity="${htmlEscape(item.primaryEntity || item.title || '')}">
+      <div class="card-top">
+        <span class="source-icon ${iconClass(item.typeLabel)}">${htmlEscape(item.typeLabel || 'TXT')}</span>
+        <div class="card-title">${htmlEscape(item.title || 'Untitled source')}</div>
+        <div class="card-date">${htmlEscape(item.timestamp || 'filed')}</div>
+      </div>
+      <div class="card-summary">${htmlEscape(item.summary || 'Margins is preparing this source for review.')}</div>
+      ${tags.length ? `
+        <div class="card-pills">
+          ${tags.map(tag => `<span class="pill">${htmlEscape(tag)}</span>`).join('')}
+        </div>
+      ` : ''}
+      ${connected.length ? `
+        <div class="card-connections">
+          <span>Connected sources</span>
+          ${connected.map(source => `<button type="button">${htmlEscape(source)}</button>`).join('')}
+        </div>
+      ` : ''}
+      <div class="card-foot">
+        <span class="stat">${htmlEscape(status)}</span>
+        <span class="stat">Connected to <strong>${htmlEscape(connectedCount)}</strong> source${connectedCount === 1 ? '' : 's'}</span>
+      </div>
+      ${action}
+    </div>
+  `;
+}
+
+function renderActivity(payload = {}) {
+  if (!wall) return;
+  const items = Array.isArray(payload.items) ? payload.items : [];
+  if (items.length === 0) {
+    wall.innerHTML = fallbackWallHtml;
+    bindActivityCards(wall);
+    renderTagRail(payload.tags || []);
+    return;
+  }
+
+  wall.innerHTML = items.map(renderActivityCard).join('');
+  bindActivityCards(wall);
+  renderTagRail(payload.tags || aggregateActivityTags(items));
+}
+
+globalThis.__marginsDemo = {
+  renderActivity,
+  renderTagRail
+};
+
+if (globalThis.__marginsActivityPayload) {
+  renderActivity(globalThis.__marginsActivityPayload);
+}
 
 const steps = [
   { html: 'Reading PDF — 12 pages, ~3,200 words', delay: 350 },
@@ -84,19 +201,17 @@ function landCard() {
         <span class="pill">Briefly</span>
         <span class="pill">pilot agreement</span>
       </div>
+      <div class="card-connections">
+        <span>Connected sources</span>
+        <button type="button">4/28 pilot draft</button>
+        <button type="button">Ellis 4/30 transcript</button>
+      </div>
       <div class="card-foot">
         <span class="stat"><strong>5</strong> entities updated · <span style="color:var(--accent);font-weight:600;">1 flagged</span></span>
         <span class="stat">Connected to <strong>12</strong> sources</span>
       </div>`;
     wall.insertBefore(newCard, wall.firstChild);
-    // wire pill clicks on the new card
-    newCard.querySelectorAll('.pill').forEach(p => {
-      p.addEventListener('click', (e) => {
-        e.stopPropagation();
-        openEntity(p.textContent.trim());
-      });
-    });
-    newCard.addEventListener('click', () => openEntity(newCard.querySelector('.card-title')?.textContent.trim() || 'Bob Casey'));
+    bindActivityCards(newCard);
     newCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
     setTimeout(() => newCard.classList.remove('fresh'), 1400);
     running = false;
@@ -140,15 +255,28 @@ function closeEntity() {
 if (entityClose) entityClose.addEventListener('click', closeEntity);
 if (scrim) scrim.addEventListener('click', closeEntity);
 
-document.querySelectorAll('.demo-shell .card').forEach(card => {
-  card.addEventListener('click', () => openEntity(card.querySelector('.card-title')?.textContent.trim() || 'Bob Casey'));
-});
-document.querySelectorAll('.demo-shell .pill').forEach(p => {
-  p.addEventListener('click', (e) => {
-    e.stopPropagation();
-    openEntity(p.textContent.trim());
+function bindActivityCards(root = document) {
+  root.querySelectorAll?.('.demo-shell .card, .card').forEach(card => {
+    if (card.dataset.activityBound === 'true') return;
+    card.dataset.activityBound = 'true';
+    card.addEventListener('click', (event) => {
+      if (event.target.closest('button, input, label, select, textarea, a')) return;
+      const slug = card.dataset.entity;
+      const fromSlug = slug ? slug.split('-').map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' ') : '';
+      openEntity(fromSlug || card.querySelector('.card-title')?.textContent.trim() || 'Bob Casey');
+    });
   });
-});
+  root.querySelectorAll?.('.demo-shell .pill, .pill, .card-connections button, .tag-rail button').forEach(item => {
+    if (item.dataset.activityBound === 'true') return;
+    item.dataset.activityBound = 'true';
+    item.addEventListener('click', (event) => {
+      if (item.matches('[data-source-action]')) return;
+      event.stopPropagation();
+      openEntity(item.textContent.replace(/\s+\d+$/, '').trim());
+    });
+  });
+}
+bindActivityCards(document);
 
 // discovery banner click
 const discovery = document.querySelector('.demo-shell .discovery');

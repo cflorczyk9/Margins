@@ -6201,6 +6201,38 @@ body {
   border-radius: 50%;
   background: var(--accent);
 }
+.demo-shell .card-connections {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: -1px 0 11px;
+}
+.demo-shell .card-connections > span {
+  flex: 0 0 auto;
+  color: var(--ink-3);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.demo-shell .card-connections button {
+  min-height: 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 2px 9px;
+  cursor: pointer;
+}
+.demo-shell .card-connections button:hover {
+  border-color: var(--accent-line);
+  color: var(--accent);
+  background: var(--accent-softer);
+}
 .demo-shell .card-foot {
   display: flex;
   justify-content: space-between;
@@ -6212,6 +6244,28 @@ body {
 }
 .demo-shell .card-foot .stat { display: inline-flex; align-items: center; gap: 5px; }
 .demo-shell .card-foot .stat strong { color: var(--ink-2); font-weight: 600; }
+.demo-shell .card-action {
+  width: auto;
+  margin-top: 12px;
+  border: 1px solid var(--ink);
+  border-radius: var(--radius-pill);
+  background: var(--ink);
+  color: var(--bg);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 7px 13px;
+  cursor: pointer;
+}
+.demo-shell .card-action:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.demo-shell .card-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
 
 /* ---------- entities view ---------- */
 .demo-shell .view { animation: demo-view-in 220ms var(--ease); }
@@ -6844,7 +6898,7 @@ body {
 }
 .demo-shell .entity-ask:hover { background: var(--accent); }
 
-.scrim {
+.demo-shell .scrim {
   position: fixed;
   inset: 0;
   background: rgba(26,22,18,0.18);
@@ -6853,10 +6907,11 @@ body {
   transition: opacity 220ms var(--ease-soft);
   z-index: 15;
 }
-.scrim.show { opacity: 1; pointer-events: auto; }
+.demo-shell .scrim.show { opacity: 1; pointer-events: auto; }
 
 /* ---------- misc ---------- */
 .demo-shell [hidden] { display: none !important; }
+.demo-shell .view { display: block; }
 .demo-shell .meta-row {
   font-size: 12.5px;
   color: var(--ink-3);
@@ -6905,6 +6960,39 @@ body {
   border-color: var(--accent);
   color: var(--accent);
   background: var(--accent-softer);
+}
+
+.demo-shell .tag-rail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 4px;
+}
+.demo-shell .tag-rail button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-height: 26px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  padding: 3px 9px;
+  cursor: pointer;
+}
+.demo-shell .tag-rail button:hover {
+  border-color: var(--accent-line);
+  color: var(--accent);
+  background: var(--accent-softer);
+}
+.demo-shell .tag-rail span {
+  color: var(--ink-3);
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .demo-shell .sidebar-settings-btn {
