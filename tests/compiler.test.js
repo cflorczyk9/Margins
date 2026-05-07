@@ -77,6 +77,12 @@ test("local heuristic candidates stay in the ingest report until promoted", () =
   assert.match(report, /Language Model/);
   assert.match(report, /Alice Morgan/);
   assert.match(report, /Mentioned But Missing/);
+
+  const sourceNote = files.get("wiki/sources/source-candidate-note.md");
+  assert.match(sourceNote, /## Key Terms/);
+  assert.match(sourceNote, /## Entity Candidates/);
+  assert.doesNotMatch(sourceNote, /\[\[language-model\|language model\]\]/i);
+  assert.doesNotMatch(sourceNote, /\[\[alice-morgan\|Alice Morgan\]\]/);
 });
 
 test("localDateString formats local calendar dates instead of UTC slices", () => {

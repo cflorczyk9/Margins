@@ -15,6 +15,8 @@ let apiSecretHydrationPromise = null;
 const API_REQUEST_TIMEOUT_MS = 60_000;
 const ENTITY_RECENT_PAGE_SIZE = 12;
 const ACTIVITY_RECENT_PAGE_SIZE = 12;
+const PENDING_SOURCE_PAGE_SIZE = 6;
+const CANONICAL_ENTITY_TYPES = ["person", "company", "project", "concept", "synthesis"];
 const RAW_SOURCE_DIR = "raw";
 const LEGACY_RAW_SOURCE_DIR = "raw_sources";
 const INGEST_PROGRESS_STEP_DELAYS_MS = [0, 1400, 4400, 12000];
@@ -58,15 +60,22 @@ const state = {
   ingestErrors: new Map(),
   ingestProgress: new Map(),
   modelTimings: loadModelTimingLog(),
+  processTimings: loadProcessTimingLog(),
+  activeProcessTimings: new Map(),
+  expandedReceiptLinks: new Set(),
   expandedSummaries: new Set(),
   entityQuery: "",
   entityFilterKind: "all",
   entityFilterValue: "",
   entityFileMap: null,
+  entityTypePickerPath: "",
+  entityTypeOptions: [],
   entityRecentVisibleCount: ENTITY_RECENT_PAGE_SIZE,
   entityRecentSourceKey: "",
   activityRecentVisibleCount: ACTIVITY_RECENT_PAGE_SIZE,
-  activityRecentSourceKey: ""
+  activityRecentSourceKey: "",
+  pendingSourceVisibleCount: PENDING_SOURCE_PAGE_SIZE,
+  pendingSourceKey: ""
 };
 
 const apiThrottle = {
@@ -117,6 +126,7 @@ const els = {
   folderInput: document.getElementById("folder-input"),
   fileInput: document.getElementById("file-input"),
   queuePanel: document.getElementById("queue-panel"),
+  pendingCountLabel: document.getElementById("pending-count-label"),
   sourceList: document.getElementById("source-list"),
   recentActivityPanel: document.getElementById("recent-activity-panel"),
   recentActivityList: document.getElementById("recent-activity-list"),
@@ -910,6 +920,23 @@ async function handleSaveAndOrganize() {
 }
 
 async function handleSourceActionClick(event) {
+  const pendingAction = event.target.closest("[data-pending-list-action]");
+  if (pendingAction && els.sourceList?.contains(pendingAction)) {
+    event.preventDefault();
+    event.stopPropagation();
+    const totalCount = Math.max(0, Number(pendingAction.dataset.pendingSourceTotal) || state.files.length);
+    if (pendingAction.dataset.pendingListAction === "show-more") {
+      state.pendingSourceVisibleCount = Math.min(
+        totalCount,
+        Math.max(PENDING_SOURCE_PAGE_SIZE, state.pendingSourceVisibleCount) + PENDING_SOURCE_PAGE_SIZE
+      );
+    } else if (pendingAction.dataset.pendingListAction === "show-all") {
+      state.pendingSourceVisibleCount = totalCount;
+    }
+    renderSources();
+    return;
+  }
+
   const deleteButton = event.target.closest("[data-source-delete]");
   if (deleteButton) {
     event.stopPropagation();
@@ -926,6 +953,21 @@ async function handleSourceActionClick(event) {
   const answerButton = event.target.closest("[data-run-answer]");
   if (answerButton) {
     setIngestReviewAnswer(answerButton.dataset.file, answerButton.dataset.question, answerButton.dataset.answer);
+    return;
+  }
+
+  const receiptLinksToggle = event.target.closest("[data-receipt-links-toggle]");
+  if (receiptLinksToggle) {
+    event.preventDefault();
+    event.stopPropagation();
+    toggleReceiptLinkedEntities(receiptLinksToggle.dataset.receiptLinksToggle);
+    return;
+  }
+
+  const pathButton = event.target.closest("[data-source-open-path]");
+  if (pathButton) {
+    event.stopPropagation();
+    openActivityPath(pathButton.dataset.sourceOpenPath);
     return;
   }
 
@@ -964,6 +1006,7 @@ function removeSourceFromState(fileName) {
   state.editedRawFiles.delete(fileName);
   state.ingestReviews.delete(fileName);
   state.ingestErrors.delete(fileName);
+  state.expandedReceiptLinks.delete(fileName);
   for (const key of [...state.ingestAnswers.keys()]) {
     if (key.startsWith(`${fileName}::`)) state.ingestAnswers.delete(key);
   }
@@ -990,6 +1033,13 @@ function setIngestReviewAnswer(fileName, question, answer) {
   updateWorkflowState();
 }
 
+function toggleReceiptLinkedEntities(fileName) {
+  if (!fileName) return;
+  if (state.expandedReceiptLinks.has(fileName)) state.expandedReceiptLinks.delete(fileName);
+  else state.expandedReceiptLinks.add(fileName);
+  renderSources();
+}
+
 function ingestAnswerKey(fileName, question) {
   return `${fileName}::${question}`;
 }
@@ -1005,11 +1055,15 @@ function syncIngestAnswersToReviewReply() {
 }
 
 async function processPendingSource(fileName = "") {
+  const targetFiles = filesForInboxProcess(fileName);
+  const trackTiming = shouldTrackProcessTiming(fileName, targetFiles);
+  if (trackTiming) beginProcessTimings(targetFiles, { action: fileName ? "single" : "batch", autoFile: false });
   state.processingInbox = true;
   state.processingFileName = fileName || "";
   if (fileName) state.ingestErrors.delete(fileName);
   renderSources();
   updateSaveButtonState();
+  let processError = null;
   try {
     const file = fileName ? state.files.find((entry) => entry.name === fileName) : null;
     if (file && isSourceReviewReady(file)) {
@@ -1019,28 +1073,39 @@ async function processPendingSource(fileName = "") {
     } else {
       await prepareInboxSave(fileName);
     }
+  } catch (error) {
+    processError = error;
+    throw error;
   } finally {
     state.processingInbox = false;
     state.processingFileName = "";
     clearIngestProgress();
     renderSources();
+    if (trackTiming) await finishProcessTimingsAfterRender(targetFiles, { error: processError, autoFile: false });
     updateSaveButtonState();
   }
 }
 
 async function bulkIngestPendingSources() {
   if (state.processingInbox || state.files.length === 0) return;
+  const targetFiles = filesForInboxProcess("");
+  beginProcessTimings(targetFiles, { action: "bulk", autoFile: true });
   state.processingInbox = true;
   state.processingFileName = "";
   renderSources();
   updateSaveButtonState();
+  let processError = null;
   try {
     await prepareInboxSave("", { autoFile: true });
+  } catch (error) {
+    processError = error;
+    throw error;
   } finally {
     state.processingInbox = false;
     state.processingFileName = "";
     clearIngestProgress();
     renderSources();
+    await finishProcessTimingsAfterRender(targetFiles, { error: processError, autoFile: true });
     updateSaveButtonState();
   }
 }
@@ -1058,7 +1123,9 @@ async function prepareInboxSave(fileName = "", options = {}) {
   renderSources();
 
   await savePendingRawSourcesImmediately(targetFiles);
+  markProcessTimingPhase(targetFiles, "rawSavedMs");
   await prepareSourcesForProcessing(targetFiles);
+  markProcessTimingPhase(targetFiles, "textReadyMs");
 
   const existingFileMap = new Map(state.currentFileMap || []);
   state.vault = compileVault(targetFiles, { name: state.vaultName || "Karpathy Original" });
@@ -1076,11 +1143,13 @@ async function prepareInboxSave(fileName = "", options = {}) {
   els.exportBtn.disabled = false;
   updateSaveButtonState();
   els.copyBtn.disabled = false;
+  markProcessTimingPhase(targetFiles, "draftReadyMs");
   await prepareReviewForCurrentFileMap(
     options.autoFile ? "Margins reviewed and filed the pending documents." : "Margins prepared this document. Answer any quick checks, then approve it.",
     targetFiles,
     { ...options, contextFileMap: existingFileMap }
   );
+  markProcessTimingPhase(targetFiles, "reviewReadyMs");
   if (options.autoFile) {
     await saveCurrentVault();
   }
@@ -1093,6 +1162,12 @@ function filesForInboxProcess(fileName = "") {
   }
   const file = state.files.find((entry) => entry.name === fileName);
   return file ? [file] : [];
+}
+
+function shouldTrackProcessTiming(fileName = "", targetFiles = []) {
+  if (!targetFiles.length) return false;
+  if (fileName) return !isSourceReviewReady(targetFiles[0]);
+  return !(state.pendingSave && state.currentFileMap);
 }
 
 function startIngestProgress(files = []) {
@@ -1197,6 +1272,7 @@ async function saveCurrentVault(options = {}) {
     state.ingestAnswers = new Map();
     state.ingestErrors = new Map();
     state.expandedSummaries = new Set();
+    state.expandedReceiptLinks = new Set();
     state.loadedFileMap = new Map(state.currentFileMap);
     renderSources();
     renderVaultTree(state.currentFileMap);
@@ -2347,6 +2423,228 @@ function geminiIngestReviewResponseSchema() {
   };
 }
 
+function beginProcessTimings(files = [], { action = "single", autoFile = false } = {}) {
+  const now = performance.now();
+  const startedAt = new Date().toISOString();
+  const batchSize = files.length;
+  for (const file of files) {
+    if (!file?.name) continue;
+    const record = beginProcessTimingRecord(file, {
+      action,
+      autoFile,
+      batchSize,
+      startedAt,
+      startedAtMs: now
+    });
+    state.activeProcessTimings.set(file.name, record);
+  }
+}
+
+function beginProcessTimingRecord(file, {
+  action = "single",
+  autoFile = false,
+  batchSize = 1,
+  startedAt = new Date().toISOString(),
+  startedAtMs = performance.now()
+} = {}) {
+  return {
+    id: `process-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    purpose: "ingest_process",
+    fileName: file.name,
+    ...modelTimingSourceMetadata(file, state.currentFileMap),
+    action,
+    autoFile: Boolean(autoFile),
+    batchSize,
+    startedAt,
+    startedAtMs,
+    rawSavedMs: 0,
+    textReadyMs: 0,
+    draftReadyMs: 0,
+    reviewReadyMs: 0,
+    renderReadyMs: 0,
+    totalMs: 0,
+    finishedAt: "",
+    readyToApprove: false,
+    filed: false,
+    ok: false,
+    error: "",
+    modelProvider: "",
+    modelName: "",
+    modelTotalMs: 0,
+    modelRoundTripMs: 0,
+    modelOk: false,
+    modelParseOk: true,
+    modelError: ""
+  };
+}
+
+function markProcessTimingPhase(files = [], fieldName = "") {
+  if (!fieldName) return;
+  const now = performance.now();
+  for (const file of files) {
+    const record = state.activeProcessTimings.get(file?.name || "");
+    if (!record || record[fieldName]) continue;
+    record[fieldName] = Math.max(0, Math.round(now - record.startedAtMs));
+  }
+}
+
+async function finishProcessTimingsAfterRender(files = [], { error = null, autoFile = false } = {}) {
+  const records = files
+    .map((file) => ({ file, record: state.activeProcessTimings.get(file?.name || "") }))
+    .filter((entry) => entry.record);
+  if (!records.length) return;
+
+  await nextAnimationFrame();
+  for (const { file, record } of records) {
+    finishProcessTiming(file, record, { error, autoFile });
+    state.activeProcessTimings.delete(file.name);
+  }
+  saveProcessTimingLog();
+  if (!autoFile && records.some(({ file }) => isSourceReviewReady(file))) renderSources();
+}
+
+function finishProcessTiming(file, record, { error = null, autoFile = false } = {}) {
+  const now = performance.now();
+  const review = state.ingestReviews.get(file?.name || "");
+  const readyToApprove = Boolean(file && isSourceReviewReady(file));
+  const filed = Boolean(autoFile && !readyToApprove && !state.ingestErrors.has(file?.name || ""));
+  const processError = error || state.ingestErrors.get(file?.name || "") || null;
+  const modelTiming = review?.modelTiming || null;
+  Object.assign(record, modelTimingSourceMetadata(file, state.currentFileMap));
+
+  record.finishedAt = new Date().toISOString();
+  record.renderReadyMs = Math.max(0, Math.round(now - record.startedAtMs));
+  record.totalMs = record.renderReadyMs;
+  record.readyToApprove = readyToApprove;
+  record.filed = filed;
+  record.ok = Boolean(!processError && (readyToApprove || filed));
+  record.error = processError ? processTimingErrorLabel(processError) : "";
+  if (modelTiming) {
+    record.modelProvider = modelTiming.provider || "";
+    record.modelName = modelTiming.model || "";
+    record.modelTotalMs = safeNumber(modelTiming.totalMs);
+    record.modelRoundTripMs = safeNumber(modelTiming.roundTripMs);
+    record.modelOk = Boolean(modelTiming.ok);
+    record.modelParseOk = modelTiming.parseOk !== false;
+    record.modelError = clampSentence(modelTiming.error || "", 180);
+  }
+  state.processTimings.push(record);
+  trimProcessTimingLog();
+  return record;
+}
+
+function publicProcessTiming(record) {
+  if (!record) return null;
+  return {
+    purpose: record.purpose || "ingest_process",
+    fileName: record.fileName,
+    sourceType: record.sourceType,
+    sourceScope: record.sourceScope,
+    sourceMimeType: record.sourceMimeType,
+    sourceSizeBytes: record.sourceSizeBytes,
+    sourceTextChars: record.sourceTextChars,
+    vaultContextFileCount: record.vaultContextFileCount,
+    action: record.action,
+    autoFile: record.autoFile,
+    batchSize: record.batchSize,
+    startedAt: record.startedAt,
+    finishedAt: record.finishedAt || "",
+    rawSavedMs: record.rawSavedMs,
+    textReadyMs: record.textReadyMs,
+    draftReadyMs: record.draftReadyMs,
+    reviewReadyMs: record.reviewReadyMs,
+    renderReadyMs: record.renderReadyMs,
+    totalMs: record.totalMs,
+    readyToApprove: record.readyToApprove,
+    filed: record.filed,
+    ok: record.ok,
+    error: record.error,
+    modelProvider: record.modelProvider,
+    modelName: record.modelName,
+    modelTotalMs: record.modelTotalMs,
+    modelRoundTripMs: record.modelRoundTripMs,
+    modelOk: record.modelOk,
+    modelParseOk: record.modelParseOk,
+    modelError: record.modelError
+  };
+}
+
+function loadProcessTimingLog() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEYS.processTimings) || "[]");
+    return Array.isArray(parsed) ? parsed.map(normalizeStoredProcessTiming).filter(Boolean).slice(-100) : [];
+  } catch {
+    return [];
+  }
+}
+
+function normalizeStoredProcessTiming(record) {
+  if (!record || typeof record !== "object") return null;
+  return {
+    id: String(record.id || `process-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`),
+    purpose: cleanSummary(record.purpose || "ingest_process"),
+    fileName: cleanSummary(record.fileName || ""),
+    sourceType: cleanSummary(record.sourceType || ""),
+    sourceScope: cleanSummary(record.sourceScope || ""),
+    sourceMimeType: cleanSummary(record.sourceMimeType || ""),
+    sourceSizeBytes: safeNumber(record.sourceSizeBytes),
+    sourceTextChars: safeNumber(record.sourceTextChars),
+    vaultContextFileCount: safeNumber(record.vaultContextFileCount),
+    action: cleanSummary(record.action || ""),
+    autoFile: Boolean(record.autoFile),
+    batchSize: safeNumber(record.batchSize),
+    startedAt: cleanSummary(record.startedAt || ""),
+    finishedAt: cleanSummary(record.finishedAt || ""),
+    rawSavedMs: safeNumber(record.rawSavedMs),
+    textReadyMs: safeNumber(record.textReadyMs),
+    draftReadyMs: safeNumber(record.draftReadyMs),
+    reviewReadyMs: safeNumber(record.reviewReadyMs),
+    renderReadyMs: safeNumber(record.renderReadyMs),
+    totalMs: safeNumber(record.totalMs),
+    readyToApprove: Boolean(record.readyToApprove),
+    filed: Boolean(record.filed),
+    ok: Boolean(record.ok),
+    error: clampSentence(record.error || "", 180),
+    modelProvider: cleanSummary(record.modelProvider || ""),
+    modelName: cleanSummary(record.modelName || ""),
+    modelTotalMs: safeNumber(record.modelTotalMs),
+    modelRoundTripMs: safeNumber(record.modelRoundTripMs),
+    modelOk: Boolean(record.modelOk),
+    modelParseOk: record.modelParseOk !== false,
+    modelError: clampSentence(record.modelError || "", 180)
+  };
+}
+
+function saveProcessTimingLog() {
+  trimProcessTimingLog();
+  try {
+    localStorage.setItem(STORAGE_KEYS.processTimings, JSON.stringify(state.processTimings.map(publicProcessTiming)));
+  } catch {
+    // Local timing diagnostics should never block ingest or approval.
+  }
+}
+
+function trimProcessTimingLog() {
+  if (state.processTimings.length > 100) {
+    state.processTimings.splice(0, state.processTimings.length - 100);
+  }
+}
+
+function latestProcessTimingForFile(fileName) {
+  if (!fileName) return null;
+  for (let index = state.processTimings.length - 1; index >= 0; index -= 1) {
+    const record = state.processTimings[index];
+    if (record.fileName === fileName) return record;
+  }
+  return null;
+}
+
+function processTimingErrorLabel(error) {
+  if (!error) return "";
+  if (typeof error === "string") return clampSentence(error, 180);
+  return clampSentence(error.message || String(error), 180);
+}
+
 function beginModelTiming({
   purpose = "model_call",
   fileName = "",
@@ -2553,6 +2851,13 @@ function safeNumber(value) {
 
 function elapsedSince(startedAtMs) {
   return Math.max(0, Math.round(performance.now() - startedAtMs));
+}
+
+function nextAnimationFrame() {
+  return new Promise((resolve) => {
+    if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => resolve());
+    else setTimeout(resolve, 0);
+  });
 }
 
 function redactEndpoint(endpoint) {
@@ -4507,30 +4812,80 @@ function mergeFileMaps(baseFileMap, changedFileMap) {
 
 function renderSources() {
   const files = state.files;
+  syncPendingSourceList(files);
   if (els.queuePanel) els.queuePanel.hidden = false;
+  renderPendingCount(files.length);
   if (files.length === 0) {
     els.sourceList.className = "source-list empty";
     els.sourceList.textContent = "No pending raw sources.";
     renderRecentActivity();
     return;
   }
+  const visibleCount = visiblePendingSourceCount(files.length);
+  const visibleFiles = files.slice(0, visibleCount);
   els.sourceList.className = "source-list";
-  els.sourceList.innerHTML = files.map((file) => `
+  els.sourceList.innerHTML = `
+    ${visibleFiles.map((file) => `
     <div class="source-item ${sourceClass(file)}">
       <button class="source-remove-btn" type="button" data-source-delete="${escapeHtml(file.name)}" aria-label="Remove ${escapeHtml(file.name)}">
         <span aria-hidden="true">×</span>
       </button>
-      <span class="source-badge">${escapeHtml(sourceTypeLabel(file))}</span>
+      <span class="source-badge ${escapeHtml(sourceBadgeClass(file))}">${escapeHtml(sourceTypeLabel(file))}</span>
       <div class="source-copy">
         <strong>${escapeHtml(file.name)}</strong>
         ${renderSourceTimestamp(file)}
       </div>
-      ${showTopSourceAction(file) ? renderSourceActionButton(file, "source-process-btn") : ""}
+      ${showTopSourceAction(file) ? renderSourceActionButton(file, "source-process-btn") : renderSourceTopStatus(file)}
       ${renderSourceIngestRun(file)}
     </div>
-  `).join("");
+  `).join("")}
+    ${renderPendingSourceActions(visibleCount, files.length)}
+  `;
   bindSourceListControls();
   renderRecentActivity();
+}
+
+function renderPendingCount(count = 0) {
+  if (!els.pendingCountLabel) return;
+  els.pendingCountLabel.textContent = `${formatStatNumber(count)} pending`;
+}
+
+function syncPendingSourceList(files = state.files) {
+  const sourceKey = files.map((file) => file.name).join("\n");
+  if (sourceKey === state.pendingSourceKey) return;
+  state.pendingSourceKey = sourceKey;
+  resetPendingSourceLimit();
+}
+
+function resetPendingSourceLimit() {
+  state.pendingSourceVisibleCount = PENDING_SOURCE_PAGE_SIZE;
+}
+
+function visiblePendingSourceCount(totalCount) {
+  if (totalCount <= PENDING_SOURCE_PAGE_SIZE) return totalCount;
+  const requested = Math.max(
+    PENDING_SOURCE_PAGE_SIZE,
+    Number(state.pendingSourceVisibleCount) || PENDING_SOURCE_PAGE_SIZE
+  );
+  state.pendingSourceVisibleCount = Math.min(requested, totalCount);
+  return state.pendingSourceVisibleCount;
+}
+
+function renderPendingSourceActions(visibleCount, totalCount) {
+  if (visibleCount >= totalCount) return "";
+  const remaining = totalCount - visibleCount;
+  const nextCount = Math.min(PENDING_SOURCE_PAGE_SIZE, remaining);
+  const showMoreLabel = remaining > PENDING_SOURCE_PAGE_SIZE ? `Show ${nextCount} more` : `Show remaining ${remaining}`;
+  return `
+    <div class="entity-section-actions pending-section-actions">
+      <button class="entity-list-button primary" type="button" data-pending-list-action="show-more" data-pending-source-total="${escapeHtml(String(totalCount))}">
+        ${escapeHtml(showMoreLabel)}
+      </button>
+      <button class="entity-list-button" type="button" data-pending-list-action="show-all" data-pending-source-total="${escapeHtml(String(totalCount))}">
+        Show all ${escapeHtml(String(totalCount))}
+      </button>
+    </div>
+  `;
 }
 
 function renderSourceTimestamp(file) {
@@ -4628,13 +4983,14 @@ function isActivitySourcePagePath(path, body) {
 function activitySourceRecord(path, body, fileMap) {
   const fields = frontmatterFields(body);
   const rawPath = sourceActivityRawPath(fields, body);
+  const typeClass = sourceActivityTypeClass(rawPath || path);
   const dateValue = sourceActivityDateValue(fields, path);
   const title = sourceActivityTitle(path, body);
   const summary = cleanSummary(fields.summary || extractSourceSummary(body) || excerptForQuestion(bodyWithoutFrontmatter(body), 220));
   const links = sourceActivityLinks(body, fileMap).slice(0, 5);
-  const tags = sourceActivityTags(fields).slice(0, Math.max(0, 5 - links.length));
+  const tags = sourceActivityTags(fields, fileMap).slice(0, Math.max(0, 5 - links.length));
   const wordTotal = wordCount(bodyWithoutFrontmatter(body));
-  const connectionCount = extractWikiLinks(body).length;
+  const connectionCount = extractWikiLinks(sourceChecklistLinkBody(body)).length;
   return {
     path,
     title,
@@ -4643,7 +4999,7 @@ function activitySourceRecord(path, body, fileMap) {
     dateValue,
     sortTimestamp: sourceActivitySortTimestamp(dateValue),
     typeLabel: sourceActivityTypeLabel(rawPath || path),
-    typeClass: sourceActivityTypeClass(rawPath || path),
+    typeClass,
     links,
     tags,
     wordTotal,
@@ -4677,7 +5033,7 @@ function sourceActivitySortTimestamp(value) {
 
 function sourceActivityLinks(body, fileMap) {
   const seen = new Set();
-  return extractWikiLinks(body)
+  return extractWikiLinks(sourceChecklistLinkBody(body))
     .map(cleanWikiLinkLabel)
     .filter(Boolean)
     .map((label) => {
@@ -4693,12 +5049,17 @@ function sourceActivityLinks(body, fileMap) {
     .filter(Boolean);
 }
 
-function sourceActivityTags(fields) {
+function sourceActivityTags(fields, fileMap) {
   const stop = new Set(["raw-source", "source", "transcript", "vibrance/fresh", "vibrance/peak", "vibrance/recent"]);
   return frontmatterList(fields.tags)
     .map(normalizeEntityTag)
     .filter((tag) => tag && !stop.has(tag) && !tag.startsWith("region/") && !tag.startsWith("vibrance/"))
-    .map((tag) => activityPillLabel(tag));
+    .map((tag) => ({
+      label: activityPillLabel(tag),
+      path: pathForWikiLinkLabel(tag, fileMap),
+      tag
+    }))
+    .filter((tag) => tag.label);
 }
 
 function activityPillLabel(value) {
@@ -4819,7 +5180,7 @@ function renderActivityRecentActions(visibleCount, totalCount) {
 function renderRecentActivityCard(record) {
   const dateLabel = formatActivityDate(record.dateValue);
   return `
-    <article class="activity-card" role="button" tabindex="0" data-activity-path="${escapeHtml(record.path)}">
+    <article class="activity-card type-${escapeHtml(record.typeClass)}" role="button" tabindex="0" data-activity-path="${escapeHtml(record.path)}">
       <div class="activity-card-top">
         <span class="source-icon ${escapeHtml(record.typeClass)}">${escapeHtml(record.typeLabel)}</span>
         <div class="activity-card-title">${escapeHtml(record.title)}</div>
@@ -4836,13 +5197,28 @@ function renderRecentActivityCard(record) {
 }
 
 function renderActivityPills(record) {
-  const linkPills = record.links.map((link) => (
-    link.path
-      ? `<button class="activity-pill" type="button" data-activity-target-path="${escapeHtml(link.path)}">${escapeHtml(link.label)}</button>`
-      : `<span class="activity-pill">${escapeHtml(link.label)}</span>`
-  ));
-  const tagPills = record.tags.map((tag) => `<span class="activity-pill">${escapeHtml(tag)}</span>`);
-  const pills = [...linkPills, ...tagPills].slice(0, 5);
+  const candidates = [
+    ...record.links.map((link) => ({
+      key: normalizeEntityTag(link.label),
+      html: link.path
+        ? `<button class="activity-pill" type="button" data-activity-target-path="${escapeHtml(link.path)}">${escapeHtml(link.label)}</button>`
+        : `<button class="activity-pill" type="button" data-activity-tag="${escapeHtml(normalizeEntityTag(link.label))}">${escapeHtml(link.label)}</button>`
+    })),
+    ...record.tags.map((tag) => ({
+      key: normalizeEntityTag(tag.label),
+      html: tag.path
+        ? `<button class="activity-pill" type="button" data-activity-target-path="${escapeHtml(tag.path)}">${escapeHtml(tag.label)}</button>`
+        : `<button class="activity-pill" type="button" data-activity-tag="${escapeHtml(tag.tag)}">${escapeHtml(tag.label)}</button>`
+    }))
+  ];
+  const seen = new Set();
+  const pills = [];
+  for (const candidate of candidates) {
+    if (!candidate.key || seen.has(candidate.key)) continue;
+    seen.add(candidate.key);
+    pills.push(candidate.html);
+    if (pills.length >= 5) break;
+  }
   return pills.length ? `<div class="activity-card-pills">${pills.join("")}</div>` : "";
 }
 
@@ -4872,6 +5248,14 @@ function handleRecentActivityClick(event) {
     return;
   }
 
+  const tagPill = event.target.closest("[data-activity-tag]");
+  if (tagPill && els.recentActivityList?.contains(tagPill)) {
+    event.preventDefault();
+    event.stopPropagation();
+    openActivityTag(tagPill.dataset.activityTag);
+    return;
+  }
+
   const card = event.target.closest("[data-activity-path]");
   if (!card || !els.recentActivityList?.contains(card)) return;
   openActivityPath(card.dataset.activityPath);
@@ -4892,6 +5276,16 @@ function openActivityPath(path) {
   selectVaultPath(path);
 }
 
+function openActivityTag(tag) {
+  const normalized = normalizeEntityTag(tag);
+  if (!normalized) return;
+  state.entityFilterKind = "tag";
+  state.entityFilterValue = normalized;
+  resetEntityRecentLimit();
+  activateTab("entities");
+  renderEntities(activeEntityFileMap());
+}
+
 function renderSourceIngestRun(file) {
   const processingThis = state.processingInbox && (!state.processingFileName || state.processingFileName === file.name);
   const isReady = isSourceReviewReady(file) && !processingThis;
@@ -4901,29 +5295,19 @@ function renderSourceIngestRun(file) {
   const review = state.ingestReviews.get(file.name);
   return `
     <div class="source-ingest-run">
-      ${isReady ? renderSourceGeneratedChecklist(file, review) : renderSourceProcessingChecklist(file)}
-      ${isReady ? renderSourceRunNotice(review) : ""}
-      ${isReady && state.reviewMode !== "auto" ? `
-        ${renderSourceFilingPlan(file)}
-        ${renderSourceSummary(file)}
-        ${renderSourceFinancialDetails(file)}
-        ${renderSourceConnections(file)}
-        ${renderSourceLightTouch(file)}
-        ${renderSourcePropagation(file)}
-      ` : ""}
-      ${isReady ? renderSourceRunQuestions(file) : `
-        ${renderProcessingIndicator(file)}
-      `}
+      ${isReady ? renderSourceReceipt(file, review) : renderSourceProcessingChecklist(file)}
     </div>
   `;
 }
 
 function renderSourceProcessingChecklist(file) {
-  return renderFilingStream(file, {
-    status: pendingReviewStepLabel(file),
-    processing: true,
-    lines: processingFilingLines(file)
-  });
+  const lines = processingFilingLines(file)
+    .filter((line) => !line.pending)
+    .map((line) => ({
+      ...line,
+      settled: Boolean(line.done && !line.active)
+    }));
+  return renderReceiptLog(lines, { processing: true });
 }
 
 function renderSourceGeneratedChecklist(file, review) {
@@ -4934,18 +5318,260 @@ function renderSourceGeneratedChecklist(file, review) {
   });
 }
 
-function renderFilingStream(file, { status, lines = [], processing = false } = {}) {
+function renderSourceReceipt(file, review) {
+  const entry = sourceNoteEntryForFile(file);
+  const path = entry?.path || sourceTargetPathFromReview(rawSourceOutputPath(file.name), review);
+  const essence = sourceReceiptEssence(file, review);
+  const questions = state.reviewMode === "auto" ? [] : reviewQuestionsForCard(file, review);
+  return `
+    <div class="source-receipt">
+      ${essence ? `<p class="receipt-essence">${escapeHtml(essence)}</p>` : ""}
+      ${renderSourceReceiptChecklist(file, review, path)}
+      ${renderSourceReceiptDecision(file, questions)}
+      <div class="receipt-footer">
+        ${renderSourceActionButton(file, "source-process-btn run-action-btn")}
+        ${renderSourceReceiptDetails(file, review)}
+      </div>
+    </div>
+  `;
+}
+
+function renderSourceTopStatus(file) {
+  if (!file?.name) return "";
+  const processingThis = state.processingInbox && (!state.processingFileName || state.processingFileName === file.name);
+  const review = state.ingestReviews.get(file.name);
+  const questions = reviewQuestionsForCard(file, review);
+  let label = "";
+  let tone = "";
+  if (processingThis) {
+    label = "Working";
+    tone = "working";
+  } else if (state.ingestErrors.has(file.name)) {
+    label = "Review needed";
+    tone = "warn";
+  } else if (isSourceReviewReady(file)) {
+    label = questions.length ? `${questions.length} decision${questions.length === 1 ? "" : "s"}` : "Done";
+    tone = questions.length ? "warn" : "done";
+  }
+  return label ? `<span class="source-status-pill ${tone}">${escapeHtml(label)}</span>` : "";
+}
+
+function renderSourceReceiptChecklist(file, review, path = "") {
+  const lines = sourceReceiptChecklistLines(file, review, path);
+  if (!lines.length) return "";
+  return renderReceiptLog(lines);
+}
+
+function renderReceiptLog(lines = [], { processing = false } = {}) {
+  return `
+    <div class="receipt-log ${processing ? "processing" : "complete"}">
+      ${lines.map((line, index) => renderReceiptLogLine(line, index, { processing })).join("")}
+    </div>
+  `;
+}
+
+function sourceReceiptChecklistLines(file, review, path = "") {
+  const processLines = completedProcessingFilingLines(file);
+  const generatedLines = sourceFilingChecklist(file, review)
+    .filter((line) => !isGeneratedProcessDuplicate(file, line))
+    .map((line) => ({
+      ...line,
+      append: true
+    }));
+  const lines = [...processLines, ...generatedLines];
+  let filedLine = null;
+  if (path) {
+    filedLine = {
+      html: `Filed to <button type="button" class="receipt-inline-path" data-source-open-path="${escapeHtml(path)}">${escapeHtml(path.replace(/^wiki\//, ""))}</button>`,
+      append: true,
+      final: true
+    };
+    lines.push(filedLine);
+  }
+  const deduped = dedupeFilingLines(lines);
+  const maxLines = 10;
+  if (!path || deduped.length <= maxLines) return deduped.slice(0, maxLines);
+  const finalLine = deduped.includes(filedLine) ? filedLine : deduped[deduped.length - 1];
+  return deduped.filter((line) => line !== finalLine).slice(0, maxLines - 1).concat(finalLine);
+}
+
+function completedProcessingFilingLines(file) {
+  return processingFilingLines(file).map((line) => ({
+    ...line,
+    done: true,
+    active: false,
+    pending: false,
+    settled: true,
+    process: true
+  }));
+}
+
+function isGeneratedProcessDuplicate(file, line) {
+  const text = cleanSummary(String(line?.html || line?.text || "").replace(/<[^>]*>/g, ""));
+  if (!text) return true;
+  if (/^(read|reading)\b/i.test(text)) return true;
+  if (/^saving\b/i.test(text)) return true;
+  if (/comparing it against your brain/i.test(text)) return true;
+  if (/converting to markdown/i.test(text)) return true;
+  if (text.includes(basename(file.name)) && /source|pdf|docx|text/i.test(text) && /read|reading/i.test(text)) return true;
+  return false;
+}
+
+function renderReceiptLogLine(line, index) {
+  const classes = [
+    "receipt-log-line",
+    line.settled ? "settled" : "",
+    line.active ? "active" : "",
+    line.pending ? "pending" : "",
+    line.append ? "append" : "",
+    line.process ? "process" : "",
+    line.insight ? "insight" : "",
+    line.final ? "final" : ""
+  ].filter(Boolean).join(" ");
+  const marker = line.active
+    ? '<span class="filing-spinner" aria-hidden="true"></span>'
+    : '<span aria-hidden="true">✓</span>';
+  return `
+    <div class="${classes}" style="--line-index:${index}">
+      <div class="receipt-log-line-inner">
+        <span class="receipt-log-check" aria-hidden="true">${marker}</span>
+        <div class="receipt-log-content">${line.html || escapeHtml(line.text || "")}</div>
+      </div>
+    </div>
+  `;
+}
+
+function renderSourceReceiptDecision(file, questions = []) {
+  if (!questions.length) return "";
+  const question = questions[0];
+  const answered = ingestAnswerFor(file.name, question.question);
+  const displayQuestion = displayQuestionText(question);
+  const displayAnswer = displayQuestionAnswerLabel(question, answered);
+  return `
+    <div class="receipt-decision ${answered ? "answered" : ""}">
+      <span class="run-kicker">Needs your call</span>
+      <p>${escapeHtml(displayQuestion)}</p>
+      <div class="quick-actions">
+        ${compactQuestionOptions(question).map((option, index) => {
+          const selected = answered === option.value;
+          return `
+            <button class="quick-answer ${index === 0 ? "primary" : ""} ${selected ? "selected" : ""}" type="button" data-run-answer="${escapeHtml(option.value)}" data-question="${escapeHtml(question.question)}" data-file="${escapeHtml(file.name)}" aria-pressed="${selected ? "true" : "false"}" onclick="event.stopImmediatePropagation(); window.__marginsRunAnswer?.(this.dataset.file, this.dataset.question, this.dataset.runAnswer)">${escapeHtml(option.label)}</button>
+          `;
+        }).join("")}
+      </div>
+      ${answered ? `<div class="answered-note">Answered: ${escapeHtml(displayAnswer)}</div>` : ""}
+      ${questions.length > 1 ? `<div class="run-note">${escapeHtml(String(questions.length - 1))} more decision${questions.length - 1 === 1 ? "" : "s"} in Details.</div>` : ""}
+    </div>
+  `;
+}
+
+function compactQuestionOptions(question) {
+  const options = question.options?.length ? question.options : ["Yes", "No", "Use default"];
+  const cleanOptions = uniqueBy(options.map((option) => displayQuestionOption(question, option)).filter((option) => option.value), (option) => option.value.toLowerCase());
+  return (cleanOptions.length ? cleanOptions : ["Yes", "No"].map((option) => ({ value: option, label: option }))).slice(0, 3);
+}
+
+function displayQuestionText(question) {
+  const bucketOptions = filingBucketOptions(question);
+  if (bucketOptions.length >= 2) {
+    return `Does this belong in ${formatBucketChoiceList(bucketOptions.map((option) => option.bucket))}?`;
+  }
+  return question.question || "What should Margins do?";
+}
+
+function displayQuestionOption(question, option) {
+  const value = cleanSummary(option);
+  if (!value) return { value: "", label: "" };
+  const bucketOption = filingBucketOption(value);
+  return bucketOption ? { value, label: titleFromSlug(bucketOption.bucket) } : { value, label: value };
+}
+
+function displayQuestionAnswerLabel(question, answer) {
+  if (!answer) return "";
+  return displayQuestionOption(question, answer).label || answer;
+}
+
+function filingBucketOptions(question) {
+  const options = question?.options?.length ? question.options : [];
+  return uniqueBy(options.map(filingBucketOption).filter(Boolean), (option) => option.bucket);
+}
+
+function filingBucketOption(option) {
+  const value = cleanSummary(option);
+  if (!value || /^skip$/i.test(value)) return null;
+  const match = value.match(/^(?:wiki\/)?([^/\s]+)\/.+\.md$/i);
+  if (!match) return null;
+  return { value, bucket: match[1].toLowerCase() };
+}
+
+function formatBucketChoiceList(buckets) {
+  const labels = uniqueBy(buckets.filter(Boolean), (bucket) => bucket)
+    .map((bucket) => bucket.replace(/-/g, " "));
+  if (labels.length <= 1) return labels[0] || "this bucket";
+  if (labels.length === 2) return `${labels[0]} or ${labels[1]}`;
+  return `${labels.slice(0, -1).join(", ")}, or ${labels[labels.length - 1]}`;
+}
+
+function renderSourceReceiptDetails(file, review) {
+  const details = [
+    renderSourceProcessedLine(file, review),
+    renderSourceRunNotice(review),
+    renderSourceGeneratedChecklist(file, review),
+    state.reviewMode !== "auto" ? renderSourceFilingPlan(file) : "",
+    state.reviewMode !== "auto" ? renderSourceSummary(file) : "",
+    state.reviewMode !== "auto" ? renderSourceFinancialDetails(file) : "",
+    state.reviewMode !== "auto" ? renderSourceConnections(file) : "",
+    state.reviewMode !== "auto" ? renderSourceLightTouch(file) : "",
+    state.reviewMode !== "auto" ? renderSourcePropagation(file) : "",
+    state.reviewMode !== "auto" ? renderSourceRunQuestions(file, { detailsOnly: true }) : ""
+  ].filter(Boolean).join("");
+  return `
+    <details class="receipt-details" ${state.expandedSummaries.has(file.name) ? "open" : ""}>
+      <summary>Details</summary>
+      <div class="receipt-details-body">
+        ${details}
+      </div>
+    </details>
+  `;
+}
+
+function renderSourceProcessedLine(file, review) {
+  return `<div class="receipt-processed">${escapeHtml(sourceProcessedLine(file, review))}</div>`;
+}
+
+function sourceProcessedLine(file, review) {
+  const processTiming = latestProcessTimingForFile(file.name);
+  const parts = [processTiming?.totalMs ? `Processed in ${formatProcessDuration(processTiming.totalMs)}` : "Processed"];
+  const pages = sourcePageCount(file);
+  const words = wordCount(file.text || "");
+  const considered = review?.filingPlan?.candidateFiles?.length || 0;
+  if (pages > 0) parts.push(`${pages} ${pluralize("page", pages)}`);
+  if (words > 0) parts.push(`~${formatStatNumber(words)} ${pluralize("word", words)}`);
+  if (considered > 0) parts.push(`${considered} ${pluralize("file", considered)} considered`);
+  return parts.join(" · ");
+}
+
+function sourceReceiptEssence(file, review) {
+  const summary = sourceIngestFullSummary(file);
+  if (summary) return clampSentence(summary, 190);
+  const takeaway = review?.takeaways?.find((item) => item?.point)?.point || "";
+  return clampSentence(takeaway || "Source page drafted and ready for review.", 190);
+}
+
+function renderFilingStream(file, { status, lines = [], processing = false, showHeader = true } = {}) {
   const cleanLines = lines.length ? lines : [{ html: escapeHtml(sourceReadLine(file)), active: processing }];
   return `
     <div class="filing-stream ${processing ? "processing" : "complete"}">
-      <div class="filing-stream-head">
-        <div class="filing-stream-thumb">${escapeHtml(sourceTypeLabel(file))}</div>
-        <div class="filing-stream-meta">
-          <div class="filing-stream-title">${escapeHtml(basename(file.name))}</div>
-          <div class="filing-stream-sub">${escapeHtml(sourceStreamSubline(file, processing))}</div>
+      ${showHeader ? `
+        <div class="filing-stream-head">
+          <div class="filing-stream-thumb ${escapeHtml(sourceBadgeClass(file))}">${escapeHtml(sourceTypeLabel(file))}</div>
+          <div class="filing-stream-meta">
+            <div class="filing-stream-title">${escapeHtml(basename(file.name))}</div>
+            <div class="filing-stream-sub">${escapeHtml(sourceStreamSubline(file, processing))}</div>
+          </div>
+          <div class="filing-stream-status">${processing ? '<span class="dot"></span>' : ""}${escapeHtml(status || "Ready")}</div>
         </div>
-        <div class="filing-stream-status">${processing ? '<span class="dot"></span>' : ""}${escapeHtml(status || "Ready")}</div>
-      </div>
+      ` : ""}
       <div class="filing-stream-lines">
         ${cleanLines.map((line, index) => renderFilingStreamLine(line, index, processing)).join("")}
       </div>
@@ -4960,6 +5586,7 @@ function renderFilingStreamLine(line, index, processing = false) {
     "filing-stream-line",
     done ? "done" : "",
     active ? "active" : "",
+    line.pending ? "pending" : "",
     line.insight ? "insight" : "",
     line.final ? "final" : ""
   ].filter(Boolean).join(" ");
@@ -4989,27 +5616,37 @@ function processingFilingLines(file) {
     {
       html: escapeHtml(`Saving ${sourceTypeLabel(file)} to raw`),
       done: rawSaved || stage > 0,
-      active: stage === 0
+      active: stage === 0,
+      pending: stage < 0
     },
     {
       html: escapeHtml(sourceReadLine(file)),
       done: readable && stage > 1,
-      active: stage === 1 || stage > 1 && !readable
+      active: stage === 1 || stage > 1 && !readable,
+      pending: stage < 1
     },
     {
       html: escapeHtml(state.apiSecret && canSendSourceToModel(file)
         ? "Margins is comparing it against your brain"
         : "Generating a local filing review"),
       done: stage > 2,
-      active: stage === 2
+      active: stage === 2,
+      pending: stage < 2
     },
     {
-      html: escapeHtml("Building the source page, links, and review flags"),
+      html: escapeHtml(sourceFormatStepLine(file)),
       done: false,
-      active: stage >= 3
+      active: stage >= 3,
+      pending: stage < 3
     }
   ];
-  return lines.slice(0, Math.min(lines.length, stage + 1));
+  return lines;
+}
+
+function sourceFormatStepLine(file) {
+  const ext = basename(file?.name || "").split(".").pop()?.toLowerCase() || "";
+  if (["md", "markdown"].includes(ext)) return "Preparing Markdown file for filing";
+  return "Converting to Markdown file structure";
 }
 
 function ingestProgressStage(file) {
@@ -5030,16 +5667,18 @@ function ingestProgressStage(file) {
 }
 
 function sourceFilingChecklist(file, review) {
+  const stats = sourceChecklistStats(file, review);
   const modelLines = parseFilingSteps(review?.filingSteps);
   if (modelLines.length >= 4) {
     return modelLines.map((text, index) => ({
-      html: filingStepHtml(text),
+      html: /^linked to\b/i.test(cleanFilingStep(text)) && stats.linkedEntities.length > 0
+        ? linkedEntitiesLineHtml(file, stats.linkedEntities)
+        : filingStepHtml(text),
       insight: /contradict|conflict|discover|flag|review/i.test(text),
       final: index === modelLines.length - 1 || /filed|prepared|ready/i.test(text)
     }));
   }
 
-  const stats = sourceChecklistStats(file, review);
   const lines = [
     { html: escapeHtml(sourceReadLine(file)) }
   ];
@@ -5051,24 +5690,24 @@ function sourceFilingChecklist(file, review) {
   }
 
   lines.push({
-    html: `${escapeHtml(stats.sourceVerb)} ${filingPill(stats.sourceTitle)} as a ${stats.sourceVerb === "Updated" ? "source" : "new source"}`
+    html: `${escapeHtml(stats.sourceVerb)} ${filingPill(stats.sourceTitle, stats.sourcePath)} as a ${stats.sourceVerb === "Updated" ? "source" : "new source"}`
   });
 
   for (const entity of stats.updatedEntities.slice(0, 3)) {
     lines.push({
-      html: `Updated ${filingPill(entity.title)}${entity.reason ? ` · ${escapeHtml(entity.reason)}` : ""}`
+      html: `Updated ${filingPill(entity.title, entity.path)}${entity.reason ? ` · ${escapeHtml(entity.reason)}` : ""}`
     });
   }
 
   if (stats.linkedEntities.length > 0) {
     lines.push({
-      html: `Linked to ${joinFilingPills(stats.linkedEntities.slice(0, 3))}${stats.linkedEntities.length > 3 ? escapeHtml(` and ${stats.linkedEntities.length - 3} more`) : ""}`
+      html: linkedEntitiesLineHtml(file, stats.linkedEntities)
     });
   }
 
   for (const discovery of stats.discoveries.slice(0, 2)) {
     lines.push({
-      html: `Discovered: ${escapeHtml(discovery)}`,
+      html: filingStepHtml(`Discovered: ${discovery}`),
       insight: true
     });
   }
@@ -5084,8 +5723,9 @@ function sourceFilingChecklist(file, review) {
 function sourceChecklistStats(file, review) {
   const sourceEntry = sourceNoteEntryForFile(file);
   const sourceTitle = sourceEntry ? sourceActivityTitle(sourceEntry.path, sourceEntry.body) : titleFromSlug(basename(file.name).replace(/\.[^.]+$/, ""));
+  const sourcePath = sourceEntry?.path || "";
   const sourceVerb = sourceEntry && state.loadedFileMap?.has(sourceEntry.path) ? "Updated" : "Created";
-  const links = sourceEntry ? extractWikiLinks(sourceEntry.body).map(cleanWikiLinkLabel).filter(Boolean) : [];
+  const links = sourceEntry ? sourceChecklistSourceLinks(sourceEntry.body) : [];
   const connectionRecords = sourceChecklistConnections(review, links);
   const updatedEntities = changedEntityRecords(connectionRecords);
   const linkedEntities = connectionRecords
@@ -5096,6 +5736,7 @@ function sourceChecklistStats(file, review) {
   const existingEntityTotal = connectionRecords.filter((record) => record.exists).length;
   return {
     sourceTitle,
+    sourcePath,
     sourceVerb,
     entityTotal,
     existingEntityTotal,
@@ -5106,6 +5747,39 @@ function sourceChecklistStats(file, review) {
     updateCount: Math.max(updatedEntities.length, review?.propagation?.length || 0),
     linkCount: linkedEntities.length
   };
+}
+
+function sourceChecklistSourceLinks(body) {
+  return extractWikiLinks(sourceChecklistLinkBody(body))
+    .map(cleanWikiLinkLabel)
+    .filter(Boolean);
+}
+
+function sourceChecklistLinkBody(body) {
+  const ignoredSections = new Set([
+    "candidate concepts",
+    "candidate entities",
+    "entity candidates",
+    "inferences refused",
+    "key terms",
+    "mentioned but missing"
+  ]);
+  const kept = [];
+  let ignoredLevel = 0;
+  for (const line of String(body || "").split("\n")) {
+    const heading = line.match(/^(#{1,6})\s+(.+?)\s*#*\s*$/);
+    if (heading) {
+      const level = heading[1].length;
+      const title = cleanSummary(heading[2]).toLowerCase();
+      if (ignoredLevel && level <= ignoredLevel) ignoredLevel = 0;
+      if (ignoredSections.has(title)) {
+        ignoredLevel = level;
+        continue;
+      }
+    }
+    if (!ignoredLevel) kept.push(line);
+  }
+  return kept.join("\n");
 }
 
 function sourceChecklistConnections(review, sourceLinks = []) {
@@ -5139,6 +5813,7 @@ function sourceChecklistConnections(review, sourceLinks = []) {
 const GENERIC_CHECKLIST_LINKS = new Set([
   "abstract",
   "analysis",
+  "actually",
   "condition",
   "conditions",
   "conclusion",
@@ -5150,7 +5825,9 @@ const GENERIC_CHECKLIST_LINKS = new Set([
   "experiments",
   "figure",
   "figures",
+  "going",
   "introduction",
+  "know",
   "method",
   "methods",
   "paper",
@@ -5165,8 +5842,15 @@ const GENERIC_CHECKLIST_LINKS = new Set([
   "study",
   "subjects",
   "table",
+  "thats",
+  "that-s",
+  "thing",
+  "things",
+  "think",
   "task",
-  "tasks"
+  "tasks",
+  "really",
+  "yeah"
 ]);
 
 function isGenericChecklistLink(link) {
@@ -5224,20 +5908,64 @@ function sourcePageCount(file) {
 }
 
 function filingStepHtml(text) {
-  return escapeHtml(cleanFilingStep(text));
+  const clean = cleanFilingStep(text);
+  const prefixMatch = clean.match(/^(Discovered|Flagged|Contradiction|Conflict):\s*(.+)$/i);
+  if (prefixMatch) {
+    return `<strong>${escapeHtml(prefixMatch[1])}:</strong> ${escapeHtml(prefixMatch[2])}`;
+  }
+  return escapeHtml(clean);
 }
 
-function filingPill(value) {
-  return `<span class="filing-pill">${escapeHtml(value || "Source")}</span>`;
+function filingPill(value, path = "") {
+  const label = escapeHtml(value || "Source");
+  const cleanPath = normalizeMarginsPath(path || "");
+  if (cleanPath) {
+    return `<button class="filing-pill" type="button" data-source-open-path="${escapeHtml(cleanPath)}">${label}</button>`;
+  }
+  return `<span class="filing-pill">${label}</span>`;
 }
 
 function joinFilingPills(records) {
   const pills = records.map((record) => {
     const priorMentions = record.exists ? sourcePriorMentionCount(record) : 0;
-    return `${filingPill(record.title)}${priorMentions > 1 ? escapeHtml(` (${priorMentions} prior mentions)`) : ""}`;
+    return `${filingPill(record.title, record.path)}${priorMentions > 1 ? escapeHtml(` (${priorMentions} prior mentions)`) : ""}`;
   });
   if (pills.length <= 1) return pills.join("");
   return `${pills.slice(0, -1).join(", ")} and ${pills[pills.length - 1]}`;
+}
+
+function linkedEntitiesLineHtml(file, records = []) {
+  const linked = records.filter((record) => record?.title);
+  const expanded = state.expandedReceiptLinks.has(file?.name || "");
+  const visible = expanded ? linked : linked.slice(0, 3);
+  const remaining = Math.max(0, linked.length - visible.length);
+  const toggle = remaining > 0
+    ? receiptLinksToggleButton(file.name, `and ${remaining} more`, false)
+    : expanded && linked.length > 3
+      ? receiptLinksToggleButton(file.name, "show fewer", true)
+      : "";
+  const pieces = remaining > 0
+    ? visible.map(linkedEntityItemHtml).join(", ")
+    : inlineListHtml(visible.map(linkedEntityItemHtml));
+  return `
+    <span class="receipt-linked">Linked to ${pieces}${toggle ? ` ${toggle}` : ""}</span>
+  `;
+}
+
+function receiptLinksToggleButton(fileName, label, expanded = false) {
+  return `<button class="receipt-linked-more" type="button" data-receipt-links-toggle="${escapeHtml(fileName || "")}" aria-expanded="${expanded ? "true" : "false"}">${escapeHtml(label)}</button>`;
+}
+
+function linkedEntityItemHtml(record) {
+  const priorMentions = record.exists ? sourcePriorMentionCount(record) : 0;
+  return `${filingPill(record.title, record.path)}${priorMentions > 1 ? ` <span class="receipt-linked-meta">${escapeHtml(`(${priorMentions} prior mentions)`)}</span>` : ""}`;
+}
+
+function inlineListHtml(items = []) {
+  const cleanItems = items.filter(Boolean);
+  if (cleanItems.length <= 1) return cleanItems.join("");
+  if (cleanItems.length === 2) return `${cleanItems[0]} and ${cleanItems[1]}`;
+  return `${cleanItems.slice(0, -1).join(", ")} and ${cleanItems[cleanItems.length - 1]}`;
 }
 
 function sourcePriorMentionCount(record) {
@@ -5371,10 +6099,11 @@ function runStep(label, done, active) {
   `;
 }
 
-function renderSourceRunQuestions(file) {
+function renderSourceRunQuestions(file, { detailsOnly = false } = {}) {
   const review = state.ingestReviews.get(file.name);
   const questions = reviewQuestionsForCard(file, review);
   if (questions.length === 0) {
+    if (detailsOnly) return "";
     return `
       <div class="run-note">Review complete.</div>
       ${renderSourceActionRow(file, { note: "File this source into the vault." })}
@@ -5386,21 +6115,21 @@ function renderSourceRunQuestions(file) {
       ${questions.map((question, questionIndex) => `
         <div class="run-question run-prompt ${ingestAnswerFor(file.name, question.question) ? "answered" : ""}" data-question="${escapeHtml(question.question)}">
           <span class="run-prompt-meta">${escapeHtml(question.kind || `Question ${questionIndex + 1}`)}</span>
-          <p class="run-prompt-question">${escapeHtml(question.question)}</p>
+          <p class="run-prompt-question">${escapeHtml(displayQuestionText(question))}</p>
           ${question.recommendation ? `<div class="recommendation run-prompt-take">${escapeHtml(question.recommendation)}</div>` : ""}
           <div class="quick-actions">
             ${questionOptionsWithSkip(question).map((option, index) => {
-              const selected = ingestAnswerFor(file.name, question.question) === option;
+              const selected = ingestAnswerFor(file.name, question.question) === option.value;
               return `
-                <button class="quick-answer ${index === 0 ? "primary" : ""} ${selected ? "selected" : ""}" type="button" data-run-answer="${escapeHtml(option)}" data-question="${escapeHtml(question.question)}" data-file="${escapeHtml(file.name)}" aria-pressed="${selected ? "true" : "false"}" onclick="event.stopImmediatePropagation(); window.__marginsRunAnswer?.(this.dataset.file, this.dataset.question, this.dataset.runAnswer)">${escapeHtml(option)}</button>
+                <button class="quick-answer ${index === 0 ? "primary" : ""} ${selected ? "selected" : ""}" type="button" data-run-answer="${escapeHtml(option.value)}" data-question="${escapeHtml(question.question)}" data-file="${escapeHtml(file.name)}" aria-pressed="${selected ? "true" : "false"}" onclick="event.stopImmediatePropagation(); window.__marginsRunAnswer?.(this.dataset.file, this.dataset.question, this.dataset.runAnswer)">${escapeHtml(option.label)}</button>
               `;
             }).join("")}
           </div>
-          ${ingestAnswerFor(file.name, question.question) ? `<div class="answered-note">Answered: ${escapeHtml(ingestAnswerFor(file.name, question.question))}</div>` : ""}
+      ${ingestAnswerFor(file.name, question.question) ? `<div class="answered-note">Answered: ${escapeHtml(displayQuestionAnswerLabel(question, ingestAnswerFor(file.name, question.question)))}</div>` : ""}
         </div>
       `).join("")}
     </div>
-    ${renderSourceActionRow(file, {
+    ${detailsOnly ? "" : renderSourceActionRow(file, {
       note: answeredCount === questions.length
         ? "Ready to file."
         : `${answeredCount}/${questions.length} answered. Skip anything that does not need your call.`
@@ -5701,9 +6430,10 @@ function renderSourcePropagation(file) {
 
 function questionOptionsWithSkip(question) {
   const options = question.options?.length ? question.options : ["Yes", "No", "Use default"];
-  return options.some((option) => String(option).toLowerCase() === "skip")
+  const optionsWithSkip = options.some((option) => String(option).toLowerCase() === "skip")
     ? options
     : [...options, "Skip"];
+  return uniqueBy(optionsWithSkip.map((option) => displayQuestionOption(question, option)).filter((option) => option.value), (option) => option.value.toLowerCase());
 }
 
 function sourceIngestSummary(file) {
@@ -5770,9 +6500,9 @@ function cleanDisplaySummary(value) {
 function installTestHooks() {
   if (!new URLSearchParams(location.search).has("marginsTest")) return;
   globalThis.__marginsTest = {
-    seedIngestCard({ summary, questions = [], connections = [] } = {}) {
+    seedIngestCard({ summary, questions = [], connections = [], fileName = "browser-smoke-source.txt" } = {}) {
       const file = {
-        name: "browser-smoke-source.txt",
+        name: fileName,
         text: "This is a browser smoke source for the ingest card.",
         type: "text",
         size: 51,
@@ -5853,14 +6583,34 @@ Raw file: \`${rawPath}\`
 
 Notes describe how a workspace map should connect remembered entities to interface decisions.
 
-Links: [[display]], [[subjects]], [[results]], [[Workspace Map]], [[Interface Decisions]]
+## Key Terms
+
+- [[know|know]]
+- [[think|think]]
+- [[things|things]]
+- [[going|going]]
+- [[thats|thats]]
+
+## Entity Candidates
+
+- [[Some Weak Candidate]]
+
+## Notes
+
+Links: [[display]], [[subjects]], [[results]], [[Workspace Map]], [[Interface Decisions]], [[Graph View]], [[Spatial Memory]], [[Margins UI]]
 `],
         ["wiki/concepts/workspace-map.md", "# Workspace Map\n"],
-        ["wiki/concepts/interface-decisions.md", "# Interface Decisions\n"]
+        ["wiki/concepts/interface-decisions.md", "# Interface Decisions\n"],
+        ["wiki/concepts/graph-view.md", "# Graph View\n"],
+        ["wiki/concepts/spatial-memory.md", "# Spatial Memory\n"],
+        ["wiki/projects/margins-ui.md", "# Margins UI\n"]
       ]);
       state.loadedFileMap = new Map([
         ["wiki/concepts/workspace-map.md", "# Workspace Map\n"],
-        ["wiki/concepts/interface-decisions.md", "# Interface Decisions\n"]
+        ["wiki/concepts/interface-decisions.md", "# Interface Decisions\n"],
+        ["wiki/concepts/graph-view.md", "# Graph View\n"],
+        ["wiki/concepts/spatial-memory.md", "# Spatial Memory\n"],
+        ["wiki/projects/margins-ui.md", "# Margins UI\n"]
       ]);
       state.ingestReviews = new Map([[file.name, {
         source: "api",
@@ -5890,10 +6640,22 @@ Links: [[display]], [[subjects]], [[results]], [[Workspace Map]], [[Interface De
     modelTimings() {
       return state.modelTimings.map(publicModelTiming);
     },
+    processTimings() {
+      return state.processTimings.map(publicProcessTiming);
+    },
     clearModelTimings() {
       state.modelTimings = [];
       try {
         localStorage.removeItem(STORAGE_KEYS.modelTimings);
+      } catch {
+        // Best-effort test/debug helper.
+      }
+    },
+    clearProcessTimings() {
+      state.processTimings = [];
+      state.activeProcessTimings = new Map();
+      try {
+        localStorage.removeItem(STORAGE_KEYS.processTimings);
       } catch {
         // Best-effort test/debug helper.
       }
@@ -6037,6 +6799,56 @@ summary: Source page that should not render as an entity card.
       renderVaultTree(state.currentFileMap);
       renderWikiFiles(state.currentFileMap);
       return document.querySelector("#entity-browser")?.innerText || "";
+    },
+    seedTypeOverrideEntityVault() {
+      state.currentFileMap = new Map([
+        ["wiki/index.md", "# Index\n\n[[ej-reynolds]]\n"],
+        ["wiki/projects/ej-reynolds.md", `---
+type: entity
+summary: Acquaintance connected to the Briefly cluster.
+tags: [briefly, acquaintance]
+updated: 2026-05-06
+---
+
+# E.J. Reynolds
+
+E.J. Reynolds is an acquaintance in the Briefly orbit.
+`],
+        ["wiki/projects/margins-product.md", `---
+type: project
+summary: Product build work.
+tags: [briefly, product]
+updated: 2026-05-05
+---
+
+# Margins Product
+`],
+        ["wiki/companies/centric-wm.md", `---
+type: company
+summary: Wealth management company.
+tags: [briefly, company]
+updated: 2026-05-04
+---
+
+# Centric WM
+`]
+      ]);
+      state.loadedFileMap = new Map(state.currentFileMap);
+      state.vaultHandle = createMemoryVaultHandle();
+      state.vaultName = "Browser Test Vault";
+      state.selectedPath = null;
+      state.entityTypePickerPath = "";
+      state.files = [];
+      state.vaultFiles = [];
+      state.pendingSave = false;
+      state.processingInbox = false;
+      renderSources();
+      renderVaultTree(state.currentFileMap);
+      renderWikiFiles(state.currentFileMap);
+      return document.querySelector("#entity-browser")?.innerText || "";
+    },
+    wikiBody(path) {
+      return state.currentFileMap?.get(normalizeMarginsPath(path)) || "";
     },
     seedCrowdedEntityFacets() {
       const specs = [
@@ -6789,6 +7601,32 @@ updated: ${yesterday}
       updateActionState();
       return document.querySelector("#source-list")?.innerText || "";
     },
+    seedPendingSourceCount(count = 0) {
+      const total = Math.max(0, Number(count) || 0);
+      state.files = Array.from({ length: total }, (_, index) => ({
+        name: `pending-source-${String(index + 1).padStart(2, "0")}.txt`,
+        text: `Pending source ${index + 1}`,
+        type: "text",
+        size: 24,
+        lastModified: new Date(2026, 4, 5, 9, index).getTime(),
+        sourceScope: "vault",
+        extractionStatus: "ready",
+        extractionError: ""
+      }));
+      state.vaultFiles = [];
+      state.vaultHandle = createMemoryVaultHandle();
+      state.vaultName = "Browser Test Vault";
+      state.currentFileMap = new Map([["wiki/index.md", "# Index\n"]]);
+      state.pendingSave = false;
+      state.processingInbox = false;
+      state.ingestReviews = new Map();
+      state.ingestErrors = new Map();
+      state.ingestAnswers = new Map();
+      state.pendingSourceKey = "";
+      renderSources();
+      updateActionState();
+      return document.querySelector("#source-list")?.innerText || "";
+    },
     processedReviewNames() {
       const reviewNames = [...state.ingestReviews.keys()];
       return (reviewNames.length ? reviewNames : processedSourceNamesFromFileMap(state.currentFileMap)).sort();
@@ -7136,6 +7974,10 @@ function renderEntities(fileMap = state.currentFileMap) {
   if (!els.entityBrowser) return;
   const records = entityRecordsFromFileMap(fileMap || new Map());
   state.entityFileMap = records.length ? new Map(fileMap || []) : null;
+  state.entityTypeOptions = entityTypePickerOptions(records);
+  if (state.entityTypePickerPath && !records.some((record) => record.path === state.entityTypePickerPath)) {
+    state.entityTypePickerPath = "";
+  }
   syncEntityRecentSource(records);
   syncEntityFilter(records);
   renderEntitySummary(records);
@@ -7236,6 +8078,7 @@ function renderEntitySectionHead(title, action = "") {
 function renderEntityCard(record) {
   const pinned = entityHasPinnedSignal(record);
   const pinAction = pinned ? "Unpin" : "Pin";
+  const pickerOpen = state.entityTypePickerPath === record.path;
   return `
     <article class="entity-card" role="button" tabindex="0" data-entity-path="${escapeHtml(record.path)}">
       <div class="entity-card-top">
@@ -7244,12 +8087,37 @@ function renderEntityCard(record) {
         <button class="entity-pin-button ${pinned ? "active" : ""}" type="button" data-entity-pin-path="${escapeHtml(record.path)}" aria-pressed="${pinned ? "true" : "false"}" aria-label="${escapeHtml(`${pinAction} ${record.title}`)}" title="${escapeHtml(pinAction)}">
           <span aria-hidden="true">${escapeHtml(pinned ? "Pinned" : "Pin")}</span>
         </button>
-        <span class="type-tag">${escapeHtml(record.typeLabel)}</span>
+        <button class="type-tag entity-type-chip ${pickerOpen ? "active" : ""}" type="button" data-entity-type-open="${escapeHtml(record.path)}" aria-expanded="${pickerOpen ? "true" : "false"}" aria-label="${escapeHtml(`Change type for ${record.title}. Current type ${record.typeLabel}`)}">${escapeHtml(record.typeLabel)}</button>
       </div>
+      ${pickerOpen ? renderEntityTypePicker(record) : ""}
       ${record.meta ? `<div class="entity-card-meta-line">${escapeHtml(record.meta)}</div>` : ""}
       <p class="entity-card-summary">${escapeHtml(record.summary || "No summary yet.")}</p>
       ${record.nextAction ? `<div class="entity-card-next"><span>Next:</span> ${escapeHtml(record.nextAction)}</div>` : ""}
     </article>
+  `;
+}
+
+function renderEntityTypePicker(record) {
+  const options = state.entityTypeOptions?.length ? state.entityTypeOptions : entityTypePickerOptions([record]);
+  return `
+    <div class="entity-type-picker" data-entity-type-picker-path="${escapeHtml(record.path)}">
+      <div class="entity-type-picker-head">
+        <span>Set primary type</span>
+        <button type="button" data-entity-type-close="${escapeHtml(record.path)}" aria-label="Close type picker">×</button>
+      </div>
+      <div class="entity-type-custom-row">
+        <input data-entity-type-custom-input="${escapeHtml(record.path)}" type="text" placeholder="Type custom..." autocomplete="off">
+        <button type="button" data-entity-type-custom="${escapeHtml(record.path)}">Use</button>
+      </div>
+      <div class="entity-type-option-list" role="listbox" aria-label="Entity type options">
+        ${options.map((option) => `
+          <button class="entity-type-option ${normalizePrimaryTypeValue(record.typeLabel) === option.value ? "selected" : ""}" type="button" data-entity-type-path="${escapeHtml(record.path)}" data-entity-type-value="${escapeHtml(option.value)}">
+            <span>${escapeHtml(option.label)}</span>
+            <span>${escapeHtml(String(option.count))}</span>
+          </button>
+        `).join("")}
+      </div>
+    </div>
   `;
 }
 
@@ -7340,6 +8208,57 @@ function handleEntityFilterClick(event) {
 }
 
 async function handleEntityBrowserActionClick(event) {
+  const typeCloseButton = event.target.closest("[data-entity-type-close]");
+  if (typeCloseButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    state.entityTypePickerPath = "";
+    renderEntities(activeEntityFileMap());
+    return;
+  }
+
+  const typeChoiceButton = event.target.closest("[data-entity-type-value]");
+  if (typeChoiceButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    await withBusyOperation("entity type", () => setEntityPrimaryType(
+      typeChoiceButton.dataset.entityTypePath,
+      typeChoiceButton.dataset.entityTypeValue
+    ));
+    return;
+  }
+
+  const typeCustomButton = event.target.closest("[data-entity-type-custom]");
+  if (typeCustomButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    const picker = typeCustomButton.closest(".entity-type-picker");
+    const input = picker?.querySelector("[data-entity-type-custom-input]");
+    await withBusyOperation("entity type", () => setEntityPrimaryType(
+      typeCustomButton.dataset.entityTypeCustom,
+      input?.value || ""
+    ));
+    return;
+  }
+
+  const typeOpenButton = event.target.closest("[data-entity-type-open]");
+  if (typeOpenButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    const path = normalizeMarginsPath(typeOpenButton.dataset.entityTypeOpen || "");
+    state.entityTypePickerPath = state.entityTypePickerPath === path ? "" : path;
+    renderEntities(activeEntityFileMap());
+    if (state.entityTypePickerPath) requestAnimationFrame(() => {
+      els.entityBrowser?.querySelector(".entity-type-picker input")?.focus({ preventScroll: true });
+    });
+    return;
+  }
+
+  if (event.target.closest(".entity-type-picker")) {
+    event.stopPropagation();
+    return;
+  }
+
   const button = event.target.closest("[data-entity-list-action]");
   if (button) {
     event.preventDefault();
@@ -7418,8 +8337,80 @@ async function toggleEntityPin(path) {
   return true;
 }
 
+async function setEntityPrimaryType(path, rawType) {
+  const normalizedPath = normalizeMarginsPath(path);
+  const primaryType = normalizePrimaryTypeValue(rawType);
+  if (!normalizedPath || !primaryType || !state.currentFileMap?.has(normalizedPath)) return false;
+
+  const currentBody = state.currentFileMap.get(normalizedPath);
+  const record = entityRecord(normalizedPath, currentBody);
+  if (!record) return false;
+  const nextBody = setEntityPrimaryTypeBody(currentBody, primaryType);
+  if (nextBody === currentBody) {
+    state.entityTypePickerPath = "";
+    renderEntities(activeEntityFileMap());
+    return false;
+  }
+
+  if (state.vaultHandle) {
+    const granted = await requestVaultPermission(state.vaultHandle);
+    if (!granted) {
+      updateVaultStatus("Changing entity type needs vault write permission.");
+      return false;
+    }
+    await writeTextFile(state.vaultHandle, normalizedPath, nextBody);
+    state.loadedFileMap.set(normalizedPath, nextBody);
+    state.hasUnsavedEdits = false;
+  } else {
+    state.hasUnsavedEdits = true;
+  }
+
+  state.currentFileMap.set(normalizedPath, nextBody);
+  if (state.selectedPath === normalizedPath) {
+    setDocumentHeader(normalizedPath, nextBody, { kind: state.selectedKind || "wiki", readOnly: false });
+    setDocBody(nextBody, { readOnly: false });
+  }
+  state.entityTypePickerPath = "";
+  renderEntities(activeEntityFileMap());
+  renderWikiFiles(state.currentFileMap);
+  drawGraph(graphFromFileMap(state.currentFileMap));
+  els.stats.textContent = `Set ${record.title} to ${entityTypeDisplayLabel(primaryType)}.`;
+  updateSaveButtonState();
+  return true;
+}
+
 function activeEntityFileMap() {
   return state.currentFileMap || state.entityFileMap || new Map();
+}
+
+function setEntityPrimaryTypeBody(body, primaryType) {
+  return setFrontmatterScalarField(body, "primary_type", normalizePrimaryTypeValue(primaryType));
+}
+
+function setFrontmatterScalarField(body, key, value) {
+  const source = String(body || "");
+  const cleanKey = String(key || "").trim();
+  const cleanValue = String(value || "").trim();
+  if (!cleanKey || !cleanValue) return source;
+  const line = `${cleanKey}: ${yamlInlineScalar(cleanValue)}`;
+  const match = source.match(/^---\n([\s\S]*?)\n---\n?/);
+  if (!match) return `---\n${line}\n---\n\n${source}`;
+
+  const lines = match[1].split("\n");
+  const keyPattern = new RegExp(`^${escapeRegExp(cleanKey)}:\\s*`, "i");
+  let replaced = false;
+  const nextLines = lines.map((item) => {
+    if (keyPattern.test(item)) {
+      replaced = true;
+      return line;
+    }
+    return item;
+  });
+  if (!replaced) {
+    const typeIndex = nextLines.findIndex((item) => /^type:\s*/i.test(item));
+    nextLines.splice(typeIndex >= 0 ? typeIndex + 1 : nextLines.length, 0, line);
+  }
+  return `---\n${nextLines.join("\n")}${nextLines.length && !nextLines[nextLines.length - 1].endsWith("\n") ? "\n" : ""}---\n${source.slice(match[0].length)}`;
 }
 
 function entityPinnedBody(body, shouldPin) {
@@ -7553,6 +8544,26 @@ function entityTagFacets(records) {
       label: tag,
       count
     }));
+}
+
+function entityTypePickerOptions(records = []) {
+  const counts = countBy(records, (record) => entityTypeDisplayLabel(record.typeLabel));
+  const canonicalLabels = CANONICAL_ENTITY_TYPES.map(entityTypeDisplayLabel);
+  const canonicalSet = new Set(canonicalLabels.map((label) => label.toLowerCase()));
+  const canonical = CANONICAL_ENTITY_TYPES.map((value, index) => ({
+    value,
+    label: canonicalLabels[index],
+    count: counts.get(canonicalLabels[index]) || 0
+  }));
+  const extras = [...counts.entries()]
+    .filter(([label]) => !canonicalSet.has(String(label).toLowerCase()))
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .map(([label, count]) => ({
+      value: normalizePrimaryTypeValue(label),
+      label,
+      count
+    }));
+  return [...canonical, ...extras];
 }
 
 function countBy(items, keyForItem) {
@@ -7804,6 +8815,8 @@ function entityRecordSort(left, right) {
 }
 
 function entityTypeLabel(type, path, fields = {}, tags = [], bucket = "") {
+  const primaryType = normalizePrimaryTypeValue(entityField(fields, "primary_type", "primaryType"));
+  if (primaryType) return entityTypeDisplayLabel(primaryType);
   const normalized = String(type || "").toLowerCase();
   const tagSet = new Set(tags.map(normalizeEntityTag));
   const category = normalizeEntityTag(entityField(fields, "category"));
@@ -7829,6 +8842,15 @@ function entityTypeLabel(type, path, fields = {}, tags = [], bucket = "") {
   if (path.startsWith("wiki/career/")) return "Career";
   if (path.startsWith("wiki/school/")) return "School";
   return titleFromSlug(normalized || "entity");
+}
+
+function normalizePrimaryTypeValue(value) {
+  return slugifyLoose(cleanSummary(value));
+}
+
+function entityTypeDisplayLabel(value) {
+  const normalized = normalizePrimaryTypeValue(value);
+  return normalized ? titleFromSlug(normalized) : "Entity";
 }
 
 function entityBucketLabel(path, bucket) {
@@ -7902,6 +8924,15 @@ function uploadDetail(label, value) {
 
 function formatStatNumber(value) {
   return Number(value || 0).toLocaleString("en-US");
+}
+
+function formatProcessDuration(milliseconds) {
+  const seconds = Math.max(0, Number(milliseconds) || 0) / 1000;
+  if (seconds < 10) return `${seconds.toFixed(1)}s`;
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.round(seconds % 60);
+  return `${minutes}m ${String(remainingSeconds).padStart(2, "0")}s`;
 }
 
 function formatUsd(value) {
@@ -8214,6 +9245,12 @@ function renderWikiFiles(fileMap) {
     return;
   }
 
+  const hasSelectedEntry = state.selectedPath && entries.some((entry) => entry.path === state.selectedPath);
+  if (!hasSelectedEntry && !query) {
+    state.selectedPath = defaultVaultBrowserPath(entries);
+    state.selectedKind = state.selectedPath ? pathKind(state.selectedPath) : "";
+  }
+
   els.wikiTree.className = "vault-file-browser";
   els.wikiTree.innerHTML = renderVaultFolderTree(entries);
 
@@ -8233,6 +9270,15 @@ function renderWikiFiles(fileMap) {
   setDocumentHeader(null, "", { title: "No file selected", meta: "No file selected" });
   setDocBody("Choose a file from raw or wiki.", { readOnly: true });
   if (els.docSaveBtn) els.docSaveBtn.disabled = true;
+}
+
+function defaultVaultBrowserPath(entries = []) {
+  const paths = entries.map((entry) => entry.path);
+  return paths.find((path) => path === "wiki/index.md")
+    || paths.find((path) => /^wiki\/[^/]+\/index\.md$/i.test(path))
+    || paths.find((path) => path.startsWith("wiki/") && path.endsWith(".md"))
+    || paths[0]
+    || "";
 }
 
 function vaultBrowserEntries(fileMap) {
@@ -9677,7 +10723,7 @@ function updateSaveButtonState() {
 }
 
 function sourceClass(file) {
-  const classes = [];
+  const classes = [`type-${sourceBadgeClass(file)}`];
   if (state.processingInbox && (!state.processingFileName || state.processingFileName === file.name)) classes.push("processing");
   else if (isSourceReviewReady(file)) classes.push("ready-to-write");
   return classes.join(" ");
@@ -9701,6 +10747,16 @@ function sourceTypeLabel(file) {
   if (file.type === "docx") return "DOCX";
   const ext = basename(file.name).split(".").pop() || "TXT";
   return ext.length <= 4 ? ext.toUpperCase() : "FILE";
+}
+
+function sourceBadgeClass(file) {
+  const ext = basename(file?.name || "").split(".").pop()?.toLowerCase() || "";
+  if (file?.type === "pdf" || ext === "pdf") return "pdf";
+  if (["eml", "msg"].includes(ext)) return "eml";
+  if (["mp3", "m4a", "wav", "aac", "aiff"].includes(ext)) return "aud";
+  if (file?.type === "docx" || ["doc", "docx"].includes(ext)) return "doc";
+  if (["md", "markdown", "txt"].includes(ext)) return "txt";
+  return "txt";
 }
 
 function normalizeSelectedFiles(files) {
