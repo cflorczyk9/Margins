@@ -19,9 +19,57 @@ const PENDING_SOURCE_PAGE_SIZE = 6;
 const CANONICAL_ENTITY_TYPES = ["person", "company", "project", "concept", "synthesis"];
 const RAW_SOURCE_DIR = "raw";
 const LEGACY_RAW_SOURCE_DIR = "raw_sources";
+const DREAM_LOG_PATH = "wiki/.margins/dream-log.md";
+const DREAM_MODES = {
+  watch: {
+    label: "Scan only",
+    help: "Checks only; no file changes."
+  },
+  walk: {
+    label: "Guided review",
+    help: "Shows one decision at a time."
+  },
+  hybrid: {
+    label: "Auto + review",
+    help: "Safe cleanup first; decisions wait."
+  }
+};
+const DREAM_STAGES = [
+  {
+    id: "replay",
+    name: "Source queue",
+    label: "Process new sources",
+    description: "Checks pending sources and routes documents into the existing processing workflow."
+  },
+  {
+    id: "pruning",
+    name: "Entity cleanup",
+    label: "Find weak pages",
+    description: "Flags sparse entity pages, stale drafts, and cleanup candidates without deleting anything."
+  },
+  {
+    id: "association",
+    name: "Link cleanup",
+    label: "Strengthen links",
+    description: "Looks for pages that should be reviewed for backlinks, citations, or graph structure."
+  },
+  {
+    id: "synthesis",
+    name: "Cross-source review",
+    label: "Surface patterns",
+    description: "Queues cross-source summary opportunities for review instead of creating them silently."
+  },
+  {
+    id: "clearance",
+    name: "System cleanup",
+    label: "Repair structure",
+    description: "Handles direct-read cleanup such as check logs, broken links, and safe metadata repairs."
+  }
+];
 const INGEST_PROGRESS_STEP_DELAYS_MS = [0, 1400, 4400, 12000];
 const INGEST_REVIEW_OUTPUT_TOKEN_FLOOR = 8192;
 const INGEST_REVIEW_RETRY_OUTPUT_TOKEN_FLOOR = 12288;
+const DREAM_HELPER_OUTPUT_TOKEN_FLOOR = 8192;
 let apiRequestTimeoutMs = API_REQUEST_TIMEOUT_MS;
 let ingestProgressStepDelaysMs = INGEST_PROGRESS_STEP_DELAYS_MS;
 let activeOperation = "";
@@ -75,7 +123,12 @@ const state = {
   activityRecentVisibleCount: ACTIVITY_RECENT_PAGE_SIZE,
   activityRecentSourceKey: "",
   pendingSourceVisibleCount: PENDING_SOURCE_PAGE_SIZE,
-  pendingSourceKey: ""
+  pendingSourceKey: "",
+  dreamMode: "hybrid",
+  dreamReviewActive: false,
+  dreamSkippedItems: new Set(),
+  dreamLastRun: null,
+  dreamActiveStage: ""
 };
 
 const apiThrottle = {
@@ -133,11 +186,18 @@ const els = {
   dreamMeta: document.getElementById("dream-meta"),
   dreamStateTitle: document.getElementById("dream-state-title"),
   dreamStateBody: document.getElementById("dream-state-body"),
+  dreamRunBtn: document.getElementById("dream-run-btn"),
+  dreamReviewBtn: document.getElementById("dream-review-btn"),
+  dreamModeToggle: document.getElementById("dream-mode-toggle"),
+  dreamModeHelp: document.getElementById("dream-mode-help"),
+  dreamPassStatus: document.getElementById("dream-pass-status"),
   dreamStats: document.getElementById("dream-stats"),
   dreamOperationList: document.getElementById("dream-operation-list"),
   dreamProposalList: document.getElementById("dream-proposal-list"),
+  dreamQueueKicker: document.getElementById("dream-queue-kicker"),
+  dreamQueueTitle: document.getElementById("dream-queue-title"),
   dreamLogMeta: document.getElementById("dream-log-meta"),
-  dreamLogTitles: document.getElementById("dream-log-titles"),
+  dreamLogEntries: document.getElementById("dream-log-entries"),
   entityMeta: document.getElementById("entity-meta"),
   entityControls: document.getElementById("entity-controls"),
   entitySearch: document.getElementById("entity-search"),
@@ -217,7 +277,11 @@ els.fileInput.addEventListener("change", handleSourceSelection);
 els.sourceList?.addEventListener("click", handleSourceActionClick);
 els.recentActivityList?.addEventListener("click", handleRecentActivityClick);
 els.recentActivityList?.addEventListener("keydown", handleRecentActivityKeydown);
-els.bulkIngestBtn?.addEventListener("click", () => withBusyOperation("bulk ingest", bulkIngestPendingSources));
+els.dreamProposalList?.addEventListener("click", handleDreamActionClick);
+els.dreamRunBtn?.addEventListener("click", () => withBusyOperation("maintenance pass", runDreamMaintenance));
+els.dreamReviewBtn?.addEventListener("click", startDreamStepReview);
+els.dreamModeToggle?.addEventListener("change", handleDreamModeChange);
+els.bulkIngestBtn?.addEventListener("click", () => withBusyOperation("bulk process", bulkIngestPendingSources));
 els.docBody?.addEventListener("input", handleVaultDocumentEdit);
 els.docBody?.addEventListener("scroll", syncDocHighlightScroll);
 els.docSaveBtn?.addEventListener("click", () => withBusyOperation("vault save", saveCurrentVault));
@@ -648,7 +712,7 @@ async function persistImportedRawSources(files) {
 
   const vault = state.vaultHandle || await activeVaultForRawImport();
   if (!vault) {
-    els.stats.textContent = "Documents are loaded for this session. Choose or reconnect a vault to preserve them in raw.";
+    els.stats.textContent = "Documents are loaded for this session. Choose or reconnect a vault to preserve originals in raw/.";
     updateWorkflowState();
     return 0;
   }
@@ -662,11 +726,11 @@ async function persistImportedRawSources(files) {
     renderVaultTree(state.currentFileMap);
     updateWorkflowState();
     els.stats.textContent = written
-      ? `${written} raw source${written === 1 ? "" : "s"} saved to raw.`
-      : "Raw sources already exist in raw.";
+      ? `${written} source file${written === 1 ? "" : "s"} saved to raw/.`
+      : "Source files already exist in raw/.";
     return written;
   } catch (error) {
-    els.stats.textContent = `Raw source save failed: ${error.message || "unknown error"}`;
+    els.stats.textContent = `Source file save failed: ${error.message || "unknown error"}`;
     updateWorkflowState();
     return 0;
   }
@@ -865,7 +929,7 @@ async function loadExistingVault(handle) {
   renderChangePreview();
   renderVaultTree(fileMap);
   els.stats.textContent = rawFiles.length
-    ? `Opened ${state.vaultName}: ${rawFiles.length} raw source${rawFiles.length === 1 ? "" : "s"} loaded`
+    ? `Opened ${state.vaultName}: ${rawFiles.length} source file${rawFiles.length === 1 ? "" : "s"} loaded from raw/`
     : `Opened vault: ${state.vaultName}`;
 }
 
@@ -991,7 +1055,7 @@ async function removePendingSource(fileName) {
 
   const rawSaved = rawSourceAlreadySaved(file);
   const message = rawSaved
-    ? `Delete ${basename(fileName)} from raw?`
+    ? `Delete ${basename(fileName)} from raw/?`
     : `Remove ${basename(fileName)} from pending?`;
   if (!confirm(message)) return;
 
@@ -1001,7 +1065,7 @@ async function removePendingSource(fileName) {
     }
     removeSourceFromState(fileName);
     els.stats.textContent = rawSaved
-      ? `Deleted ${basename(fileName)} from raw.`
+      ? `Deleted ${basename(fileName)} from raw/.`
       : `Removed ${basename(fileName)} from pending.`;
   } catch (error) {
     els.stats.textContent = `Could not delete ${basename(fileName)}: ${error.message || "unknown error"}`;
@@ -1270,7 +1334,7 @@ async function saveCurrentVault(options = {}) {
       file_count: state.currentFileMap.size,
       write_mode: "direct-vault-save",
       warning: sourceCount === 0
-        ? "No raw source files were loaded in the browser when this folder was written."
+        ? "No original source files were loaded in the browser when this folder was written."
         : ""
     }, null, 2));
     state.vaultFiles = mergeSourceFiles(state.vaultFiles, pendingRaw.map((file) => ({ ...file, sourceScope: "vault", dirtyRaw: false })));
@@ -1291,7 +1355,7 @@ async function saveCurrentVault(options = {}) {
     els.reviewReply.value = "";
     els.stats.textContent = pendingRaw.length === 0
       ? `Saved ${writtenFiles} wiki/operating files to ${state.vaultName}`
-      : `Saved ${writtenFiles} wiki/operating file${writtenFiles === 1 ? "" : "s"} + ${writtenRaw} new raw source${writtenRaw === 1 ? "" : "s"} to ${state.vaultName}`;
+      : `Saved ${writtenFiles} wiki/operating file${writtenFiles === 1 ? "" : "s"} + ${writtenRaw} new source file${writtenRaw === 1 ? "" : "s"} to ${state.vaultName}`;
     els.saveVaultBtn.textContent = "Saved";
     if (els.docSaveBtn) els.docSaveBtn.textContent = "Saved";
     renderWikiFiles(state.currentFileMap);
@@ -1393,7 +1457,7 @@ async function copyLlmIngestPrompt() {
   await navigator.clipboard.writeText(buildLlmIngestPrompt(state.files, state.currentFileMap));
   state.llmPromptCopied = true;
   els.llmBtn.textContent = "Copied";
-  setTimeout(() => { els.llmBtn.textContent = "Copy LLM ingest prompt"; }, 1100);
+  setTimeout(() => { els.llmBtn.textContent = "Copy LLM process prompt"; }, 1100);
   activateTab("llm");
   els.llmInput.focus();
   updateWorkflowState();
@@ -1560,13 +1624,13 @@ function localIngestReview(file, fileMap, mode) {
 
 function ingestModelErrorMessage(error) {
   if (isModelOutputTruncatedError(error)) {
-    return "Margins review was cut off before complete JSON came back. The raw source is saved. Retry this file; Margins will ask for a larger response.";
+    return "Margins review was cut off before complete JSON came back. The source file is saved. Retry this file; Margins will ask for a larger response.";
   }
   if (isSpendGuardError(error)) {
-    return `${error.message} The raw source is saved. Raise the guard or reset usage, then retry.`;
+    return `${error.message} The source file is saved. Raise the guard or reset usage, then retry.`;
   }
   if (isRateLimitError(error)) {
-    return `Margins review is rate-limited right now. The raw source is saved. ${retryAfterText(error)}Retry this file when the limit resets.`;
+    return `Margins review is rate-limited right now. The source file is saved. ${retryAfterText(error)}Retry this file when the limit resets.`;
   }
   return `Model review did not finish: ${error.message || "unknown error"}`;
 }
@@ -1633,7 +1697,7 @@ function localSourceSummaryParts(file) {
   const clean = cleanDisplaySummary(localReadableSourceText(file.text || ""));
   if (!clean) {
     return {
-      overview: "Margins saved the raw source, but there is not enough readable text to summarize yet.",
+      overview: "Margins saved the source file, but there is not enough readable text to summarize yet.",
       bullets: [
         "Use model review with the original file attached if this document matters.",
         "Do not rely on local fallback for scanned, image-only, or complex documents."
@@ -2178,9 +2242,159 @@ async function generateOpenAiCompatibleJsonContent(provider, model, prompt, trac
   }
 }
 
+async function generateApiTextContent(provider, model, prompt, tracking = {}, outputTokenFloor = 0) {
+  if (provider === "gemini") {
+    return generateGeminiTextContent(model, prompt, tracking, outputTokenFloor);
+  }
+  if (provider === "openai" || provider === "local") {
+    return generateOpenAiCompatibleTextContent(provider, model, prompt, tracking, outputTokenFloor);
+  }
+  throw new Error("Direct browser helper calls are wired for Gemini and OpenAI-compatible endpoints right now.");
+}
+
+async function generateOpenAiCompatibleTextContent(provider, model, prompt, tracking = {}, outputTokenFloor = 0) {
+  const endpoint = defaultEndpointForProvider(provider);
+  const budget = reserveApiBudget({
+    provider,
+    model,
+    prompt,
+    extraParts: [],
+    outputTokenLimit: apiOutputTokenLimit(outputTokenFloor)
+  });
+  const timing = beginModelTiming({
+    ...tracking,
+    provider,
+    model,
+    endpoint,
+    promptChars: prompt.length,
+    attachmentCount: 0,
+    attachmentBytes: 0,
+    outputTokenLimit: budget.outputTokenLimit
+  });
+  tracking.record = timing;
+  await waitForApiThrottle(provider);
+  timing.throttleMs = elapsedSince(timing.throttleStartedAt);
+  timing.requestStartedAt = performance.now();
+  try {
+    const response = await fetchWithTimeout(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${state.apiSecret}`
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0.2,
+        max_tokens: budget.outputTokenLimit,
+        messages: [
+          {
+            role: "system",
+            content: "You are a conservative cleanup helper for a local-first Margins vault. Return margins-file blocks for proposed file changes."
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ]
+      })
+    });
+    timing.httpStatus = response.status;
+    if (!response.ok) {
+      const error = await apiErrorFromResponse(response, "model helper");
+      finishModelTiming(timing, { ok: false, error });
+      throw error;
+    }
+    const json = await response.json();
+    const usage = {
+      inputTokens: json.usage?.prompt_tokens || budget.inputTokens,
+      outputTokens: json.usage?.completion_tokens || budget.outputTokenLimit,
+      estimated: !json.usage
+    };
+    recordApiUsage({ provider, model, ...usage });
+    const content = json.choices?.[0]?.message?.content || "";
+    finishModelTiming(timing, { ok: true, usage, contentChars: content.length });
+    return content;
+  } catch (error) {
+    if (!timing.finishedAt) finishModelTiming(timing, { ok: false, error });
+    throw error;
+  }
+}
+
 async function generateGeminiReviewQuestions(model, prompt) {
   const content = await generateGeminiJsonContent(model, `You generate concise filing review questions for a local-first personal wiki. Return JSON only.\n\n${prompt}`);
   return parseApiQuestions(content).slice(0, 3);
+}
+
+async function generateGeminiTextContent(model, prompt, tracking = {}, outputTokenFloor = 0) {
+  const endpoint = defaultEndpointForProvider("gemini").replace("{model}", encodeURIComponent(normalizeGeminiModel(model)));
+  const outputTokenLimit = apiOutputTokenLimit(outputTokenFloor);
+  const budget = reserveApiBudget({
+    provider: "gemini",
+    model,
+    prompt,
+    extraParts: [],
+    outputTokenLimit
+  });
+  const timing = beginModelTiming({
+    ...tracking,
+    provider: "gemini",
+    model,
+    endpoint,
+    promptChars: prompt.length,
+    attachmentCount: 0,
+    attachmentBytes: 0,
+    outputTokenLimit: budget.outputTokenLimit
+  });
+  tracking.record = timing;
+  await waitForApiThrottle("gemini");
+  timing.throttleMs = elapsedSince(timing.throttleStartedAt);
+  timing.requestStartedAt = performance.now();
+  try {
+    const response = await fetchWithTimeout(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": state.apiSecret
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: prompt }]
+          }
+        ],
+        generationConfig: {
+          temperature: 0.2,
+          maxOutputTokens: budget.outputTokenLimit
+        }
+      })
+    });
+    timing.httpStatus = response.status;
+    if (!response.ok) {
+      const error = await apiErrorFromResponse(response, "Gemini helper");
+      finishModelTiming(timing, { ok: false, error });
+      throw error;
+    }
+    const json = await response.json();
+    const candidate = json.candidates?.[0] || {};
+    const content = candidate.content?.parts?.map((part) => part.text || "").join("\n") || "";
+    const usage = {
+      inputTokens: json.usageMetadata?.promptTokenCount || budget.inputTokens,
+      outputTokens: geminiOutputTokenCount(json.usageMetadata) || budget.outputTokenLimit,
+      estimated: !json.usageMetadata
+    };
+    recordApiUsage({ provider: "gemini", model, ...usage });
+    if (isGeminiOutputTruncated(candidate, content)) {
+      const error = modelOutputTruncatedError("gemini", content, candidate.finishReason || "");
+      finishModelTiming(timing, { ok: false, usage, contentChars: content.length, error });
+      throw error;
+    }
+    finishModelTiming(timing, { ok: true, usage, contentChars: content.length });
+    return content;
+  } catch (error) {
+    if (!timing.finishedAt) finishModelTiming(timing, { ok: false, error });
+    throw error;
+  }
 }
 
 async function generateGeminiJsonContent(model, prompt, extraParts = [], tracking = {}, options = {}) {
@@ -3207,9 +3421,9 @@ function buildApiIngestReviewPrompt(file, fileMap, mode) {
   const askInstruction = mode === "auto"
     ? "Return no asks in auto mode."
     : `Return 0-${budget} specific asks. Ask when the answer changes bucket/path, type tag, promotion, propagation, sensitivity, priority, or follow-up.`;
-  return `Review this uploaded source for Margins, a local-first raw-source-to-wiki compiler. Return a filing judgment plus a compact pending-card review.
+  return `Review this uploaded source for Margins, a local-first source-to-wiki compiler. Return a filing judgment plus a compact pending-card review.
 
-The raw file is already saved in raw. Margins will show your JSON on the pending inbox card before writing the wiki.
+The original file is already saved in raw/. Margins will show your JSON on the pending inbox card before writing the wiki.
 
 Contract:
 - JSON only. No markdown, no prose outside JSON.
@@ -3235,7 +3449,7 @@ Contract:
 - asks: ${askInstruction}
 - Do not ask generic filing questions. Margins should recommend a path.
 - Exception: do ask a specific bucket/path/type/promotion question when two reasonable placements remain after reading current wiki context.
-- Do not include transcript dumps, raw YAML/frontmatter, embed syntax, or generic filing questions.
+- Do not include transcript dumps, unprocessed YAML/frontmatter, embed syntax, or generic filing questions.
 - Do not apply special handling for document classes. Infer durable patterns from current wiki context, and explain any structural gap before proposing new tags or pages.
 - Review mode is ${reviewModeLabel(mode)}. Question budget: ${budget}.
 
@@ -3411,7 +3625,7 @@ function contextSnippet(body) {
     .split("\n")
     .filter((line) => {
       const trimmed = line.trim();
-      return trimmed && !trimmed.startsWith("# ") && !/^Raw file:/i.test(trimmed);
+      return trimmed && !trimmed.startsWith("# ") && !/^(?:Raw|Original) file:/i.test(trimmed);
     })
     .slice(0, 18)
     .join(" ");
@@ -4699,7 +4913,7 @@ function renderChangePreview() {
     return;
   }
 
-  const title = parsedMode ? "Returned files" : "Ingestion preview";
+  const title = parsedMode ? "Returned files" : "Processing preview";
   const createCount = summaryChanges.filter((change) => change.status === "create").length;
   const overwriteCount = summaryChanges.filter((change) => change.status === "overwrite").length;
   const unchangedCount = summaryChanges.filter((change) => change.status === "unchanged").length;
@@ -4708,8 +4922,8 @@ function renderChangePreview() {
   const summaryParts = [
     createCount ? `${createCount} new` : "",
     overwriteCount ? `${overwriteCount} overwrite` : "",
-    rawCreateCount ? `${rawCreateCount} raw new` : "",
-    rawOverwriteCount ? `${rawOverwriteCount} raw overwrite` : "",
+    rawCreateCount ? `${rawCreateCount} source new` : "",
+    rawOverwriteCount ? `${rawOverwriteCount} source overwrite` : "",
     parsedMode && unchangedCount ? `${unchangedCount} unchanged` : ""
   ].filter(Boolean);
   const summaryText = summaryParts.join(" · ") || "No file changes detected";
@@ -4723,7 +4937,7 @@ function renderChangePreview() {
 
   const detailChanges = [
     ...summaryChanges.filter(isUserFacingChange).map((change) => ({ ...change, kind: changeKindLabel(change.path) })),
-    ...rawChanges.map((change) => ({ ...change, kind: "raw source" }))
+    ...rawChanges.map((change) => ({ ...change, kind: "source file" }))
   ];
 
   if (detailChanges.length === 0) {
@@ -4825,7 +5039,7 @@ function renderSources() {
   renderPendingCount(files.length);
   if (files.length === 0) {
     els.sourceList.className = "source-list empty";
-    els.sourceList.textContent = "No pending raw sources.";
+    els.sourceList.textContent = "No pending sources.";
     renderRecentActivity();
     return;
   }
@@ -4945,18 +5159,18 @@ function activeActivityFileMap() {
 function renderRecentActivity(fileMap = activeActivityFileMap()) {
   if (!els.recentActivityList) return;
   const activeFileMap = fileMap instanceof Map ? fileMap : new Map();
-  const records = recentActivityRecords(activeFileMap);
+  const records = activityTimelineRecords(activeFileMap);
   syncActivityRecentSource(records);
 
-  if (activeFileMap.size === 0) {
+  if (records.length === 0 && activeFileMap.size === 0) {
     els.recentActivityList.className = "activity-card-wall empty";
-    els.recentActivityList.textContent = "Open a vault to see recently ingested source notes.";
+    els.recentActivityList.textContent = "Open a vault to see recently processed source notes.";
     return;
   }
 
   if (records.length === 0) {
     els.recentActivityList.className = "activity-card-wall empty";
-    els.recentActivityList.textContent = "No ingested source notes found in this vault yet.";
+    els.recentActivityList.textContent = "No processed source notes found in this vault yet.";
     return;
   }
 
@@ -4973,10 +5187,19 @@ function renderDream(fileMap = activeActivityFileMap()) {
   if (!els.dreamOperationList || !els.dreamProposalList) return;
   const activeFileMap = fileMap instanceof Map ? fileMap : new Map();
   const report = dreamReport(activeFileMap);
+  const visibleQueue = dreamVisibleQueueItems(report.queueItems);
 
   if (els.dreamMeta) els.dreamMeta.textContent = report.meta;
   if (els.dreamStateTitle) els.dreamStateTitle.textContent = report.title;
   if (els.dreamStateBody) els.dreamStateBody.textContent = report.body;
+  if (els.dreamPassStatus) {
+    els.dreamPassStatus.textContent = report.passStatus;
+    els.dreamPassStatus.hidden = !state.dreamLastRun;
+  }
+  if (els.dreamRunBtn) els.dreamRunBtn.disabled = !report.connected;
+  if (els.dreamReviewBtn) els.dreamReviewBtn.disabled = !report.connected || report.reviewItemCount === 0;
+  if (els.dreamModeToggle) els.dreamModeToggle.value = state.dreamMode;
+  if (els.dreamModeHelp) els.dreamModeHelp.textContent = dreamModeHelpText(state.dreamMode);
   if (els.dreamStats) {
     els.dreamStats.innerHTML = report.stats.map((stat) => `
       <div class="dream-stat">
@@ -4992,62 +5215,376 @@ function renderDream(fileMap = activeActivityFileMap()) {
         <strong>${escapeHtml(operation.metric)}</strong>
       </div>
       <p>${escapeHtml(operation.description)}</p>
+      <div class="dream-stage-counts">
+        <span>${escapeHtml(String(operation.queued))} queued</span>
+        <span>${escapeHtml(String(operation.applied))} applied</span>
+        <span>${escapeHtml(String(operation.deferred))} review</span>
+      </div>
     </article>
   `).join("");
-  els.dreamProposalList.innerHTML = report.proposals.length
-    ? report.proposals.map((proposal) => `
-      <article class="dream-proposal-card">
-        <div>
-          <span class="dream-proposal-kind">${escapeHtml(proposal.kind)}</span>
-          <h4>${escapeHtml(proposal.title)}</h4>
-          <p>${escapeHtml(proposal.body)}</p>
-        </div>
-        <div class="dream-proposal-actions" aria-label="Dream proposal actions">
-          <button type="button" disabled>Accept</button>
-          <button type="button" disabled>Refine</button>
-          <button type="button" disabled>Reject</button>
-        </div>
-      </article>
-    `).join("")
-    : `<div class="dream-empty">Open a vault and ingest sources. Margins will prepare dream proposals here.</div>`;
+  if (els.dreamQueueKicker) els.dreamQueueKicker.textContent = state.dreamReviewActive ? "Step-by-step" : "Repair queue";
+  if (els.dreamQueueTitle) {
+    els.dreamQueueTitle.textContent = state.dreamReviewActive
+      ? `Review item ${visibleQueue.length ? "1" : "0"} of ${report.reviewItemCount}`
+      : "Safe fixes and review items";
+  }
+  els.dreamProposalList.innerHTML = visibleQueue.length
+    ? visibleQueue.map((proposal, index) => renderDreamQueueCard(proposal, index, report.reviewItemCount)).join("")
+    : `<div class="dream-empty">${escapeHtml(report.emptyQueueText)}</div>`;
   if (els.dreamLogMeta) els.dreamLogMeta.textContent = report.log;
-  if (els.dreamLogTitles) {
-    els.dreamLogTitles.innerHTML = report.dreamTitles.length
-      ? report.dreamTitles.map((title) => `
+  if (els.dreamLogEntries) {
+    els.dreamLogEntries.innerHTML = report.logEntries.length
+      ? report.logEntries.map((entry) => `
         <li>
-          <span>${escapeHtml(title.title)}</span>
-          <small>${escapeHtml(title.context)}</small>
+          <span>${escapeHtml(entry.title)}</span>
+          <small>${escapeHtml(entry.context)}</small>
         </li>
       `).join("")
       : "";
   }
 }
 
+function renderDreamQueueCard(proposal, index, reviewTotal) {
+  const stepLabel = state.dreamReviewActive && proposal.safety === "review"
+    ? `Step ${index + 1} of ${reviewTotal}`
+    : `${dreamStageName(proposal.stage)} · ${proposal.safety === "auto" ? "Safe" : "Review"}`;
+  return `
+    <article class="dream-proposal-card ${escapeHtml(proposal.safety)}">
+      <div>
+        <span class="dream-proposal-kind">${escapeHtml(stepLabel)}</span>
+        <h4>${escapeHtml(proposal.title)}</h4>
+        <p>${escapeHtml(proposal.body)}</p>
+      </div>
+      <div class="dream-proposal-actions" aria-label="Dream proposal actions">
+        <button type="button" data-dream-action="${escapeHtml(proposal.action || "")}" data-dream-target="${escapeHtml(proposal.target || "")}">
+          ${escapeHtml(proposal.actionLabel || "Open")}
+        </button>
+        ${state.dreamReviewActive && proposal.safety === "review" ? `
+          <button type="button" data-dream-action="skip-dream-item" data-dream-target="${escapeHtml(proposal.id)}">Skip</button>
+        ` : ""}
+      </div>
+    </article>
+  `;
+}
+
+function dreamVisibleQueueItems(items = []) {
+  const activeItems = items.filter((item) => !state.dreamSkippedItems.has(item.id));
+  if (!state.dreamReviewActive) return activeItems.slice(0, 6);
+  const reviewItems = activeItems.filter((item) => item.safety === "review");
+  return reviewItems.length ? reviewItems.slice(0, 1) : activeItems.slice(0, 1);
+}
+
+function handleDreamModeChange(event) {
+  const mode = event.target?.value;
+  if (!Object.hasOwn(DREAM_MODES, mode)) return;
+  state.dreamMode = mode;
+  if (mode !== "walk") state.dreamReviewActive = false;
+  renderDream(activeActivityFileMap());
+}
+
+function startDreamStepReview() {
+  state.dreamMode = "walk";
+  state.dreamReviewActive = true;
+  state.dreamSkippedItems = new Set();
+  renderDream(activeActivityFileMap());
+  els.dreamProposalList?.scrollIntoView({ block: "start", behavior: "smooth" });
+}
+
+async function runDreamMaintenance() {
+  const fileMap = activeActivityFileMap();
+  if (!fileMap?.size) {
+    renderDream(fileMap || new Map());
+    return;
+  }
+
+  const startedAt = new Date();
+  const mode = state.dreamMode;
+  const workingMap = state.currentFileMap || new Map(fileMap);
+  state.currentFileMap = workingMap;
+  state.dreamSkippedItems = new Set();
+  state.dreamLastRun = {
+    running: true,
+    startedAt,
+    mode,
+    applied: [],
+    deferredCount: 0,
+    stageResults: {}
+  };
+
+  for (const stage of DREAM_STAGES) {
+    state.dreamActiveStage = stage.id;
+    renderDream(workingMap);
+    await sleep(120);
+  }
+
+  const statsBefore = dreamVaultStats(workingMap);
+  const itemsBefore = dreamRepairItems(statsBefore);
+  const applied = [];
+  if (mode !== "walk") {
+    applied.push(appendDreamMaintenanceLog(workingMap, statsBefore, itemsBefore, mode));
+  }
+
+  const statsAfter = dreamVaultStats(workingMap);
+  const itemsAfter = dreamRepairItems(statsAfter);
+  const deferred = itemsAfter.filter((item) => item.safety === "review");
+  state.dreamActiveStage = "";
+  state.dreamReviewActive = mode === "walk" || (mode === "hybrid" && deferred.length > 0);
+  state.dreamLastRun = {
+    running: false,
+    startedAt,
+    finishedAt: new Date(),
+    mode,
+    applied,
+    deferredCount: deferred.length,
+    stageResults: dreamStageResults(itemsAfter, applied)
+  };
+
+  renderVaultTree(workingMap);
+  renderWikiFiles(workingMap);
+  renderOperatingLayer(workingMap);
+  drawGraph(graphFromFileMap(workingMap));
+  updateSaveButtonState();
+}
+
+function appendDreamMaintenanceLog(fileMap, stats, items, mode) {
+  const entry = buildDreamMaintenanceLogEntry(stats, items, mode);
+  const existing = fileMap.get(DREAM_LOG_PATH) || "# Dream Maintenance Log\n\n";
+  const nextBody = `${existing.trim()}\n\n${entry}`.trim() + "\n";
+  fileMap.set(DREAM_LOG_PATH, nextBody);
+  state.hasUnsavedEdits = true;
+  state.pendingSave = false;
+  if (state.selectedPath === DREAM_LOG_PATH) selectVaultPath(DREAM_LOG_PATH, { preserveFocus: true });
+  return {
+    id: "dream-log-entry",
+    stage: "clearance",
+    title: "Recorded maintenance pass",
+    body: "Queued a factual entry in wiki/.margins/dream-log.md. Use Write vault to persist it."
+  };
+}
+
+function buildDreamMaintenanceLogEntry(stats, items, mode) {
+  const reviewItems = items.filter((item) => item.safety === "review");
+  const deferredLines = reviewItems.length
+    ? reviewItems.map((item) => `- Deferred: ${item.title}`).join("\n")
+    : "- Deferred: No review items found.";
+  return `## ${new Date().toISOString()}
+
+- Mode: ${formatDreamModeLabel(mode)}.
+- Checked: ${formatStatNumber(stats.sourceCount)} source notes, ${formatStatNumber(stats.pendingRawCount)} pending source${stats.pendingRawCount === 1 ? "" : "s"}, ${formatStatNumber(stats.brokenLinkCount)} broken links, ${formatStatNumber(stats.sparseEntityCount)} sparse entities.
+- Applied: Recorded this maintenance pass in ${DREAM_LOG_PATH}.
+${deferredLines}`;
+}
+
+function dreamStageResults(items = [], applied = []) {
+  const results = {};
+  for (const stage of DREAM_STAGES) {
+    const stageItems = items.filter((item) => item.stage === stage.id);
+    const stageApplied = applied.filter((item) => item.stage === stage.id);
+    results[stage.id] = {
+      queued: stageItems.length,
+      applied: stageApplied.length,
+      deferred: stageItems.filter((item) => item.safety === "review").length
+    };
+  }
+  return results;
+}
+
+function handleDreamActionClick(event) {
+  const button = event.target.closest("[data-dream-action]");
+  if (!button || !els.dreamProposalList?.contains(button)) return;
+  event.preventDefault();
+  void openDreamAction(button.dataset.dreamAction, button.dataset.dreamTarget);
+}
+
+async function openDreamAction(action, target = "") {
+  if (action === "run-maintenance") {
+    withBusyOperation("maintenance pass", runDreamMaintenance);
+    return;
+  }
+  if (action === "dream-agent") {
+    await runDreamCleanupHelper(target);
+    return;
+  }
+  if (action === "skip-dream-item") {
+    if (target) state.dreamSkippedItems.add(target);
+    renderDream(activeActivityFileMap());
+    return;
+  }
+  if (action === "process-raw") {
+    activateTab("inbox");
+    els.queuePanel?.scrollIntoView({ block: "start", behavior: "smooth" });
+    if (state.files.length && !state.processingInbox) {
+      await withBusyOperation("bulk process", bulkIngestPendingSources);
+    } else if (!els.bulkIngestBtn?.disabled) {
+      els.bulkIngestBtn.focus({ preventScroll: true });
+    }
+    return;
+  }
+  if (action === "open-file") {
+    activateTab("wiki");
+    if (target) selectVaultPath(target);
+    return;
+  }
+  if (action === "review-entities") {
+    activateTab("entities");
+    els.entitySearch?.focus({ preventScroll: true });
+    return;
+  }
+  if (action === "open-graph") {
+    activateTab("graph");
+    return;
+  }
+  if (action === "open-activity") {
+    activateTab("inbox");
+    els.recentActivityPanel?.scrollIntoView({ block: "start", behavior: "smooth" });
+    return;
+  }
+  activateTab("wiki");
+}
+
+async function runDreamCleanupHelper(itemId) {
+  const fileMap = activeActivityFileMap();
+  if (!fileMap?.size) return;
+  const stats = dreamVaultStats(fileMap);
+  const item = dreamRepairItems(stats).find((entry) => entry.id === itemId);
+  if (!item) return;
+  const prompt = buildDreamCleanupPrompt(item, stats, fileMap);
+  const provider = els.apiProvider?.value || providerValue(state.apiSettings.providerLabel) || "gemini";
+  const model = els.apiModel?.value.trim() || defaultModelForProvider(provider);
+  activateTab("llm");
+  els.llmInput.value = "";
+  state.llmFiles = new Map();
+  state.llmSelectedPath = null;
+  state.currentMaterialQuestions = [];
+  els.llmFileList.className = "tree-list empty";
+  els.llmFileList.textContent = "Waiting for Dream helper output.";
+  els.acceptLlmBtn.disabled = true;
+  els.repairLlmBtn.disabled = true;
+  els.llmInput.placeholder = "Dream helper output will appear here as margins-file blocks.";
+  els.llmStatus.textContent = state.apiSecret
+    ? `Running ${item.title} helper with ${providerLabel(provider)}...`
+    : `No model key is configured. Copied ${item.title} helper prompt instead.`;
+  els.llmPreviewTitle.textContent = `${item.title} helper`;
+  els.llmPreviewBody.textContent = "Dream helpers return margins-file blocks here. Review parsed files before accepting them into the vault.";
+  els.llmInput.focus();
+  if (!state.apiSecret || provider === "anthropic") {
+    await copyDreamCleanupPromptFallback(prompt, item, provider === "anthropic"
+      ? "Anthropic direct browser calls are not wired yet, so the helper prompt was copied instead."
+      : "");
+    return;
+  }
+  try {
+    const content = await generateApiTextContent(provider, model, prompt, {
+      purpose: "dream_helper",
+      fileName: item.id,
+      sourceType: "dream",
+      sourceScope: "vault",
+      sourceMimeType: "text/plain",
+      sourceSizeBytes: prompt.length,
+      sourceTextChars: prompt.length,
+      vaultContextFileCount: fileMap.size
+    }, DREAM_HELPER_OUTPUT_TOKEN_FLOOR);
+    els.llmInput.value = content;
+    state.llmFiles = parseLlmFiles(content);
+    state.hasSavedCurrent = false;
+    state.pendingSave = false;
+    state.llmPromptCopied = false;
+    updateSaveButtonState();
+    els.exportBtn.disabled = true;
+    renderLlmReview();
+    renderChangePreview();
+    if (state.llmFiles.size > 0) {
+      els.llmStatus.textContent = `${item.title} helper returned ${state.llmFiles.size} file${state.llmFiles.size === 1 ? "" : "s"}. Review before accepting.`;
+    } else {
+      els.llmStatus.textContent = `${item.title} helper finished without margins-file blocks. Output is left here for review.`;
+      els.llmPreviewTitle.textContent = `${item.title} helper output`;
+      els.llmPreviewBody.textContent = content || "No output returned.";
+      updateWorkflowState();
+    }
+  } catch (error) {
+    els.llmStatus.textContent = `${item.title} helper failed: ${error.message || "unknown error"}`;
+    els.llmPreviewTitle.textContent = `${item.title} helper failed`;
+    els.llmPreviewBody.textContent = "The prompt is still available from Dream. Check API key, provider, model, and spend guard settings before retrying.";
+    updateWorkflowState();
+  }
+}
+
+async function copyDreamCleanupPromptFallback(prompt, item, note = "") {
+  try {
+    await navigator.clipboard.writeText(prompt);
+    state.llmPromptCopied = true;
+    els.llmStatus.textContent = `${note ? `${note} ` : ""}Copied ${item.title} cleanup prompt. Paste it into your agent or model, then paste returned margins-file blocks here to review and accept.`;
+    els.llmInput.placeholder = "Paste returned margins-file blocks here after the cleanup helper finishes.";
+    els.llmPreviewTitle.textContent = `${item.title} helper prompt copied`;
+    els.llmPreviewBody.textContent = "Paste the helper prompt into your agent or model. When it returns margins-file blocks, paste them in the left panel, parse, review, and accept the proposed file changes.";
+    els.llmFileList.className = "tree-list empty";
+    els.llmFileList.textContent = "Waiting for returned cleanup files.";
+  } catch (error) {
+    els.llmStatus.textContent = `Could not copy the cleanup prompt: ${error.message || "clipboard unavailable"}.`;
+    els.llmPreviewTitle.textContent = "Cleanup prompt was not copied";
+    els.llmPreviewBody.textContent = "Clipboard access failed. Trigger the helper again from Dream or use browser clipboard permissions.";
+  }
+  updateWorkflowState();
+}
+
 function dreamReport(fileMap) {
   const stats = dreamVaultStats(fileMap);
   const connected = fileMap.size > 0;
   const sourceLabel = `${formatStatNumber(stats.sourceCount)} source${stats.sourceCount === 1 ? "" : "s"}`;
+  const queueItems = connected ? dreamRepairItems(stats) : [];
+  const reviewItemCount = queueItems.filter((item) => item.safety === "review" && !state.dreamSkippedItems.has(item.id)).length;
+  const safeFixCount = queueItems.filter((item) => item.safety === "auto").length;
+  const operations = dreamOperations(stats, connected, queueItems);
+  const lastRun = state.dreamLastRun;
   return {
+    connected,
     meta: connected
-      ? `${sourceLabel} · ${formatStatNumber(stats.linkCount)} links · ${formatStatNumber(stats.pendingRawCount)} pending raw`
-      : "Open a vault to let Margins consolidate overnight.",
-    title: connected ? "Margins is dreaming" : "Open a vault to let Margins dream",
+      ? `${sourceLabel} · ${formatStatNumber(stats.linkCount)} links · ${formatStatNumber(stats.pendingRawCount)} need processing`
+      : "Open a vault to see what needs attention.",
+    title: connected
+      ? lastRun?.running
+        ? `Running ${dreamStageName(state.dreamActiveStage)} checks`
+        : state.dreamReviewActive
+          ? "Step-by-step review ready"
+          : "Maintenance pass ready"
+      : "Open a vault to see suggested next actions",
     body: connected
-      ? "Dreams prepare proposals only. Margins consolidates, prunes, syncs, enriches, and looks for useful cross-links without applying changes."
-      : "Dreams consolidate concepts, prune weak links, sync operating memory, and prepare reviewable proposals.",
+      ? "Check maintenance items and review decisions."
+      : "Open a vault to surface maintenance items.",
+    passStatus: dreamPassStatus(connected, reviewItemCount, safeFixCount),
     stats: [
       { label: "sources", value: formatStatNumber(stats.sourceCount) },
-      { label: "entities", value: formatStatNumber(stats.entityCount) },
-      { label: "concepts", value: formatStatNumber(stats.conceptCount) },
-      { label: "broken links", value: formatStatNumber(stats.brokenLinkCount) }
+      { label: "needs processing", value: formatStatNumber(stats.pendingRawCount) },
+      { label: "safe fixes", value: formatStatNumber(safeFixCount) },
+      { label: "review queue", value: formatStatNumber(reviewItemCount) }
     ],
-    operations: dreamOperations(stats, connected),
-    proposals: connected ? dreamProposals(stats) : [],
-    dreamTitles: connected ? dreamLogTitles(fileMap, stats) : [],
-    log: stats.hasDreamLog
-      ? "Dream log loaded from wiki/.margins/dream-log.md."
-      : "No dream log yet. Nightly passes will append proposal-only entries before anything is applied."
+    operations,
+    queueItems,
+    reviewItemCount,
+    emptyQueueText: connected
+      ? "No maintenance items are waiting. Run a pass again after new sources or vault edits."
+      : "Open a vault and process sources. Vault health checks will turn into concrete next actions here.",
+    logEntries: connected ? dreamLogEntries(stats, lastRun) : [],
+    log: lastRun?.applied?.some((item) => item.id === "dream-log-entry")
+      ? "Queued update to wiki/.margins/dream-log.md. Use Write vault to save it."
+      : stats.hasDreamLog
+        ? "Loaded wiki/.margins/dream-log.md."
+      : "No log file yet. Background checks should write factual entries here before any edits are applied."
   };
+}
+
+function dreamPassStatus(connected, reviewItemCount, safeFixCount) {
+  if (!connected) return "Open a vault before running maintenance.";
+  if (state.dreamLastRun?.running) {
+    return `Checking ${dreamStageName(state.dreamActiveStage)}. No model calls are being made.`;
+  }
+  if (state.dreamLastRun) {
+    const appliedCount = state.dreamLastRun.applied?.length || 0;
+    return `${formatDreamModeLabel(state.dreamLastRun.mode)} pass finished: ${formatStatNumber(appliedCount)} safe update${appliedCount === 1 ? "" : "s"} queued, ${formatStatNumber(state.dreamLastRun.deferredCount)} item${state.dreamLastRun.deferredCount === 1 ? "" : "s"} waiting for review.`;
+  }
+  if (state.dreamMode === "walk") return `${formatStatNumber(reviewItemCount)} review item${reviewItemCount === 1 ? "" : "s"} ready for step-by-step cleanup.`;
+  if (state.dreamMode === "watch") return `${formatStatNumber(safeFixCount)} safe structural update${safeFixCount === 1 ? "" : "s"} available. Judgment-based items will not be applied.`;
+  return `${formatStatNumber(safeFixCount)} safe structural update${safeFixCount === 1 ? "" : "s"} available · ${formatStatNumber(reviewItemCount)} review item${reviewItemCount === 1 ? "" : "s"} queued after the pass.`;
 }
 
 function dreamVaultStats(fileMap) {
@@ -5074,9 +5611,10 @@ function dreamVaultStats(fileMap) {
     brokenLinkCount: brokenLinks.length,
     brokenLinks,
     sparseEntityCount: sparseEntities.length,
+    sparseEntities: sparseEntities.map(([path, body]) => ({ path, body })),
     pendingRawCount,
     operatingFileCount,
-    hasDreamLog: fileMap?.has("wiki/.margins/dream-log.md") || false
+    hasDreamLog: fileMap?.has(DREAM_LOG_PATH) || false
   };
 }
 
@@ -5138,201 +5676,333 @@ function dreamGraphStats(fileMap) {
   };
 }
 
-function dreamOperations(stats, connected) {
-  const unavailable = connected ? "" : "idle";
-  return [
-    {
-      name: "Compile",
-      metric: connected ? formatStatNumber(stats.sourceCount) : "idle",
-      state: unavailable,
-      description: "Consolidate recurring concepts and entities from recent source notes."
-    },
-    {
-      name: "Lint",
-      metric: connected ? formatStatNumber(stats.brokenLinkCount) : "idle",
-      state: stats.brokenLinkCount ? "warn" : unavailable,
-      description: "Prune broken links, weak connections, and stale structural drift."
-    },
-    {
-      name: "Sync",
-      metric: connected ? formatStatNumber(stats.operatingFileCount) : "idle",
-      state: unavailable,
-      description: "Check CLAUDE.md, the operator manual, tracker, log, and cookbook against the vault."
-    },
-    {
-      name: "Enrich",
-      metric: connected ? formatStatNumber(stats.sparseEntityCount) : "idle",
-      state: stats.sparseEntityCount ? "warn" : unavailable,
-      description: "Find sparse entity pages that need fields, summaries, or stronger source support."
-    },
-    {
-      name: "Regions",
-      metric: connected ? formatStatNumber(stats.graphNodeCount) : "idle",
-      state: unavailable,
-      description: "Refresh graph regions, vibrance signals, and retrieval shape."
-    },
-    {
-      name: "Synthesis",
-      metric: connected ? formatStatNumber(Math.max(0, stats.conceptCount + stats.synthesisCount)) : "idle",
-      state: unavailable,
-      description: "Propose cross-domain links the daytime workflow did not make explicit."
-    }
-  ];
+function dreamOperations(stats, connected, items = []) {
+  const lastResults = state.dreamLastRun?.stageResults || {};
+  return DREAM_STAGES.map((stage) => {
+    const stageItems = items.filter((item) => item.stage === stage.id);
+    const applied = lastResults[stage.id]?.applied || 0;
+    const deferred = stageItems.filter((item) => item.safety === "review").length;
+    const queued = connected ? stageItems.length : 0;
+    const active = state.dreamActiveStage === stage.id;
+    const stateName = !connected
+      ? "idle"
+      : active
+        ? "active"
+        : applied
+          ? "done"
+          : deferred
+            ? "warn"
+            : queued
+              ? ""
+              : "idle";
+    return {
+      ...stage,
+      active,
+      queued,
+      applied,
+      deferred,
+      state: stateName,
+      metric: connected ? dreamStageMetric(queued, applied, deferred) : "idle"
+    };
+  });
 }
 
-function dreamProposals(stats) {
-  const proposals = [];
+function dreamStageMetric(queued, applied, deferred) {
+  if (applied) return `${formatStatNumber(applied)} applied`;
+  if (deferred) return `${formatStatNumber(deferred)} review`;
+  if (queued) return `${formatStatNumber(queued)} queued`;
+  return "clear";
+}
+
+function dreamRepairItems(stats) {
+  const items = [];
   if (stats.pendingRawCount) {
-    proposals.push({
-      kind: "Ingest",
-      title: `${formatStatNumber(stats.pendingRawCount)} raw source${stats.pendingRawCount === 1 ? "" : "s"} waiting`,
-      body: "Review pending raw files before the next dream so consolidation starts from filed source notes."
+    items.push({
+      id: "replay-pending-raw",
+      stage: "replay",
+      safety: "review",
+      title: `Process ${formatStatNumber(stats.pendingRawCount)} pending source${stats.pendingRawCount === 1 ? "" : "s"}`,
+      body: "Runs Bulk process on the whole pending queue so source files become source notes, entity candidates, and reviewable wiki changes. Current behavior is one model review per source, not one combined model call.",
+      action: "process-raw",
+      actionLabel: "Bulk process now"
     });
   }
-  proposals.push(stats.brokenLinkCount ? {
-    kind: "Prune",
-    title: `${formatStatNumber(stats.brokenLinkCount)} broken connection${stats.brokenLinkCount === 1 ? "" : "s"} found`,
-    body: "Dreaming would propose link repairs or removals, then wait for approval before changing pages."
-  } : {
-    kind: "Prune",
-    title: "No broken wiki links detected",
-    body: "The current link graph is clean enough for the next consolidation pass."
-  });
+  if (stats.brokenLinkCount) {
+    items.push({
+      id: "clearance-broken-links",
+      stage: "clearance",
+      safety: "review",
+      title: `${formatStatNumber(stats.brokenLinkCount)} broken wiki link${stats.brokenLinkCount === 1 ? "" : "s"}`,
+      body: "Runs a focused link helper through the configured API with the broken links, affected files, and candidate vault paths. Returned file blocks can be reviewed before accept.",
+      action: "dream-agent",
+      actionLabel: "Run link helper",
+      target: "clearance-broken-links"
+    });
+  }
   if (stats.sparseEntityCount) {
-    proposals.push({
-      kind: "Enrich",
+    items.push({
+      id: "pruning-sparse-entities",
+      stage: "pruning",
+      safety: "review",
       title: `${formatStatNumber(stats.sparseEntityCount)} sparse entity page${stats.sparseEntityCount === 1 ? "" : "s"}`,
-      body: "Dreaming would propose summaries or missing fields only where source evidence exists."
+      body: "Runs an entity cleanup helper through the configured API to propose summaries, source links, or merge notes without silently rewriting meaning.",
+      action: "dream-agent",
+      actionLabel: "Run entity helper",
+      target: "pruning-sparse-entities"
     });
   }
   if (stats.sourceCount >= 2) {
-    proposals.push({
-      kind: "Synthesis",
-      title: "Look for one cross-source connection",
-      body: "Dreaming would compare recent sources with existing concepts and suggest one useful link for review."
+    items.push({
+      id: "association-source-links",
+      stage: "association",
+      safety: "review",
+      title: "Review source associations",
+      body: "Runs a linking helper through the configured API to look for source-supported backlinks and citation updates across recent source notes.",
+      action: "dream-agent",
+      actionLabel: "Run link helper",
+      target: "association-source-links"
+    });
+    items.push({
+      id: "synthesis-cross-source",
+      stage: "synthesis",
+      safety: "review",
+      title: "Look for one cross-source summary",
+      body: "Runs a summary helper through the configured API to propose, not apply, a cross-source page when the sources support it.",
+      action: "dream-agent",
+      actionLabel: "Run summary helper",
+      target: "synthesis-cross-source"
     });
   }
-  proposals.push({
-    kind: "Log",
-    title: "Append tonight's Dream Log",
-    body: "A nightly pass should write a proposal-only record to wiki/.margins/dream-log.md before any accepted edits land."
+  items.push({
+    id: "clearance-log-entry",
+    stage: "clearance",
+    safety: "auto",
+    title: stats.hasDreamLog ? "Append maintenance log entry" : "Create maintenance log entry",
+    body: "Records what the pass checked, what it queued, and what it did not change.",
+    action: "run-maintenance",
+    actionLabel: "Run"
   });
-  return proposals.slice(0, 5);
+  return items;
 }
 
-function dreamLogTitles(fileMap, stats) {
-  const { names, events } = dreamTitleContext(fileMap);
-  const firstName = names[0]?.label || "";
-  const secondName = names.find((name) => name.label !== firstName)?.label || "";
-  const firstEvent = events[0]?.label || "";
-  const secondEvent = events.find((event) => event.label !== firstEvent)?.label || "";
-  const titles = [];
-  const add = (title, context) => {
-    const cleanedTitle = dreamCleanTitle(title);
-    if (!cleanedTitle || titles.some((item) => item.title.toLowerCase() === cleanedTitle.toLowerCase())) return;
-    titles.push({
-      title: cleanedTitle,
-      context: context || "Generated from current wiki pages."
-    });
-  };
-
-  if (firstName && firstEvent) {
-    add(`${firstName} got stuck in the margins of ${firstEvent}`, `From ${dreamDisplayPath(events[0]?.path || names[0]?.path)}`);
-  }
-  if (firstName && secondName) {
-    add(`${firstName} brought ${secondName} to the wrong bucket meeting`, "From linked wiki pages.");
-  }
-  if (firstEvent) {
-    add(`${firstEvent} tried to file itself before breakfast`, `From ${dreamDisplayPath(events[0]?.path)}`);
-  }
-  if (secondEvent && firstName) {
-    add(`${firstName} wandered through ${secondEvent} looking for loose links`, `From ${dreamDisplayPath(events[1]?.path || names[0]?.path)}`);
-  }
-  if (firstName && (stats?.brokenLinkCount || stats?.linkCount)) {
-    const count = stats.brokenLinkCount || stats.linkCount;
-    add(`${firstName} and the case of the ${formatStatNumber(count)} loose synapses`, "From the current link graph.");
-  }
-
-  return titles.slice(0, 3);
-}
-
-function dreamTitleContext(fileMap) {
-  const records = recentActivityRecords(fileMap).slice(0, 8);
-  const names = new Map();
-  const events = new Map();
-  const addCandidate = (map, label, path, score) => {
-    const cleaned = dreamCleanLabel(label);
-    if (!cleaned || !path) return;
-    const key = slugifyLoose(cleaned);
-    if (!key) return;
-    const existing = map.get(key);
-    if (!existing || score > existing.score) {
-      map.set(key, { label: cleaned, path, score });
+function dreamLogEntries(stats, lastRun = null) {
+  const entries = [
+    ...(lastRun && !lastRun.running ? [{
+      title: "Recorded maintenance pass",
+      context: `${formatDreamModeLabel(lastRun.mode)} mode queued ${formatStatNumber(lastRun.applied?.length || 0)} safe update${(lastRun.applied?.length || 0) === 1 ? "" : "s"} and ${formatStatNumber(lastRun.deferredCount || 0)} review item${(lastRun.deferredCount || 0) === 1 ? "" : "s"}.`
+    }] : []),
+    {
+      title: "Checked source queue",
+      context: stats.pendingRawCount
+        ? `${formatStatNumber(stats.pendingRawCount)} pending source${stats.pendingRawCount === 1 ? " still needs" : "s still need"} processing.`
+        : "No sources are waiting to be processed."
+    },
+    {
+      title: "Checked processed source notes",
+      context: `${formatStatNumber(stats.sourceCount)} source note${stats.sourceCount === 1 ? "" : "s"} available for review.`
+    },
+    {
+      title: "Checked wiki links",
+      context: stats.brokenLinkCount
+        ? `${formatStatNumber(stats.brokenLinkCount)} broken connection${stats.brokenLinkCount === 1 ? "" : "s"} found.`
+        : "No broken wiki links detected."
+    },
+    {
+      title: "Checked entity coverage",
+      context: stats.sparseEntityCount
+        ? `${formatStatNumber(stats.sparseEntityCount)} sparse entity page${stats.sparseEntityCount === 1 ? "" : "s"} found.`
+        : "No sparse entity pages detected."
+    },
+    {
+      title: "Checked graph shape",
+      context: `${formatStatNumber(stats.graphNodeCount)} page${stats.graphNodeCount === 1 ? "" : "s"} and ${formatStatNumber(stats.linkCount)} link${stats.linkCount === 1 ? "" : "s"} available in the graph.`
+    },
+    {
+      title: "Checked log file",
+      context: stats.hasDreamLog
+        ? `Loaded ${DREAM_LOG_PATH}.`
+        : `No ${DREAM_LOG_PATH} file found.`
     }
-  };
+  ];
 
-  records.forEach((record, index) => {
-    addCandidate(events, record.title, record.path, 40 - index);
-    for (const [linkIndex, link] of record.links.entries()) {
-      addCandidate(names, link.label, link.path, 32 - index - linkIndex);
-    }
-  });
+  return entries.slice(0, 7);
+}
 
-  for (const [path, body] of fileMap.entries()) {
-    if (!path.startsWith("wiki/") || !path.endsWith(".md")) continue;
-    if (isActivitySourcePagePath(path, body)) continue;
-    if (isBucketOverviewPath(path) || isFolderIndexPath(path)) continue;
-    const type = dreamPageType(path, body);
-    if (!["entity", "concept"].includes(type)) continue;
-    const title = markdownTitle(body) || titleFromSlug(basename(path).replace(/\.md$/, ""));
-    addCandidate(names, title, path, type === "entity" ? 20 : 14);
+function dreamStageName(stageId) {
+  return DREAM_STAGES.find((stage) => stage.id === stageId)?.name || "maintenance";
+}
+
+function formatDreamModeLabel(mode) {
+  return DREAM_MODES[mode]?.label || DREAM_MODES.hybrid.label;
+}
+
+function dreamModeHelpText(mode) {
+  return DREAM_MODES[mode]?.help || DREAM_MODES.hybrid.help;
+}
+
+function buildDreamCleanupPrompt(item, stats, fileMap) {
+  const stage = DREAM_STAGES.find((entry) => entry.id === item.stage);
+  const task = dreamCleanupTask(item, stats);
+  const context = dreamCleanupContext(item, stats, fileMap);
+  const guardrails = operatingContextForPrompt(fileMap);
+  const agentContext = dreamAgentContext(item, fileMap);
+  return `You are running a Margins cleanup helper.
+
+Helper: ${item.title}
+Stage: ${stage?.name || item.stage} - ${stage?.label || ""}
+
+Goal:
+Clean up this local-first Margins vault with conservative, source-grounded edits. Return only files that should be created or replaced. Do not return unchanged files.
+
+Hard rules:
+- Read the provided context before proposing changes.
+- Do not delete notes.
+- Do not rename important pages unless the task explicitly asks for a rename proposal.
+- Do not invent facts, relationships, dates, roles, or summaries.
+- If a change requires judgment, write it as a proposal in the relevant file or in ${DREAM_LOG_PATH}; do not silently apply it.
+- Keep citations durable: wiki links, source page links, filenames in raw/, and plain section names only.
+- No ChatGPT-only citation artifacts, hidden attachment ids, turn ids, or contentReference tokens.
+- Every returned wiki markdown page must keep valid YAML frontmatter if it already has it.
+- Preserve the user's wording unless a structural cleanup requires a small edit.
+
+Operating guardrails:
+${guardrails}
+
+Relevant local agent guidance:
+${agentContext}
+
+Task:
+${task}
+
+Output format:
+Return Markdown files in this exact fenced-block format so Margins can parse and review them:
+
+\`\`\`margins-file path="wiki/example.md"
+Full replacement file body here.
+\`\`\`
+
+Return one fenced block per changed file. If nothing is safe to change, return one ${DREAM_LOG_PATH} block explaining what you checked and what needs Connor's judgment.
+
+Vault context:
+${context}`;
+}
+
+function dreamAgentContext(item, fileMap) {
+  const paths = dreamAgentPathsForItem(item?.id || "");
+  if (!paths.length) return "- No specialized local agent guidance found for this helper.";
+  return paths.map((path) => {
+    const body = fileMap.get(path);
+    return body ? `- ${path}\n${excerptForQuestion(body, 700)}` : "";
+  }).filter(Boolean).join("\n\n") || "- No specialized local agent guidance found for this helper.";
+}
+
+function dreamAgentPathsForItem(itemId) {
+  if (itemId === "clearance-broken-links") return ["agents/wiki-editor.md", "agents/source-auditor.md"];
+  if (itemId === "pruning-sparse-entities") return ["agents/wiki-editor.md", "agents/source-auditor.md"];
+  if (itemId === "association-source-links") return ["agents/wiki-compiler.md", "agents/wiki-editor.md", "agents/source-auditor.md"];
+  if (itemId === "synthesis-cross-source") return ["agents/wiki-compiler.md", "agents/source-auditor.md"];
+  return [];
+}
+
+function dreamCleanupTask(item, stats) {
+  if (item.id === "clearance-broken-links") {
+    return `Repair broken wiki links.
+- For each broken link, inspect the affected file and the vault path catalog.
+- If there is one obvious existing target, replace the link with that exact wiki link.
+- If multiple targets are plausible, leave the original link and add a short "Needs review" note instead.
+- Do not create stub pages just to silence a broken link.
+- Return only affected files and, if useful, ${DREAM_LOG_PATH}.`;
+  }
+  if (item.id === "pruning-sparse-entities") {
+    return `Improve sparse entity pages.
+- Add or tighten summaries only when the provided source/entity context directly supports them.
+- Add source backlinks where support is visible.
+- If an entity looks like a duplicate or weak stub, add a review note rather than merging or deleting it.
+- Return only sparse entity files that can be improved and, if useful, ${DREAM_LOG_PATH}.`;
+  }
+  if (item.id === "association-source-links") {
+    return `Strengthen source-supported associations.
+- Compare the provided source notes and existing entity/concept pages.
+- Add backlinks only when two pages explicitly refer to the same durable person, company, project, concept, or source-supported event.
+- Prefer a short "Related pages" section over broad keyword linking.
+- Return only files that gain useful source-supported links.`;
+  }
+  if (item.id === "synthesis-cross-source") {
+    return `Propose one cross-source synthesis if the sources support it.
+- Look for a recurring pattern across at least two source notes.
+- If the pattern is strong, return a concise wiki/synthesis/*.md draft with frontmatter, supporting source links, and explicit caveats.
+- If the pattern is weak, return ${DREAM_LOG_PATH} with "No synthesis created" and the reason.
+- Do not turn speculation into fact.`;
+  }
+  return `Review this maintenance item: ${item.title}. Return only safe, source-grounded file changes.`;
+}
+
+function dreamCleanupContext(item, stats, fileMap) {
+  if (item.id === "clearance-broken-links") {
+    const affectedPaths = [...new Set(stats.brokenLinks.map((link) => link.from))].slice(0, 12);
+    const linkList = stats.brokenLinks.slice(0, 40).map((link) => `- ${link.from} -> [[${link.to}]]`).join("\n") || "- none";
+    return [
+      `Broken links detected:\n${linkList}`,
+      `Existing wiki path catalog:\n${dreamWikiPathCatalog(fileMap)}`,
+      `Affected files:\n${dreamFileBlocksForPaths(affectedPaths, fileMap, 2600)}`
+    ].join("\n\n");
   }
 
-  return {
-    names: [...names.values()].sort((left, right) => right.score - left.score || left.label.localeCompare(right.label)).slice(0, 8),
-    events: [...events.values()].sort((left, right) => right.score - left.score || left.label.localeCompare(right.label)).slice(0, 8)
-  };
+  if (item.id === "pruning-sparse-entities") {
+    const entityPaths = (stats.sparseEntities || []).map((entry) => entry.path).slice(0, 12);
+    const sourcePaths = recentActivityRecords(fileMap).slice(0, 8).map((record) => record.path);
+    return [
+      `Sparse entity files:\n${entityPaths.map((path) => `- ${path}`).join("\n") || "- none"}`,
+      `Entity files:\n${dreamFileBlocksForPaths(entityPaths, fileMap, 2400)}`,
+      `Recent source context:\n${dreamFileBlocksForPaths(sourcePaths, fileMap, 1500)}`
+    ].join("\n\n");
+  }
+
+  if (item.id === "association-source-links") {
+    const sourcePaths = recentActivityRecords(fileMap).slice(0, 10).map((record) => record.path);
+    const durablePaths = wikiContextRecords(fileMap)
+      .filter((record) => ["entity", "concept", "project", "synthesis"].includes(String(record.type || "").toLowerCase()) || /wiki\/(entities|concepts|projects|synthesis)\//.test(record.path))
+      .slice(0, 24)
+      .map((record) => record.path);
+    return [
+      `Source notes to compare:\n${dreamFileBlocksForPaths(sourcePaths, fileMap, 1600)}`,
+      `Durable pages available for links:\n${dreamFileBlocksForPaths(durablePaths, fileMap, 1000)}`
+    ].join("\n\n");
+  }
+
+  if (item.id === "synthesis-cross-source") {
+    const sourcePaths = recentActivityRecords(fileMap).slice(0, 12).map((record) => record.path);
+    const synthesisPaths = [...fileMap.keys()].filter((path) => path.startsWith("wiki/synthesis/") && path.endsWith(".md")).slice(0, 8);
+    return [
+      `Processed source notes:\n${dreamFileBlocksForPaths(sourcePaths, fileMap, 1800)}`,
+      `Existing synthesis pages:\n${dreamFileBlocksForPaths(synthesisPaths, fileMap, 1400)}`,
+      `Existing wiki path catalog:\n${dreamWikiPathCatalog(fileMap)}`
+    ].join("\n\n");
+  }
+
+  return serializeVaultContext(fileMap);
 }
 
-function dreamCleanTitle(value) {
-  return clampSentence(cleanSummary(value), 96);
+function dreamFileBlocksForPaths(paths, fileMap, maxChars = 1800) {
+  const uniquePaths = [...new Set(paths)].filter((path) => fileMap.has(path));
+  if (!uniquePaths.length) return "_No matching files found in the loaded vault context._";
+  return uniquePaths.map((path) => (
+    `\`\`\`margins-file path="${path}"\n${truncateForPrompt(fileMap.get(path) || "", maxChars)}\n\`\`\``
+  )).join("\n\n");
 }
 
-function dreamCleanLabel(value) {
-  const label = cleanSummary(value).replace(/^Source:\s*/i, "");
-  if (!label || label.length < 3) return "";
-  const slug = slugifyLoose(label);
-  if (DREAM_TITLE_STOP_LABELS.has(slug)) return "";
-  if (/^[a-z]+$/.test(label) && label.length < 6) return "";
-  if (label.split(/\s+/).length > 12) return clampSentence(label, 74);
-  return label;
+function dreamWikiPathCatalog(fileMap) {
+  const entries = [...fileMap.entries()]
+    .filter(([path]) => path.startsWith("wiki/") && path.endsWith(".md") && !path.startsWith("wiki/.margins/"))
+    .map(([path, body]) => {
+      const title = markdownTitle(body) || titleFromSlug(basename(path).replace(/\.md$/, ""));
+      const type = frontmatterFields(body).type || graphTypeFromPath(path, body);
+      return `- ${path} - ${title}${type ? ` (${type})` : ""}`;
+    })
+    .sort((left, right) => left.localeCompare(right))
+    .slice(0, 180);
+  return entries.join("\n") || "- No wiki markdown files loaded.";
 }
-
-function dreamDisplayPath(path) {
-  const normalized = normalizeMarginsPath(path || "");
-  if (!normalized) return "current wiki pages";
-  return normalized.replace(/^wiki\//, "");
-}
-
-const DREAM_TITLE_STOP_LABELS = new Set([
-  "about",
-  "and",
-  "brain",
-  "file",
-  "going",
-  "know",
-  "link",
-  "links",
-  "note",
-  "page",
-  "source",
-  "that",
-  "thats",
-  "thing",
-  "things",
-  "think",
-  "wiki"
-]);
 
 function recentActivityRecords(fileMap) {
   return [...fileMap.entries()]
@@ -5343,6 +6013,16 @@ function recentActivityRecords(fileMap) {
       right.sortTimestamp - left.sortTimestamp ||
       left.title.localeCompare(right.title)
     ));
+}
+
+function activityTimelineRecords(fileMap) {
+  return [
+    ...recentActivityRecords(fileMap),
+    ...pendingActivityRecords()
+  ].sort((left, right) => (
+    right.sortTimestamp - left.sortTimestamp ||
+    left.title.localeCompare(right.title)
+  ));
 }
 
 function isActivitySourcePagePath(path, body) {
@@ -5365,6 +6045,8 @@ function activitySourceRecord(path, body, fileMap) {
   const wordTotal = wordCount(bodyWithoutFrontmatter(body));
   const connectionCount = extractWikiLinks(sourceChecklistLinkBody(body)).length;
   return {
+    kind: "processed",
+    activityKey: `processed:${path}`,
     path,
     title,
     summary: clampSentence(summary || "Source note filed in the vault.", 260),
@@ -5380,6 +6062,62 @@ function activitySourceRecord(path, body, fileMap) {
   };
 }
 
+function pendingActivityRecords(files = state.files) {
+  return files.map((file) => {
+    const dateValue = pendingSourceActivityDateValue(file);
+    const typeClass = sourceBadgeClass(file);
+    return {
+      kind: "pending",
+      activityKey: `pending:${file.name}`,
+      file,
+      path: rawSourceOutputPath(file.name),
+      title: basename(file.name),
+      summary: pendingSourceActivitySummary(file),
+      dateValue,
+      sortTimestamp: pendingSourceActivitySortTimestamp(file, dateValue),
+      typeLabel: sourceTypeLabel(file),
+      typeClass,
+      links: [],
+      tags: [],
+      wordTotal: wordCount(file.text || ""),
+      connectionCount: 0
+    };
+  });
+}
+
+function pendingSourceActivityDateValue(file) {
+  const date = sourceTimestampDate(file);
+  if (date) return date.toISOString();
+  return pendingSourceDateFromName(file?.name || "");
+}
+
+function pendingSourceDateFromName(name) {
+  const dateText = String(name || "").match(/(\d{4})[-_](\d{2})[-_](\d{2})/)?.slice(1, 4).join("-");
+  return dateText || "";
+}
+
+function pendingSourceActivitySortTimestamp(file, dateValue = pendingSourceActivityDateValue(file)) {
+  const lastModified = Number(file?.lastModified || 0);
+  if (Number.isFinite(lastModified) && lastModified > 0) return lastModified;
+  return sourceActivitySortTimestamp(dateValue);
+}
+
+function pendingSourceActivitySummary(file) {
+  if (state.ingestErrors.has(file?.name)) {
+    return "Review did not finish. This pending source is still waiting to become a filed source card.";
+  }
+  if (isSourceReviewReady(file)) {
+    return clampSentence(sourceIngestSummary(file) || "Review complete. Approve to turn this placeholder into a filed source card.", 260);
+  }
+  const details = [
+    formatFileSize(Number(file?.size || 0)),
+    file?.text ? `${formatStatNumber(wordCount(file.text))} words` : "",
+    needsTextExtraction(file) ? "needs text extraction" : ""
+  ].filter(Boolean).join(" · ");
+  const prefix = details ? `${details}. ` : "";
+  return `Not yet processed. ${prefix}Margins will read, link, and file it as a source card.`;
+}
+
 function sourceActivityTitle(path, body) {
   const title = cleanSummary(markdownTitle(body) || titleFromSlug(basename(path).replace(/\.md$/, "")));
   return title.replace(/^Source:\s*/i, "") || "Source note";
@@ -5388,7 +6126,7 @@ function sourceActivityTitle(path, body) {
 function sourceActivityRawPath(fields, body) {
   const frontmatterRaw = frontmatterList(fields.raw_file)[0] || "";
   if (frontmatterRaw) return normalizeMarginsPath(frontmatterRaw);
-  const match = String(body || "").match(/Raw file:\s*`([^`]+)`/i);
+  const match = String(body || "").match(/(?:Raw|Original) file:\s*`([^`]+)`/i);
   return match?.[1] ? normalizeMarginsPath(match[1]) : "";
 }
 
@@ -5478,6 +6216,7 @@ function sourceActivityTypeClass(path) {
   if (ext === "pdf") return "pdf";
   if (["eml", "msg"].includes(ext)) return "eml";
   if (["mp3", "m4a", "wav", "aac", "aiff"].includes(ext)) return "aud";
+  if (["png", "jpg", "jpeg", "gif", "webp", "heic", "heif", "tif", "tiff"].includes(ext)) return "img";
   if (["doc", "docx"].includes(ext)) return "doc";
   return "txt";
 }
@@ -5513,7 +6252,7 @@ function activityDateValue(value) {
 }
 
 function syncActivityRecentSource(records) {
-  const sourceKey = records.map((record) => record.path).join("\n");
+  const sourceKey = records.map((record) => record.activityKey || record.path).join("\n");
   if (sourceKey === state.activityRecentSourceKey) return;
   state.activityRecentSourceKey = sourceKey;
   resetActivityRecentLimit();
@@ -5551,6 +6290,7 @@ function renderActivityRecentActions(visibleCount, totalCount) {
 }
 
 function renderRecentActivityCard(record) {
+  if (record.kind === "pending") return renderPendingActivityCard(record);
   const dateLabel = formatActivityDate(record.dateValue);
   return `
     <article class="activity-card type-${escapeHtml(record.typeClass)}" role="button" tabindex="0" data-activity-path="${escapeHtml(record.path)}">
@@ -5564,6 +6304,26 @@ function renderRecentActivityCard(record) {
       <div class="activity-card-foot">
         <span class="stat"><strong>${escapeHtml(formatStatNumber(record.wordTotal))}</strong> words</span>
         <span class="stat">Connected to <strong>${escapeHtml(String(record.connectionCount))}</strong> page${record.connectionCount === 1 ? "" : "s"}</span>
+      </div>
+    </article>
+  `;
+}
+
+function renderPendingActivityCard(record) {
+  const file = record.file;
+  const dateLabel = formatActivityDate(record.dateValue);
+  return `
+    <article class="activity-card ghost type-${escapeHtml(record.typeClass)}" data-pending-source="${escapeHtml(file.name)}">
+      <div class="activity-card-top">
+        <span class="source-icon ${escapeHtml(record.typeClass)}">${escapeHtml(record.typeLabel)}</span>
+        <div class="activity-card-title">${escapeHtml(record.title)}</div>
+        ${dateLabel ? `<time class="activity-card-date" datetime="${escapeHtml(record.dateValue)}">${escapeHtml(dateLabel)}</time>` : ""}
+      </div>
+      <p class="activity-card-summary">${escapeHtml(record.summary)}</p>
+      <div class="ghost-actions" aria-label="Pending source actions">
+        ${renderSourceActionButton(file, "primary ghost-action-primary")}
+        <button type="button" data-source-open-path="${escapeHtml(rawSourceOutputPath(file.name))}">Preview source</button>
+        <button type="button" data-source-delete="${escapeHtml(file.name)}">Skip</button>
       </div>
     </article>
   `;
@@ -5595,7 +6355,7 @@ function renderActivityPills(record) {
   return pills.length ? `<div class="activity-card-pills">${pills.join("")}</div>` : "";
 }
 
-function handleRecentActivityClick(event) {
+async function handleRecentActivityClick(event) {
   const actionButton = event.target.closest("[data-activity-list-action]");
   if (actionButton && els.recentActivityList?.contains(actionButton)) {
     event.preventDefault();
@@ -5610,6 +6370,32 @@ function handleRecentActivityClick(event) {
       state.activityRecentVisibleCount = totalCount;
     }
     renderRecentActivity(activeActivityFileMap());
+    return;
+  }
+
+  const sourceAction = event.target.closest("[data-source-action]");
+  if (sourceAction && els.recentActivityList?.contains(sourceAction)) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!state.processingInbox) {
+      await withBusyOperation("source processing", () => processPendingSource(sourceAction.dataset.sourceFile));
+    }
+    return;
+  }
+
+  const rawPreview = event.target.closest("[data-source-open-path]");
+  if (rawPreview && els.recentActivityList?.contains(rawPreview)) {
+    event.preventDefault();
+    event.stopPropagation();
+    openActivityPath(rawPreview.dataset.sourceOpenPath);
+    return;
+  }
+
+  const deleteButton = event.target.closest("[data-source-delete]");
+  if (deleteButton && els.recentActivityList?.contains(deleteButton)) {
+    event.preventDefault();
+    event.stopPropagation();
+    await withBusyOperation("source removal", () => removePendingSource(deleteButton.dataset.sourceDelete));
     return;
   }
 
@@ -5987,7 +6773,7 @@ function processingFilingLines(file) {
   const stage = ingestProgressStage(file);
   const lines = [
     {
-      html: escapeHtml(`Saving ${sourceTypeLabel(file)} to raw`),
+      html: escapeHtml(`Saving ${sourceTypeLabel(file)} source file`),
       done: rawSaved || stage > 0,
       active: stage === 0,
       pending: stage < 0
@@ -6817,7 +7603,7 @@ function sourceIngestFullSummary(file) {
   const review = state.ingestReviews.get(file.name);
   if (review?.summary) return stripTrailingEllipsis(cleanDisplaySummary(review.summary));
   const sourceNote = sourceNoteForFile(file);
-  return stripTrailingEllipsis(cleanDisplaySummary(extractSourceSummary(sourceNote) || localSourceSummary(file) || "Margins preserved the raw source and prepared it for filing."));
+  return stripTrailingEllipsis(cleanDisplaySummary(extractSourceSummary(sourceNote) || localSourceSummary(file) || "Margins preserved the source file and prepared it for filing."));
 }
 
 function sourceIngestSummaryBullets(file) {
@@ -6896,7 +7682,7 @@ raw_file: ${rawPath}
 
 # Source: Browser Smoke Source
 
-Raw file: \`${rawPath}\`
+Original file: \`${rawPath}\`
 
 ## Summary
 
@@ -6950,7 +7736,7 @@ raw_file: ${rawPath}
 
 # Source: Workspace Map Notes
 
-Raw file: \`${rawPath}\`
+Original file: \`${rawPath}\`
 
 ## Summary
 
@@ -7568,7 +8354,7 @@ raw_file: raw/existing.md
       state.ingestErrors = new Map();
 
       await setSourceFiles([
-        new File(["Persisted raw body\n"], "incoming-note.md", {
+        new File(["Persisted source body\n"], "incoming-note.md", {
           type: "text/markdown",
           lastModified: new Date(2026, 4, 5, 15, 30).getTime()
         })
@@ -7599,6 +8385,50 @@ raw_file: raw/existing.md
         pendingAfterReload: state.files.map((file) => file.name),
         sourceScopeAfterReload: state.files[0]?.sourceScope || "",
         sourceListText: document.querySelector("#source-list")?.innerText || ""
+      };
+    },
+    async importCalendarInviteSource() {
+      const handle = createMemoryVaultHandle();
+      await scaffoldVault(handle);
+      setActiveVault(handle, "Browser Test Vault");
+      state.currentFileMap = await readVaultFileMap(handle);
+      state.loadedFileMap = new Map(state.currentFileMap);
+      state.vaultFiles = await readRawSourcesFromVault(handle);
+      state.files = [];
+      state.pendingSave = false;
+      state.processingInbox = false;
+      state.apiSecret = "test-gemini-key";
+      state.ingestReviews = new Map();
+      state.ingestAnswers = new Map();
+      state.ingestErrors = new Map();
+
+      const calendarText = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//Margins Browser Test//EN",
+        "BEGIN:VEVENT",
+        "UID:margins-calendar-test",
+        "DTSTART:20260413T170000Z",
+        "DTEND:20260413T180000Z",
+        "SUMMARY:Discussion with Connor",
+        "DESCRIPTION:Webex calendar invite for the Fabrizio thread.",
+        "END:VEVENT",
+        "END:VCALENDAR"
+      ].join("\r\n");
+
+      await setSourceFiles([
+        new File([calendarText], "invite.ics", {
+          type: "text/calendar",
+          lastModified: new Date(2026, 3, 12, 21, 42).getTime()
+        })
+      ]);
+
+      const imported = state.files[0] || {};
+      return {
+        fileType: imported.type || "",
+        fileText: imported.text || "",
+        sourceListText: document.querySelector("#source-list")?.innerText || "",
+        rawBody: await testReadTextFile(handle, "raw/invite.ics")
       };
     },
     seedTextModelSources(count = 3) {
@@ -7768,9 +8598,10 @@ tags: [person]
         },
         {
           name: "unfiled-note.md",
-          text: "Unfiled note exists in raw but has not been ingested into wiki sources yet.",
+          text: "Unfiled source file exists in raw/ but has not been processed into wiki sources yet.",
           type: "text",
           size: 82,
+          lastModified: new Date(2026, 4, 5, 18, 0).getTime(),
           sourceScope: "vault",
           extractionStatus: "ready",
           extractionError: ""
@@ -7811,16 +8642,25 @@ raw_file: raw/filed-note.md
         },
         {
           name: "unfiled-note.md",
-          text: "Unfiled note exists in raw but has not been ingested into wiki sources yet.",
+          text: "Unfiled source file exists in raw/ but has not been processed into wiki sources yet.",
           type: "text",
           size: 82,
+          lastModified: new Date(2026, 4, 5, 18, 0).getTime(),
           sourceScope: "vault",
           extractionStatus: "ready",
           extractionError: ""
         }
       ];
+      const longClaudeBody = Array.from({ length: 90 }, (_, index) => (
+        `Scroll check line ${index + 1}: Files view content should remain readable while the document pane scrolls.`
+      )).join("\n");
       const fileMap = new Map([
-        ["CLAUDE.md", "# CLAUDE.md\n\nRead this before operating the vault.\n"],
+        ["CLAUDE.md", `# CLAUDE.md
+
+Read this before operating the vault.
+
+${longClaudeBody}
+`],
         ["operator-manual.md", "# Operator Manual\n\nUse this to operate the vault.\n"],
         ["query-cookbook.md", "# Query Cookbook\n\nUse this to query the vault.\n"],
         ["commands/query.md", "# Query\n\nAnswer questions against the vault.\n"],
@@ -7838,7 +8678,7 @@ raw_file: raw/filed-note.md
 
 # Source: Filed Activity Note
 
-Raw file: \`raw/filed-note.md\`
+Original file: \`raw/filed-note.md\`
 
 ## Summary
 
@@ -7890,6 +8730,50 @@ Briefly is a project page used by the Activity test.
         pendingText: document.querySelector("#source-list")?.innerText || "",
         recentText: document.querySelector("#recent-activity-list")?.innerText || ""
       };
+    },
+    seedDreamBrokenLinks() {
+      const fileMap = new Map([
+        ["CLAUDE.md", "# CLAUDE.md\n\nLocal-first. Proposal-first. No silent write-back.\n"],
+        ["operator-manual.md", "# Operator Manual\n\nPrefer source-cited facts and conservative edits.\n"],
+        ["query-cookbook.md", "# Query Cookbook\n\nUse exact paths and durable wiki links.\n"],
+        ["agents/wiki-editor.md", "# Wiki Editor Agent\n\nPropose structured edits without silent mutation.\n"],
+        ["agents/source-auditor.md", "# Source Auditor\n\nCheck whether claims are supported by source citations.\n"],
+        ["wiki/index.md", "# Index\n\n[[project-home]]\n"],
+        ["wiki/projects/project-home.md", `---
+type: project
+summary: Project home page with a broken advisor link.
+---
+
+# Project Home
+
+This project references [[Missing Advisor]] and [[Known Company]].
+`],
+        ["wiki/entities/known-company.md", `---
+type: company
+summary: Known company entity.
+---
+
+# Known Company
+`]
+      ]);
+      state.vaultFiles = [];
+      state.files = [];
+      state.currentFileMap = fileMap;
+      state.loadedFileMap = new Map(fileMap);
+      state.selectedPath = null;
+      state.selectedKind = "";
+      state.pendingSave = false;
+      state.processingInbox = false;
+      state.apiSecret = "test-gemini-key";
+      state.ingestReviews = new Map();
+      state.ingestAnswers = new Map();
+      state.dreamLastRun = null;
+      state.dreamReviewActive = false;
+      state.dreamSkippedItems = new Set();
+      renderSources();
+      renderVaultTree(fileMap);
+      renderWikiFiles(fileMap);
+      return dreamBrokenLinks(fileMap).length;
     },
     seedManyRecentActivitySources(count = 30) {
       const yesterdayDate = new Date();
@@ -8343,10 +9227,10 @@ function renderVaultTree(fileMap = state.currentFileMap) {
   const stats = ingestionStats(fileMap || new Map());
   els.vaultTree.innerHTML = `
     <div class="upload-stats">
-      <div class="section-kicker">Ingestion</div>
+      <div class="section-kicker">Processing</div>
       <div class="upload-stat-grid">
         ${uploadStat("Parsed", stats.parsedFiles)}
-        ${uploadStat("Ingested", stats.ingestedFiles)}
+        ${uploadStat("Processed", stats.ingestedFiles)}
         ${uploadStat("Pending", stats.pendingFiles)}
         ${uploadStat("Words", formatStatNumber(stats.totalWords))}
       </div>
@@ -8380,7 +9264,7 @@ function renderEntities(fileMap = state.currentFileMap) {
     els.entityBrowser.innerHTML = `
       <div class="empty-icon" aria-hidden="true"></div>
       <h3>No entities loaded</h3>
-      <p>Open a local vault or ingest a source. Margins will only show entities backed by real vault files.</p>
+      <p>Open a local vault or process a source. Margins will only show entities backed by real vault files.</p>
     `;
     return;
   }
@@ -8473,7 +9357,7 @@ function renderEntityCard(record) {
   return `
     <article class="entity-card" role="button" tabindex="0" data-entity-path="${escapeHtml(record.path)}">
       <div class="entity-card-top">
-        <span class="entity-vibe ${escapeHtml(entityVibeClass(record))}"></span>
+        <span class="entity-vibe ${escapeHtml(entityVibeClass(record))} t-${escapeHtml(normalizePrimaryTypeValue(record.typeLabel) || "concept")}"></span>
         <strong>${escapeHtml(record.title)}</strong>
         <button class="entity-pin-button ${pinned ? "active" : ""}" type="button" data-entity-pin-path="${escapeHtml(record.path)}" aria-pressed="${pinned ? "true" : "false"}" aria-label="${escapeHtml(`${pinAction} ${record.title}`)}" title="${escapeHtml(pinAction)}">
           <span aria-hidden="true">${escapeHtml(pinned ? "Pinned" : "Pin")}</span>
@@ -9527,8 +10411,8 @@ function workflowStep() {
     guidance: failedPdfCount
       ? `${failedPdfCount} PDF${failedPdfCount === 1 ? "" : "s"} need to be attached in the LLM chat. The copied prompt will list them.`
       : state.currentFileMap
-        ? "Review the new source against the existing vault, then ingest the proposed changes."
-        : "Review the uploaded files, ask a few filing questions, then ingest them locally."
+        ? "Review the new source against the existing vault, then process the proposed changes."
+        : "Review the uploaded files, ask a few filing questions, then process them locally."
   };
 }
 
@@ -9629,9 +10513,9 @@ function renderWikiFiles(fileMap) {
 
   if (entries.length === 0) {
     els.wikiTree.className = "tree-list empty";
-    els.wikiTree.textContent = "Open a vault or add documents to browse raw and wiki.";
+    els.wikiTree.textContent = "Open a vault or add documents to browse source files and wiki notes.";
     setDocumentHeader(null, "", { title: "No file selected", meta: "No file selected" });
-    setDocBody("Open raw or wiki, then choose a file.", { readOnly: true });
+    setDocBody("Open a source file or wiki note, then choose a file.", { readOnly: true });
     if (els.docSaveBtn) els.docSaveBtn.disabled = true;
     return;
   }
@@ -9659,13 +10543,14 @@ function renderWikiFiles(fileMap) {
   state.selectedPath = null;
   state.selectedKind = "";
   setDocumentHeader(null, "", { title: "No file selected", meta: "No file selected" });
-  setDocBody("Choose a file from raw or wiki.", { readOnly: true });
+  setDocBody("Choose a source file or wiki note.", { readOnly: true });
   if (els.docSaveBtn) els.docSaveBtn.disabled = true;
 }
 
 function defaultVaultBrowserPath(entries = []) {
   const paths = entries.map((entry) => entry.path);
-  return paths.find((path) => path === "wiki/index.md")
+  return paths.find((path) => path === "CLAUDE.md")
+    || paths.find((path) => path === "wiki/index.md")
     || paths.find((path) => /^wiki\/[^/]+\/index\.md$/i.test(path))
     || paths.find((path) => path.startsWith("wiki/") && path.endsWith(".md"))
     || paths[0]
@@ -9675,7 +10560,7 @@ function defaultVaultBrowserPath(entries = []) {
 function vaultBrowserEntries(fileMap) {
   const rawEntries = allSourceFiles().map((file) => ({
     path: rawSourceOutputPath(file.name),
-    body: file.text || (file.type === "pdf" ? "PDF source preserved in raw." : "Original file preserved in raw."),
+    body: file.text || (file.type === "pdf" ? "PDF source preserved in raw/." : "Original file preserved in raw/."),
     kind: "raw",
     editable: (file.type !== "pdf" && file.type !== "attachment") || !!file.text
   }));
@@ -9773,7 +10658,7 @@ function selectVaultPath(path, options = {}) {
   if (rawFile) {
     state.selectedPath = rawSourceOutputPath(rawFile.name);
     state.selectedKind = "raw";
-    const body = rawFile.text || (rawFile.type === "pdf" ? "PDF source preserved in raw." : "Original file preserved in raw.");
+    const body = rawFile.text || (rawFile.type === "pdf" ? "PDF source preserved in raw/." : "Original file preserved in raw/.");
     const readOnly = (rawFile.type === "pdf" || rawFile.type === "attachment") && !rawFile.text;
     setDocumentHeader(state.selectedPath, body, { kind: "raw", readOnly });
     setDocBody(body, { readOnly });
@@ -9834,7 +10719,7 @@ function pathKind(path) {
 
 function documentKindLabel(kind) {
   return {
-    raw: "Raw source",
+    raw: "Source file",
     wiki: "Wiki note",
     system: "Operating file"
   }[kind] || "Vault file";
@@ -9858,6 +10743,7 @@ function docBodyValue() {
 function renderDocHighlight() {
   if (!els.docHighlight || !els.docBody) return;
   els.docHighlight.innerHTML = highlightMarkdown(docBodyValue());
+  resizeDocEditor();
   syncDocHighlightScroll();
 }
 
@@ -9865,6 +10751,16 @@ function syncDocHighlightScroll() {
   if (!els.docHighlight || !els.docBody) return;
   els.docHighlight.scrollTop = els.docBody.scrollTop;
   els.docHighlight.scrollLeft = els.docBody.scrollLeft;
+}
+
+function resizeDocEditor() {
+  if (!els.docBody) return;
+  els.docBody.style.height = "auto";
+  const style = typeof getComputedStyle === "function" ? getComputedStyle(els.docBody) : null;
+  const minHeight = parseFloat(style?.minHeight) || 0;
+  const nextHeight = Math.max(els.docBody.scrollHeight, minHeight);
+  els.docBody.style.height = `${nextHeight}px`;
+  if (els.docHighlight) els.docHighlight.style.height = `${nextHeight}px`;
 }
 
 function highlightMarkdown(body) {
@@ -10136,7 +11032,7 @@ function buildAutoFileQuestions(fileMap, warningsByPath) {
   const warningQuestions = [];
   for (const [path, warnings] of warningsByPath.entries()) {
     for (const warning of warnings) {
-      if (/contentReference|Missing YAML|not valid JSON|raw source/i.test(warning)) {
+      if (/contentReference|Missing YAML|not valid JSON|raw source|source file/i.test(warning)) {
         warningQuestions.push(reviewQuestion(
           "blocker",
           "I need to fix this first",
@@ -11146,7 +12042,7 @@ function updateSaveButtonState() {
   }
   if (els.bulkIngestBtn) {
     els.bulkIngestBtn.disabled = busy || state.processingInbox || state.files.length === 0;
-    els.bulkIngestBtn.textContent = busy || state.processingInbox && !state.processingFileName ? "Ingesting..." : "Bulk ingest";
+    els.bulkIngestBtn.textContent = busy || state.processingInbox && !state.processingFileName ? "Processing..." : "Bulk process";
   }
   if (els.docSaveBtn) {
     els.docSaveBtn.disabled = busy || !canSave;
@@ -11160,6 +12056,7 @@ function sourceClass(file) {
   const classes = [`type-${sourceBadgeClass(file)}`];
   if (state.processingInbox && (!state.processingFileName || state.processingFileName === file.name)) classes.push("processing");
   else if (isSourceReviewReady(file)) classes.push("ready-to-write");
+  else if (!state.ingestErrors.has(file?.name)) classes.push("pending-ghost");
   return classes.join(" ");
 }
 
@@ -11188,6 +12085,7 @@ function sourceBadgeClass(file) {
   if (file?.type === "pdf" || ext === "pdf") return "pdf";
   if (["eml", "msg"].includes(ext)) return "eml";
   if (["mp3", "m4a", "wav", "aac", "aiff"].includes(ext)) return "aud";
+  if (["png", "jpg", "jpeg", "gif", "webp", "heic", "heif", "tif", "tiff"].includes(ext)) return "img";
   if (file?.type === "docx" || ["doc", "docx"].includes(ext)) return "doc";
   if (["md", "markdown", "txt"].includes(ext)) return "txt";
   return "txt";
@@ -11232,7 +12130,7 @@ function buildLlmIngestPrompt(files, existingFileMap = null) {
   return `You are operating Margins, a local-first personal wiki compiler.
 
 Goal:
-Turn raw sources into a useful wiki, not a chat transcript and not a generic file organizer. Preserve raw sources as evidence. Create source pages first, then only create durable concept/entity/synthesis pages when the source material actually supports them.
+Turn source files into a useful wiki, not a chat transcript and not a generic file organizer. Preserve originals in raw/ as evidence. Create source pages first, then only create durable concept/entity/synthesis pages when the source material actually supports them.
 
 Mode:
 ${outputMode}
@@ -11393,7 +12291,7 @@ function wikiSchemaPack() {
   return `## Margins Wiki Schema Pack
 
 Architecture:
-- raw/ stores immutable evidence.
+- raw/ stores immutable original files.
 - wiki/ stores LLM-operable Markdown: source pages, concept pages, entity pages, synthesis pages, index pages, an ingest tracker, an operation log, stats, bucket overviews, and templates.
 - CLAUDE.md, operator-manual.md, query-cookbook.md, commands/, agents/, and wiki/.margins/ tell future models how to operate the wiki.
 
@@ -11410,7 +12308,7 @@ voice: claude-draft
 
 Structural files every generated vault should include:
 - CLAUDE.md: first-read agent operating skeleton.
-- wiki/ingest-tracker.md: table mapping raw files to generated pages.
+- wiki/ingest-tracker.md: table mapping source files in raw/ to generated pages.
 - wiki/log.md: human-readable log with ops limited to ingest | query | compile | lint | update.
 - wiki/wiki-stats.md: drift, compression, extraction, and size dashboard.
 - wiki/{sources,concepts,entities,synthesis}/{bucket}.md: bucket overview pages.
@@ -11436,16 +12334,16 @@ voice: claude-draft
 
 # Source: Coleman Brokerage Statement, March 2026
 
-Raw file: coleman-brokerage-2026-03.pdf
+Original file: coleman-brokerage-2026-03.pdf
 
 ## Summary
-Direct-read summary with durable citations to the raw file or source page.
+Direct-read summary with durable citations to the original file or source page.
 
 ## Context
 - Link durable promoted pages when supported: [[demo-financial-statements]]
 
 ## Concrete Facts
-- Fact with raw file / section citation.
+- Fact with original file / section citation.
 
 ## Related Pages
 - [[demo-financial-statements]] -- why this page connects
@@ -11497,7 +12395,7 @@ Your task:
 3. Fix every warning listed below.
 4. Remove all :contentReference, oaicite, hidden attachment ids, and turn references.
 5. Add YAML frontmatter to every wiki source, concept, entity, synthesis, and index page.
-6. Use durable citations only: source page links, raw filenames, and plain section names.
+6. Use durable citations only: source page links, filenames in raw/, and plain section names.
 7. Add source-page backlinks to promoted pages where supported.
 8. Demote fictional/demo-only entity pages into Mentioned but missing or Needs Review unless they are useful durable entities.
 9. Preserve good source facts and refused inferences.
@@ -11600,6 +12498,9 @@ function activateTab(view) {
   } else if (view !== "graph" && graphView.raf) {
     stopGraphSimulation();
   }
+  if (view === "wiki") {
+    requestAnimationFrame(renderDocHighlight);
+  }
 }
 
 function shouldIgnorePath(path) {
@@ -11634,7 +12535,7 @@ async function scaffoldVault(rootHandle) {
   await ensureDirectory(rootHandle, "commands");
   await ensureDirectory(rootHandle, "agents");
   await ensureDirectory(rootHandle, "wiki/.margins");
-  await writeTextFileIfMissing(rootHandle, `${RAW_SOURCE_DIR}/README.md`, `# Raw
+  await writeTextFileIfMissing(rootHandle, `${RAW_SOURCE_DIR}/README.md`, `# Original Sources
 
 Drop original source files here. Margins treats this folder as evidence and writes generated knowledge into wiki/.
 `);
@@ -11798,16 +12699,16 @@ function isVaultTextPath(path) {
 }
 
 function isReadableSourceTextPath(path) {
-  return /\.(md|markdown|txt|json|jsonl|csv|tsv|py|js|jsx|ts|tsx|html|css|xml|yaml|yml|log|eml|vtt|srt)$/i.test(path);
+  return /\.(md|markdown|txt|json|jsonl|csv|tsv|py|js|jsx|ts|tsx|html|css|xml|yaml|yml|log|eml|ics|ical|vtt|srt)$/i.test(path);
 }
 
 async function writeRawSources(rootHandle, files) {
   if (files.length === 0) {
-    await writeTextFile(rootHandle, `${RAW_SOURCE_DIR}/README.md`, `# Raw
+    await writeTextFile(rootHandle, `${RAW_SOURCE_DIR}/README.md`, `# Original Sources
 
-No raw source files were loaded in the browser when this Margins folder was written.
+No original source files were loaded in the browser when this Margins folder was written.
 
-To preserve raw evidence, reload the original files in Margins before clicking "Save." Browsers clear selected file handles after refresh for security.
+To preserve original evidence, reload the original files in Margins before clicking "Save." Browsers clear selected file handles after refresh for security.
 `);
     return 0;
   }
@@ -11871,7 +12772,7 @@ async function deleteRawSourceFromVault(rootHandle, fileName) {
       // The active raw/ path and the legacy raw_sources/ path are both allowed.
     }
   }
-  if (!deleted) throw new Error(`${basename(fileName)} was not found in raw.`);
+  if (!deleted) throw new Error(`${basename(fileName)} was not found in raw/.`);
 }
 
 const ROOT_GENERATED_TEXT_FILES = new Set(["CLAUDE.md", "operator-manual.md", "query-cookbook.md"]);

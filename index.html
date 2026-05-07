@@ -117,7 +117,7 @@
         </div>
         <button id="extract-btn" disabled>Extract PDF text</button>
         <button id="compile-btn" disabled>Local compile</button>
-        <button id="llm-btn" disabled>Copy LLM ingest prompt</button>
+        <button id="llm-btn" disabled>Copy LLM process prompt</button>
         <button id="export-btn" disabled>Download vault JSON</button>
         <button id="copy-btn" disabled>Copy operator manual</button>
         <div class="section-kicker">Review</div>
@@ -146,19 +146,36 @@
         </div>
 
         <section id="source-drop-zone" class="source-drop-zone inbox-drop" role="button" tabindex="0" aria-label="Choose files or drag them into Margins">
-          <div class="drop-mark" aria-hidden="true"></div>
-          <h3>Drag and drop here</h3>
-          <p>or click to browse</p>
-          <div class="drop-formats">.txt · .md · .docx · .pdf · folders</div>
-          <div class="drop-actions">
-            <label class="file-picker primary-picker">
-              <input id="file-input" type="file" multiple>
-              <span>Choose files</span>
-            </label>
-            <label class="file-picker">
-              <input id="folder-input" type="file" webkitdirectory directory multiple>
-              <span>Choose folder</span>
-            </label>
+          <svg class="drop-art" viewBox="0 0 600 360" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+            <line x1="20" y1="320" x2="580" y2="40" stroke="#1a1612" stroke-width="0.6" opacity="0.4"/>
+            <path d="M 40 80 Q 300 180 560 60" fill="none" stroke="#2c5aa0" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+            <g style="mix-blend-mode: multiply;">
+              <circle cx="450" cy="120" r="62" fill="#f0c14b"/>
+              <circle cx="450" cy="120" r="36" fill="#d63a2f"/>
+              <circle cx="450" cy="120" r="11" fill="#1a1612"/>
+            </g>
+            <polygon points="60,200 220,230 130,330" fill="none" stroke="#1a1612" stroke-width="1.5" stroke-linejoin="round"/>
+            <circle cx="120" cy="100" r="9"  fill="#6a4f8c"/>
+            <circle cx="320" cy="280" r="6"  fill="#6fa863"/>
+            <circle cx="40"  cy="280" r="4"  fill="#d63a2f"/>
+            <circle cx="540" cy="280" r="3"  fill="#1a1612"/>
+            <circle cx="240" cy="60"  r="2"  fill="#1a1612"/>
+            <line x1="80" y1="120" x2="130" y2="140" stroke="#1a1612" stroke-width="1" stroke-linecap="round"/>
+          </svg>
+          <div class="drop-copy">
+            <h3>Drag and drop here</h3>
+            <p>or click to browse</p>
+            <div class="drop-formats">.txt · .md · .docx · .pdf · .ics · folders</div>
+            <div class="drop-actions">
+              <label class="file-picker primary-picker">
+                <input id="file-input" type="file" multiple>
+                <span>Choose files</span>
+              </label>
+              <label class="file-picker">
+                <input id="folder-input" type="file" webkitdirectory directory multiple>
+                <span>Choose folder</span>
+              </label>
+            </div>
           </div>
         </section>
 
@@ -166,12 +183,12 @@
           <div class="section-head">
             <div>
               <span id="pending-count-label" class="section-kicker">0 pending</span>
-              <h3>Raw sources not ingested</h3>
+              <h3>Sources to process</h3>
             </div>
-            <button id="bulk-ingest-btn" class="bulk-ingest-btn" type="button" disabled>Bulk ingest</button>
+            <button id="bulk-ingest-btn" class="bulk-ingest-btn" type="button" disabled>Bulk process</button>
             <button id="save-vault-btn" class="primary shadow-action" disabled hidden>Process</button>
           </div>
-          <div id="source-list" class="source-list empty">No pending raw sources.</div>
+          <div id="source-list" class="source-list empty">No pending sources.</div>
         </section>
 
         <section id="recent-activity-panel" class="recent-activity-panel">
@@ -181,7 +198,7 @@
               <h3>Recent activity</h3>
             </div>
           </div>
-          <div id="recent-activity-list" class="activity-card-wall empty">Open a vault to see recently ingested source notes.</div>
+          <div id="recent-activity-list" class="activity-card-wall empty">Open a vault to see recently processed source notes.</div>
         </section>
 
         <section id="inline-review-panel" class="inline-review-panel" hidden>
@@ -199,16 +216,57 @@
           <div class="page-head dream-head">
             <div>
               <h2>Dream</h2>
-              <div id="dream-meta" class="meta-row">Open a vault to let Margins consolidate overnight.</div>
+              <div id="dream-meta" class="meta-row">Open a vault to see what needs attention.</div>
             </div>
           </div>
 
           <section class="dream-state-card" aria-live="polite">
-            <div class="dream-orbit" aria-hidden="true"></div>
-            <div>
-              <span class="section-kicker">Night pass</span>
-              <h3 id="dream-state-title">Open a vault to let Margins dream</h3>
-              <p id="dream-state-body">Dreams consolidate concepts, prune weak links, sync operating memory, and prepare reviewable proposals.</p>
+            <svg class="dream-art" viewBox="0 0 800 320" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+              <line x1="180" y1="160" x2="380" y2="100" stroke="#1a1612" stroke-width="0.8" stroke-dasharray="3 4" opacity="0.45"></line>
+              <line x1="380" y1="100" x2="600" y2="170" stroke="#1a1612" stroke-width="0.8" stroke-dasharray="3 4" opacity="0.45"></line>
+              <line x1="180" y1="160" x2="280" y2="260" stroke="#1a1612" stroke-width="0.8" stroke-dasharray="3 4" opacity="0.45"></line>
+              <line x1="280" y1="260" x2="500" y2="270" stroke="#1a1612" stroke-width="0.8" stroke-dasharray="3 4" opacity="0.45"></line>
+              <line x1="600" y1="170" x2="500" y2="270" stroke="#1a1612" stroke-width="0.8" stroke-dasharray="3 4" opacity="0.45"></line>
+              <line x1="380" y1="100" x2="280" y2="260" stroke="#1a1612" stroke-width="0.6" stroke-dasharray="2 5" opacity="0.3"></line>
+              <line x1="600" y1="170" x2="700" y2="80" stroke="#1a1612" stroke-width="0.6" stroke-dasharray="2 5" opacity="0.3"></line>
+              <g style="mix-blend-mode: multiply;">
+                <circle cx="180" cy="160" r="22" fill="#d63a2f"></circle>
+                <circle cx="180" cy="160" r="6" fill="#1a1612"></circle>
+              </g>
+              <g style="mix-blend-mode: multiply;">
+                <circle cx="380" cy="100" r="28" fill="#6fa863"></circle>
+                <circle cx="380" cy="100" r="8" fill="#1a1612"></circle>
+              </g>
+              <g style="mix-blend-mode: multiply;">
+                <circle cx="600" cy="170" r="36" fill="#f0c14b"></circle>
+                <circle cx="600" cy="170" r="20" fill="#d63a2f"></circle>
+                <circle cx="600" cy="170" r="6" fill="#1a1612"></circle>
+              </g>
+              <circle cx="280" cy="260" r="14" fill="#6a4f8c"></circle>
+              <circle cx="500" cy="270" r="16" fill="#2c5aa0"></circle>
+              <circle cx="700" cy="80" r="10" fill="#6a4f8c"></circle>
+              <circle cx="80" cy="60" r="2" fill="#1a1612"></circle>
+              <circle cx="760" cy="290" r="2.5" fill="#1a1612"></circle>
+              <circle cx="120" cy="290" r="3" fill="#1a1612"></circle>
+              <path d="M 60 60 Q 380 200 760 60" fill="none" stroke="#2c5aa0" stroke-width="1.6" stroke-linecap="round" opacity="0.4"></path>
+            </svg>
+            <div class="dream-state-copy">
+              <span class="section-kicker">Maintenance</span>
+              <h3 id="dream-state-title">Open a vault to see suggested next actions</h3>
+              <p id="dream-state-body">This view checks the vault for issues Margins can surface now, then points you to the right workspace to resolve them.</p>
+              <div class="dream-control-row" aria-label="Dream maintenance controls">
+                <button id="dream-run-btn" class="dream-primary-action" type="button">Run maintenance</button>
+                <button id="dream-review-btn" class="dream-secondary-action" type="button">Review step by step</button>
+                <div class="dream-mode-field">
+                  <select id="dream-mode-toggle" class="dream-mode-select" aria-label="Maintenance mode">
+                    <option value="watch">Scan only</option>
+                    <option value="walk">Guided review</option>
+                    <option value="hybrid">Auto + review</option>
+                  </select>
+                </div>
+              </div>
+              <p id="dream-mode-help" class="dream-mode-help">Safe cleanup first; decisions wait.</p>
+              <p id="dream-pass-status" class="dream-pass-status" hidden></p>
             </div>
           </section>
 
@@ -217,8 +275,8 @@
           <section class="dream-section">
             <div class="section-head">
               <div>
-                <span class="section-kicker">Operations</span>
-                <h3>What dreaming works on</h3>
+                <span class="section-kicker">Checks</span>
+                <h3>Maintenance checks</h3>
               </div>
             </div>
             <div id="dream-operation-list" class="dream-grid"></div>
@@ -227,17 +285,17 @@
           <section class="dream-section">
             <div class="section-head">
               <div>
-                <span class="section-kicker">Morning report</span>
-                <h3>Proposals to review</h3>
+                <span id="dream-queue-kicker" class="section-kicker">Repair queue</span>
+                <h3 id="dream-queue-title">Safe fixes and review items</h3>
               </div>
             </div>
             <div id="dream-proposal-list" class="dream-proposal-list"></div>
           </section>
 
           <section class="dream-log-card">
-            <span class="section-kicker">Dream log</span>
-            <p id="dream-log-meta">No dream log loaded yet.</p>
-            <ul id="dream-log-titles" class="dream-title-list" aria-label="Possible dream titles"></ul>
+            <span class="section-kicker">Check log</span>
+            <p id="dream-log-meta">No check log loaded yet.</p>
+            <ul id="dream-log-entries" class="dream-log-list" aria-label="Check log entries"></ul>
           </section>
         </div>
       </section>
@@ -264,7 +322,7 @@
           <section id="entity-browser" class="entity-empty-state">
             <div class="empty-icon" aria-hidden="true"></div>
             <h3>No entities loaded</h3>
-            <p>Open a local vault or ingest a source. Margins will only show entities backed by real vault files.</p>
+            <p>Open a local vault or process a source. Margins will only show entities backed by real vault files.</p>
           </section>
         </div>
       </section>
@@ -301,7 +359,7 @@
             </div>
             <div class="vault-editor-shell">
               <pre id="doc-highlight" class="doc-highlight" aria-hidden="true"></pre>
-              <textarea id="doc-body" class="doc-body vault-editor" spellcheck="false">Open raw or wiki, then choose a file.</textarea>
+              <textarea id="doc-body" class="doc-body vault-editor" spellcheck="false">Open a source file or wiki note, then choose a file.</textarea>
             </div>
           </article>
         </div>

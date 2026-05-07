@@ -18,7 +18,7 @@ async function main() {
     await writeFile(outPath, body, "utf8");
   }
 
-  console.log(`Compiled ${files.length} raw source${files.length === 1 ? "" : "s"} into ${outputDir}`);
+  console.log(`Compiled ${files.length} source file${files.length === 1 ? "" : "s"} into ${outputDir}`);
   console.log(`Generated ${generated.size} operating/wiki files.`);
 }
 
