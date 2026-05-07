@@ -1,6 +1,6 @@
 # Margins
 
-Margins is a local-first raw-source-to-wiki compiler for LLMs.
+Margins is a local-first source-to-wiki compiler for LLMs.
 
 It turns:
 
@@ -33,7 +33,7 @@ The default UI is an inbox-style local vault flow:
 
 1. Choose a vault folder.
 2. Drop or upload documents into the inbox.
-3. Click `Process` on the pending document. Margins immediately saves the raw source, sends readable text to the configured model with wiki context and guardrails, then prepares a short summary, connections, and at most three optional questions.
+3. Click `Process` on the pending document. Margins immediately saves the original source file in `raw/`, sends readable text to the configured model with wiki context and guardrails, then prepares a short summary, connections, and at most three optional questions.
 4. Answer or skip the quick questions.
 5. Click `Approve` on the document to save the generated wiki, graph, and operating layer.
 
@@ -53,7 +53,7 @@ The browser app has two compile paths:
 - `Extract PDF text` uses PDF.js in the browser to turn readable PDFs into source text.
 - `Copy LLM ingest prompt` creates a Claude/ChatGPT handoff prompt. Use this after extraction; failed PDFs are listed as attachments.
 - `LLM Review` parses Claude/ChatGPT output returned as `margins-file` fenced blocks and lets you preview it before accepting it as the current wiki.
-- `Create vault` scaffolds the selected folder with the expected vault structure. `Open vault` selects an existing local vault and loads its existing wiki files back into the app. `Save changes` writes the accepted wiki plus original raw sources directly into the selected vault using the browser File System Access API.
+- `Create vault` scaffolds the selected folder with the expected vault structure. `Open vault` selects an existing local vault and loads its existing wiki files back into the app. `Save changes` writes the accepted wiki plus original source files directly into the selected vault using the browser File System Access API.
 - Incremental ingest keeps the loaded vault as context, sends only the new source batch to the language model, and merges returned `margins-file` blocks into the existing wiki.
 - `Review Mode` controls how much interruption Margins allows: Auto-file skips the summary, Suggested review shows the source summary and asks only useful questions, and Strict review keeps the same three-question cap.
 - Temporary API settings are tucked under developer controls and are local-only browser settings used for model-generated filing questions. Gemini is the default local provider. These controls should be hidden in production.

@@ -1,0 +1,631 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Margins · Bauhaus</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=Manrope:wght@400..800&family=JetBrains+Mono:wght@400..600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --vermillion: #d63a2f;
+  --cobalt:     #2c5aa0;
+  --mustard:    #f0c14b;
+  --violet:     #6a4f8c;
+  --green:      #6fa863;
+  --ink:        #1a1612;
+  --ink-2:      #4a423a;
+  --muted:      #847a6b;
+  --paper:      #fbf8f2;
+  --mist:       #f3ece1;
+  --line:       #e8e2d6;
+  --glass:      rgba(252, 249, 244, 0.62);
+  --glass-edge: rgba(26, 22, 18, 0.07);
+}
+
+@property --mesh-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 220deg;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  min-height: 100vh;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "Manrope", -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 14.5px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body::before {
+  content: "";
+  position: fixed; inset: 0;
+  background:
+    conic-gradient(from var(--mesh-angle) at 18% 22%,
+      #f0c14b22, #d63a2f24, #2c5aa022, #6a4f8c1c, #6fa8631c, #f0c14b22),
+    radial-gradient(circle at 86% 78%, #6fa86322, transparent 42%),
+    radial-gradient(circle at 12% 88%, #2c5aa022, transparent 38%);
+  filter: blur(32px) saturate(120%);
+  animation: mesh-drift 60s linear infinite;
+  z-index: -1;
+}
+
+@keyframes mesh-drift {
+  to { --mesh-angle: 580deg; }
+}
+
+.shell {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  min-height: 100vh;
+}
+
+.sidebar {
+  position: sticky; top: 0;
+  height: 100vh;
+  padding: 24px 18px;
+  background: var(--glass);
+  backdrop-filter: blur(28px) saturate(150%);
+  -webkit-backdrop-filter: blur(28px) saturate(150%);
+  border-right: 1px solid var(--glass-edge);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.brand {
+  display: flex; align-items: center; gap: 12px;
+  padding: 4px 6px;
+}
+
+.brand-mark {
+  width: 36px; height: 22px;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.brand-mark .ring {
+  position: absolute;
+  border-radius: 50%;
+  left: 22px; top: 11px;
+  transform: translate(-50%, -50%);
+}
+
+.brand-mark .ring.amber {
+  width: 20px; height: 20px;
+  background: var(--mustard);
+  animation: spin 240s linear infinite;
+}
+.brand-mark .ring.vermillion { width: 12px; height: 12px; background: var(--vermillion); }
+.brand-mark .ring.ink        { width: 4px;  height: 4px;  background: var(--ink); }
+.brand-mark .stem {
+  position: absolute;
+  left: 7px; top: 3px;
+  width: 1.6px; height: 16px;
+  background: var(--ink);
+}
+
+@keyframes spin { to { transform: translate(-50%, -50%) rotate(360deg); } }
+
+.brand-name {
+  font-family: "Fraunces", serif;
+  font-size: 22px;
+  font-weight: 320;
+  font-variation-settings: "opsz" 36;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.brand-name em { font-style: italic; font-weight: 380; }
+
+.section-eyebrow {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 8px 8px 4px;
+}
+
+.nav { display: grid; gap: 1px; }
+
+.nav-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  color: var(--ink-2);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 200ms cubic-bezier(0.16,1,0.3,1);
+}
+.nav-item:hover { background: rgba(26,22,18,0.04); }
+.nav-item.active { background: rgba(26,22,18,0.06); color: var(--ink); }
+
+.nav-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.nav-dot.activity { background: var(--vermillion); }
+.nav-dot.entities { background: var(--cobalt); }
+.nav-dot.files    { background: var(--mustard); }
+.nav-dot.graph    { background: var(--violet); }
+
+.vault-card {
+  margin: auto 0 0;
+  padding: 14px;
+  border-radius: 14px;
+  background: rgba(252,249,244,0.6);
+  border: 1px solid var(--glass-edge);
+  font-size: 12.5px;
+}
+
+.vault-title {
+  font-family: "JetBrains Mono", monospace;
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.vault-meta {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.theme-toggle {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 6px;
+  font-size: 11px;
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.theme-toggle .pill {
+  width: 28px; height: 16px; border-radius: 999px;
+  background: var(--mist);
+  position: relative;
+  border: 1px solid var(--line);
+}
+.theme-toggle .pill::after {
+  content: ""; position: absolute;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  top: 2px; left: 2px;
+  background: var(--ink);
+}
+
+main {
+  padding: 56px clamp(28px, 5vw, 80px) 96px;
+  position: relative;
+  min-width: 0;
+}
+
+.page-head { margin-bottom: 48px; }
+
+.page-head .meta {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 14px;
+}
+
+.page-head h1 {
+  font-family: "Fraunces", serif;
+  font-size: clamp(48px, 6vw, 84px);
+  font-weight: 300;
+  font-variation-settings: "opsz" 144;
+  letter-spacing: -0.025em;
+  line-height: 0.94;
+  color: var(--ink);
+}
+.page-head h1 em { font-style: italic; font-weight: 320; }
+
+.page-head p {
+  max-width: 520px;
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.canvas {
+  position: relative;
+  border-radius: 24px;
+  background: var(--glass);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  border: 1px solid var(--glass-edge);
+  padding: 48px;
+  min-height: 460px;
+  overflow: hidden;
+  box-shadow: 0 32px 80px rgba(26,22,18,0.06), 0 1px 0 rgba(255,255,255,0.6) inset;
+}
+
+.canvas svg.composition {
+  position: absolute;
+  inset: 0; width: 100%; height: 100%;
+}
+
+.canvas-overlay {
+  position: relative;
+  z-index: 2;
+  max-width: 380px;
+}
+
+.canvas-overlay h2 {
+  font-family: "Fraunces", serif;
+  font-size: 26px;
+  font-weight: 350;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  margin-bottom: 8px;
+}
+.canvas-overlay h2 em { font-style: italic; }
+
+.canvas-overlay p { color: var(--muted); font-size: 14px; }
+
+.canvas-cta {
+  display: inline-flex; align-items: center; gap: 8px;
+  margin-top: 18px;
+  padding: 10px 18px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  transition: transform 240ms cubic-bezier(0.16,1,0.3,1);
+}
+.canvas-cta:hover { transform: translateY(-1px); }
+.canvas-cta .dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--mustard);
+}
+
+.section { margin-top: 64px; }
+
+.section-head {
+  display: flex; align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+.section-head h2 {
+  font-family: "Fraunces", serif;
+  font-size: 22px;
+  font-weight: 350;
+  letter-spacing: -0.01em;
+}
+.section-head a {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.activity-list { display: flex; flex-direction: column; gap: 4px; }
+
+.activity-row {
+  display: grid;
+  grid-template-columns: 28px 1fr auto auto;
+  gap: 16px;
+  align-items: center;
+  padding: 18px 22px;
+  border-radius: 14px;
+  background: var(--glass);
+  border: 1px solid var(--glass-edge);
+  cursor: pointer;
+  transition: transform 160ms cubic-bezier(0.16,1,0.3,1), background 200ms ease;
+}
+.activity-row:hover {
+  background: rgba(252,249,244,0.86);
+  transform: translateX(3px);
+}
+
+.activity-mark {
+  position: relative;
+  width: 28px; height: 28px;
+}
+.activity-mark .a-disk {
+  position: absolute;
+  border-radius: 50%;
+  left: 14px; top: 14px;
+  transform: translate(-50%,-50%);
+}
+.activity-mark .a-disk.outer  { width: 24px; height: 24px; }
+.activity-mark .a-disk.middle { width: 14px; height: 14px; background: var(--ink); opacity: 0.16; }
+.activity-mark .a-disk.core   { width: 5px;  height: 5px; }
+
+.activity-row.person  .a-disk.outer { background: var(--vermillion); }
+.activity-row.person  .a-disk.core  { background: var(--ink); }
+.activity-row.project .a-disk.outer { background: var(--green); }
+.activity-row.project .a-disk.core  { background: var(--ink); }
+.activity-row.concept .a-disk.outer { background: var(--violet); }
+.activity-row.concept .a-disk.core  { background: var(--mustard); }
+.activity-row.company .a-disk.outer { background: var(--cobalt); }
+.activity-row.company .a-disk.core  { background: var(--mustard); }
+
+.activity-title {
+  font-family: "Manrope", sans-serif;
+  font-weight: 500;
+  font-size: 14.5px;
+  color: var(--ink);
+}
+
+.activity-path {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.activity-tags { display: flex; gap: 6px; }
+
+.tag {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(26,22,18,0.05);
+  color: var(--muted);
+}
+
+.activity-time {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.entity-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.entity-card {
+  position: relative;
+  padding: 22px;
+  border-radius: 18px;
+  background: var(--glass);
+  border: 1px solid var(--glass-edge);
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 240ms cubic-bezier(0.16,1,0.3,1);
+}
+.entity-card:hover { transform: translateY(-2px); }
+
+.entity-card .entity-mark {
+  position: absolute;
+  top: 16px; right: 16px;
+  width: 26px; height: 26px;
+  border-radius: 50%;
+}
+.entity-card.person  .entity-mark { background: var(--vermillion); }
+.entity-card.project .entity-mark { background: var(--green); }
+.entity-card.company .entity-mark { background: var(--cobalt); }
+
+.entity-card h3 {
+  font-family: "Fraunces", serif;
+  font-size: 22px;
+  font-weight: 380;
+  font-variation-settings: "opsz" 36;
+  letter-spacing: -0.01em;
+  margin-bottom: 4px;
+  padding-right: 32px;
+}
+
+.entity-card .entity-meta {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+
+.entity-card p {
+  color: var(--ink-2);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.demo-tag {
+  position: fixed;
+  bottom: 18px; right: 18px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: var(--glass);
+  border: 1px solid var(--glass-edge);
+  padding: 8px 14px;
+  border-radius: 999px;
+  backdrop-filter: blur(16px) saturate(150%);
+}
+.demo-tag .dot {
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--mustard);
+  margin-right: 8px;
+  vertical-align: middle;
+}
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">
+        <div class="ring amber"></div>
+        <div class="ring vermillion"></div>
+        <div class="ring ink"></div>
+        <div class="stem"></div>
+      </div>
+      <div class="brand-name">m<em>argins</em></div>
+    </div>
+
+    <div class="section-eyebrow">Workspace</div>
+    <nav class="nav">
+      <div class="nav-item active"><span class="nav-dot activity"></span>Activity</div>
+      <div class="nav-item"><span class="nav-dot entities"></span>Entities</div>
+      <div class="nav-item"><span class="nav-dot files"></span>Files</div>
+      <div class="nav-item"><span class="nav-dot graph"></span>Graph</div>
+    </nav>
+
+    <div class="vault-card">
+      <div class="vault-title">~/connor_brain2</div>
+      <div class="vault-meta">312 entities · 1,247 sources<br>last sync 4 min ago</div>
+    </div>
+
+    <label class="theme-toggle">
+      <span class="pill"></span>
+      <span>Morning</span>
+    </label>
+  </aside>
+
+  <main>
+    <div class="page-head">
+      <div class="meta">Tue, May 06 · 14 ingested today</div>
+      <h1>Act<em>ivity</em></h1>
+      <p>Drop a file anywhere on this canvas. Margins reads what comes in, asks only what it needs, files it locally.</p>
+    </div>
+
+    <section class="canvas">
+      <svg class="composition" viewBox="0 0 800 460" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+        <line x1="40" y1="420" x2="760" y2="80" stroke="#1a1612" stroke-width="0.7" opacity="0.5"/>
+        <path d="M 60 120 Q 400 250 740 90" fill="none" stroke="#2c5aa0" stroke-width="2.4" stroke-linecap="round" opacity="0.85"/>
+        <g style="mix-blend-mode: multiply;">
+          <circle cx="600" cy="170" r="92" fill="#f0c14b"/>
+          <circle cx="600" cy="170" r="54" fill="#d63a2f"/>
+          <circle cx="600" cy="170" r="16" fill="#1a1612"/>
+        </g>
+        <polygon points="80,260 280,300 160,420" fill="none" stroke="#1a1612" stroke-width="2" stroke-linejoin="round"/>
+        <circle cx="160" cy="120" r="13" fill="#6a4f8c"/>
+        <circle cx="400" cy="370" r="9" fill="#6fa863"/>
+        <circle cx="60" cy="380" r="6" fill="#d63a2f"/>
+        <circle cx="700" cy="380" r="4" fill="#1a1612"/>
+        <circle cx="320" cy="100" r="3" fill="#1a1612"/>
+        <circle cx="760" cy="320" r="2.5" fill="#1a1612"/>
+        <line x1="100" y1="150" x2="160" y2="180" stroke="#1a1612" stroke-width="1.4" stroke-linecap="round"/>
+      </svg>
+
+      <div class="canvas-overlay">
+        <h2>Drop anything <em>in</em>.</h2>
+        <p>Files, transcripts, voice memos, photos. Margins reads everything. The painting grows as you ingest.</p>
+        <div class="canvas-cta">
+          <span class="dot"></span>
+          Choose files · ⌘O
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <h2>Recent activity</h2>
+        <a>last 72 hours →</a>
+      </div>
+
+      <div class="activity-list">
+        <div class="activity-row person">
+          <div class="activity-mark"><div class="a-disk outer"></div><div class="a-disk middle"></div><div class="a-disk core"></div></div>
+          <div>
+            <div class="activity-title">Bob call prep — closing thread</div>
+            <div class="activity-path">wiki/career/source-2026-05-06-bob-call-prep.md</div>
+          </div>
+          <div class="activity-tags"><span class="tag">person</span><span class="tag">meeting</span></div>
+          <div class="activity-time">2h ago</div>
+        </div>
+
+        <div class="activity-row concept">
+          <div class="activity-mark"><div class="a-disk outer"></div><div class="a-disk middle"></div><div class="a-disk core"></div></div>
+          <div>
+            <div class="activity-title">Margins design language exploration</div>
+            <div class="activity-path">wiki/coding/source-2026-05-05-claude-margins-design.md</div>
+          </div>
+          <div class="activity-tags"><span class="tag">concept</span><span class="tag">design</span></div>
+          <div class="activity-time">yesterday</div>
+        </div>
+
+        <div class="activity-row project">
+          <div class="activity-mark"><div class="a-disk outer"></div><div class="a-disk middle"></div><div class="a-disk core"></div></div>
+          <div>
+            <div class="activity-title">Margins becomes lead build, Briefly enters maintenance</div>
+            <div class="activity-path">wiki/ideas/source-2026-05-04-margins-strategic-shift.md</div>
+          </div>
+          <div class="activity-tags"><span class="tag">project</span><span class="tag">decision</span></div>
+          <div class="activity-time">2d ago</div>
+        </div>
+
+        <div class="activity-row company">
+          <div class="activity-mark"><div class="a-disk outer"></div><div class="a-disk middle"></div><div class="a-disk core"></div></div>
+          <div>
+            <div class="activity-title">Centric WM uses Orion for portfolio reporting</div>
+            <div class="activity-path">wiki/projects/source-2026-04-30-ellis-orion.md</div>
+          </div>
+          <div class="activity-tags"><span class="tag">company</span><span class="tag">intel</span></div>
+          <div class="activity-time">6d ago</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <h2>Pinned entities</h2>
+        <a>open browser →</a>
+      </div>
+
+      <div class="entity-grid">
+        <article class="entity-card person">
+          <div class="entity-mark"></div>
+          <h3>Bob Casey</h3>
+          <div class="entity-meta">Person · Riviera · Booth</div>
+          <p>Founding-team conversation closed-out 5/3. Stay-in-touch relationship. Personal Margins copy ok to send.</p>
+        </article>
+
+        <article class="entity-card project">
+          <div class="entity-mark"></div>
+          <h3>Briefly</h3>
+          <div class="entity-meta">Project · Maintenance</div>
+          <p>Centric pilot agreement drafted 5/3. Enters maintenance cadence; Margins is lead build.</p>
+        </article>
+
+        <article class="entity-card person">
+          <div class="entity-mark"></div>
+          <h3>Ellis Rutili</h3>
+          <div class="entity-meta">Person · Centric WM</div>
+          <p>Action-item routing remains his #1 ask. Brief-only scope locked for pilot 60-90d.</p>
+        </article>
+
+        <article class="entity-card company">
+          <div class="entity-mark"></div>
+          <h3>Centric WM</h3>
+          <div class="entity-meta">Company · Pilot signed</div>
+          <p>Orion confirmed as reporting tool. Virgil Rutili (uncle) is true buyer; Ellis is champion.</p>
+        </article>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="demo-tag"><span class="dot"></span>Bauhaus · 1 of 3</div>
+</body>
+</html>

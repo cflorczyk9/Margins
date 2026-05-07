@@ -199,7 +199,7 @@ test("processing checklist advances while Gemini is still reviewing", {
 
     const card = page.locator(".source-item", { hasText: "saved-report.pdf" });
     await card.getByRole("button", { name: "Process" }).click();
-    await card.getByText("Saving PDF to raw").waitFor();
+    await card.getByText("Saving PDF source file").waitFor();
     await card.getByText(/Reading PDF/).waitFor();
     await card.getByText("Margins is comparing it against your brain").waitFor();
     await card.getByText("Converting to Markdown file structure").waitFor();
@@ -208,7 +208,7 @@ test("processing checklist advances while Gemini is still reviewing", {
     const lines = await readyCard.locator(".receipt-log-line").evaluateAll((nodes) => (
       nodes.map((node) => node.querySelector(".receipt-log-content")?.innerText.trim() || "")
     ));
-    assert.equal(lines[0], "Saving PDF to raw");
+    assert.equal(lines[0], "Saving PDF source file");
     assert.match(lines[1], /^Reading PDF/);
     assert.equal(lines[2], "Margins is comparing it against your brain");
     assert.equal(lines[3], "Converting to Markdown file structure");
@@ -283,7 +283,7 @@ test("model-required sources do not show a fake successful summary", {
 
     await page.evaluate(() => window.__marginsTest.seedModelRequiredSource());
     await page.locator(".source-item", { hasText: "scanned-source.pdf" }).getByRole("button", { name: "Process" }).click();
-    await page.getByText("Review did not finish").waitFor();
+    await page.locator("#source-list").getByText("Review did not finish", { exact: true }).waitFor();
 
     const pendingText = await page.locator("#source-list").innerText();
     assert.match(pendingText, /Retry/);
@@ -295,7 +295,7 @@ test("model-required sources do not show a fake successful summary", {
   }
 });
 
-test("vault PDF review refreshes the saved raw file before model attachment", {
+test("vault PDF review refreshes the saved source file before model attachment", {
   skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
 }, async () => {
   const server = await startStaticServer();
@@ -314,7 +314,7 @@ test("vault PDF review refreshes the saved raw file before model attachment", {
             content: {
               parts: [{
                 text: JSON.stringify({
-                  summary: "This PDF was read directly from the saved raw source and connected to the current vault.",
+                  summary: "This PDF was read directly from the saved source file and connected to the current vault.",
                   connections: [
                     {
                       path: "wiki/concepts/pdf-ingest.md",
@@ -349,6 +349,79 @@ test("vault PDF review refreshes the saved raw file before model attachment", {
     const bodies = await page.evaluate(() => window.__geminiBodies);
     const parts = bodies[0]?.contents?.[0]?.parts || [];
     assert.equal(parts.some((part) => part.inline_data?.mime_type === "application/pdf" && part.inline_data?.data), true);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("calendar invites are reviewed as prompt text instead of unsupported Gemini MIME", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => {
+      window.__geminiCalls = [];
+      window.fetch = async (_url, options = {}) => {
+        window.__geminiCalls.push(JSON.parse(options.body || "{}"));
+        return new Response(JSON.stringify({
+          candidates: [{
+            finishReason: "STOP",
+            content: {
+              parts: [{
+                text: JSON.stringify({
+                  summary: {
+                    overview: "Calendar invite was reviewed as readable event text.",
+                    bullets: ["The invite schedules Discussion with Connor."]
+                  },
+                  takeaways: [],
+                  connections: [],
+                  filingSteps: [
+                    "Saving ICS source file",
+                    "Reading ICS — ~18 words",
+                    "Margins is comparing it against your brain",
+                    "Prepared source page"
+                  ],
+                  asks: []
+                })
+              }]
+            }
+          }],
+          usageMetadata: {
+            promptTokenCount: 140,
+            candidatesTokenCount: 40,
+            thoughtsTokenCount: 0,
+            totalTokenCount: 180
+          }
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        });
+      };
+    });
+
+    const imported = await page.evaluate(() => window.__marginsTest.importCalendarInviteSource());
+    assert.equal(imported.fileType, "text");
+    assert.match(imported.fileText, /BEGIN:VCALENDAR/);
+    assert.match(imported.rawBody, /SUMMARY:Discussion with Connor/);
+
+    await page.locator(".source-item", { hasText: "invite.ics" }).getByRole("button", { name: "Process" }).click();
+    const card = page.locator(".source-item.ready-to-write", { hasText: "invite.ics" });
+    await card.waitFor();
+
+    const calls = await page.evaluate(() => window.__geminiCalls);
+    assert.equal(calls.length, 1);
+    const parts = calls[0].contents[0].parts;
+    assert.match(parts[0].text, /BEGIN:VCALENDAR/);
+    assert.match(parts[0].text, /SUMMARY:Discussion with Connor/);
+    assert.equal(parts.some((part) => part.inline_data?.mime_type === "text/calendar"), false);
+    assert.equal(parts.some((part) => part.inline_data), false);
+    assert.match(await card.innerText(), /Calendar invite was reviewed as readable event text/);
   } finally {
     await browser.close();
     await server.close();
@@ -908,7 +981,7 @@ test("model throttle spaces bursty Gemini calls", {
       window.__marginsTest.seedTextModelSources(3);
     });
 
-    await page.getByRole("button", { name: "Bulk ingest" }).click();
+    await page.getByRole("button", { name: "Bulk process" }).click();
     await page.waitForFunction(() => window.__fetchTimes?.length === 3);
 
     const fetchTimes = await page.evaluate(() => window.__fetchTimes);
@@ -1377,7 +1450,7 @@ test("image-only PDFs show a friendly Gemini rate-limit retry state", {
     });
 
     await page.locator(".source-item", { hasText: "saved-report.pdf" }).getByRole("button", { name: "Process" }).click();
-    await page.getByText("Review did not finish").waitFor();
+    await page.locator("#source-list").getByText("Review did not finish", { exact: true }).waitFor();
 
     const pendingText = await page.locator("#source-list").innerText();
     assert.match(pendingText, /Margins review is rate-limited right now/);
@@ -1400,7 +1473,7 @@ test("bulk ingest processes the whole pending queue", {
     await page.waitForFunction(() => Boolean(window.__marginsTest));
 
     await page.evaluate(() => window.__marginsTest.seedSourceStatusCards());
-    await page.getByRole("button", { name: "Bulk ingest" }).click();
+    await page.getByRole("button", { name: "Bulk process" }).click();
     await page.waitForFunction(() => window.__marginsTest.processedReviewNames().length === 3);
 
     assert.deepEqual(await page.evaluate(() => window.__marginsTest.processedReviewNames()), [
@@ -1415,7 +1488,7 @@ test("bulk ingest processes the whole pending queue", {
   }
 });
 
-test("vault raw sources without source notes appear in the pending inbox", {
+test("vault source files without source notes appear in the pending inbox", {
   skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
 }, async () => {
   const server = await startStaticServer();
@@ -1438,7 +1511,7 @@ test("vault raw sources without source notes appear in the pending inbox", {
   }
 });
 
-test("activity tab separates pending raw sources from recent source cards", {
+test("activity tab interleaves pending source files as ghost cards", {
   skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
 }, async () => {
   const server = await startStaticServer();
@@ -1452,9 +1525,23 @@ test("activity tab separates pending raw sources from recent source cards", {
     assert.match(activity.pendingText, /unfiled-note\.md/);
     assert.doesNotMatch(activity.pendingText, /^filed-note\.md$/m);
     assert.match(activity.recentText, /Filed Activity Note/);
+    assert.match(activity.recentText, /unfiled-note\.md/);
     assert.match(activity.recentText, /Older Activity Note/);
 
-    assert.equal(await page.locator("#recent-activity-list .activity-card").count(), 2);
+    const cards = await page.locator("#recent-activity-list .activity-card").evaluateAll((nodes) => nodes.map((node) => ({
+      text: node.innerText,
+      ghost: node.classList.contains("ghost"),
+      borderStyle: getComputedStyle(node).borderStyle,
+      beforeContent: getComputedStyle(node, "::before").content
+    })));
+    assert.equal(cards.length, 3);
+    assert.match(cards[0].text, /Filed Activity Note/);
+    assert.match(cards[1].text, /unfiled-note\.md/);
+    assert.equal(cards[1].ghost, true);
+    assert.match(cards[1].borderStyle, /dashed/);
+    assert.equal(cards[1].beforeContent, "none");
+    assert.match(cards[2].text, /Older Activity Note/);
+
     await page.locator(".activity-card", { hasText: "Filed Activity Note" }).click();
     assert.equal(await page.locator(".tab.active").innerText(), "Files");
     assert.match(await page.locator("#doc-path").innerText(), /wiki \/ projects/);
@@ -1470,7 +1557,7 @@ test("activity tab separates pending raw sources from recent source cards", {
   }
 });
 
-test("files tab opens the vault index by default", {
+test("files tab opens CLAUDE.md by default", {
   skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
 }, async () => {
   const server = await startStaticServer();
@@ -1483,22 +1570,36 @@ test("files tab opens the vault index by default", {
     await page.evaluate(() => window.__marginsTest.seedActivitySections());
     await page.getByRole("button", { name: "Files", exact: true }).click();
     await page.locator("#wiki-view.active").waitFor();
-    assert.equal(await page.locator("#doc-title").innerText(), "index");
-    assert.equal(await page.locator(".vault-file.active").getAttribute("data-path"), "wiki/index.md");
-    assert.match(await page.locator("#doc-body").inputValue(), /# Index/);
-    await page.locator(".vault-file[data-path='CLAUDE.md']").waitFor();
+    assert.equal(await page.locator("#doc-title").innerText(), "CLAUDE");
+    assert.equal(await page.locator(".vault-file.active").getAttribute("data-path"), "CLAUDE.md");
+    assert.match(await page.locator("#doc-body").inputValue(), /Read this before operating the vault/);
+    await page.waitForFunction(() => {
+      const pane = document.querySelector(".vault-document");
+      return pane && pane.scrollHeight > pane.clientHeight;
+    });
+    const scrollableDocument = await page.locator(".vault-document").evaluate((el) => ({
+      clientHeight: el.clientHeight,
+      scrollHeight: el.scrollHeight
+    }));
+    assert.ok(scrollableDocument.scrollHeight > scrollableDocument.clientHeight);
+    await page.locator(".vault-document").evaluate((el) => {
+      el.scrollTop = 320;
+    });
+    assert.ok(await page.locator(".vault-document").evaluate((el) => el.scrollTop) > 0);
+    await page.locator(".vault-folder summary", { hasText: "wiki" }).click();
+    await page.locator(".vault-file[data-path='wiki/index.md']").waitFor();
     await page.locator(".vault-folder summary", { hasText: "commands" }).waitFor();
     await page.locator(".vault-folder summary", { hasText: "agents" }).waitFor();
-    await page.locator(".vault-file[data-path='CLAUDE.md']").click();
-    assert.equal(await page.locator("#doc-title").innerText(), "CLAUDE");
-    assert.match(await page.locator("#doc-body").inputValue(), /Read this before operating the vault/);
+    await page.locator(".vault-file[data-path='wiki/index.md']").click();
+    assert.equal(await page.locator("#doc-title").innerText(), "index");
+    assert.match(await page.locator("#doc-body").inputValue(), /# Index/);
   } finally {
     await browser.close();
     await server.close();
   }
 });
 
-test("dream tab renders proposal-only overnight operations", {
+test("dream tab renders actionable vault triage", {
   skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
 }, async () => {
   const server = await startStaticServer();
@@ -1511,14 +1612,103 @@ test("dream tab renders proposal-only overnight operations", {
     await page.evaluate(() => window.__marginsTest.seedActivitySections());
     await page.getByRole("button", { name: "Dream", exact: true }).click();
     await page.locator("#dream-view.active").waitFor();
-    await page.getByText("Margins is dreaming").waitFor();
-    await page.getByText("Dreams prepare proposals only").waitFor();
-    assert.equal(await page.locator("#dream-operation-list .dream-op-card").count(), 6);
-    await page.locator("#dream-operation-list", { hasText: "Compile" }).waitFor();
-    await page.locator("#dream-operation-list", { hasText: "Lint" }).waitFor();
-    await page.locator("#dream-proposal-list", { hasText: "Append tonight's Dream Log" }).waitFor();
-    await page.locator("#dream-log-titles", { hasText: "Briefly got stuck in the margins of Filed Activity Note" }).waitFor();
-    assert.equal(await page.locator("#dream-proposal-list button:disabled").count() >= 3, true);
+    assert.equal(await page.locator("#dream-mode-toggle").inputValue(), "hybrid");
+    await page.locator("#dream-mode-help", { hasText: "Safe cleanup first" }).waitFor();
+    await page.locator("#dream-pass-status").waitFor({ state: "hidden" });
+    await page.locator("#dream-mode-toggle").selectOption("walk");
+    await page.locator("#dream-mode-help", { hasText: "Shows one decision at a time." }).waitFor();
+    await page.locator("#dream-mode-toggle").selectOption("hybrid");
+    await page.locator("#dream-mode-help", { hasText: "Safe cleanup first" }).waitFor();
+    await page.getByText("Maintenance pass ready").waitFor();
+    await page.getByText("Check maintenance items").waitFor();
+    assert.equal(await page.locator("#dream-operation-list .dream-op-card").count(), 5);
+    await page.locator("#dream-operation-list", { hasText: "Source queue" }).waitFor();
+    await page.locator("#dream-operation-list", { hasText: "System cleanup" }).waitFor();
+    await page.locator("#dream-operation-list", { hasText: "Link cleanup" }).waitFor();
+    await page.locator("#dream-proposal-list", { hasText: "Create maintenance log entry" }).waitFor();
+    await page.locator("#dream-proposal-list button", { hasText: "Bulk process now" }).waitFor();
+    await page.locator("#dream-log-entries", { hasText: "Checked source queue" }).waitFor();
+    await page.locator("#dream-log-entries", { hasText: "1 pending source still needs processing." }).waitFor();
+    assert.equal(await page.locator("#dream-proposal-list button:disabled").count(), 0);
+    await page.getByRole("button", { name: "Run maintenance" }).click();
+    await page.locator("#dream-pass-status", { hasText: "Auto + review pass finished" }).waitFor();
+    await page.locator("#dream-log-entries", { hasText: "Recorded maintenance pass" }).waitFor();
+    await page.locator("#dream-proposal-list", { hasText: "Step 1 of" }).waitFor();
+    await page.locator("#dream-proposal-list button", { hasText: "Bulk process now" }).waitFor();
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("dream broken-link action runs a cleanup helper through the configured API", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => {
+      window.__dreamHelperCalls = [];
+      window.fetch = async (_url, options = {}) => {
+        const body = JSON.parse(options.body || "{}");
+        window.__dreamHelperCalls.push(body);
+        return new Response(JSON.stringify({
+          candidates: [{
+            finishReason: "STOP",
+            content: {
+              parts: [{
+                text: [
+                  "```margins-file path=\"wiki/projects/project-home.md\"",
+                  "---",
+                  "type: project",
+                  "summary: Project home page with a review note for a missing advisor link.",
+                  "---",
+                  "",
+                  "# Project Home",
+                  "",
+                  "This project references [[Missing Advisor]] and [[known-company]].",
+                  "",
+                  "## Needs review",
+                  "",
+                  "- Missing Advisor needs Connor review before linking.",
+                  "```"
+                ].join("\n")
+              }]
+            }
+          }],
+          usageMetadata: {
+            promptTokenCount: 120,
+            candidatesTokenCount: 80,
+            thoughtsTokenCount: 0,
+            totalTokenCount: 200
+          }
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        });
+      };
+      return window.__marginsTest.seedDreamBrokenLinks();
+    });
+    await page.getByRole("button", { name: "Dream", exact: true }).click();
+    await page.locator("#dream-view.active").waitFor();
+    await page.locator("#dream-proposal-list", { hasText: "broken wiki link" }).waitFor();
+    await page.locator("#dream-proposal-list button", { hasText: "Run link helper" }).click();
+    await page.locator("#llm-view.active").waitFor();
+    await page.locator("#llm-file-list", { hasText: "wiki/projects/project-home.md" }).waitFor();
+    assert.match(await page.locator("#llm-status").textContent(), /helper returned 1 file/);
+    const calls = await page.evaluate(() => window.__dreamHelperCalls);
+    assert.equal(calls.length, 1);
+    const prompt = calls[0].contents[0].parts[0].text;
+    assert.match(prompt, /Repair broken wiki links/);
+    assert.match(prompt, /wiki\/projects\/project-home\.md -> \[\[Missing Advisor\]\]/);
+    assert.match(prompt, /Operating guardrails/);
+    assert.match(prompt, /Wiki Editor Agent/);
+    assert.match(prompt, /Source Auditor/);
+    assert.equal(calls[0].generationConfig.responseMimeType, undefined);
   } finally {
     await browser.close();
     await server.close();
@@ -1866,7 +2056,7 @@ test("workflow reconnect button opens the remembered vault", {
   }
 });
 
-test("imported documents are immediately saved to raw and survive reload", {
+test("imported documents are immediately preserved in raw/ and survive reload", {
   skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
 }, async () => {
   const server = await startStaticServer();
@@ -1877,7 +2067,7 @@ test("imported documents are immediately saved to raw and survive reload", {
     await page.waitForFunction(() => Boolean(window.__marginsTest));
 
     const result = await page.evaluate(() => window.__marginsTest.importSourceAndReloadFromRaw());
-    assert.equal(result.rawBody, "Persisted raw body\n");
+    assert.equal(result.rawBody, "Persisted source body\n");
     assert.equal(result.legacyRawExists, false);
     assert.deepEqual(result.savedBeforeReload, ["incoming-note.md"]);
     assert.equal(result.scopeBeforeReload, "vault");
@@ -2082,7 +2272,10 @@ test("pending source cards stay minimal before processing", {
     assert.match(pendingText, /script\/build\.py/);
     assert.equal((pendingText.match(/Process/g) || []).length, 3);
     assert.equal(await page.locator("#source-list .source-timestamp").count(), 3);
-    assert.doesNotMatch(pendingText, /LLM attachment|0 words|DOCX text extraction|Word text|PDF text|words ready|raw source saved/i);
+    assert.equal(await page.locator("#source-list .source-item.pending-ghost").count(), 3);
+    assert.match(await page.locator("#source-list .source-item").first().evaluate((node) => getComputedStyle(node).borderStyle), /dashed/);
+    assert.equal(await page.locator("#source-list .source-item").first().evaluate((node) => getComputedStyle(node, "::before").content), "none");
+    assert.doesNotMatch(pendingText, /LLM attachment|0 words|DOCX text extraction|Word text|PDF text|words ready|source file saved/i);
   } finally {
     await browser.close();
     await server.close();
@@ -2102,9 +2295,9 @@ test("pending source cards page in batches of six", {
     await page.evaluate(() => window.__marginsTest.seedPendingSourceCount(14));
     await page.locator("#pending-count-label", { hasText: "14 pending" }).waitFor();
     assert.equal(await page.locator("#source-list .source-item").count(), 6);
-    await page.getByRole("button", { name: "Show 6 more" }).click();
+    await page.locator("#source-list").getByRole("button", { name: "Show 6 more" }).click();
     assert.equal(await page.locator("#source-list .source-item").count(), 12);
-    await page.getByRole("button", { name: "Show all 14" }).click();
+    await page.locator("#source-list").getByRole("button", { name: "Show all 14" }).click();
     assert.equal(await page.locator("#source-list .source-item").count(), 14);
   } finally {
     await browser.close();

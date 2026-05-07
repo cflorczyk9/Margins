@@ -15,3 +15,5 @@ Target direction:
 
 - The Inbox drop zone should keep the artistic Kandinsky-style Margins visual language while staying simple.
 - Theme switching belongs in the bottom-left sidebar and should be labeled clearly.
+
+The drop zone now carries a Kandinsky composition (yellow disk with vermillion + ink core, cobalt arc, open black triangle, scattered violet/green/ink dots) behind the dashed frame at 0.5 opacity, waking to 0.85 on hover or drag. The "Endpoint inbox polish" stayed quiet on the *frame*; the *art* lives inside.

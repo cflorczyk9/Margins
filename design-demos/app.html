@@ -1,0 +1,2311 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Margins · Bauhaus prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=Manrope:wght@400..800&family=JetBrains+Mono:wght@400..600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --vermillion: #d63a2f;
+  --cobalt:     #2c5aa0;
+  --mustard:    #f0c14b;
+  --violet:     #6a4f8c;
+  --green:      #6fa863;
+  --ink:        #1a1612;
+  --ink-2:      #4a423a;
+  --ink-3:      #6b6253;
+  --muted:      #847a6b;
+  --faint:      #aaa192;
+  --paper:      #fbf8f2;
+  --paper-2:    #f6f1e6;
+  --mist:       #f3ece1;
+  --line:       #e8e2d6;
+  --line-soft:  #ece6d9;
+  --glass:      rgba(252, 249, 244, 0.62);
+  --glass-2:    rgba(252, 249, 244, 0.86);
+  --glass-edge: rgba(26, 22, 18, 0.07);
+  --shadow-sm:  0 2px 6px rgba(26,22,18,0.04);
+  --shadow-md:  0 12px 32px rgba(26,22,18,0.07);
+  --shadow-lg:  0 32px 80px rgba(26,22,18,0.10);
+  --ease:       cubic-bezier(0.16,1,0.3,1);
+}
+
+@property --mesh-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 220deg;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  min-height: 100vh;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "Manrope", -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 14.5px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body::before {
+  content: "";
+  position: fixed; inset: 0;
+  background:
+    conic-gradient(from var(--mesh-angle) at 18% 22%,
+      #f0c14b22, #d63a2f24, #2c5aa022, #6a4f8c1c, #6fa8631c, #f0c14b22),
+    radial-gradient(circle at 86% 78%, #6fa86322, transparent 42%),
+    radial-gradient(circle at 12% 88%, #2c5aa022, transparent 38%);
+  filter: blur(32px) saturate(120%);
+  animation: mesh-drift 90s linear infinite;
+  z-index: -1;
+}
+@keyframes mesh-drift { to { --mesh-angle: 580deg; } }
+
+button { font-family: inherit; cursor: pointer; }
+
+.shell {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  min-height: 100vh;
+}
+
+/* ─── Sidebar ─────────────────────────────────── */
+
+.sidebar {
+  position: sticky; top: 0;
+  height: 100vh;
+  padding: 24px 18px;
+  background: var(--glass);
+  backdrop-filter: blur(28px) saturate(150%);
+  -webkit-backdrop-filter: blur(28px) saturate(150%);
+  border-right: 1px solid var(--glass-edge);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  z-index: 10;
+}
+
+.brand {
+  display: flex; align-items: center; gap: 12px;
+  padding: 4px 6px;
+}
+
+.brand-mark {
+  width: 36px; height: 22px;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.brand-mark .ring {
+  position: absolute;
+  border-radius: 50%;
+  left: 22px; top: 11px;
+  transform: translate(-50%, -50%);
+}
+
+.brand-mark .ring.amber       { width: 20px; height: 20px; background: var(--mustard); animation: spin 240s linear infinite; }
+.brand-mark .ring.vermillion  { width: 12px; height: 12px; background: var(--vermillion); }
+.brand-mark .ring.ink         { width: 4px;  height: 4px;  background: var(--ink); }
+.brand-mark .stem {
+  position: absolute;
+  left: 7px; top: 3px;
+  width: 1.6px; height: 16px;
+  background: var(--ink);
+}
+@keyframes spin { to { transform: translate(-50%, -50%) rotate(360deg); } }
+
+.brand-name {
+  font-family: "Fraunces", serif;
+  font-size: 22px;
+  font-weight: 320;
+  font-variation-settings: "opsz" 36;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.brand-name em { font-style: italic; font-weight: 380; }
+
+.brand-tag {
+  margin-left: auto;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
+  color: var(--muted);
+}
+
+.section-eyebrow {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 8px 8px 4px;
+}
+
+.nav { display: grid; gap: 1px; }
+
+.nav-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  color: var(--ink-2);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 200ms var(--ease), transform 200ms var(--ease);
+  border: 0;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+}
+.nav-item:hover { background: rgba(26,22,18,0.04); }
+.nav-item.active { background: rgba(26,22,18,0.07); color: var(--ink); }
+
+.nav-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: transform 200ms var(--ease);
+}
+.nav-item:hover .nav-dot { transform: scale(1.3); }
+
+.nav-dot.activity { background: var(--vermillion); }
+.nav-dot.entities { background: var(--cobalt); }
+.nav-dot.files    { background: var(--mustard); }
+.nav-dot.dream    { background: var(--violet); }
+
+.nav-count {
+  margin-left: auto;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.vault-card {
+  margin-top: auto;
+  padding: 14px;
+  border-radius: 14px;
+  background: rgba(252,249,244,0.6);
+  border: 1px solid var(--glass-edge);
+  font-size: 12.5px;
+}
+
+.vault-title {
+  font-family: "JetBrains Mono", monospace;
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.vault-meta {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.vault-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-top: 8px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(111,168,99,0.16);
+  color: #4d7544;
+  font-size: 10.5px;
+  font-weight: 600;
+}
+.vault-pill::before {
+  content: ""; width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 6px var(--green);
+}
+
+.theme-toggle {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 6px;
+  font-size: 11px;
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.theme-toggle .pill {
+  width: 28px; height: 16px; border-radius: 999px;
+  background: var(--mist);
+  position: relative;
+  border: 1px solid var(--line);
+}
+.theme-toggle .pill::after {
+  content: ""; position: absolute;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  top: 2px; left: 2px;
+  background: var(--ink);
+}
+
+/* ─── Main ────────────────────────────────────── */
+
+main {
+  padding: 56px clamp(28px, 5vw, 72px) 96px;
+  position: relative;
+  min-width: 0;
+}
+
+.view { display: none; animation: view-fade 320ms var(--ease); }
+.view.active { display: block; }
+@keyframes view-fade {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.page-head { margin-bottom: 36px; }
+
+.page-head .meta {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 14px;
+}
+
+.page-head h1 {
+  font-family: "Fraunces", serif;
+  font-size: clamp(48px, 6vw, 84px);
+  font-weight: 300;
+  font-variation-settings: "opsz" 144;
+  letter-spacing: -0.025em;
+  line-height: 0.94;
+  color: var(--ink);
+}
+.page-head h1 em { font-style: italic; font-weight: 320; }
+
+.page-head p {
+  max-width: 520px;
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+/* ─── Canvas (drop zone / hero) ───────────────── */
+
+.canvas {
+  position: relative;
+  border-radius: 24px;
+  background: var(--glass);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  border: 1px solid var(--glass-edge);
+  padding: 48px;
+  min-height: 420px;
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+}
+
+.canvas svg.composition {
+  position: absolute;
+  inset: 0; width: 100%; height: 100%;
+}
+
+.canvas-overlay {
+  position: relative;
+  z-index: 2;
+  max-width: 380px;
+}
+
+.canvas-overlay h2 {
+  font-family: "Fraunces", serif;
+  font-size: 28px;
+  font-weight: 350;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  margin-bottom: 8px;
+}
+.canvas-overlay h2 em { font-style: italic; }
+
+.canvas-overlay p { color: var(--muted); font-size: 14px; }
+
+.canvas-cta {
+  display: inline-flex; align-items: center; gap: 8px;
+  margin-top: 22px;
+  padding: 11px 18px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  border: 0;
+  transition: transform 240ms var(--ease);
+}
+.canvas-cta:hover { transform: translateY(-1px); }
+.canvas-cta .dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--mustard);
+}
+
+.canvas-secondary {
+  display: inline-flex; align-items: center; gap: 8px;
+  margin-top: 22px;
+  margin-left: 8px;
+  padding: 11px 18px;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid var(--glass-edge);
+  transition: background 200ms var(--ease);
+}
+.canvas-secondary:hover { background: rgba(26,22,18,0.04); }
+
+/* ─── Section primitives ──────────────────────── */
+
+.section { margin-top: 48px; }
+
+.section-head {
+  display: flex; align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+.section-head h2 {
+  font-family: "Fraunces", serif;
+  font-size: 22px;
+  font-weight: 350;
+  letter-spacing: -0.01em;
+}
+.section-head h2 em { font-style: italic; }
+.section-head .head-meta {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* ─── Processing banner ───────────────────────── */
+
+.processing {
+  margin-top: 22px;
+  padding: 18px 20px;
+  border-radius: 18px;
+  background: var(--glass-2);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--shadow-sm);
+}
+
+.processing-head {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 14px;
+}
+.processing-head .label {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--vermillion);
+}
+.processing-head .label::before {
+  content: "● ";
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.processing-head h3 {
+  font-family: "Fraunces", serif;
+  font-size: 17px;
+  font-weight: 380;
+  letter-spacing: -0.01em;
+}
+
+.processing-list {
+  display: flex; flex-direction: column;
+  gap: 10px;
+}
+
+.processing-row {
+  display: grid;
+  grid-template-columns: 24px 1fr 200px auto;
+  gap: 14px;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(252,249,244,0.5);
+  font-size: 13px;
+}
+
+.proc-disk {
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: var(--mustard);
+  box-shadow: 0 0 0 3px rgba(240,193,75,0.18);
+  position: relative;
+}
+.proc-disk.parsing { background: var(--cobalt); animation: pulse-ring 1.8s ease-in-out infinite; box-shadow: 0 0 0 3px rgba(44,90,160,0.18); }
+.proc-disk.done    { background: var(--green); box-shadow: 0 0 0 3px rgba(111,168,99,0.18); }
+.proc-disk.queued  { background: transparent; border: 2px dashed var(--mustard); box-shadow: none; }
+@keyframes pulse-ring {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(44,90,160,0.18); }
+  50%      { box-shadow: 0 0 0 8px rgba(44,90,160,0.10); }
+}
+
+.proc-name {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12.5px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.proc-bar {
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(26,22,18,0.06);
+  overflow: hidden;
+  position: relative;
+}
+.proc-bar .fill {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--cobalt), var(--vermillion));
+  transition: width 600ms var(--ease);
+}
+
+.proc-status {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.proc-status.done { color: #4d7544; }
+
+/* ─── Activity rows ───────────────────────────── */
+
+.activity-list { display: flex; flex-direction: column; gap: 4px; }
+
+.activity-row {
+  display: grid;
+  grid-template-columns: 32px 1fr auto auto;
+  gap: 16px;
+  align-items: center;
+  padding: 16px 22px;
+  border-radius: 14px;
+  background: var(--glass);
+  border: 1px solid var(--glass-edge);
+  cursor: pointer;
+  transition: transform 160ms var(--ease), background 200ms ease;
+}
+.activity-row:hover {
+  background: var(--glass-2);
+  transform: translateX(3px);
+}
+
+.activity-mark {
+  position: relative;
+  width: 32px; height: 32px;
+}
+.activity-mark .a-disk {
+  position: absolute;
+  border-radius: 50%;
+  left: 16px; top: 16px;
+  transform: translate(-50%,-50%);
+}
+.activity-mark .a-disk.outer  { width: 26px; height: 26px; }
+.activity-mark .a-disk.middle { width: 14px; height: 14px; background: var(--ink); opacity: 0.16; }
+.activity-mark .a-disk.core   { width: 5px;  height: 5px; }
+
+.activity-row.person  .a-disk.outer { background: var(--vermillion); }
+.activity-row.person  .a-disk.core  { background: var(--ink); }
+.activity-row.project .a-disk.outer { background: var(--green); }
+.activity-row.project .a-disk.core  { background: var(--ink); }
+.activity-row.concept .a-disk.outer { background: var(--violet); }
+.activity-row.concept .a-disk.core  { background: var(--mustard); }
+.activity-row.company .a-disk.outer { background: var(--cobalt); }
+.activity-row.company .a-disk.core  { background: var(--mustard); }
+.activity-row.source  .a-disk.outer { background: var(--mustard); }
+.activity-row.source  .a-disk.core  { background: var(--ink); }
+
+.activity-row.review {
+  border-color: rgba(240,193,75,0.5);
+  background: rgba(240,193,75,0.08);
+}
+.activity-row.review:hover { background: rgba(240,193,75,0.14); }
+
+.activity-title {
+  font-family: "Manrope", sans-serif;
+  font-weight: 500;
+  font-size: 14.5px;
+  color: var(--ink);
+}
+
+.activity-path {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.activity-tags { display: flex; gap: 6px; }
+
+.tag {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(26,22,18,0.05);
+  color: var(--muted);
+}
+
+.activity-time {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+/* Inline review block */
+.review-prompt {
+  grid-column: 1 / -1;
+  margin-top: 10px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: rgba(252,249,244,0.7);
+  border: 1px solid var(--glass-edge);
+}
+.review-prompt .q {
+  font-family: "Fraunces", serif;
+  font-size: 16px;
+  letter-spacing: -0.01em;
+  margin-bottom: 6px;
+}
+.review-prompt .reasoning {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+.review-actions { display: flex; gap: 8px; }
+.review-actions button {
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--glass-edge);
+  background: var(--paper);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.review-actions button.yes {
+  background: var(--ink); color: var(--paper); border-color: var(--ink);
+}
+.review-actions button.no { color: var(--muted); }
+.review-actions button.edit { color: var(--cobalt); }
+
+/* ─── Entities view ───────────────────────────── */
+
+.entity-controls {
+  display: flex;
+  gap: 14px;
+  margin-bottom: 24px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.entity-search {
+  display: flex; align-items: center; gap: 10px;
+  flex: 1; min-width: 280px;
+  padding: 12px 16px;
+  border-radius: 14px;
+  background: var(--glass-2);
+  border: 1px solid var(--glass-edge);
+}
+.entity-search input {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--ink);
+  outline: none;
+}
+.entity-search input::placeholder { color: var(--faint); }
+.entity-search kbd {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(26,22,18,0.06);
+  color: var(--muted);
+}
+
+.chip-row {
+  display: flex; gap: 6px; flex-wrap: wrap;
+}
+
+.chip {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 13px;
+  border-radius: 999px;
+  background: var(--glass);
+  border: 1px solid var(--glass-edge);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: all 200ms var(--ease);
+}
+.chip:hover { background: var(--glass-2); }
+.chip.active {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}
+.chip-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+}
+.chip.active .chip-dot { box-shadow: 0 0 0 2px rgba(255,255,255,0.3); }
+
+.entity-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+}
+
+.entity-card {
+  position: relative;
+  padding: 22px;
+  border-radius: 18px;
+  background: var(--glass);
+  border: 1px solid var(--glass-edge);
+  overflow: hidden;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: transform 240ms var(--ease), box-shadow 240ms var(--ease);
+}
+.entity-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  background: var(--glass-2);
+}
+
+.entity-card .entity-mark {
+  position: absolute;
+  top: 18px; right: 18px;
+  width: 28px; height: 28px;
+  border-radius: 50%;
+}
+
+.entity-card.person  .entity-mark { background: var(--vermillion); }
+.entity-card.project .entity-mark { background: var(--green); }
+.entity-card.company .entity-mark { background: var(--cobalt); }
+.entity-card.concept .entity-mark { background: var(--violet); }
+
+.entity-card.pinned .entity-mark {
+  background:
+    radial-gradient(circle at 50% 50%, var(--ink) 0 2.5px, transparent 2.5px),
+    radial-gradient(circle at 50% 50%, var(--vermillion) 0 8px, transparent 8.5px),
+    var(--mustard);
+}
+
+.entity-card h3 {
+  font-family: "Fraunces", serif;
+  font-size: 22px;
+  font-weight: 380;
+  font-variation-settings: "opsz" 36;
+  letter-spacing: -0.01em;
+  margin-bottom: 4px;
+  padding-right: 38px;
+}
+
+.entity-card .entity-meta {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+
+.entity-card p {
+  color: var(--ink-2);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.entity-stats {
+  display: flex; gap: 12px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--glass-edge);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  color: var(--muted);
+}
+.entity-stats span strong {
+  color: var(--ink);
+  font-weight: 600;
+  margin-right: 4px;
+}
+
+/* ─── Files view ──────────────────────────────── */
+
+.files-layout {
+  display: grid;
+  grid-template-columns: minmax(240px, 300px) 1fr;
+  gap: 18px;
+  height: calc(100vh - 220px);
+  min-height: 520px;
+}
+
+.file-tree {
+  padding: 18px;
+  border-radius: 18px;
+  background: var(--glass);
+  border: 1px solid var(--glass-edge);
+  overflow: auto;
+}
+
+.tree-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--glass-edge);
+}
+.tree-head h3 {
+  font-family: "Fraunces", serif;
+  font-size: 16px;
+  font-weight: 380;
+}
+.tree-head .count {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.tree-folder { margin-bottom: 4px; }
+
+.tree-folder summary {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  list-style: none;
+  font-weight: 500;
+  color: var(--ink-2);
+  font-size: 13.5px;
+}
+.tree-folder summary::-webkit-details-marker { display: none; }
+.tree-folder summary::before {
+  content: "▸";
+  display: inline-block;
+  width: 10px;
+  font-size: 10px;
+  color: var(--muted);
+  transition: transform 200ms var(--ease);
+}
+.tree-folder[open] > summary::before { transform: rotate(90deg); }
+.tree-folder summary:hover { background: rgba(26,22,18,0.04); }
+
+.tree-folder .tree-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.tree-files {
+  display: flex; flex-direction: column;
+  margin-left: 18px;
+  border-left: 1px solid var(--line-soft);
+}
+
+.tree-file {
+  padding: 4px 10px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11.5px;
+  color: var(--muted);
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex; align-items: center; gap: 8px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  width: 100%;
+  transition: all 160ms var(--ease);
+}
+.tree-file:hover { background: rgba(26,22,18,0.04); color: var(--ink); }
+.tree-file.active { background: rgba(214,58,47,0.1); color: var(--ink); font-weight: 500; }
+
+.tree-file::before {
+  content: "•";
+  color: var(--faint);
+  font-size: 12px;
+}
+
+.editor {
+  padding: 28px 36px;
+  border-radius: 18px;
+  background: var(--paper);
+  border: 1px solid var(--glass-edge);
+  overflow: auto;
+  position: relative;
+}
+
+.editor-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--glass-edge);
+}
+.editor-path {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.editor-meta {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.editor pre {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.editor pre .frontmatter { color: var(--muted); }
+.editor pre .h1, .editor pre .h2 {
+  font-family: "Fraunces", serif;
+  font-weight: 380;
+  color: var(--ink);
+}
+.editor pre .h1 { font-size: 22px; }
+.editor pre .h2 { font-size: 17px; }
+.editor pre .link { color: var(--cobalt); }
+.editor pre .tag  { color: var(--vermillion); background: transparent; padding: 0; }
+.editor pre .strong { font-weight: 700; color: var(--ink); }
+
+/* ─── Dream view ──────────────────────────────── */
+
+.dream-canvas {
+  position: relative;
+  border-radius: 24px;
+  background:
+    conic-gradient(from 200deg at 30% 50%, #f0c14b22, #d63a2f1c, #2c5aa022, #6a4f8c1c, #6fa8631c, #f0c14b22),
+    var(--glass);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border: 1px solid var(--glass-edge);
+  padding: 36px 40px;
+  min-height: 360px;
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+}
+
+.dream-canvas svg.constellation {
+  position: absolute;
+  inset: 0; width: 100%; height: 100%;
+}
+
+.dream-canvas svg.constellation circle.node {
+  cursor: pointer;
+  transition: r 240ms var(--ease), filter 240ms var(--ease);
+}
+.dream-canvas svg.constellation circle.node:hover {
+  filter: drop-shadow(0 0 12px rgba(26,22,18,0.18));
+}
+
+.dream-overlay {
+  position: relative;
+  z-index: 2;
+  max-width: 360px;
+}
+.dream-overlay h2 {
+  font-family: "Fraunces", serif;
+  font-style: italic;
+  font-size: 32px;
+  font-weight: 320;
+  letter-spacing: -0.02em;
+  margin-bottom: 8px;
+}
+.dream-overlay p {
+  color: var(--muted);
+  font-size: 14px;
+}
+.dream-meta {
+  margin-top: 18px;
+  display: flex; gap: 12px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  color: var(--muted);
+}
+.dream-meta span strong { color: var(--ink); }
+
+.dream-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 14px;
+  margin-top: 32px;
+}
+
+.dream-card {
+  position: relative;
+  padding: 22px;
+  border-radius: 18px;
+  background: var(--glass-2);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--shadow-sm);
+}
+
+.dream-card .dream-tag {
+  display: inline-flex; align-items: center; gap: 7px;
+  margin-bottom: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: rgba(106,79,140,0.12);
+  color: var(--violet);
+}
+.dream-card .dream-tag::before {
+  content: ""; width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--violet);
+}
+.dream-card .dream-tag.connect { background: rgba(44,90,160,0.10); color: var(--cobalt); }
+.dream-card .dream-tag.connect::before { background: var(--cobalt); }
+.dream-card .dream-tag.touch { background: rgba(214,58,47,0.10); color: var(--vermillion); }
+.dream-card .dream-tag.touch::before { background: var(--vermillion); }
+.dream-card .dream-tag.compile { background: rgba(111,168,99,0.14); color: #4d7544; }
+.dream-card .dream-tag.compile::before { background: var(--green); }
+
+.dream-card h3 {
+  font-family: "Fraunces", serif;
+  font-size: 19px;
+  font-weight: 380;
+  letter-spacing: -0.01em;
+  margin-bottom: 8px;
+  line-height: 1.3;
+}
+.dream-card h3 em { font-style: italic; }
+
+.dream-card p {
+  color: var(--ink-2);
+  font-size: 13.5px;
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+.dream-card p .ent {
+  color: var(--ink);
+  font-weight: 600;
+  border-bottom: 1px dashed var(--faint);
+  cursor: pointer;
+}
+
+.dream-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.dream-actions button {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--glass-edge);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.dream-actions button.primary {
+  background: var(--ink); color: var(--paper); border-color: var(--ink);
+}
+
+/* ─── Entity detail panel ─────────────────────── */
+
+.entity-detail {
+  position: fixed;
+  top: 0; right: 0;
+  width: min(520px, 100vw);
+  height: 100vh;
+  background: var(--paper);
+  border-left: 1px solid var(--glass-edge);
+  box-shadow: var(--shadow-lg);
+  z-index: 50;
+  transform: translateX(100%);
+  transition: transform 380ms var(--ease);
+  overflow-y: auto;
+}
+.entity-detail.open { transform: translateX(0); }
+
+.detail-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(26,22,18,0.16);
+  backdrop-filter: blur(2px);
+  z-index: 40;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 380ms var(--ease);
+}
+.detail-backdrop.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.detail-head {
+  position: sticky; top: 0;
+  background: var(--paper);
+  padding: 28px 32px 20px;
+  border-bottom: 1px solid var(--glass-edge);
+  z-index: 1;
+}
+
+.detail-close {
+  position: absolute;
+  top: 18px; right: 18px;
+  width: 32px; height: 32px;
+  border-radius: 999px;
+  border: 1px solid var(--glass-edge);
+  background: var(--paper);
+  color: var(--muted);
+  font-size: 16px;
+  display: grid; place-items: center;
+  transition: all 200ms var(--ease);
+}
+.detail-close:hover { background: var(--mist); color: var(--ink); }
+
+.detail-mark-row {
+  display: flex; align-items: center; gap: 16px;
+  margin-bottom: 14px;
+}
+.detail-mark {
+  width: 56px; height: 56px;
+  flex-shrink: 0;
+  position: relative;
+}
+.detail-mark .ring {
+  position: absolute;
+  border-radius: 50%;
+  left: 50%; top: 50%;
+  transform: translate(-50%,-50%);
+}
+.detail-mark .ring.outer  { width: 52px; height: 52px; }
+.detail-mark .ring.middle { width: 30px; height: 30px; background: var(--ink); opacity: 0.18; }
+.detail-mark .ring.core   { width: 12px; height: 12px; }
+
+.entity-detail.person  .detail-mark .ring.outer { background: var(--vermillion); }
+.entity-detail.person  .detail-mark .ring.core  { background: var(--ink); }
+.entity-detail.project .detail-mark .ring.outer { background: var(--green); }
+.entity-detail.project .detail-mark .ring.core  { background: var(--ink); }
+.entity-detail.company .detail-mark .ring.outer { background: var(--cobalt); }
+.entity-detail.company .detail-mark .ring.core  { background: var(--mustard); }
+.entity-detail.concept .detail-mark .ring.outer { background: var(--violet); }
+.entity-detail.concept .detail-mark .ring.core  { background: var(--mustard); }
+
+.detail-name {
+  font-family: "Fraunces", serif;
+  font-size: 30px;
+  font-weight: 350;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.detail-meta {
+  display: flex; gap: 8px; flex-wrap: wrap;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.detail-actions {
+  display: flex; gap: 8px; flex-wrap: wrap;
+  margin-top: 14px;
+}
+.detail-actions button {
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--glass-edge);
+  background: transparent;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.detail-actions button.primary { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+.detail-body { padding: 28px 32px 80px; }
+
+.detail-section { margin-bottom: 28px; }
+
+.detail-section .label {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.detail-snapshot {
+  list-style: none;
+  display: flex; flex-direction: column;
+  gap: 8px;
+}
+.detail-snapshot li {
+  position: relative;
+  padding-left: 18px;
+  font-size: 14px;
+  color: var(--ink-2);
+  line-height: 1.5;
+}
+.detail-snapshot li::before {
+  content: ""; position: absolute;
+  left: 4px; top: 9px;
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--mustard);
+}
+.detail-snapshot li strong {
+  color: var(--ink);
+  font-weight: 600;
+  margin-right: 6px;
+}
+
+.detail-frontmatter {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 18px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  background: var(--mist);
+  padding: 14px 16px;
+  border-radius: 10px;
+}
+.detail-frontmatter dt { color: var(--muted); }
+.detail-frontmatter dd { color: var(--ink); }
+
+.detail-source-list { display: flex; flex-direction: column; gap: 2px; }
+
+.detail-source {
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  gap: 14px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 160ms var(--ease);
+}
+.detail-source:hover { background: var(--mist); }
+.detail-source .date {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  color: var(--muted);
+  padding-top: 2px;
+}
+.detail-source .title {
+  font-size: 13.5px;
+  color: var(--ink);
+  margin-bottom: 2px;
+}
+.detail-source .path {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10.5px;
+  color: var(--faint);
+}
+
+.detail-links {
+  display: flex; flex-wrap: wrap; gap: 6px;
+}
+.detail-link-chip {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--mist);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink-2);
+  cursor: pointer;
+  border: 0;
+  transition: background 160ms var(--ease);
+}
+.detail-link-chip:hover { background: var(--line); }
+.detail-link-chip .d {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+}
+
+/* ─── Toast ───────────────────────────────────── */
+
+.toast {
+  position: fixed;
+  bottom: 24px; left: 50%;
+  transform: translate(-50%, 80px);
+  padding: 12px 20px;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 999px;
+  box-shadow: var(--shadow-lg);
+  z-index: 100;
+  opacity: 0;
+  pointer-events: none;
+  transition: all 360ms var(--ease);
+}
+.toast.show {
+  transform: translate(-50%, 0);
+  opacity: 1;
+}
+
+.demo-tag {
+  position: fixed;
+  bottom: 18px; right: 18px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: var(--glass-2);
+  border: 1px solid var(--glass-edge);
+  padding: 8px 14px;
+  border-radius: 999px;
+  backdrop-filter: blur(16px) saturate(150%);
+  z-index: 30;
+}
+.demo-tag .dot {
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--mustard);
+  margin-right: 8px;
+  vertical-align: middle;
+}
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">
+        <div class="ring amber"></div>
+        <div class="ring vermillion"></div>
+        <div class="ring ink"></div>
+        <div class="stem"></div>
+      </div>
+      <div class="brand-name">m<em>argins</em></div>
+      <div class="brand-tag">v0.4</div>
+    </div>
+
+    <div class="section-eyebrow">Workspace</div>
+    <nav class="nav">
+      <button class="nav-item active" data-view="activity"><span class="nav-dot activity"></span>Activity<span class="nav-count">14</span></button>
+      <button class="nav-item" data-view="entities"><span class="nav-dot entities"></span>Entities<span class="nav-count">312</span></button>
+      <button class="nav-item" data-view="files"><span class="nav-dot files"></span>Files<span class="nav-count">1,247</span></button>
+      <button class="nav-item" data-view="dream"><span class="nav-dot dream"></span>Dream<span class="nav-count">7</span></button>
+    </nav>
+
+    <div class="vault-card">
+      <div class="vault-title">~/connor_brain2</div>
+      <div class="vault-meta">312 entities · 1,247 sources<br>43 sources this week</div>
+      <div class="vault-pill">Synced 4 min ago</div>
+    </div>
+
+    <label class="theme-toggle">
+      <span class="pill"></span>
+      <span>Morning</span>
+    </label>
+  </aside>
+
+  <main>
+
+    <!-- ═══════ ACTIVITY ═══════ -->
+    <section id="activity-view" class="view active">
+      <div class="page-head">
+        <div class="meta">Thu, May 07 · 14 ingested today</div>
+        <h1>Act<em>ivity</em></h1>
+        <p>Drop a file anywhere on this canvas. Margins reads what comes in, asks only what it needs, files everything locally.</p>
+      </div>
+
+      <section class="canvas">
+        <svg class="composition" viewBox="0 0 800 420" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+          <line x1="40" y1="380" x2="760" y2="60" stroke="#1a1612" stroke-width="0.7" opacity="0.5"/>
+          <path d="M 60 110 Q 400 230 740 80" fill="none" stroke="#2c5aa0" stroke-width="2.4" stroke-linecap="round" opacity="0.85"/>
+          <g style="mix-blend-mode: multiply;">
+            <circle cx="600" cy="160" r="92" fill="#f0c14b"/>
+            <circle cx="600" cy="160" r="54" fill="#d63a2f"/>
+            <circle cx="600" cy="160" r="16" fill="#1a1612"/>
+          </g>
+          <polygon points="80,240 280,280 160,400" fill="none" stroke="#1a1612" stroke-width="2" stroke-linejoin="round"/>
+          <circle cx="160" cy="120" r="13" fill="#6a4f8c"/>
+          <circle cx="400" cy="350" r="9" fill="#6fa863"/>
+          <circle cx="60" cy="360" r="6" fill="#d63a2f"/>
+          <circle cx="700" cy="360" r="4" fill="#1a1612"/>
+          <circle cx="320" cy="100" r="3" fill="#1a1612"/>
+          <line x1="100" y1="150" x2="160" y2="180" stroke="#1a1612" stroke-width="1.4" stroke-linecap="round"/>
+        </svg>
+
+        <div class="canvas-overlay">
+          <h2>Drop anything <em>in</em>.</h2>
+          <p>Files, transcripts, voice memos, photos. The painting grows as you ingest.</p>
+          <button class="canvas-cta" id="simulate-ingest"><span class="dot"></span>Simulate ingest</button>
+          <button class="canvas-secondary">Choose folder</button>
+        </div>
+      </section>
+
+      <!-- Processing banner -->
+      <div class="processing" id="processing-banner">
+        <div class="processing-head">
+          <span class="label">Processing</span>
+          <h3>3 sources in flight</h3>
+        </div>
+        <div class="processing-list">
+          <div class="processing-row">
+            <div class="proc-disk done"></div>
+            <div class="proc-name">meeting-2026-05-07-mark-loh-call.txt</div>
+            <div class="proc-bar"><div class="fill" style="width:100%"></div></div>
+            <div class="proc-status done">✓ Filed · 12s</div>
+          </div>
+          <div class="processing-row">
+            <div class="proc-disk parsing"></div>
+            <div class="proc-name">gullotta-followup-thread.eml</div>
+            <div class="proc-bar"><div class="fill" style="width:62%"></div></div>
+            <div class="proc-status">Parsing entities…</div>
+          </div>
+          <div class="processing-row">
+            <div class="proc-disk queued"></div>
+            <div class="proc-name">hubspot-export-2026-05-07.csv</div>
+            <div class="proc-bar"><div class="fill" style="width:8%"></div></div>
+            <div class="proc-status">Queued · 1 of 3</div>
+          </div>
+        </div>
+      </div>
+
+      <section class="section">
+        <div class="section-head">
+          <h2>Recent <em>activity</em></h2>
+          <span class="head-meta">Last 72 hours · 23 sources</span>
+        </div>
+
+        <div class="activity-list">
+
+          <div class="activity-row review">
+            <div class="activity-mark"><div class="a-disk outer"></div><div class="a-disk middle"></div><div class="a-disk core"></div></div>
+            <div>
+              <div class="activity-title">Margins design language exploration</div>
+              <div class="activity-path">wiki/coding/source-2026-05-06-margins-design.md</div>
+            </div>
+            <div class="activity-tags"><span class="tag">review</span><span class="tag">concept</span></div>
+            <div class="activity-time">just now</div>
+            <div class="review-prompt">
+              <div class="q">Promote <strong>Bauhaus</strong> to a concept page?</div>
+              <div class="reasoning">It's mentioned 8 times across this source plus 3 earlier ingests. Last 30 days, no entity page exists. Closest existing concept: design-language.</div>
+              <div class="review-actions">
+                <button class="yes">Yes, create</button>
+                <button class="no">No, skip</button>
+                <button class="edit">Edit reasoning →</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="activity-row person" data-entity="bob-casey">
+            <div class="activity-mark"><div class="a-disk outer"></div><div class="a-disk middle"></div><div class="a-disk core"></div></div>
+            <div>
+              <div class="activity-title">Bob call prep — closing thread</div>
+              <div class="activity-path">wiki/career/source-2026-05-06-bob-call-prep.md</div>
+            </div>
+            <div class="activity-tags"><span class="tag">person</span><span class="tag">meeting</span></div>
+            <div class="activity-time">2h ago</div>
+          </div>
+
+          <div class="activity-row project" data-entity="margins">
+            <div class="activity-mark"><div class="a-disk outer"></div><div class="a-disk middle"></div><div class="a-disk core"></div></div>
+            <div>
+              <div class="activity-title">Margins becomes lead build, Briefly enters maintenance</div>
+              <div class="activity-path">wiki/ideas/source-2026-05-04-margins-strategic-shift.md</div>
+            </div>
+            <div class="activity-tags"><span class="tag">project</span><span class="tag">decision</span></div>
+            <div class="activity-time">3d ago</div>
+          </div>
+
+          <div class="activity-row company" data-entity="centric-wm">
+            <div class="activity-mark"><div class="a-disk outer"></div><div class="a-disk middle"></div><div class="a-disk core"></div></div>
+            <div>
+              <div class="activity-title">Centric WM uses Orion for portfolio reporting</div>
+              <div class="activity-path">wiki/projects/source-2026-04-30-ellis-orion.md</div>
+            </div>
+            <div class="activity-tags"><span class="tag">company</span><span class="tag">intel</span></div>
+            <div class="activity-time">7d ago</div>
+          </div>
+
+          <div class="activity-row concept">
+            <div class="activity-mark"><div class="a-disk outer"></div><div class="a-disk middle"></div><div class="a-disk core"></div></div>
+            <div>
+              <div class="activity-title">Halluminate pivots to RL Environments for Financial Services</div>
+              <div class="activity-path">wiki/ideas/source-2026-05-02-halluminate-pivot.md</div>
+            </div>
+            <div class="activity-tags"><span class="tag">concept</span><span class="tag">peer</span></div>
+            <div class="activity-time">5d ago</div>
+          </div>
+
+          <div class="activity-row source">
+            <div class="activity-mark"><div class="a-disk outer"></div><div class="a-disk middle"></div><div class="a-disk core"></div></div>
+            <div>
+              <div class="activity-title">Anthropic ships native memory across Free + Pro</div>
+              <div class="activity-path">wiki/ideas/source-2026-04-07-anthropic-native-memory.md</div>
+            </div>
+            <div class="activity-tags"><span class="tag">source</span><span class="tag">platform</span></div>
+            <div class="activity-time">last month</div>
+          </div>
+
+        </div>
+      </section>
+    </section>
+
+
+    <!-- ═══════ ENTITIES ═══════ -->
+    <section id="entities-view" class="view">
+      <div class="page-head">
+        <div class="meta">312 entities · 14 pinned · 8 stale</div>
+        <h1>Ent<em>ities</em></h1>
+        <p>People, projects, companies, and ideas surfaced from your vault. Click any card to open.</p>
+      </div>
+
+      <div class="entity-controls">
+        <label class="entity-search">
+          <input type="search" placeholder="Find a person, project, idea…">
+          <kbd>⌘F</kbd>
+        </label>
+        <div class="chip-row">
+          <button class="chip active" data-filter="all">All <span class="chip-dot" style="background:var(--ink)"></span></button>
+          <button class="chip" data-filter="person"><span class="chip-dot" style="background:var(--vermillion)"></span>Person · 142</button>
+          <button class="chip" data-filter="project"><span class="chip-dot" style="background:var(--green)"></span>Project · 18</button>
+          <button class="chip" data-filter="company"><span class="chip-dot" style="background:var(--cobalt)"></span>Company · 64</button>
+          <button class="chip" data-filter="concept"><span class="chip-dot" style="background:var(--violet)"></span>Concept · 88</button>
+        </div>
+      </div>
+
+      <div class="entity-grid" id="entity-grid">
+        <!-- Cards rendered by JS -->
+      </div>
+    </section>
+
+
+    <!-- ═══════ FILES ═══════ -->
+    <section id="files-view" class="view">
+      <div class="page-head">
+        <div class="meta">1,247 files · 8 buckets</div>
+        <h1>F<em>iles</em></h1>
+        <p>Your vault as plain markdown. The painting on the side is the same content, drawn instead of typed.</p>
+      </div>
+
+      <div class="files-layout">
+        <aside class="file-tree">
+          <div class="tree-head">
+            <h3>connor_brain2/</h3>
+            <span class="count">1,247</span>
+          </div>
+
+          <details class="tree-folder" open>
+            <summary><span class="tree-dot" style="background:var(--vermillion)"></span>career/<span style="margin-left:auto;color:var(--faint);font-family:'JetBrains Mono',monospace;font-size:10.5px">142</span></summary>
+            <div class="tree-files">
+              <button class="tree-file active">source-2026-05-06-bob-call-prep.md</button>
+              <button class="tree-file">bob-casey.md</button>
+              <button class="tree-file">mark-loh.md</button>
+              <button class="tree-file">riviera.md</button>
+              <button class="tree-file">crescent-bay-advisors.md</button>
+              <button class="tree-file">morgan-stanley.md</button>
+            </div>
+          </details>
+
+          <details class="tree-folder">
+            <summary><span class="tree-dot" style="background:var(--green)"></span>projects/<span style="margin-left:auto;color:var(--faint);font-family:'JetBrains Mono',monospace;font-size:10.5px">218</span></summary>
+            <div class="tree-files">
+              <button class="tree-file">briefly.md</button>
+              <button class="tree-file">margins.md</button>
+              <button class="tree-file">ellis-rutili.md</button>
+              <button class="tree-file">centric-wm.md</button>
+              <button class="tree-file">prcurve.md</button>
+            </div>
+          </details>
+
+          <details class="tree-folder">
+            <summary><span class="tree-dot" style="background:var(--violet)"></span>ideas/<span style="margin-left:auto;color:var(--faint);font-family:'JetBrains Mono',monospace;font-size:10.5px">186</span></summary>
+            <div class="tree-files">
+              <button class="tree-file">margins-deployment-strategy.md</button>
+              <button class="tree-file">source-2026-05-04-margins-strategic-shift.md</button>
+              <button class="tree-file">source-2026-05-02-halluminate-pivot.md</button>
+            </div>
+          </details>
+
+          <details class="tree-folder">
+            <summary><span class="tree-dot" style="background:var(--cobalt)"></span>coding/<span style="margin-left:auto;color:var(--faint);font-family:'JetBrains Mono',monospace;font-size:10.5px">94</span></summary>
+            <div class="tree-files">
+              <button class="tree-file">source-2026-05-06-margins-design.md</button>
+              <button class="tree-file">working-with-ai.md</button>
+            </div>
+          </details>
+
+          <details class="tree-folder">
+            <summary><span class="tree-dot" style="background:var(--mustard)"></span>daily/<span style="margin-left:auto;color:var(--faint);font-family:'JetBrains Mono',monospace;font-size:10.5px">98</span></summary>
+            <div class="tree-files">
+              <button class="tree-file">2026-05-07.md</button>
+              <button class="tree-file">2026-05-06.md</button>
+              <button class="tree-file">2026-05-05.md</button>
+            </div>
+          </details>
+
+          <details class="tree-folder">
+            <summary><span class="tree-dot" style="background:var(--ink)"></span>queries/<span style="margin-left:auto;color:var(--faint);font-family:'JetBrains Mono',monospace;font-size:10.5px">42</span></summary>
+            <div class="tree-files">
+              <button class="tree-file">2026-05-04-margins-briefly-branch-map.md</button>
+            </div>
+          </details>
+        </aside>
+
+        <article class="editor">
+          <div class="editor-head">
+            <div class="editor-path">wiki/career/source-2026-05-06-bob-call-prep.md</div>
+            <div class="editor-meta">updated 2h ago · 482 words · ⌘E to edit</div>
+          </div>
+          <pre><span class="frontmatter">---
+type: source
+bucket: career
+summary: Bob acknowledged Connor's graceful close-out 5/3. Stay-in-touch relationship, not waiting on anything.
+event_date: 2026-05-06
+tags: [person, meeting, riviera]
+created: 2026-05-06
+updated: 2026-05-07
+voice: claude-draft
+region/past: true
+vibrance/recent: true
+---</span>
+
+<span class="h1"># Bob call prep — closing thread</span>
+
+<span class="h2">## Snapshot</span>
+
+- <span class="strong">Person:</span> <span class="link">[[bob-casey]]</span> · founder, <span class="link">[[riviera]]</span>
+- <span class="strong">Status:</span> Closed-out 5/3. Bob acknowledged. Personal relationship preserved.
+- <span class="strong">Last interaction:</span> 5/3 acknowledgement of Connor's gracious step-back
+- <span class="strong">Next move:</span> None waiting. Optional: send Bob the personal Margins copy.
+
+<span class="h2">## Body</span>
+
+Connor declined Bob's founding-team offer 5/2 after Bob slowed the
+timeline 5/1 (8w-8mo, no guarantee). Bob's 5/3 reply was warm and
+final: <span class="strong">stay-in-touch</span>, not on-deck.
+
+The <span class="link">[[ms-401k-rollover]]</span> is unblocked — no longer waiting on
+Riviera. Path C (in-plan Roth conversion 2026) is leading.
+
+<span class="h2">## Source log</span>
+
+- 2026-05-03 — <span class="link">[[source-2026-05-03-bob-acknowledgement]]</span>
+- 2026-05-02 — <span class="link">[[source-2026-05-02-connor-decline]]</span>
+- 2026-05-01 — <span class="link">[[source-2026-05-01-bob-slowdown]]</span>
+</pre>
+        </article>
+      </div>
+    </section>
+
+
+    <!-- ═══════ DREAM ═══════ -->
+    <section id="dream-view" class="view">
+      <div class="page-head">
+        <div class="meta">7 dreams active · last refresh 14 min ago</div>
+        <h1>Dr<em>eam</em></h1>
+        <p>Cross-vault connections Margins surfaced overnight. None of these are decisions — only suggestions to act on or dismiss.</p>
+      </div>
+
+      <section class="dream-canvas">
+        <svg class="constellation" viewBox="0 0 800 320" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+          <!-- dotted connection lines -->
+          <line x1="180" y1="160" x2="380" y2="100" stroke="#1a1612" stroke-width="0.8" stroke-dasharray="3 4" opacity="0.45"/>
+          <line x1="380" y1="100" x2="600" y2="170" stroke="#1a1612" stroke-width="0.8" stroke-dasharray="3 4" opacity="0.45"/>
+          <line x1="180" y1="160" x2="280" y2="260" stroke="#1a1612" stroke-width="0.8" stroke-dasharray="3 4" opacity="0.45"/>
+          <line x1="280" y1="260" x2="500" y2="270" stroke="#1a1612" stroke-width="0.8" stroke-dasharray="3 4" opacity="0.45"/>
+          <line x1="600" y1="170" x2="500" y2="270" stroke="#1a1612" stroke-width="0.8" stroke-dasharray="3 4" opacity="0.45"/>
+          <line x1="380" y1="100" x2="280" y2="260" stroke="#1a1612" stroke-width="0.6" stroke-dasharray="2 5" opacity="0.3"/>
+          <line x1="600" y1="170" x2="700" y2="80" stroke="#1a1612" stroke-width="0.6" stroke-dasharray="2 5" opacity="0.3"/>
+
+          <!-- nodes -->
+          <g style="mix-blend-mode: multiply;">
+            <circle class="node" cx="180" cy="160" r="22" fill="#d63a2f" data-entity="bob-casey"/>
+            <circle class="node" cx="180" cy="160" r="6" fill="#1a1612"/>
+          </g>
+          <g style="mix-blend-mode: multiply;">
+            <circle class="node" cx="380" cy="100" r="28" fill="#6fa863" data-entity="margins"/>
+            <circle class="node" cx="380" cy="100" r="8" fill="#1a1612"/>
+          </g>
+          <g style="mix-blend-mode: multiply;">
+            <circle class="node" cx="600" cy="170" r="36" fill="#f0c14b" data-entity="ellis-rutili"/>
+            <circle class="node" cx="600" cy="170" r="20" fill="#d63a2f"/>
+            <circle class="node" cx="600" cy="170" r="6" fill="#1a1612"/>
+          </g>
+          <circle class="node" cx="280" cy="260" r="14" fill="#6a4f8c" data-entity="halluminate"/>
+          <circle class="node" cx="500" cy="270" r="16" fill="#2c5aa0" data-entity="centric-wm"/>
+          <circle class="node" cx="700" cy="80" r="10" fill="#6a4f8c" data-entity="bauhaus"/>
+
+          <!-- ambient ink scatter -->
+          <circle cx="80" cy="60" r="2" fill="#1a1612"/>
+          <circle cx="760" cy="290" r="2.5" fill="#1a1612"/>
+          <circle cx="120" cy="290" r="3" fill="#1a1612"/>
+
+          <!-- gestural arc -->
+          <path d="M 60 60 Q 380 200 760 60" fill="none" stroke="#2c5aa0" stroke-width="1.6" stroke-linecap="round" opacity="0.4"/>
+        </svg>
+
+        <div class="dream-overlay">
+          <h2>What the vault dreamt last night.</h2>
+          <p>Margins ran a compile pass at 4:14am. These are the connections it noticed.</p>
+          <div class="dream-meta">
+            <span><strong>7</strong> connections</span>
+            <span><strong>3</strong> stale touches</span>
+            <span><strong>2</strong> compile candidates</span>
+          </div>
+        </div>
+      </section>
+
+      <div class="dream-cards">
+
+        <article class="dream-card">
+          <div class="dream-tag compile">Compile candidate</div>
+          <h3>Promote <em>Bauhaus</em> to its own concept page</h3>
+          <p>Mentioned across 4 sources in the last 30 days, including <span class="ent" data-entity="margins">Margins</span> design notes (5/6) and the deployment strategy doc (banked). No entity page exists. Surface threshold reached.</p>
+          <div class="dream-actions">
+            <button class="primary">Create stub</button>
+            <button>Show mentions</button>
+            <button>Dismiss</button>
+          </div>
+        </article>
+
+        <article class="dream-card">
+          <div class="dream-tag connect">Cross-entity link</div>
+          <h3>Halluminate's pivot mirrors your <em>branch #2</em> bet</h3>
+          <p><span class="ent" data-entity="halluminate">Halluminate</span> moved from chatbots to "RL Environments for Financial Services" — the same domain-vertical-tooling shape you flagged in the 5/4 branch map. Worth a peer note to Jerry?</p>
+          <div class="dream-actions">
+            <button class="primary">Draft email</button>
+            <button>Open branch map</button>
+            <button>Dismiss</button>
+          </div>
+        </article>
+
+        <article class="dream-card">
+          <div class="dream-tag touch">Stale touch</div>
+          <h3>Greg Deldicque hasn't been touched in 19 days</h3>
+          <p><span class="ent">Greg</span> is the Italy-based mentor introduced via your father — a relationship that predates Briefly. Last note 4/19. Olivier (Greg's son) at MS WM Boston was warm-thread but unactioned. Send a check-in?</p>
+          <div class="dream-actions">
+            <button class="primary">Compose check-in</button>
+            <button>Open page</button>
+            <button>Dismiss</button>
+          </div>
+        </article>
+
+        <article class="dream-card">
+          <div class="dream-tag connect">Cross-entity link</div>
+          <h3>Affinity is the price anchor your deck is missing</h3>
+          <p><span class="ent">Affinity</span> sits at $2K/user/year for VC/PE relationship-graph software. Your <span class="ent" data-entity="margins">Margins</span> pricing doc anchors near Wealthbox/Jump ($50–75/seat). The Affinity comp is a 25× lift in narrative weight.</p>
+          <div class="dream-actions">
+            <button class="primary">Add to deck</button>
+            <button>Open pricing memo</button>
+            <button>Dismiss</button>
+          </div>
+        </article>
+
+        <article class="dream-card">
+          <div class="dream-tag touch">Stale touch</div>
+          <h3><em>Ellis pilot</em> kicks off in 23 days. No prep doc filed.</h3>
+          <p><span class="ent" data-entity="ellis-rutili">Ellis</span>'s 60–90 day pilot starts ~5/30. Brief-only scope locked. Action-item routing is his #1 ask but is post-pilot per your own note. The prep doc for kickoff isn't drafted.</p>
+          <div class="dream-actions">
+            <button class="primary">Start prep doc</button>
+            <button>Open Ellis</button>
+            <button>Dismiss</button>
+          </div>
+        </article>
+
+        <article class="dream-card">
+          <div class="dream-tag">Synthesis</div>
+          <h3>Your writing has shifted from <em>Briefly</em> to <em>Margins</em></h3>
+          <p>Last 7 days: <span class="ent" data-entity="margins">Margins</span> mentioned in 23 sources, <span class="ent">Briefly</span> in 14. Two weeks ago that ratio was inverted. The strategic shift you decided 5/4 has already shown up in your vocabulary.</p>
+          <div class="dream-actions">
+            <button class="primary">See ratio chart</button>
+            <button>Open shift note</button>
+            <button>Dismiss</button>
+          </div>
+        </article>
+
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ═══════ ENTITY DETAIL PANEL ═══════ -->
+<div class="detail-backdrop" id="detail-backdrop"></div>
+<aside class="entity-detail" id="entity-detail">
+  <div class="detail-head">
+    <button class="detail-close" id="detail-close" aria-label="Close">×</button>
+    <div class="detail-mark-row">
+      <div class="detail-mark">
+        <div class="ring outer"></div>
+        <div class="ring middle"></div>
+        <div class="ring core"></div>
+      </div>
+      <div>
+        <div class="detail-name" id="detail-name">—</div>
+        <div class="detail-meta" id="detail-meta">—</div>
+      </div>
+    </div>
+    <div class="detail-actions">
+      <button class="primary">Open in editor</button>
+      <button>Pin</button>
+      <button>Copy [[link]]</button>
+    </div>
+  </div>
+  <div class="detail-body" id="detail-body">
+    <!-- populated by JS -->
+  </div>
+</aside>
+
+<div class="toast" id="toast">—</div>
+<div class="demo-tag"><span class="dot"></span>Bauhaus · prototype</div>
+
+<script>
+// ─── Sample entities ─────────────────────────────
+const ENTITIES = {
+  "bob-casey": {
+    type: "person", pinned: true,
+    name: "Bob Casey",
+    meta: "Person · Riviera · Booth",
+    blurb: "Founding-team conversation closed-out 5/3. Stay-in-touch relationship. Personal Margins copy ok to send.",
+    stats: { sources: 14, links: 6, last: "5/6" },
+    snapshot: [
+      ["Role", "Founder, Riviera. Adjunct at Booth. Chicago-based (despite SBM name)."],
+      ["Status", "Founding-team offer closed-out 5/3. Acknowledged warmly."],
+      ["Last interaction", "5/6 — Connor's prep notes for the close-out call"],
+      ["Next move", "None waiting. Optional: send personal Margins build."],
+      ["Key link", "Riviera, MS 401(k) rollover, Booth-deferral fork"],
+    ],
+    frontmatter: [
+      ["type", "entity"], ["bucket", "career"], ["priority", "active"],
+      ["firm", "Riviera"], ["role", "Founder"], ["last_contact", "2026-05-03"],
+      ["next_move", "stay in touch"], ["region", "past"], ["vibrance", "fresh"],
+    ],
+    sources: [
+      ["2026-05-06", "Bob call prep — closing thread", "wiki/career/source-2026-05-06-bob-call-prep.md"],
+      ["2026-05-03", "Bob's acknowledgement of Connor's step-back", "wiki/career/source-2026-05-03-bob-ack.md"],
+      ["2026-05-02", "Connor's gracious decline", "wiki/career/source-2026-05-02-connor-decline.md"],
+      ["2026-05-01", "Bob slows the timeline", "wiki/career/source-2026-05-01-bob-slowdown.md"],
+    ],
+    links: [
+      ["riviera", "Riviera", "company"],
+      ["booth", "UChicago Booth", "school"],
+      ["margins", "Margins", "project"],
+      ["ms-401k-rollover", "MS 401(k) rollover", "concept"],
+    ],
+  },
+  "ellis-rutili": {
+    type: "person", pinned: true,
+    name: "Ellis Rutili",
+    meta: "Person · Centric WM · Champion",
+    blurb: "Action-item routing remains his #1 ask. Brief-only scope locked for pilot 60-90d.",
+    stats: { sources: 22, links: 9, last: "4/30" },
+    snapshot: [
+      ["Role", "Operations at Centric WM. Champion, not buyer."],
+      ["Status", "60-90d pilot signed, kickoff ~5/30. Brief-only scope."],
+      ["Last interaction", "4/30 in-person Centric visit"],
+      ["Next move", "Draft pilot kickoff prep doc"],
+      ["Key link", "Centric WM, Virgil Rutili (uncle, true buyer)"],
+    ],
+    frontmatter: [
+      ["type", "entity"], ["bucket", "projects"], ["priority", "pinned"],
+      ["firm", "Centric WM"], ["role", "Operations"], ["last_contact", "2026-04-30"],
+      ["next_move", "draft kickoff prep"], ["region", "briefly"], ["vibrance", "peak"],
+    ],
+    sources: [
+      ["2026-04-30", "Centric WM uses Orion for portfolio reporting", "wiki/projects/source-2026-04-30-ellis-orion.md"],
+      ["2026-04-30", "Centric visit — pilot scope, brief-only", "wiki/projects/source-2026-04-30-centric-visit.md"],
+      ["2026-04-23", "Bob call prep answers — Ellis context", "wiki/projects/source-2026-04-23-bob-call-prep-answers.md"],
+    ],
+    links: [
+      ["centric-wm", "Centric WM", "company"],
+      ["briefly", "Briefly", "project"],
+      ["margins", "Margins", "project"],
+    ],
+  },
+  "margins": {
+    type: "project", pinned: true,
+    name: "Margins",
+    meta: "Project · Lead build",
+    blurb: "Personal vault + AI second brain. Architecture for both Connor and the Briefly product.",
+    stats: { sources: 47, links: 22, last: "5/6" },
+    snapshot: [
+      ["Status", "Lead build as of 5/2. Briefly enters maintenance."],
+      ["Phase", "v2 architecture — student-first hero, Supabase cloud, ingestion-as-iteration"],
+      ["Branches", "Branch #2 (email-notes → CRM auto-update) most aligned with core obsession"],
+      ["Stack", "HTML/JS, Supabase planned, Anthropic API, local-first vault"],
+      ["Key link", "Briefly (vertical product), Affinity (price anchor)"],
+    ],
+    frontmatter: [
+      ["type", "entity"], ["bucket", "ideas"], ["priority", "pinned"],
+      ["status", "active"], ["region", "build"], ["vibrance", "peak"],
+    ],
+    sources: [
+      ["2026-05-06", "Margins design language exploration", "wiki/coding/source-2026-05-06-margins-design.md"],
+      ["2026-05-04", "Margins becomes lead build, Briefly maintenance", "wiki/ideas/source-2026-05-04-margins-strategic-shift.md"],
+      ["2026-05-04", "Margins-Briefly branch map", "wiki/queries/2026-05-04-margins-briefly-branch-map.md"],
+      ["2026-05-03", "Premortem on the Margins skill spec", "wiki/coding/source-2026-05-03-premortem-skill-spec.md"],
+    ],
+    links: [
+      ["briefly", "Briefly", "project"],
+      ["bauhaus", "Bauhaus", "concept"],
+      ["affinity", "Affinity", "company"],
+      ["anthropic", "Anthropic", "company"],
+    ],
+  },
+  "centric-wm": {
+    type: "company", pinned: true,
+    name: "Centric WM",
+    meta: "Company · Pilot signed",
+    blurb: "Orion confirmed as reporting tool. Virgil Rutili (Ellis's uncle) is true buyer; Ellis is champion.",
+    stats: { sources: 18, links: 5, last: "4/30" },
+    snapshot: [
+      ["Type", "RIA, Chicago. Centric Wealth Management."],
+      ["Status", "First Briefly pilot signed. Brief-only scope, 60-90d."],
+      ["Stack", "Orion (portfolio reporting). ByAllAccounts pricing intel sales-gated."],
+      ["Buyer vs champion", "Ellis = champion (operations). Virgil = real buyer (founder, uncle)."],
+      ["Next move", "Pilot kickoff prep ~5/30"],
+    ],
+    frontmatter: [
+      ["type", "entity"], ["bucket", "projects"], ["priority", "pinned"],
+      ["category", "RIA"], ["last_contact", "2026-04-30"],
+      ["region", "briefly"], ["vibrance", "peak"],
+    ],
+    sources: [
+      ["2026-04-30", "Centric WM uses Orion", "wiki/projects/source-2026-04-30-ellis-orion.md"],
+      ["2026-04-30", "Centric visit — pilot scope", "wiki/projects/source-2026-04-30-centric-visit.md"],
+    ],
+    links: [
+      ["ellis-rutili", "Ellis Rutili", "person"],
+      ["briefly", "Briefly", "project"],
+      ["orion", "Orion", "company"],
+    ],
+  },
+  "briefly": {
+    type: "project", pinned: false,
+    name: "Briefly",
+    meta: "Project · Maintenance",
+    blurb: "AI meeting prep for wealth advisors. Centric pilot agreement drafted 5/3. Maintenance cadence; Margins is lead build.",
+    stats: { sources: 64, links: 18, last: "5/4" },
+    snapshot: [
+      ["Status", "Maintenance as of 5/2. Pilot signed with Centric."],
+      ["Stack", "NestJS, React/Vite, Prisma, AWS ECS"],
+      ["Pricing", "$200/advisor/month full · $50-100 Centric discount"],
+      ["Funding", "Self-funded ~$25K. No angel."],
+      ["Legal", "Briefly Wealth LLC"],
+    ],
+    frontmatter: [
+      ["type", "entity"], ["bucket", "projects"], ["priority", "pinned"],
+      ["status", "maintenance"], ["region", "briefly"], ["vibrance", "peak"],
+    ],
+    sources: [
+      ["2026-05-04", "Margins lead build, Briefly maintenance", "wiki/ideas/source-2026-05-04-margins-strategic-shift.md"],
+      ["2026-05-03", "Centric pilot agreement drafted", "wiki/projects/source-2026-05-03-centric-pilot-draft.md"],
+    ],
+    links: [
+      ["margins", "Margins", "project"],
+      ["centric-wm", "Centric WM", "company"],
+      ["ellis-rutili", "Ellis Rutili", "person"],
+    ],
+  },
+  "halluminate": {
+    type: "company", pinned: false,
+    name: "Halluminate",
+    meta: "Company · YC S25 · Peer",
+    blurb: "$1.3M ARR by Sept 2025. Pivoted to RL Environments for Financial Services. Peer not competitor.",
+    stats: { sources: 6, links: 3, last: "5/2" },
+    snapshot: [
+      ["Type", "YC S25 fintech-AI startup"],
+      ["Status", "Pivoted to RL Environments for FS. 5–12 person team."],
+      ["Connor's posture", "Email Jerry as peer founder. Don't apply for MTS."],
+      ["Why care", "Pivot mirrors Connor's branch #2 bet from the 5/4 map"],
+    ],
+    frontmatter: [
+      ["type", "entity"], ["bucket", "ideas"],
+      ["last_contact", "—"], ["region", "compete"], ["vibrance", "fresh"],
+    ],
+    sources: [
+      ["2026-05-02", "Halluminate pivots to RL Environments", "wiki/ideas/source-2026-05-02-halluminate-pivot.md"],
+    ],
+    links: [
+      ["margins", "Margins", "project"],
+      ["briefly", "Briefly", "project"],
+    ],
+  },
+  "mark-loh": {
+    type: "person", pinned: true,
+    name: "Mark Loh",
+    meta: "Person · Travel-services PE · Advisor",
+    blurb: "Advises on sales + product. Three travel-services PE-rollup businesses. Not a wealth-tech expert.",
+    stats: { sources: 9, links: 4, last: "5/7" },
+    snapshot: [
+      ["Role", "Operator-investor · 3 travel-services PE rollups"],
+      ["Status", "Active advisor, light cadence"],
+      ["Last interaction", "5/7 call — pricing discipline + customer-led roadmap"],
+      ["Next move", "Send Margins demo when v2 ships"],
+      ["Diagnostic Q's", "6mo/1yr success · raise breakdown · hiring slate"],
+    ],
+    frontmatter: [
+      ["type", "entity"], ["bucket", "career"], ["priority", "pinned"],
+      ["last_contact", "2026-05-07"], ["region", "people"], ["vibrance", "peak"],
+    ],
+    sources: [
+      ["2026-05-07", "Mark Loh call — pricing + roadmap", "wiki/career/source-2026-05-07-mark-loh-call.md"],
+      ["2026-04-12", "Mark Loh — founding-team questions", "wiki/career/source-2026-04-12-mark-loh-questions.md"],
+    ],
+    links: [
+      ["margins", "Margins", "project"],
+      ["briefly", "Briefly", "project"],
+    ],
+  },
+  "bauhaus": {
+    type: "concept", pinned: false,
+    name: "Bauhaus",
+    meta: "Concept · Design language",
+    blurb: "Geometric shape vocabulary + polychrome on warm cream. Margins's design DNA. Not yet promoted to its own page.",
+    stats: { sources: 4, links: 6, last: "5/6" },
+    snapshot: [
+      ["Status", "Compile candidate — surfaced in Dream view 5/7"],
+      ["Why", "8+ mentions across 4 sources, last 30 days"],
+      ["Lineage", "Kandinsky as the Bauhaus painter; Margins inherits the vocabulary"],
+      ["Next move", "Promote to concept page if Connor accepts"],
+    ],
+    frontmatter: [
+      ["type", "candidate"], ["bucket", "coding"],
+      ["region", "build"], ["vibrance", "fresh"],
+    ],
+    sources: [
+      ["2026-05-06", "Margins design language exploration", "wiki/coding/source-2026-05-06-margins-design.md"],
+      ["2026-05-04", "Margins-Briefly branch map", "wiki/queries/2026-05-04-margins-briefly-branch-map.md"],
+    ],
+    links: [
+      ["margins", "Margins", "project"],
+      ["kandinsky", "Kandinsky", "concept"],
+    ],
+  },
+  "anthropic": {
+    type: "company", pinned: false,
+    name: "Anthropic",
+    meta: "Company · Platform",
+    blurb: "Native memory shipped March 2026. Killed broad 'AI memory' pitch. Open doors: portability, vertical posture.",
+    stats: { sources: 12, links: 4, last: "4/07" },
+    snapshot: [
+      ["Type", "AI lab. Maker of Claude."],
+      ["Status", "Native memory across Free + Pro + Code. Import from ChatGPT."],
+      ["Implication", "Generic memory pitch dead. Vertical RIA posture lives."],
+      ["Open doors", "File portability, vertical voice, customer-owned vault"],
+    ],
+    frontmatter: [
+      ["type", "entity"], ["bucket", "ideas"],
+      ["region", "future"], ["vibrance", "recent"],
+    ],
+    sources: [
+      ["2026-04-07", "Anthropic native memory", "wiki/ideas/source-2026-04-07-anthropic-native-memory.md"],
+    ],
+    links: [
+      ["margins", "Margins", "project"],
+      ["claude", "Claude", "tool"],
+    ],
+  },
+  "affinity": {
+    type: "company", pinned: false,
+    name: "Affinity",
+    meta: "Company · Pricing anchor",
+    blurb: "$2K/user/year, 1,700 customers. Relationship graph + email/calendar ingest for VC/PE/IB. Margins's analog.",
+    stats: { sources: 5, links: 3, last: "4/28" },
+    snapshot: [
+      ["Type", "Relationship intelligence platform"],
+      ["Pricing", "$2K/user/year — 25× Wealthbox/Jump"],
+      ["Why care", "Proves the graph + ingest model commercially"],
+      ["Use", "Pricing anchor for Margins/Briefly deck"],
+    ],
+    frontmatter: [
+      ["type", "entity"], ["bucket", "ideas"],
+      ["region", "compete"], ["vibrance", "recent"],
+    ],
+    sources: [
+      ["2026-04-28", "Affinity as Briefly's analog", "wiki/ideas/source-2026-04-28-affinity-analog.md"],
+    ],
+    links: [
+      ["margins", "Margins", "project"],
+      ["briefly", "Briefly", "project"],
+    ],
+  },
+  "riviera": {
+    type: "company", pinned: false,
+    name: "Riviera",
+    meta: "Company · Bob Casey's firm",
+    blurb: "Bob Casey's firm. Founding-team offer closed-out 5/3. Stay-in-touch.",
+    stats: { sources: 18, links: 5, last: "5/3" },
+    snapshot: [
+      ["Status", "Closed-out as career path"],
+      ["Founder", "Bob Casey"],
+      ["Why interesting", "Was a serious founding-team option pre-5/1"],
+      ["Connor's posture", "Personal relationship preserved. Not on-deck."],
+    ],
+    frontmatter: [
+      ["type", "entity"], ["bucket", "career"],
+      ["region", "past"], ["vibrance", "recent"],
+    ],
+    sources: [
+      ["2026-05-03", "Bob's acknowledgement", "wiki/career/source-2026-05-03-bob-ack.md"],
+    ],
+    links: [
+      ["bob-casey", "Bob Casey", "person"],
+    ],
+  },
+  "greg-deldicque": {
+    type: "person", pinned: false,
+    name: "Greg Deldicque",
+    meta: "Person · Italy · Mentor",
+    blurb: "Italy-based career mentor. Founder of Enex Technologies. Introduced via Joel. Predates Briefly — protect.",
+    stats: { sources: 8, links: 2, last: "4/19" },
+    snapshot: [
+      ["Role", "Founder, Enex Technologies. Career mentor."],
+      ["Status", "Last touch 4/19 — going stale"],
+      ["Origin", "Introduction via Connor's father Joel"],
+      ["Adjacent", "Olivier (son) at MS WM Boston — warm but unactioned"],
+      ["Next move", "Send check-in (Dream view 5/7 surfaced)"],
+    ],
+    frontmatter: [
+      ["type", "entity"], ["bucket", "career"],
+      ["last_contact", "2026-04-19"], ["next_move", "check-in"],
+      ["region", "people"], ["vibrance", "aged"],
+    ],
+    sources: [
+      ["2026-04-19", "Greg call notes — Italy, Olivier", "wiki/career/source-2026-04-19-greg.md"],
+    ],
+    links: [
+      ["margins", "Margins", "project"],
+    ],
+  },
+};
+
+const TYPE_LABELS = { person: "Person", project: "Project", company: "Company", concept: "Concept" };
+
+// ─── Render entity grid ──────────────────────────
+function renderEntityGrid(filter = "all") {
+  const grid = document.getElementById("entity-grid");
+  grid.innerHTML = "";
+  const order = ["margins", "ellis-rutili", "bob-casey", "centric-wm", "briefly", "mark-loh", "halluminate", "anthropic", "affinity", "bauhaus", "riviera", "greg-deldicque"];
+  for (const id of order) {
+    const e = ENTITIES[id];
+    if (!e) continue;
+    if (filter !== "all" && e.type !== filter) continue;
+    const card = document.createElement("button");
+    card.className = `entity-card ${e.type}${e.pinned ? " pinned" : ""}`;
+    card.dataset.entity = id;
+    card.innerHTML = `
+      <div class="entity-mark"></div>
+      <h3>${e.name}</h3>
+      <div class="entity-meta">${e.meta}</div>
+      <p>${e.blurb}</p>
+      <div class="entity-stats">
+        <span><strong>${e.stats.sources}</strong>sources</span>
+        <span><strong>${e.stats.links}</strong>links</span>
+        <span><strong>${e.stats.last}</strong>last</span>
+      </div>
+    `;
+    card.addEventListener("click", () => openEntity(id));
+    grid.appendChild(card);
+  }
+}
+
+// ─── Entity detail ───────────────────────────────
+const detailEl = document.getElementById("entity-detail");
+const backdropEl = document.getElementById("detail-backdrop");
+
+function openEntity(id) {
+  const e = ENTITIES[id];
+  if (!e) {
+    showToast(`No entity: ${id}`);
+    return;
+  }
+  detailEl.className = `entity-detail ${e.type} open`;
+  backdropEl.className = "detail-backdrop open";
+  document.getElementById("detail-name").textContent = e.name;
+  document.getElementById("detail-meta").textContent = e.meta;
+
+  const body = document.getElementById("detail-body");
+  body.innerHTML = `
+    <div class="detail-section">
+      <div class="label">Snapshot</div>
+      <ul class="detail-snapshot">
+        ${e.snapshot.map(([k,v]) => `<li><strong>${k}:</strong>${v}</li>`).join("")}
+      </ul>
+    </div>
+
+    <div class="detail-section">
+      <div class="label">Frontmatter</div>
+      <dl class="detail-frontmatter">
+        ${e.frontmatter.map(([k,v]) => `<dt>${k}:</dt><dd>${v}</dd>`).join("")}
+      </dl>
+    </div>
+
+    <div class="detail-section">
+      <div class="label">Source log · ${e.sources.length} entries</div>
+      <div class="detail-source-list">
+        ${e.sources.map(([d,t,p]) => `
+          <div class="detail-source">
+            <div class="date">${d}</div>
+            <div>
+              <div class="title">${t}</div>
+              <div class="path">${p}</div>
+            </div>
+          </div>
+        `).join("")}
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <div class="label">Key links</div>
+      <div class="detail-links">
+        ${e.links.map(([id,name,type]) => `
+          <button class="detail-link-chip" data-entity="${id}">
+            <span class="d" style="background: var(--${typeToColor(type)})"></span>${name}
+          </button>
+        `).join("")}
+      </div>
+    </div>
+  `;
+
+  body.querySelectorAll(".detail-link-chip").forEach(btn => {
+    btn.addEventListener("click", () => openEntity(btn.dataset.entity));
+  });
+}
+
+function typeToColor(type) {
+  return {person:"vermillion", project:"green", company:"cobalt", concept:"violet", school:"mustard", tool:"violet"}[type] || "ink";
+}
+
+function closeEntity() {
+  detailEl.classList.remove("open");
+  backdropEl.classList.remove("open");
+}
+document.getElementById("detail-close").addEventListener("click", closeEntity);
+backdropEl.addEventListener("click", closeEntity);
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") closeEntity();
+});
+
+// ─── Tab switching ───────────────────────────────
+document.querySelectorAll(".nav-item").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const view = btn.dataset.view;
+    document.querySelectorAll(".nav-item").forEach(b => b.classList.toggle("active", b === btn));
+    document.querySelectorAll(".view").forEach(v => v.classList.toggle("active", v.id === `${view}-view`));
+    closeEntity();
+  });
+});
+
+// ─── Activity row clicks ─────────────────────────
+document.querySelectorAll(".activity-row[data-entity]").forEach(row => {
+  row.addEventListener("click", () => openEntity(row.dataset.entity));
+});
+
+// ─── Dream view node clicks ──────────────────────
+document.querySelectorAll(".constellation circle.node[data-entity]").forEach(c => {
+  c.addEventListener("click", () => openEntity(c.dataset.entity));
+});
+
+// ─── Dream card entity links ─────────────────────
+document.querySelectorAll(".dream-card .ent[data-entity]").forEach(span => {
+  span.addEventListener("click", () => openEntity(span.dataset.entity));
+});
+
+// ─── Filter chips ────────────────────────────────
+document.querySelectorAll(".chip[data-filter]").forEach(chip => {
+  chip.addEventListener("click", () => {
+    document.querySelectorAll(".chip[data-filter]").forEach(c => c.classList.toggle("active", c === chip));
+    renderEntityGrid(chip.dataset.filter);
+  });
+});
+
+// ─── Toast ───────────────────────────────────────
+const toastEl = document.getElementById("toast");
+function showToast(msg) {
+  toastEl.textContent = msg;
+  toastEl.classList.add("show");
+  setTimeout(() => toastEl.classList.remove("show"), 2400);
+}
+
+// ─── Simulate ingest ─────────────────────────────
+document.getElementById("simulate-ingest").addEventListener("click", () => {
+  const banner = document.getElementById("processing-banner");
+  // queued -> parsing
+  const rows = banner.querySelectorAll(".processing-row");
+  const queued = rows[2];
+  queued.querySelector(".proc-disk").classList.remove("queued");
+  queued.querySelector(".proc-disk").classList.add("parsing");
+  queued.querySelector(".fill").style.width = "42%";
+  queued.querySelector(".proc-status").textContent = "Reading transcript…";
+  showToast("Ingest started · 1 file");
+
+  setTimeout(() => {
+    queued.querySelector(".fill").style.width = "78%";
+    queued.querySelector(".proc-status").textContent = "Linking entities…";
+  }, 900);
+
+  setTimeout(() => {
+    queued.querySelector(".proc-disk").classList.remove("parsing");
+    queued.querySelector(".proc-disk").classList.add("done");
+    queued.querySelector(".fill").style.width = "100%";
+    queued.querySelector(".proc-status").classList.add("done");
+    queued.querySelector(".proc-status").textContent = "✓ Filed · 2.1s";
+    showToast("Filed · 4 new entities · 1 review queued");
+  }, 1900);
+});
+
+// ─── Review actions ──────────────────────────────
+document.querySelectorAll(".review-actions button").forEach(btn => {
+  btn.addEventListener("click", e => {
+    e.stopPropagation();
+    const row = btn.closest(".activity-row");
+    if (btn.classList.contains("yes")) {
+      row.querySelector(".activity-title").textContent = "Bauhaus — promoted to concept";
+      row.querySelector(".activity-path").textContent = "wiki/coding/bauhaus.md";
+      row.querySelector(".review-prompt").remove();
+      row.classList.remove("review");
+      row.classList.add("concept");
+      showToast("Created [[bauhaus]] · stub page");
+    } else if (btn.classList.contains("no")) {
+      row.querySelector(".review-prompt").remove();
+      row.classList.remove("review");
+      showToast("Skipped · won't ask again for 30 days");
+    } else {
+      showToast("Edit reasoning — opens scratch pane (not in demo)");
+    }
+  });
+});
+
+// ─── Initial render ──────────────────────────────
+renderEntityGrid("all");
+</script>
+</body>
+</html>
