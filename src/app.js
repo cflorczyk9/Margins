@@ -130,6 +130,14 @@ const els = {
   sourceList: document.getElementById("source-list"),
   recentActivityPanel: document.getElementById("recent-activity-panel"),
   recentActivityList: document.getElementById("recent-activity-list"),
+  dreamMeta: document.getElementById("dream-meta"),
+  dreamStateTitle: document.getElementById("dream-state-title"),
+  dreamStateBody: document.getElementById("dream-state-body"),
+  dreamStats: document.getElementById("dream-stats"),
+  dreamOperationList: document.getElementById("dream-operation-list"),
+  dreamProposalList: document.getElementById("dream-proposal-list"),
+  dreamLogMeta: document.getElementById("dream-log-meta"),
+  dreamLogTitles: document.getElementById("dream-log-titles"),
   entityMeta: document.getElementById("entity-meta"),
   entityControls: document.getElementById("entity-controls"),
   entitySearch: document.getElementById("entity-search"),
@@ -4961,6 +4969,371 @@ function renderRecentActivity(fileMap = activeActivityFileMap()) {
   `;
 }
 
+function renderDream(fileMap = activeActivityFileMap()) {
+  if (!els.dreamOperationList || !els.dreamProposalList) return;
+  const activeFileMap = fileMap instanceof Map ? fileMap : new Map();
+  const report = dreamReport(activeFileMap);
+
+  if (els.dreamMeta) els.dreamMeta.textContent = report.meta;
+  if (els.dreamStateTitle) els.dreamStateTitle.textContent = report.title;
+  if (els.dreamStateBody) els.dreamStateBody.textContent = report.body;
+  if (els.dreamStats) {
+    els.dreamStats.innerHTML = report.stats.map((stat) => `
+      <div class="dream-stat">
+        <strong>${escapeHtml(stat.value)}</strong>
+        <span>${escapeHtml(stat.label)}</span>
+      </div>
+    `).join("");
+  }
+  els.dreamOperationList.innerHTML = report.operations.map((operation) => `
+    <article class="dream-op-card ${escapeHtml(operation.state)}">
+      <div class="dream-op-top">
+        <span>${escapeHtml(operation.name)}</span>
+        <strong>${escapeHtml(operation.metric)}</strong>
+      </div>
+      <p>${escapeHtml(operation.description)}</p>
+    </article>
+  `).join("");
+  els.dreamProposalList.innerHTML = report.proposals.length
+    ? report.proposals.map((proposal) => `
+      <article class="dream-proposal-card">
+        <div>
+          <span class="dream-proposal-kind">${escapeHtml(proposal.kind)}</span>
+          <h4>${escapeHtml(proposal.title)}</h4>
+          <p>${escapeHtml(proposal.body)}</p>
+        </div>
+        <div class="dream-proposal-actions" aria-label="Dream proposal actions">
+          <button type="button" disabled>Accept</button>
+          <button type="button" disabled>Refine</button>
+          <button type="button" disabled>Reject</button>
+        </div>
+      </article>
+    `).join("")
+    : `<div class="dream-empty">Open a vault and ingest sources. Margins will prepare dream proposals here.</div>`;
+  if (els.dreamLogMeta) els.dreamLogMeta.textContent = report.log;
+  if (els.dreamLogTitles) {
+    els.dreamLogTitles.innerHTML = report.dreamTitles.length
+      ? report.dreamTitles.map((title) => `
+        <li>
+          <span>${escapeHtml(title.title)}</span>
+          <small>${escapeHtml(title.context)}</small>
+        </li>
+      `).join("")
+      : "";
+  }
+}
+
+function dreamReport(fileMap) {
+  const stats = dreamVaultStats(fileMap);
+  const connected = fileMap.size > 0;
+  const sourceLabel = `${formatStatNumber(stats.sourceCount)} source${stats.sourceCount === 1 ? "" : "s"}`;
+  return {
+    meta: connected
+      ? `${sourceLabel} · ${formatStatNumber(stats.linkCount)} links · ${formatStatNumber(stats.pendingRawCount)} pending raw`
+      : "Open a vault to let Margins consolidate overnight.",
+    title: connected ? "Margins is dreaming" : "Open a vault to let Margins dream",
+    body: connected
+      ? "Dreams prepare proposals only. Margins consolidates, prunes, syncs, enriches, and looks for useful cross-links without applying changes."
+      : "Dreams consolidate concepts, prune weak links, sync operating memory, and prepare reviewable proposals.",
+    stats: [
+      { label: "sources", value: formatStatNumber(stats.sourceCount) },
+      { label: "entities", value: formatStatNumber(stats.entityCount) },
+      { label: "concepts", value: formatStatNumber(stats.conceptCount) },
+      { label: "broken links", value: formatStatNumber(stats.brokenLinkCount) }
+    ],
+    operations: dreamOperations(stats, connected),
+    proposals: connected ? dreamProposals(stats) : [],
+    dreamTitles: connected ? dreamLogTitles(fileMap, stats) : [],
+    log: stats.hasDreamLog
+      ? "Dream log loaded from wiki/.margins/dream-log.md."
+      : "No dream log yet. Nightly passes will append proposal-only entries before anything is applied."
+  };
+}
+
+function dreamVaultStats(fileMap) {
+  const entries = [...(fileMap || new Map()).entries()];
+  const sourcePages = entries.filter(([path, body]) => isActivitySourcePagePath(path, body));
+  const conceptPages = entries.filter(([path, body]) => dreamPageType(path, body) === "concept");
+  const entityPages = entries.filter(([path, body]) => dreamPageType(path, body) === "entity");
+  const synthesisPages = entries.filter(([path, body]) => dreamPageType(path, body) === "synthesis");
+  const graph = dreamGraphStats(fileMap || new Map());
+  const brokenLinks = dreamBrokenLinks(fileMap || new Map());
+  const sparseEntities = entityPages.filter(([, body]) => {
+    const fields = frontmatterFields(body);
+    return !cleanSummary(fields.summary || "") || bodyWithoutFrontmatter(body).length < 220;
+  });
+  const pendingRawCount = pendingRawSourcesFromVault(fileMap || new Map(), state.vaultFiles).length;
+  const operatingFileCount = entries.filter(([path]) => isOperatingBrowserPath(path)).length;
+  return {
+    sourceCount: sourcePages.length,
+    conceptCount: conceptPages.length,
+    entityCount: entityPages.length,
+    synthesisCount: synthesisPages.length,
+    linkCount: graph.edges.length,
+    graphNodeCount: graph.nodes.length,
+    brokenLinkCount: brokenLinks.length,
+    brokenLinks,
+    sparseEntityCount: sparseEntities.length,
+    pendingRawCount,
+    operatingFileCount,
+    hasDreamLog: fileMap?.has("wiki/.margins/dream-log.md") || false
+  };
+}
+
+function dreamPageType(path, body) {
+  const fields = frontmatterFields(body);
+  const type = normalizeEntityTag(fields.type || fields.primary_type || "");
+  if (type === "source") return "source";
+  if (type === "concept") return "concept";
+  if (type === "synthesis") return "synthesis";
+  if (["entity", "person", "company", "project"].includes(type)) return "entity";
+  if (path.startsWith("wiki/concepts/") || path.startsWith("wiki/ideas/")) return "concept";
+  if (path.startsWith("wiki/entities/") || path.startsWith("wiki/personal/") || path.startsWith("wiki/projects/")) return "entity";
+  if (path.startsWith("wiki/synthesis/") || path.startsWith("wiki/queries/")) return "synthesis";
+  return "";
+}
+
+function dreamBrokenLinks(fileMap) {
+  const byPath = new Set();
+  const bySlug = new Set();
+  for (const [path, body] of fileMap.entries()) {
+    if (!path.endsWith(".md")) continue;
+    const normalizedPath = normalizeMarginsPath(path);
+    byPath.add(normalizedPath);
+    byPath.add(normalizedPath.replace(/\.md$/, ""));
+    bySlug.add(slugifyLoose(basename(normalizedPath).replace(/\.md$/, "")));
+    const title = markdownTitle(body);
+    if (title) bySlug.add(slugifyLoose(title));
+  }
+
+  const missing = [];
+  for (const [path, body] of fileMap.entries()) {
+    if (!path.startsWith("wiki/") || !path.endsWith(".md")) continue;
+    for (const target of extractWikiLinks(body)) {
+      const trimmed = normalizeMarginsPath(target.replace(/^\//, "").replace(/\.md$/, ""));
+      const candidates = [
+        trimmed,
+        `${trimmed}.md`,
+        `wiki/${trimmed}`,
+        `wiki/${trimmed}.md`,
+        `wiki/sources/${trimmed}.md`,
+        `wiki/concepts/${trimmed}.md`,
+        `wiki/entities/${trimmed}.md`,
+        `wiki/projects/${trimmed}.md`,
+        `wiki/synthesis/${trimmed}.md`
+      ];
+      const found = candidates.some((candidate) => byPath.has(normalizeMarginsPath(candidate))) || bySlug.has(slugifyLoose(trimmed));
+      if (!found) missing.push({ from: path, to: target });
+    }
+  }
+  return missing;
+}
+
+function dreamGraphStats(fileMap) {
+  const wikiPages = [...fileMap.entries()].filter(([path]) => path.startsWith("wiki/") && path.endsWith(".md"));
+  const linkCount = wikiPages.reduce((sum, [, body]) => sum + extractWikiLinks(body).length, 0);
+  return {
+    nodes: wikiPages,
+    edges: Array.from({ length: linkCount })
+  };
+}
+
+function dreamOperations(stats, connected) {
+  const unavailable = connected ? "" : "idle";
+  return [
+    {
+      name: "Compile",
+      metric: connected ? formatStatNumber(stats.sourceCount) : "idle",
+      state: unavailable,
+      description: "Consolidate recurring concepts and entities from recent source notes."
+    },
+    {
+      name: "Lint",
+      metric: connected ? formatStatNumber(stats.brokenLinkCount) : "idle",
+      state: stats.brokenLinkCount ? "warn" : unavailable,
+      description: "Prune broken links, weak connections, and stale structural drift."
+    },
+    {
+      name: "Sync",
+      metric: connected ? formatStatNumber(stats.operatingFileCount) : "idle",
+      state: unavailable,
+      description: "Check CLAUDE.md, the operator manual, tracker, log, and cookbook against the vault."
+    },
+    {
+      name: "Enrich",
+      metric: connected ? formatStatNumber(stats.sparseEntityCount) : "idle",
+      state: stats.sparseEntityCount ? "warn" : unavailable,
+      description: "Find sparse entity pages that need fields, summaries, or stronger source support."
+    },
+    {
+      name: "Regions",
+      metric: connected ? formatStatNumber(stats.graphNodeCount) : "idle",
+      state: unavailable,
+      description: "Refresh graph regions, vibrance signals, and retrieval shape."
+    },
+    {
+      name: "Synthesis",
+      metric: connected ? formatStatNumber(Math.max(0, stats.conceptCount + stats.synthesisCount)) : "idle",
+      state: unavailable,
+      description: "Propose cross-domain links the daytime workflow did not make explicit."
+    }
+  ];
+}
+
+function dreamProposals(stats) {
+  const proposals = [];
+  if (stats.pendingRawCount) {
+    proposals.push({
+      kind: "Ingest",
+      title: `${formatStatNumber(stats.pendingRawCount)} raw source${stats.pendingRawCount === 1 ? "" : "s"} waiting`,
+      body: "Review pending raw files before the next dream so consolidation starts from filed source notes."
+    });
+  }
+  proposals.push(stats.brokenLinkCount ? {
+    kind: "Prune",
+    title: `${formatStatNumber(stats.brokenLinkCount)} broken connection${stats.brokenLinkCount === 1 ? "" : "s"} found`,
+    body: "Dreaming would propose link repairs or removals, then wait for approval before changing pages."
+  } : {
+    kind: "Prune",
+    title: "No broken wiki links detected",
+    body: "The current link graph is clean enough for the next consolidation pass."
+  });
+  if (stats.sparseEntityCount) {
+    proposals.push({
+      kind: "Enrich",
+      title: `${formatStatNumber(stats.sparseEntityCount)} sparse entity page${stats.sparseEntityCount === 1 ? "" : "s"}`,
+      body: "Dreaming would propose summaries or missing fields only where source evidence exists."
+    });
+  }
+  if (stats.sourceCount >= 2) {
+    proposals.push({
+      kind: "Synthesis",
+      title: "Look for one cross-source connection",
+      body: "Dreaming would compare recent sources with existing concepts and suggest one useful link for review."
+    });
+  }
+  proposals.push({
+    kind: "Log",
+    title: "Append tonight's Dream Log",
+    body: "A nightly pass should write a proposal-only record to wiki/.margins/dream-log.md before any accepted edits land."
+  });
+  return proposals.slice(0, 5);
+}
+
+function dreamLogTitles(fileMap, stats) {
+  const { names, events } = dreamTitleContext(fileMap);
+  const firstName = names[0]?.label || "";
+  const secondName = names.find((name) => name.label !== firstName)?.label || "";
+  const firstEvent = events[0]?.label || "";
+  const secondEvent = events.find((event) => event.label !== firstEvent)?.label || "";
+  const titles = [];
+  const add = (title, context) => {
+    const cleanedTitle = dreamCleanTitle(title);
+    if (!cleanedTitle || titles.some((item) => item.title.toLowerCase() === cleanedTitle.toLowerCase())) return;
+    titles.push({
+      title: cleanedTitle,
+      context: context || "Generated from current wiki pages."
+    });
+  };
+
+  if (firstName && firstEvent) {
+    add(`${firstName} got stuck in the margins of ${firstEvent}`, `From ${dreamDisplayPath(events[0]?.path || names[0]?.path)}`);
+  }
+  if (firstName && secondName) {
+    add(`${firstName} brought ${secondName} to the wrong bucket meeting`, "From linked wiki pages.");
+  }
+  if (firstEvent) {
+    add(`${firstEvent} tried to file itself before breakfast`, `From ${dreamDisplayPath(events[0]?.path)}`);
+  }
+  if (secondEvent && firstName) {
+    add(`${firstName} wandered through ${secondEvent} looking for loose links`, `From ${dreamDisplayPath(events[1]?.path || names[0]?.path)}`);
+  }
+  if (firstName && (stats?.brokenLinkCount || stats?.linkCount)) {
+    const count = stats.brokenLinkCount || stats.linkCount;
+    add(`${firstName} and the case of the ${formatStatNumber(count)} loose synapses`, "From the current link graph.");
+  }
+
+  return titles.slice(0, 3);
+}
+
+function dreamTitleContext(fileMap) {
+  const records = recentActivityRecords(fileMap).slice(0, 8);
+  const names = new Map();
+  const events = new Map();
+  const addCandidate = (map, label, path, score) => {
+    const cleaned = dreamCleanLabel(label);
+    if (!cleaned || !path) return;
+    const key = slugifyLoose(cleaned);
+    if (!key) return;
+    const existing = map.get(key);
+    if (!existing || score > existing.score) {
+      map.set(key, { label: cleaned, path, score });
+    }
+  };
+
+  records.forEach((record, index) => {
+    addCandidate(events, record.title, record.path, 40 - index);
+    for (const [linkIndex, link] of record.links.entries()) {
+      addCandidate(names, link.label, link.path, 32 - index - linkIndex);
+    }
+  });
+
+  for (const [path, body] of fileMap.entries()) {
+    if (!path.startsWith("wiki/") || !path.endsWith(".md")) continue;
+    if (isActivitySourcePagePath(path, body)) continue;
+    if (isBucketOverviewPath(path) || isFolderIndexPath(path)) continue;
+    const type = dreamPageType(path, body);
+    if (!["entity", "concept"].includes(type)) continue;
+    const title = markdownTitle(body) || titleFromSlug(basename(path).replace(/\.md$/, ""));
+    addCandidate(names, title, path, type === "entity" ? 20 : 14);
+  }
+
+  return {
+    names: [...names.values()].sort((left, right) => right.score - left.score || left.label.localeCompare(right.label)).slice(0, 8),
+    events: [...events.values()].sort((left, right) => right.score - left.score || left.label.localeCompare(right.label)).slice(0, 8)
+  };
+}
+
+function dreamCleanTitle(value) {
+  return clampSentence(cleanSummary(value), 96);
+}
+
+function dreamCleanLabel(value) {
+  const label = cleanSummary(value).replace(/^Source:\s*/i, "");
+  if (!label || label.length < 3) return "";
+  const slug = slugifyLoose(label);
+  if (DREAM_TITLE_STOP_LABELS.has(slug)) return "";
+  if (/^[a-z]+$/.test(label) && label.length < 6) return "";
+  if (label.split(/\s+/).length > 12) return clampSentence(label, 74);
+  return label;
+}
+
+function dreamDisplayPath(path) {
+  const normalized = normalizeMarginsPath(path || "");
+  if (!normalized) return "current wiki pages";
+  return normalized.replace(/^wiki\//, "");
+}
+
+const DREAM_TITLE_STOP_LABELS = new Set([
+  "about",
+  "and",
+  "brain",
+  "file",
+  "going",
+  "know",
+  "link",
+  "links",
+  "note",
+  "page",
+  "source",
+  "that",
+  "thats",
+  "thing",
+  "things",
+  "think",
+  "wiki"
+]);
+
 function recentActivityRecords(fileMap) {
   return [...fileMap.entries()]
     .filter(([path, body]) => isActivitySourcePagePath(path, body))
@@ -6691,6 +7064,7 @@ summary: Test graph index.
 
 [[source-one]]
 [[setup-efficiency]]
+[[margins-ui]]
 `],
         ["wiki/sources/source-one.md", `---
 type: source
@@ -6708,7 +7082,16 @@ summary: Setup efficiency concept.
 
 # Setup Efficiency
 
-Related to [[connor]].
+Related to [[connor]] and [[margins-ui]].
+`],
+        ["wiki/projects/margins-ui.md", `---
+type: project
+summary: Test project.
+---
+
+# Margins UI
+
+Project node linked to [[setup-efficiency]].
 `],
         ["wiki/entities/connor.md", `---
 type: entity
@@ -6729,6 +7112,7 @@ updated: 2026-05-06
       const headerStyle = getComputedStyle(document.querySelector(".graph-header"));
       const backdropStyle = getComputedStyle(document.querySelector(".graph-backdrop"));
       const glowStyle = getComputedStyle(document.querySelector(".node-glow"));
+      const projectNodeStyle = getComputedStyle(document.querySelector(".graph-node.type-project .node-core"));
       return {
         theme: state.theme,
         pageBg: rootStyle.getPropertyValue("--bg").trim(),
@@ -6736,7 +7120,8 @@ updated: 2026-05-06
         wrapBg: wrapStyle.backgroundColor,
         headerBg: headerStyle.backgroundColor,
         backdropFill: backdropStyle.fill,
-        glowOpacity: glowStyle.opacity
+        glowOpacity: glowStyle.opacity,
+        projectNodeFill: projectNodeStyle.fill
       };
     },
     seedConceptOnlyVault() {
@@ -7435,6 +7820,11 @@ raw_file: raw/filed-note.md
         }
       ];
       const fileMap = new Map([
+        ["CLAUDE.md", "# CLAUDE.md\n\nRead this before operating the vault.\n"],
+        ["operator-manual.md", "# Operator Manual\n\nUse this to operate the vault.\n"],
+        ["query-cookbook.md", "# Query Cookbook\n\nUse this to query the vault.\n"],
+        ["commands/query.md", "# Query\n\nAnswer questions against the vault.\n"],
+        ["agents/wiki-ingest.md", "# Wiki Ingest Agent\n\nIngest conservatively.\n"],
         ["wiki/projects/source-2026-05-06-filed-note.md", `---
 type: source
 bucket: projects
@@ -7947,6 +8337,7 @@ function isSourceReviewReady(file) {
 
 function renderVaultTree(fileMap = state.currentFileMap) {
   renderRecentActivity(fileMap || activeActivityFileMap());
+  renderDream(fileMap || activeActivityFileMap());
   renderEntities(fileMap || new Map());
   if (!els.vaultTree || els.vaultTree.hidden) return;
   const stats = ingestionStats(fileMap || new Map());
@@ -9296,7 +9687,33 @@ function vaultBrowserEntries(fileMap) {
       kind: "wiki",
       editable: true
     }));
-  return [...rawEntries, ...wikiEntries].sort((left, right) => left.path.localeCompare(right.path));
+  const operatingEntries = [...fileMap.entries()]
+    .filter(([path]) => isOperatingBrowserPath(path))
+    .map(([path, body]) => ({
+      path: normalizeMarginsPath(path),
+      body,
+      kind: "operating",
+      editable: true
+    }));
+  return [...operatingEntries, ...rawEntries, ...wikiEntries].sort((left, right) => (
+    browserPathRank(left.path) - browserPathRank(right.path) || left.path.localeCompare(right.path)
+  ));
+}
+
+function isOperatingBrowserPath(path) {
+  const normalizedPath = normalizeMarginsPath(path);
+  return ROOT_GENERATED_TEXT_FILES.has(normalizedPath) ||
+    normalizedPath.startsWith("commands/") ||
+    normalizedPath.startsWith("agents/");
+}
+
+function browserPathRank(path) {
+  const normalizedPath = normalizeMarginsPath(path);
+  if (ROOT_GENERATED_TEXT_FILES.has(normalizedPath)) return 0;
+  if (normalizedPath.startsWith("commands/") || normalizedPath.startsWith("agents/")) return 1;
+  if (normalizedPath.startsWith("raw/")) return 2;
+  if (normalizedPath.startsWith("wiki/")) return 3;
+  return 4;
 }
 
 function renderVaultFolderTree(entries) {
@@ -9310,10 +9727,12 @@ function renderVaultFolderTree(entries) {
     }
     node.files.push(entry);
   }
-  return [...root.folders.entries()]
+  const rootFiles = renderVaultFiles(root.files, 0);
+  const folders = [...root.folders.entries()]
     .sort(([left], [right]) => sidebarFolderOrder(left) - sidebarFolderOrder(right) || left.localeCompare(right))
     .map(([name, node]) => renderVaultFolder(name, node, 0))
     .join("");
+  return `${rootFiles}${folders}`;
 }
 
 function renderVaultFolder(name, node, depth, parentPath = "") {
@@ -9325,18 +9744,21 @@ function renderVaultFolder(name, node, depth, parentPath = "") {
     .map(([childName, childNode]) => renderVaultFolder(childName, childNode, depth + 1, folderPath))
     .join("");
   const files = node.files
-    .sort((left, right) => left.path.localeCompare(right.path))
-    .map((file) => `
-      <button class="vault-file" type="button" data-path="${escapeHtml(file.path)}" style="--depth: ${depth + 1}">
-        <span>${escapeHtml(basename(file.path))}</span>
-      </button>
-    `).join("");
+    .sort((left, right) => browserPathRank(left.path) - browserPathRank(right.path) || left.path.localeCompare(right.path));
   return `
     <details class="vault-folder" style="--depth: ${depth}"${shouldOpen ? " open" : ""}>
       <summary><span>${escapeHtml(name)}</span></summary>
-      ${folders}${files}
+      ${folders}${renderVaultFiles(files, depth + 1)}
     </details>
   `;
+}
+
+function renderVaultFiles(files, depth) {
+  return files.map((file) => `
+    <button class="vault-file" type="button" data-path="${escapeHtml(file.path)}" style="--depth: ${depth}">
+      <span>${escapeHtml(basename(file.path))}</span>
+    </button>
+  `).join("");
 }
 
 function vaultFolderCount(node) {
@@ -10396,6 +10818,7 @@ function graphNodeHome(node) {
     index: { x: width * 0.5, y: height * 0.48 },
     source: { x: width * 0.29, y: height * 0.58 },
     concept: { x: width * 0.52, y: height * 0.38 },
+    project: { x: width * 0.39, y: height * 0.72 },
     entity: { x: width * 0.72, y: height * 0.55 },
     synthesis: { x: width * 0.56, y: height * 0.68 }
   }[node.type] || { x: width * 0.5, y: height * 0.5 };
@@ -10411,11 +10834,12 @@ function graphLinkDistance(source, target) {
 function graphNodePath(node) {
   if (node.path) return node.path;
   if (node.id === "index" || node.type === "index") return "wiki/index.md";
-  if (/^(sources|concepts|entities|synthesis)\//.test(node.id)) return `wiki/${node.id}.md`;
+  if (/^(sources|concepts|entities|projects|synthesis)\//.test(node.id)) return `wiki/${node.id}.md`;
   const bucket = {
     source: "sources",
     concept: "concepts",
     entity: "entities",
+    project: "projects",
     synthesis: "synthesis"
   }[node.type];
   return bucket ? `wiki/${bucket}/${node.id}.md` : "";
@@ -10427,6 +10851,7 @@ function graphNodeTypeLabel(type) {
     source: "Source",
     concept: "Concept",
     entity: "Entity",
+    project: "Project",
     synthesis: "Synthesis"
   }[type] || "Node";
 }
@@ -10474,20 +10899,28 @@ function nodeFromMarkdownFile(path, body) {
     node: {
       id,
       path,
-      type: graphTypeFromPath(path),
+      type: graphTypeFromPath(path, body),
       title: markdownTitle(body) || titleFromSlug(slug)
     }
   };
 }
 
 function isGraphNodePath(path) {
-  return /^wiki\/(sources|concepts|entities|synthesis)\/[^/]+\.md$/.test(path) || path === "wiki/index.md";
+  return /^wiki\/(sources|concepts|entities|projects|synthesis)\/[^/]+\.md$/.test(path) || path === "wiki/index.md";
 }
 
-function graphTypeFromPath(path) {
+function graphTypeFromPath(path, body = "") {
+  const fields = frontmatterFields(body);
+  const frontmatterType = normalizeEntityTag(fields.type || fields.primary_type || "");
+  if (frontmatterType === "source") return "source";
+  if (frontmatterType === "concept") return "concept";
+  if (frontmatterType === "entity" || frontmatterType === "person" || frontmatterType === "company") return "entity";
+  if (frontmatterType === "project") return "project";
+  if (frontmatterType === "synthesis") return "synthesis";
   if (path.startsWith("wiki/sources/")) return "source";
   if (path.startsWith("wiki/concepts/")) return "concept";
   if (path.startsWith("wiki/entities/")) return "entity";
+  if (path.startsWith("wiki/projects/")) return "project";
   if (path.startsWith("wiki/synthesis/")) return "synthesis";
   return "index";
 }
@@ -10510,6 +10943,7 @@ function resolveGraphLink(target, byPath, bySlug) {
     `wiki/sources/${trimmed}.md`,
     `wiki/concepts/${trimmed}.md`,
     `wiki/entities/${trimmed}.md`,
+    `wiki/projects/${trimmed}.md`,
     `wiki/synthesis/${trimmed}.md`
   ];
 
@@ -11628,6 +12062,7 @@ function nodeRadius(type, degree = 0) {
     source: 7.5,
     concept: 9,
     entity: 9,
+    project: 9.5,
     synthesis: 10.5
   }[type] || 8;
   return Math.min(18, base + Math.sqrt(Math.max(degree, 0)) * 1.25);

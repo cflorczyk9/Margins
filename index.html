@@ -11,7 +11,7 @@
   <div class="app-shell">
     <aside class="sidebar">
       <div class="brand">
-        <div class="brand-dot" aria-hidden="true"></div>
+        <div class="mark" aria-hidden="true"></div>
         <div class="brand-name">margins</div>
       </div>
 
@@ -23,6 +23,14 @@
             <path d="M3 14h5l2 3h4l2-3h5"></path>
           </svg>
           <span>Activity</span>
+        </button>
+        <button class="tab" data-view="dream" type="button">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3a6 6 0 0 0 9 7 9 9 0 1 1-9-7z"></path>
+            <path d="M19 3v4"></path>
+            <path d="M21 5h-4"></path>
+          </svg>
+          <span>Dream</span>
         </button>
         <button class="tab" data-view="entities" type="button">
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -184,6 +192,54 @@
             </div>
           </div>
         </section>
+      </section>
+
+      <section id="dream-view" class="view">
+        <div class="dream-workspace">
+          <div class="page-head dream-head">
+            <div>
+              <h2>Dream</h2>
+              <div id="dream-meta" class="meta-row">Open a vault to let Margins consolidate overnight.</div>
+            </div>
+          </div>
+
+          <section class="dream-state-card" aria-live="polite">
+            <div class="dream-orbit" aria-hidden="true"></div>
+            <div>
+              <span class="section-kicker">Night pass</span>
+              <h3 id="dream-state-title">Open a vault to let Margins dream</h3>
+              <p id="dream-state-body">Dreams consolidate concepts, prune weak links, sync operating memory, and prepare reviewable proposals.</p>
+            </div>
+          </section>
+
+          <div id="dream-stats" class="dream-stat-grid" aria-label="Dream stats"></div>
+
+          <section class="dream-section">
+            <div class="section-head">
+              <div>
+                <span class="section-kicker">Operations</span>
+                <h3>What dreaming works on</h3>
+              </div>
+            </div>
+            <div id="dream-operation-list" class="dream-grid"></div>
+          </section>
+
+          <section class="dream-section">
+            <div class="section-head">
+              <div>
+                <span class="section-kicker">Morning report</span>
+                <h3>Proposals to review</h3>
+              </div>
+            </div>
+            <div id="dream-proposal-list" class="dream-proposal-list"></div>
+          </section>
+
+          <section class="dream-log-card">
+            <span class="section-kicker">Dream log</span>
+            <p id="dream-log-meta">No dream log loaded yet.</p>
+            <ul id="dream-log-titles" class="dream-title-list" aria-label="Possible dream titles"></ul>
+          </section>
+        </div>
       </section>
 
       <section id="entities-view" class="view">
