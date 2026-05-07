@@ -5,6 +5,7 @@ export const STORAGE_KEYS = Object.freeze({
   apiGuard: "margins.apiGuard.v1",
   apiSettings: "margins.apiSettings.v1",
   modelTimings: "margins.modelTimings.v1",
+  processTimings: "margins.processTimings.v1",
   vaultHandle: "last-vault-directory"
 });
 
