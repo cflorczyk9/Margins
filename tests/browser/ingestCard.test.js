@@ -1486,6 +1486,39 @@ test("files tab opens the vault index by default", {
     assert.equal(await page.locator("#doc-title").innerText(), "index");
     assert.equal(await page.locator(".vault-file.active").getAttribute("data-path"), "wiki/index.md");
     assert.match(await page.locator("#doc-body").inputValue(), /# Index/);
+    await page.locator(".vault-file[data-path='CLAUDE.md']").waitFor();
+    await page.locator(".vault-folder summary", { hasText: "commands" }).waitFor();
+    await page.locator(".vault-folder summary", { hasText: "agents" }).waitFor();
+    await page.locator(".vault-file[data-path='CLAUDE.md']").click();
+    assert.equal(await page.locator("#doc-title").innerText(), "CLAUDE");
+    assert.match(await page.locator("#doc-body").inputValue(), /Read this before operating the vault/);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("dream tab renders proposal-only overnight operations", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => window.__marginsTest.seedActivitySections());
+    await page.getByRole("button", { name: "Dream", exact: true }).click();
+    await page.locator("#dream-view.active").waitFor();
+    await page.getByText("Margins is dreaming").waitFor();
+    await page.getByText("Dreams prepare proposals only").waitFor();
+    assert.equal(await page.locator("#dream-operation-list .dream-op-card").count(), 6);
+    await page.locator("#dream-operation-list", { hasText: "Compile" }).waitFor();
+    await page.locator("#dream-operation-list", { hasText: "Lint" }).waitFor();
+    await page.locator("#dream-proposal-list", { hasText: "Append tonight's Dream Log" }).waitFor();
+    await page.locator("#dream-log-titles", { hasText: "Briefly got stuck in the margins of Filed Activity Note" }).waitFor();
+    assert.equal(await page.locator("#dream-proposal-list button:disabled").count() >= 3, true);
   } finally {
     await browser.close();
     await server.close();
@@ -1955,6 +1988,8 @@ test("graph tab follows the active app theme", {
     assert.notEqual(light.wrapBg, dark.wrapBg);
     assert.notEqual(light.headerBg, dark.headerBg);
     assert.notEqual(light.backdropFill, dark.backdropFill);
+    assert.notEqual(light.projectNodeFill, dark.projectNodeFill);
+    assert.match(light.projectNodeFill, /rgb\(111,\s*168,\s*99\)/);
     assert.equal(Number(light.glowOpacity) < 0.2, true);
     assert.equal(Number(dark.glowOpacity) < 0.2, true);
   } finally {
