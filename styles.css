@@ -38,6 +38,20 @@
   --shadow-sm: 0 1px 0 rgba(26, 22, 18, 0.04), 0 6px 18px rgba(26, 22, 18, 0.04);
   --shadow-md: 0 1px 0 rgba(26, 22, 18, 0.06), 0 12px 36px rgba(26, 22, 18, 0.10);
   --shadow-lg: 0 18px 60px rgba(26, 22, 18, 0.10), 0 2px 12px rgba(26, 22, 18, 0.06);
+
+  /* Polychrome — landing-page saturation */
+  --vermillion: #d63a2f;
+  --cobalt:     #2c5aa0;
+  --mustard:    #f0c14b;
+  --violet:     #6a4f8c;
+  --green-poly: #6fa863;
+  --ink-poly:   #1a1612;
+
+  /* Per-tab tint */
+  --tab-activity: var(--vermillion);
+  --tab-dream:    var(--violet);
+  --tab-entities: var(--cobalt);
+  --tab-files:    var(--mustard);
 }
 
 [data-theme="dark"] {
@@ -71,6 +85,17 @@
   --source-pill-bg: var(--tag-bg);
   --source-pill-text: var(--tag-text);
   --source-pill-hover: var(--accent-line);
+
+  --vermillion: #ee5b4f;
+  --cobalt:     #6f9bdf;
+  --mustard:    #ecbf66;
+  --violet:     #aa8ad4;
+  --green-poly: #82c479;
+  --ink-poly:   #f1eee7;
+  --tab-activity: var(--vermillion);
+  --tab-dream:    var(--violet);
+  --tab-entities: var(--cobalt);
+  --tab-files:    var(--mustard);
 }
 
 * {
@@ -3866,11 +3891,29 @@ body {
   font-weight: 450;
 }
 
+.nav .tab[data-view="inbox"] {
+  --tab-color: var(--tab-activity);
+}
+
+.nav .tab[data-view="dream"] {
+  --tab-color: var(--tab-dream);
+}
+
+.nav .tab[data-view="entities"] {
+  --tab-color: var(--tab-entities);
+}
+
+.nav .tab[data-view="wiki"] {
+  --tab-color: var(--tab-files);
+}
+
 .nav .tab svg {
   width: 16px;
   height: 16px;
   flex: 0 0 auto;
+  color: var(--tab-color, var(--muted));
   opacity: 0.72;
+  transition: color 160ms ease, transform 200ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .nav .tab:hover {
@@ -3880,8 +3923,12 @@ body {
   border-color: transparent;
 }
 
+.nav .tab:hover svg {
+  transform: scale(1.08);
+}
+
 .nav .tab.active {
-  background: var(--paper);
+  background: color-mix(in srgb, var(--tab-color, var(--accent)) 12%, transparent);
   color: var(--ink);
   border-bottom-color: transparent;
   box-shadow: var(--shadow-sm);
@@ -3889,7 +3936,7 @@ body {
 }
 
 .nav .tab.active svg {
-  color: var(--accent);
+  color: var(--tab-color);
   opacity: 1;
 }
 
