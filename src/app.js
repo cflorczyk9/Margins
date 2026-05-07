@@ -8473,7 +8473,7 @@ function renderEntityCard(record) {
   return `
     <article class="entity-card" role="button" tabindex="0" data-entity-path="${escapeHtml(record.path)}">
       <div class="entity-card-top">
-        <span class="entity-vibe ${escapeHtml(entityVibeClass(record))}"></span>
+        <span class="entity-vibe ${escapeHtml(entityVibeClass(record))} t-${escapeHtml(normalizePrimaryTypeValue(record.typeLabel) || "concept")}"></span>
         <strong>${escapeHtml(record.title)}</strong>
         <button class="entity-pin-button ${pinned ? "active" : ""}" type="button" data-entity-pin-path="${escapeHtml(record.path)}" aria-pressed="${pinned ? "true" : "false"}" aria-label="${escapeHtml(`${pinAction} ${record.title}`)}" title="${escapeHtml(pinAction)}">
           <span aria-hidden="true">${escapeHtml(pinned ? "Pinned" : "Pin")}</span>

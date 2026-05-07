@@ -1781,6 +1781,36 @@ button,
   --file-tag-text: #8c5a96;
 }
 
+.source-icon.pdf {
+  --file-tag-bg: color-mix(in srgb, var(--vermillion) 14%, transparent);
+  --file-tag-border: color-mix(in srgb, var(--vermillion) 24%, transparent);
+  --file-tag-text: var(--vermillion);
+}
+
+.source-icon.eml {
+  --file-tag-bg: color-mix(in srgb, var(--green-poly) 16%, transparent);
+  --file-tag-border: color-mix(in srgb, var(--green-poly) 26%, transparent);
+  --file-tag-text: var(--green-poly);
+}
+
+.source-icon.doc {
+  --file-tag-bg: color-mix(in srgb, var(--cobalt) 14%, transparent);
+  --file-tag-border: color-mix(in srgb, var(--cobalt) 24%, transparent);
+  --file-tag-text: var(--cobalt);
+}
+
+.source-icon.txt {
+  --file-tag-bg: color-mix(in srgb, var(--violet) 14%, transparent);
+  --file-tag-border: color-mix(in srgb, var(--violet) 24%, transparent);
+  --file-tag-text: var(--violet);
+}
+
+.source-icon.aud {
+  --file-tag-bg: color-mix(in srgb, var(--mustard) 18%, transparent);
+  --file-tag-border: color-mix(in srgb, var(--mustard) 30%, transparent);
+  --file-tag-text: #8d5f00;
+}
+
 .source-process-btn {
   width: auto;
   min-width: 96px;
@@ -4642,33 +4672,69 @@ body {
 }
 
 .entity-vibe {
-  width: 7px;
-  height: 7px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
-  background: var(--faint);
+  background: var(--ink-poly);
+  color: var(--ink-poly);
   flex: 0 0 auto;
+  position: relative;
+  transition: box-shadow 200ms ease, opacity 200ms ease;
 }
 
+/* Color by type */
+.entity-vibe.t-person,
+.entity-vibe.t-advisor {
+  background: var(--vermillion);
+  color: var(--vermillion);
+}
+
+.entity-vibe.t-project {
+  background: var(--green-poly);
+  color: var(--green-poly);
+}
+
+.entity-vibe.t-company {
+  background: var(--cobalt);
+  color: var(--cobalt);
+}
+
+.entity-vibe.t-concept,
+.entity-vibe.t-idea,
+.entity-vibe.t-synthesis,
+.entity-vibe.t-tool,
+.entity-vibe.t-movie {
+  background: var(--violet);
+  color: var(--violet);
+}
+
+.entity-vibe.t-source,
+.entity-vibe.t-school,
+.entity-vibe.t-book,
+.entity-vibe.t-career {
+  background: var(--mustard);
+  color: var(--mustard);
+}
+
+/* Vibrance becomes a halo around the typed dot */
 .entity-vibe.peak {
-  background: #b85c38;
-  box-shadow: 0 0 0 3px rgba(184, 92, 56, 0.18);
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 30%, transparent);
 }
 
 .entity-vibe.fresh {
-  background: #d97a4f;
+  box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 22%, transparent);
 }
 
 .entity-vibe.recent {
-  background: #d8a06f;
+  /* no halo, full color */
 }
 
 .entity-vibe.aged {
-  background: #c8b899;
+  opacity: 0.6;
 }
 
 .entity-vibe.old {
-  background: #b8b0a3;
-  opacity: 0.55;
+  opacity: 0.4;
 }
 
 .type-tag {
