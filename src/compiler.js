@@ -259,11 +259,11 @@ ${summary}
 
 ## Key Terms
 
-${terms.map((term) => `- [[${slugify(term)}|${term}]]`).join("\n") || "- _(none detected)_"}
+${terms.map((term) => `- ${term}`).join("\n") || "- _(none detected)_"}
 
 ## Entity Candidates
 
-${entities.map((entity) => `- [[${slugify(entity)}|${entity}]]`).join("\n") || "- _(none detected)_"}
+${entities.map((entity) => `- ${entity}`).join("\n") || "- _(none detected)_"}
 
 ## Notes
 

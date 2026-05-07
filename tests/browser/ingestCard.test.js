@@ -49,18 +49,65 @@ test("ingest card expands summaries and persists question answers", {
       });
     }, fullSummary);
 
-    await page.getByRole("button", { name: "Show more" }).click();
-    const expandedSummary = normalizeText(await page.locator(".run-summary").innerText());
+    const card = page.locator(".source-item.ready-to-write", { hasText: "browser-smoke-source.txt" });
+    await card.getByText("Needs your call").waitFor();
+    await card.getByText("sources/source-browser-smoke-source.md").waitFor();
+    await openReceiptDetails(card);
+    await card.getByRole("button", { name: "Show more" }).click();
+    const expandedSummary = normalizeText(await card.locator(".run-summary").innerText());
     assert.match(expandedSummary, /This uploaded source summarizes a phone call/);
     assert.match(expandedSummary, /The full summary should be visible/);
     assert.equal(expandedSummary.endsWith("..."), false);
 
-    await page.locator(".run-question .quick-answer", { hasText: "Yes" }).click();
+    await card.locator(".receipt-decision .quick-answer", { hasText: "Yes" }).click();
     await assertSelected(page, "Yes");
     await assertAnswered(page, "Answered: Yes");
-    assert.equal(await page.locator(".connection-chip").count(), 2);
+    await card.locator(".receipt-log .filing-pill", { hasText: "Claude Code" }).waitFor();
+    await card.locator(".receipt-log .filing-pill", { hasText: "Setup Efficiency" }).waitFor();
     assert.equal(await page.locator(".source-item.ready-to-write > .source-process-btn").count(), 0);
-    await page.locator(".run-action-row").getByRole("button", { name: "Approve" }).waitFor();
+    await card.locator(".receipt-footer").getByRole("button", { name: "Approve" }).waitFor();
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("filing bucket questions render as bucket choices instead of paths", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => {
+      window.__marginsTest.seedIngestCard({
+        summary: "This source should be filed after choosing the most appropriate bucket.",
+        questions: [
+          {
+            question: "File this in coding or use another proposed bucket?",
+            options: [
+              "wiki/coding/source-2001-tavanti-3d-spatial-memory.md",
+              "wiki/ideas/source-2001-tavanti-3d-spatial-memory.md",
+              "Skip"
+            ]
+          }
+        ]
+      });
+    });
+
+    const card = page.locator(".source-item.ready-to-write", { hasText: "browser-smoke-source.txt" });
+    await card.locator(".receipt-decision").getByText("Does this belong in coding or ideas?").waitFor();
+    await card.locator(".receipt-decision").getByRole("button", { name: "Coding" }).waitFor();
+    await card.locator(".receipt-decision").getByRole("button", { name: "Ideas" }).click();
+    await card.locator(".receipt-decision").getByText("Answered: Ideas").waitFor();
+
+    const receiptText = normalizeText(await card.locator(".receipt-decision").innerText());
+    assert.doesNotMatch(receiptText, /wiki\/coding\/source-2001/);
+    assert.doesNotMatch(receiptText, /wiki\/ideas\/source-2001/);
+    assert.match(await page.locator("#review-reply").inputValue(), /wiki\/ideas\/source-2001-tavanti-3d-spatial-memory\.md/);
   } finally {
     await browser.close();
     await server.close();
@@ -77,14 +124,31 @@ test("process button processes only the selected pending source", {
     await page.goto(`${server.url}/index.html?marginsTest=1`);
     await page.waitForFunction(() => Boolean(window.__marginsTest));
 
-    await page.evaluate(() => window.__marginsTest.seedSourceStatusCards());
+    await page.evaluate(() => {
+      window.__marginsTest.clearProcessTimings();
+      window.__marginsTest.seedSourceStatusCards();
+    });
     await page.locator(".source-item", { hasText: "script/build.py" }).getByRole("button", { name: "Process" }).click();
     await page.locator(".source-item.ready-to-write", { hasText: "script/build.py" }).waitFor();
+    await page.waitForFunction(() => window.__marginsTest.processTimings().length === 1);
 
     assert.deepEqual(await page.evaluate(() => window.__marginsTest.processedReviewNames()), ["script/build.py"]);
     assert.equal(await page.locator(".source-item.ready-to-write").count(), 1);
     assert.match(await page.locator(".source-item", { hasText: "pending-word.docx" }).innerText(), /Process/);
     assert.match(await page.locator(".source-item", { hasText: "pending-statement.pdf" }).innerText(), /Process/);
+    const timings = await page.evaluate(() => window.__marginsTest.processTimings());
+    assert.equal(timings[0].purpose, "ingest_process");
+    assert.equal(timings[0].fileName, "script/build.py");
+    assert.equal(timings[0].readyToApprove, true);
+    assert.equal(timings[0].ok, true);
+    assert.ok(Number.isFinite(timings[0].totalMs));
+    assert.ok(Number.isFinite(timings[0].renderReadyMs));
+    const storedTimings = await page.evaluate(() => JSON.parse(localStorage.getItem("margins.processTimings.v1") || "[]"));
+    assert.equal(storedTimings.length, 1);
+    assert.equal(storedTimings[0].fileName, "script/build.py");
+    const card = page.locator(".source-item.ready-to-write", { hasText: "script/build.py" });
+    await openReceiptDetails(card);
+    await card.getByText(/Processed in \d+(?:\.\d)?s/).waitFor();
   } finally {
     await browser.close();
     await server.close();
@@ -138,8 +202,42 @@ test("processing checklist advances while Gemini is still reviewing", {
     await card.getByText("Saving PDF to raw").waitFor();
     await card.getByText(/Reading PDF/).waitFor();
     await card.getByText("Margins is comparing it against your brain").waitFor();
-    await card.getByText("Building the source page, links, and review flags").waitFor();
-    await page.locator(".source-item.ready-to-write", { hasText: "saved-report.pdf" }).waitFor();
+    await card.getByText("Converting to Markdown file structure").waitFor();
+    const readyCard = page.locator(".source-item.ready-to-write", { hasText: "saved-report.pdf" });
+    await readyCard.waitFor();
+    const lines = await readyCard.locator(".receipt-log-line").evaluateAll((nodes) => (
+      nodes.map((node) => node.querySelector(".receipt-log-content")?.innerText.trim() || "")
+    ));
+    assert.equal(lines[0], "Saving PDF to raw");
+    assert.match(lines[1], /^Reading PDF/);
+    assert.equal(lines[2], "Margins is comparing it against your brain");
+    assert.equal(lines[3], "Converting to Markdown file structure");
+    assert.ok(lines.findIndex((line) => /Created|Updated|Prepared source page/.test(line)) > 3);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("markdown sources do not say they are being converted to Markdown", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => window.__marginsTest.seedIngestCard({
+      fileName: "browser-smoke-source.md",
+      summary: "Markdown source ready for filing."
+    }));
+    const readyCard = page.locator(".source-item.ready-to-write", { hasText: "browser-smoke-source.md" });
+    await readyCard.waitFor();
+    const cardText = normalizeText(await readyCard.innerText());
+    assert.match(cardText, /Preparing Markdown file for filing/);
+    assert.doesNotMatch(cardText, /Converting to Markdown file structure/);
   } finally {
     await browser.close();
     await server.close();
@@ -244,8 +342,9 @@ test("vault PDF review refreshes the saved raw file before model attachment", {
     const pendingText = await page.locator("#source-list").innerText();
     assert.doesNotMatch(pendingText, /Review did not finish/);
     assert.match(pendingText, /This PDF was read directly/);
-    assert.equal(await page.locator(".connection-chip", { hasText: "PDF ingest" }).count(), 1);
-    await page.locator(".run-action-row").getByRole("button", { name: "Approve" }).waitFor();
+    const card = page.locator(".source-item.ready-to-write", { hasText: "saved-report.pdf" });
+    assert.equal(await card.locator(".receipt-log .filing-pill", { hasText: "PDF ingest" }).count(), 1);
+    await card.locator(".receipt-footer").getByRole("button", { name: "Approve" }).waitFor();
 
     const bodies = await page.evaluate(() => window.__geminiBodies);
     const parts = bodies[0]?.contents?.[0]?.parts || [];
@@ -279,6 +378,8 @@ test("readable PDFs fall back to local review when Gemini is rate limited", {
     await page.locator(".source-item", { hasText: "text-layer-report.pdf" }).getByRole("button", { name: "Process" }).click();
     await page.locator(".source-item.ready-to-write", { hasText: "text-layer-report.pdf" }).waitFor();
 
+    const card = page.locator(".source-item.ready-to-write", { hasText: "text-layer-report.pdf" });
+    await openReceiptDetails(card);
     const pendingText = await page.locator("#source-list").innerText();
     assert.doesNotMatch(pendingText, /Review did not finish/);
     assert.match(pendingText, /Margins review is rate-limited right now/);
@@ -286,7 +387,7 @@ test("readable PDFs fall back to local review when Gemini is rate limited", {
     assert.match(pendingText, /Retry later for model-generated questions/);
     assert.match(pendingText, /Local review ready/);
     assert.doesNotMatch(pendingText, /Margins reviewed/);
-    await page.locator(".run-action-row").getByRole("button", { name: "Approve" }).waitFor();
+    await card.locator(".receipt-footer").getByRole("button", { name: "Approve" }).waitFor();
   } finally {
     await browser.close();
     await server.close();
@@ -327,12 +428,15 @@ test("malformed Gemini fallback does not invent financial extraction", {
     const card = page.locator(".source-item.ready-to-write", { hasText: "coleman-brokerage-2026-03.pdf" });
     await card.waitFor();
 
-    const cardText = normalizeText(await card.innerText());
-    assert.match(cardText, /Margins received a malformed review/);
+    let cardText = normalizeText(await card.innerText());
     assert.doesNotMatch(cardText, /Financial details/);
     assert.doesNotMatch(cardText, /Financial source/);
     assert.doesNotMatch(cardText, /Should Margins keep extracted figures and account details/);
     assert.doesNotMatch(cardText, /Keep demo figures/);
+    await openReceiptDetails(card);
+    const detailsText = normalizeText(await card.locator(".receipt-details-body").textContent());
+    assert.match(detailsText, /Margins received a malformed review/);
+    assert.doesNotMatch(detailsText, /Financial details/);
     const sourceNote = await page.evaluate(() => window.__marginsTest.sourceNoteBody("coleman-brokerage-2026-03.pdf"));
     assert.doesNotMatch(sourceNote, /## Financial Details/);
   } finally {
@@ -410,10 +514,11 @@ test("Gemini ingest review retries once when output is cut off", {
     await card.waitFor();
 
     const cardText = normalizeText(await card.innerText());
-    assert.match(cardText, /Margins reviewed/);
-    assert.match(cardText, /The retry returned a complete JSON review/);
+    assert.match(cardText, /Saved report should become a source note/);
     assert.doesNotMatch(cardText, /malformed review/);
     assert.doesNotMatch(cardText, /cut off before complete JSON/);
+    await openReceiptDetails(card);
+    assert.match(normalizeText(await card.innerText()), /The retry returned a complete JSON review/);
     const calls = await page.evaluate(() => window.__geminiCalls);
     assert.equal(calls.length, 2);
     assert.equal(calls[0].maxOutputTokens >= 8192, true);
@@ -469,12 +574,14 @@ test("partial Gemini review uses local summary without misclassifying business D
     await card.waitFor();
 
     const cardText = normalizeText(await card.innerText());
-    assert.match(cardText, /Margins reviewed the source, but no card summary came back/);
     assert.match(cardText, /Zoom transcript from April 2026/);
     assert.match(cardText, /Should this Booth conversation stay active for follow-up tracking/);
     assert.doesNotMatch(cardText, /Model review failed/);
     assert.doesNotMatch(cardText, /financial account document/);
     assert.doesNotMatch(cardText, /Financial source/);
+    await openReceiptDetails(card);
+    const detailsText = normalizeText(await card.locator(".receipt-details-body").textContent());
+    assert.match(detailsText, /Margins reviewed the source, but no card summary came back/);
   } finally {
     await browser.close();
     await server.close();
@@ -515,19 +622,22 @@ test("local fallback does not label motivational money talk as financial", {
     const card = page.locator(".source-item.ready-to-write", { hasText: "16 Brutal Life Lessons" });
     await card.waitFor();
 
-    const cardText = normalizeText(await card.innerText());
+    let cardText = normalizeText(await card.innerText());
+    assert.match(cardText, /16 Brutal Life Lessons for Ambitious People - Michael Smoak/);
+    await openReceiptDetails(card);
+    const detailsText = normalizeText(await card.locator(".receipt-details-body").textContent());
     const summaryText = normalizeText(await card.locator(".run-summary").innerText());
-    assert.match(cardText, /Margins reviewed the source, but no card summary came back/);
+    assert.match(detailsText, /Margins reviewed the source, but no card summary came back/);
     assert.match(summaryText, /16 Brutal Life Lessons for Ambitious People - Michael Smoak/);
     assert.match(summaryText, /Michael Smoak is a mindset coach/);
     assert.doesNotMatch(summaryText, /title:/);
     assert.doesNotMatch(summaryText, /source:/);
     assert.doesNotMatch(summaryText, /tags:/);
     assert.doesNotMatch(summaryText, /youtube\.com\/watch/);
-    assert.doesNotMatch(cardText, /Chase · financial account document/);
-    assert.doesNotMatch(cardText, /Financial details/);
-    assert.doesNotMatch(cardText, /Financial source/);
-    assert.doesNotMatch(cardText, /extracted figures and account details/);
+    assert.doesNotMatch(detailsText, /Chase · financial account document/);
+    assert.doesNotMatch(detailsText, /Financial details/);
+    assert.doesNotMatch(detailsText, /Financial source/);
+    assert.doesNotMatch(detailsText, /extracted figures and account details/);
   } finally {
     await browser.close();
     await server.close();
@@ -602,15 +712,15 @@ test("Gemini financial review renders account figures and transactions", {
     const card = page.locator(".source-item.ready-to-write", { hasText: "coleman-brokerage-2026-03.pdf" });
     await card.waitFor();
 
-    const cardText = normalizeText(await card.innerText());
-    assert.match(cardText, /Margins reviewed/);
-    assert.match(cardText, /Financial details/);
-    assert.match(cardText, /Charles Schwab · brokerage statement · owner: Sarah Coleman · last4: 4321 · 2026-03/);
-    assert.match(cardText, /Total account value .* \$128,430\.52/);
-    assert.match(cardText, /Cash balance .* \$4,220\.17/);
-    assert.match(cardText, /GOOG · 12 shares · \$24,600\.00/);
-    assert.match(cardText, /2026-03-15 · dividend · Dividend GOOG · \$125\.33/);
-    assert.doesNotMatch(cardText, /Model review failed/);
+    await openReceiptDetails(card);
+    const detailsText = normalizeText(await card.locator(".receipt-details-body").textContent());
+    assert.match(detailsText, /Financial details/);
+    assert.match(detailsText, /Charles Schwab · brokerage statement · owner: Sarah Coleman · last4: 4321 · 2026-03/);
+    assert.match(detailsText, /Total account value .* \$128,430\.52/);
+    assert.match(detailsText, /Cash balance .* \$4,220\.17/);
+    assert.match(detailsText, /GOOG · 12 shares · \$24,600\.00/);
+    assert.match(detailsText, /2026-03-15 · dividend · Dividend GOOG · \$125\.33/);
+    assert.doesNotMatch(detailsText, /Model review failed/);
 
     const sourceNote = await page.evaluate(() => window.__marginsTest.sourceNoteBody("coleman-brokerage-2026-03.pdf"));
     assert.match(sourceNote, /## Financial Details/);
@@ -691,15 +801,16 @@ test("Gemini review parser accepts common near-schema variants", {
     const card = page.locator(".source-item.ready-to-write", { hasText: "Zoom in on Booth" });
     await card.waitFor();
 
-    const cardText = normalizeText(await card.innerText());
-    assert.match(cardText, /Margins reviewed/);
+    let cardText = normalizeText(await card.innerText());
     assert.match(cardText, /Use this Booth source as a relationship and product-market context note/);
-    assert.match(cardText, /Primary: Booth is discussing marketing and product-management fit/);
-    assert.match(cardText, /Amazon account strategy is context, not a financial account statement/);
-    assert.match(cardText, /wiki\/relationships\/booth\.md · add_backlink/);
     assert.match(cardText, /Should Booth stay in active relationship follow-up/);
-    assert.doesNotMatch(cardText, /did not return a card summary/);
-    assert.doesNotMatch(cardText, /Model review failed/);
+    await openReceiptDetails(card);
+    const detailsText = normalizeText(await card.locator(".receipt-details-body").textContent());
+    assert.match(detailsText, /Primary: Booth is discussing marketing and product-management fit/);
+    assert.match(detailsText, /Amazon account strategy is context, not a financial account statement/);
+    assert.match(detailsText, /wiki\/relationships\/booth\.md · add_backlink/);
+    assert.doesNotMatch(detailsText, /did not return a card summary/);
+    assert.doesNotMatch(detailsText, /Model review failed/);
   } finally {
     await browser.close();
     await server.close();
@@ -726,14 +837,16 @@ test("spend guard blocks model calls before fetch", {
         enabled: true,
         maxRequests: 20,
         maxOutputTokens: 8192,
-        maxSessionTokens: 250000,
-        maxSessionUsd: 0.0001
+        maxSessionTokens: 1,
+        maxSessionUsd: 0.000001
       });
       window.__marginsTest.seedReadablePdfSource();
     });
 
     await page.locator(".source-item", { hasText: "text-layer-report.pdf" }).getByRole("button", { name: "Process" }).click();
-    await page.locator(".source-item.ready-to-write", { hasText: "text-layer-report.pdf" }).waitFor();
+    const card = page.locator(".source-item.ready-to-write", { hasText: "text-layer-report.pdf" });
+    await card.waitFor();
+    await openReceiptDetails(card);
 
     const pendingText = await page.locator("#source-list").innerText();
     assert.match(pendingText, /Spend guard stopped this Gemini call before it ran/);
@@ -975,20 +1088,24 @@ test("Gemini review shows concise summary bullets and model questions", {
     assert.equal(calls[0].body.generationConfig.maxOutputTokens >= 8192, true);
 
     const card = page.locator(".source-item.ready-to-write", { hasText: "model-source-1.txt" });
-    await card.getByText("Margins reviewed", { exact: true }).waitFor();
-    await card.getByText("Filing judgment").waitFor();
-    await card.getByText("wiki/career/source-2026-05-06-larry-opportunity-call.md").waitFor();
-    await card.getByText("Files Margins checked").waitFor();
-    await card.locator(".plan-file-row").getByText("wiki/relationships/larry-abrahams.md", { exact: true }).waitFor();
-    await card.getByText("Detected 1 entity · 1 already in your brain").waitFor();
-    await card.getByText("Updated Larry Abrahams · connected the source to relationship context").waitFor();
-    await card.getByText("Use this call as an opportunity source note").waitFor();
-    await card.getByText("Opportunity: Larry is sharing a possible CFO").waitFor();
-    await card.getByText("Do not promote every company mention").waitFor();
-    await card.getByText("wiki/relationships/larry-abrahams.md · add_backlink").waitFor();
-    await card.getByText("Should Margins treat this as an active opportunity to track?").waitFor();
-    await card.getByRole("button", { name: "Track it" }).click();
-    await card.getByText("Answered: Track it").waitFor();
+    await card.locator(".receipt-log").getByText(/Created Larry opportunity call/).waitFor();
+    await card.locator(".receipt-log").getByRole("button", { name: /career\/source-2026-05-06-larry-opportunity-call\.md/ }).waitFor();
+    await card.getByText("Needs your call").waitFor();
+    await card.locator(".receipt-decision").getByText("Should Margins treat this as an active opportunity to track?").waitFor();
+    await card.locator(".receipt-decision").getByRole("button", { name: "Track it" }).click();
+    await card.locator(".receipt-decision").getByText("Answered: Track it").waitFor();
+    await openReceiptDetails(card);
+    const details = card.locator(".receipt-details-body");
+    await details.getByText("Filing judgment").waitFor();
+    await details.getByText("wiki/career/source-2026-05-06-larry-opportunity-call.md").waitFor();
+    await details.getByText("Files Margins checked").waitFor();
+    await details.locator(".plan-file-row").getByText("wiki/relationships/larry-abrahams.md", { exact: true }).waitFor();
+    await details.getByText("Detected 1 entity · 1 already in your brain").waitFor();
+    await details.getByText("Updated Larry Abrahams · connected the source to relationship context").waitFor();
+    await details.getByText("Use this call as an opportunity source note").waitFor();
+    await details.getByText("Opportunity: Larry is sharing a possible CFO").waitFor();
+    await details.getByText("Do not promote every company mention").waitFor();
+    await details.getByText("wiki/relationships/larry-abrahams.md · add_backlink").waitFor();
     assert.equal(
       await page.evaluate(() => window.__marginsTest.sourceNotePath("model-source-1.txt")),
       "wiki/career/source-2026-05-06-larry-opportunity-call.md"
@@ -1118,10 +1235,30 @@ test("filing checklist labels Margins review and ignores generic source links", 
     await page.goto(`${server.url}/index.html?marginsTest=1`);
     await page.waitForFunction(() => Boolean(window.__marginsTest));
 
-    const text = await page.evaluate(() => window.__marginsTest.seedNoisyFilingChecklist());
-    assert.match(text, /Margins reviewed/);
-    assert.match(text, /Detected 2 entities · 2 already in your brain/);
-    assert.match(text, /Linked to Workspace Map and Interface Decisions/);
+    await page.evaluate(() => window.__marginsTest.seedNoisyFilingChecklist());
+    const card = page.locator(".source-item.ready-to-write", { hasText: "workspace-map-notes.pdf" });
+    const receiptText = normalizeText(await card.innerText());
+    assert.match(receiptText, /new source/i);
+    assert.match(receiptText, /Detected 5 entities · 5 already in your brain/);
+    assert.match(receiptText, /Linked to Workspace Map, Interface Decisions, Graph View/);
+    assert.match(receiptText, /and 2 more/);
+    assert.doesNotMatch(receiptText, /Spatial Memory/);
+    assert.doesNotMatch(receiptText, /Linked to know/);
+    assert.doesNotMatch(receiptText, /think/);
+    assert.doesNotMatch(receiptText, /things/);
+    assert.doesNotMatch(receiptText, /going/);
+    assert.doesNotMatch(receiptText, /thats/);
+    assert.match(receiptText, /Workspace Map/);
+    assert.doesNotMatch(receiptText, /Margins reviewed/);
+    await card.getByRole("button", { name: "and 2 more" }).click();
+    const expandedReceiptText = normalizeText(await card.innerText());
+    assert.match(expandedReceiptText, /Spatial Memory/);
+    assert.match(expandedReceiptText, /Margins UI/);
+    assert.match(expandedReceiptText, /show fewer/);
+    await openReceiptDetails(card);
+    const text = normalizeText(await card.innerText());
+    assert.match(text, /Detected 5 entities · 5 already in your brain/);
+    assert.match(text, /Linked to Workspace Map, Interface Decisions, Graph View, Spatial Memory and Margins UI/);
     assert.doesNotMatch(text, /entitys/);
     assert.doesNotMatch(text, /Linked to display/);
     assert.doesNotMatch(text, /subjects and results/);
@@ -1203,14 +1340,14 @@ test("Gemini DOCX call review does not collapse a no-question response into a wa
     ]);
     assert.equal(calls[0].body.contents[0].parts.some((part) => part.inline_data?.mime_type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"), true);
 
-    await card.getByText("Margins reviewed", { exact: true }).waitFor();
+    await card.locator(".receipt-log .filing-pill").getByText("Pending Word", { exact: true }).waitFor();
+    await openReceiptDetails(card);
     assert.equal(await card.locator(".run-brief-points li").count() >= 3, true);
     const visibleSummary = normalizeText(await card.locator(".run-summary").innerText());
     assert.equal(visibleSummary.length < 700, true);
 
     const cardText = normalizeText(await card.innerText());
     assert.match(cardText, /Margins found no required follow-up questions/);
-    await card.getByText("Review complete.").waitFor();
     await card.getByRole("button", { name: "Approve" }).waitFor();
     assert.doesNotMatch(cardText, /Should Margins keep this conversation active/);
   } finally {
@@ -1327,6 +1464,28 @@ test("activity tab separates pending raw sources from recent source cards", {
     await page.locator(".activity-pill", { hasText: "Briefly" }).first().click();
     assert.equal(await page.locator(".tab.active").innerText(), "Files");
     assert.match(await page.locator("#doc-title").innerText(), /briefly/);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("files tab opens the vault index by default", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => window.__marginsTest.seedActivitySections());
+    await page.getByRole("button", { name: "Files", exact: true }).click();
+    await page.locator("#wiki-view.active").waitFor();
+    assert.equal(await page.locator("#doc-title").innerText(), "index");
+    assert.equal(await page.locator(".vault-file.active").getAttribute("data-path"), "wiki/index.md");
+    assert.match(await page.locator("#doc-body").inputValue(), /# Index/);
   } finally {
     await browser.close();
     await server.close();
@@ -1454,6 +1613,48 @@ test("entities tab filters by real wiki type and tag facets", {
     entitiesText = await page.locator("#entity-browser").innerText();
     assert.match(entitiesText, /Networking Plan/);
     assert.doesNotMatch(entitiesText, /Setup Efficiency|Margins Product/);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("entity type chip writes primary_type overrides from picker", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => window.__marginsTest.seedTypeOverrideEntityVault());
+    await page.getByRole("button", { name: "Entities" }).click();
+
+    const card = page.locator(".entity-card", { hasText: "E.J. Reynolds" });
+    await card.locator(".entity-type-chip", { hasText: "Project" }).click();
+    await card.locator(".entity-type-picker").waitFor();
+    await card.locator(".entity-type-option", { hasText: "Project" }).getByText("2").waitFor();
+    await card.locator(".entity-type-option", { hasText: "Company" }).getByText("1").waitFor();
+    await card.locator(".entity-type-option", { hasText: "Person" }).getByText("0").waitFor();
+
+    await card.locator("[data-entity-type-custom-input]").fill("acquaintance");
+    await card.getByRole("button", { name: "Use" }).click();
+    await card.locator(".entity-type-chip", { hasText: "Acquaintance" }).waitFor();
+    assert.match(
+      await page.evaluate(() => window.__marginsTest.wikiBody("wiki/projects/ej-reynolds.md")),
+      /primary_type: acquaintance/
+    );
+
+    await card.locator(".entity-type-chip", { hasText: "Acquaintance" }).click();
+    await card.locator(".entity-type-option", { hasText: "Person" }).click();
+    await card.locator(".entity-type-chip", { hasText: "Person" }).waitFor();
+    assert.match(
+      await page.evaluate(() => window.__marginsTest.wikiBody("wiki/projects/ej-reynolds.md")),
+      /primary_type: person/
+    );
+    assert.match(await page.locator("#entity-type-filters").innerText(), /People\s+1/);
   } finally {
     await browser.close();
     await server.close();
@@ -1695,6 +1896,47 @@ test("LLM utility view is visible when activated", {
   }
 });
 
+test("sidebar theme switch toggles and persists dark mode", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    const light = await page.evaluate(() => ({
+      theme: document.documentElement.dataset.theme,
+      label: document.querySelector("#theme-toggle-label")?.textContent || "",
+      bodyBg: getComputedStyle(document.body).backgroundColor,
+      sidebarBg: getComputedStyle(document.querySelector(".sidebar")).backgroundColor
+    }));
+
+    await page.locator("#theme-toggle").check({ force: true });
+    await page.waitForFunction(() => document.documentElement.dataset.theme === "dark");
+
+    const dark = await page.evaluate(() => ({
+      theme: document.documentElement.dataset.theme,
+      stored: localStorage.getItem("margins-theme"),
+      label: document.querySelector("#theme-toggle-label")?.textContent || "",
+      bodyBg: getComputedStyle(document.body).backgroundColor,
+      sidebarBg: getComputedStyle(document.querySelector(".sidebar")).backgroundColor
+    }));
+
+    assert.equal(light.theme, "light");
+    assert.equal(light.label, "Light mode");
+    assert.equal(dark.theme, "dark");
+    assert.equal(dark.stored, "dark");
+    assert.equal(dark.label, "Dark mode");
+    assert.notEqual(light.bodyBg, dark.bodyBg);
+    assert.notEqual(light.sidebarBg, dark.sidebarBg);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
 test("graph tab follows the active app theme", {
   skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
 }, async () => {
@@ -1799,12 +2041,36 @@ test("pending source cards stay minimal before processing", {
     await page.waitForFunction(() => Boolean(window.__marginsTest));
 
     const pendingText = await page.evaluate(() => window.__marginsTest.seedSourceStatusCards());
+    await page.locator("#pending-count-label", { hasText: "3 pending" }).waitFor();
     assert.match(pendingText, /pending-word\.docx/);
     assert.match(pendingText, /pending-statement\.pdf/);
     assert.match(pendingText, /script\/build\.py/);
     assert.equal((pendingText.match(/Process/g) || []).length, 3);
     assert.equal(await page.locator("#source-list .source-timestamp").count(), 3);
     assert.doesNotMatch(pendingText, /LLM attachment|0 words|DOCX text extraction|Word text|PDF text|words ready|raw source saved/i);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("pending source cards page in batches of six", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => window.__marginsTest.seedPendingSourceCount(14));
+    await page.locator("#pending-count-label", { hasText: "14 pending" }).waitFor();
+    assert.equal(await page.locator("#source-list .source-item").count(), 6);
+    await page.getByRole("button", { name: "Show 6 more" }).click();
+    assert.equal(await page.locator("#source-list .source-item").count(), 12);
+    await page.getByRole("button", { name: "Show all 14" }).click();
+    assert.equal(await page.locator("#source-list .source-item").count(), 14);
   } finally {
     await browser.close();
     await server.close();
@@ -1832,6 +2098,7 @@ test("pending source cards can be removed after confirmation", {
 
     await page.getByRole("button", { name: "Remove pending-word.docx" }).click();
     const pendingText = await page.locator("#source-list").innerText();
+    await page.locator("#pending-count-label", { hasText: "2 pending" }).waitFor();
     assert.doesNotMatch(pendingText, /pending-word\.docx/);
     assert.match(pendingText, /pending-statement\.pdf/);
     assert.equal((pendingText.match(/Process/g) || []).length, 2);
@@ -1843,12 +2110,19 @@ test("pending source cards can be removed after confirmation", {
 });
 
 async function assertSelected(page, label) {
-  const pressed = await page.locator(".run-question .quick-answer", { hasText: label }).getAttribute("aria-pressed");
+  const pressed = await page.locator(".quick-answer", { hasText: label }).first().getAttribute("aria-pressed");
   assert.equal(pressed, "true");
 }
 
 async function assertAnswered(page, text) {
-  await page.getByText(text).waitFor();
+  await page.getByText(text).first().waitFor();
+}
+
+async function openReceiptDetails(card) {
+  const details = card.locator(".receipt-details").first();
+  const isOpen = await details.evaluate((node) => Boolean(node.open));
+  if (!isOpen) await details.locator("summary").click();
+  await details.locator(".receipt-details-body").waitFor({ state: "visible" });
 }
 
 function normalizeText(value) {
