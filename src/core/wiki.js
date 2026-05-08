@@ -280,6 +280,52 @@ export function replaceSourceHeading(body, title) {
 }
 
 // ---------------------------------------------------------------------
+// Path normalization (wiki bucket resolution)
+// ---------------------------------------------------------------------
+
+export const WIKI_SOURCE_BUCKETS = new Set(["sources", "coding", "ideas", "projects", "career", "personal", "school"]);
+
+export function cleanBucket(value) {
+  const bucket = cleanTag(value).replace(/^wiki\//, "").split("/")[0];
+  return WIKI_SOURCE_BUCKETS.has(bucket) ? bucket : "";
+}
+
+export function sourceSlugForFile(name) {
+  const slug = slugifyLoose(basename(name || "source").replace(/\.[^.]+$/, ""));
+  return slug.startsWith("source-") ? slug : `source-${slug || "source"}`;
+}
+
+export function sourcePathForBucket(name, bucket = "sources") {
+  const clean = cleanBucket(bucket) || "sources";
+  return `wiki/${clean}/${sourceSlugForFile(name)}.md`;
+}
+
+export function normalizeMarginsPath(path) {
+  return String(path).replace(/^\.margins\//, "wiki/.margins/");
+}
+
+export function normalizeFilingPath(path, bucket = "sources") {
+  const raw = String(path || "").trim();
+  if (!raw) return "";
+  let normalized = normalizeMarginsPath(raw).replace(/^\/+/, "");
+  if (!normalized.startsWith("wiki/")) normalized = `wiki/${normalized}`;
+  if (!normalized.endsWith(".md")) normalized = `${normalized}.md`;
+  const folder = normalized.split("/")[1] || "";
+  if (!WIKI_SOURCE_BUCKETS.has(folder)) {
+    normalized = sourcePathForBucket(basename(normalized).replace(/\.md$/, ""), bucket);
+  }
+  const filename = basename(normalized);
+  if (!filename.startsWith("source-")) {
+    normalized = normalized.replace(/\/[^/]+\.md$/, `/${sourceSlugForFile(filename)}.md`);
+  }
+  return normalizeMarginsPath(normalized);
+}
+
+export function isReadableSourceTextPath(path) {
+  return /\.(md|markdown|txt|json|jsonl|csv|tsv|py|js|jsx|ts|tsx|html|css|xml|yaml|yml|log|eml|ics|ical|vtt|srt)$/i.test(path);
+}
+
+// ---------------------------------------------------------------------
 // Misc
 // ---------------------------------------------------------------------
 
