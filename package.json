@@ -10,7 +10,8 @@
     "compile:custom": "node src/cli.js",
     "test": "node --test",
     "test:browser": "MARGINS_BROWSER_TEST=1 node --test tests/browser/*.test.js",
-    "typecheck": "tsc -p . --noEmit"
+    "typecheck": "tsc -p . --noEmit",
+    "smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
     "mammoth": "^1.12.0",
