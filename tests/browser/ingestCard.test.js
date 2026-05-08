@@ -295,6 +295,106 @@ test("model-required sources do not show a fake successful summary", {
   }
 });
 
+test("reprocessing a raw source replaces any legacy heuristic source note", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => {
+      window.fetch = async () => new Response(JSON.stringify({
+        candidates: [{
+          content: {
+            parts: [{
+              text: JSON.stringify({
+                summary: {
+                  overview: "Stripe's website redesign reflects a broader product story and a clearer enterprise-facing homepage.",
+                  bullets: [
+                    "Katie Dill explains that Stripe redesigned after six years because the company and audience changed.",
+                    "The source focuses on homepage messaging, visual systems, and how design communicates product breadth."
+                  ]
+                },
+                takeaways: [{
+                  label: "Website redesign",
+                  point: "Stripe used the redesign to make its evolved product story visible.",
+                  relevance: "primary",
+                  whyItMatters: "This is the durable reason to save the source."
+                }],
+                connections: [{
+                  path: "wiki/projects/margins-product.md",
+                  title: "Margins Product",
+                  type: "existing",
+                  relevance: "context",
+                  reason: "Useful context for product storytelling and homepage design."
+                }],
+                filingPlan: {
+                  whySaved: ["The source gives a concrete example of how a mature software company reframed its homepage."],
+                  candidateFiles: [],
+                  placement: {
+                    bucket: "sources",
+                    path: "wiki/sources/source-how-stripe-built-their-new-website.md",
+                    title: "How Stripe Built Their New Website",
+                    reason: "This is a source note about a saved design discussion.",
+                    alternatives: []
+                  },
+                  tags: ["source", "stripe", "web-design"],
+                  regionTag: "region/build",
+                  typeTag: "",
+                  typeTagNote: "",
+                  promotion: {
+                    candidate: "",
+                    recommendation: "Wait for more supporting context.",
+                    reason: "One interview is enough for a source note."
+                  }
+                },
+                filingSteps: [
+                  "Reading MD — ~35 words",
+                  "Created How Stripe Built Their New Website as a new source",
+                  "Linked to Margins Product",
+                  "Prepared source page"
+                ],
+                asks: []
+              })
+            }]
+          }
+        }],
+        usageMetadata: {
+          promptTokenCount: 80,
+          candidatesTokenCount: 120,
+          thoughtsTokenCount: 0,
+          totalTokenCount: 200
+        }
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+      window.__marginsTest.seedLegacySourceReprocess();
+    });
+
+    await page.locator(".source-item", { hasText: "How Stripe Built Their New Website.md" })
+      .getByRole("button", { name: "Process" })
+      .click();
+    await page.locator(".source-item.ready-to-write", { hasText: "How Stripe Built Their New Website.md" }).waitFor();
+
+    const sourceNote = await page.evaluate(() => window.__marginsTest.sourceNoteBody("How Stripe Built Their New Website.md"));
+    assert.match(sourceNote, /model_provider: "gemini"/);
+    assert.match(sourceNote, /reviewed_at:/);
+    assert.match(sourceNote, /Stripe's website redesign reflects a broader product story/);
+    assert.match(sourceNote, /## Key Takeaways/);
+    assert.doesNotMatch(sourceNote, /## Key Terms/);
+    assert.doesNotMatch(sourceNote, /## Entity Candidates/);
+    assert.doesNotMatch(sourceNote, /## Notes/);
+    assert.doesNotMatch(sourceNote, /\[\]\(https:\/\/www\. youtube/);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
 test("vault PDF review refreshes the saved source file before model attachment", {
   skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
 }, async () => {
@@ -428,7 +528,7 @@ test("calendar invites are reviewed as prompt text instead of unsupported Gemini
   }
 });
 
-test("readable PDFs fall back to local review when Gemini is rate limited", {
+test("readable PDFs hard-fail when Gemini is rate limited", {
   skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
 }, async () => {
   const server = await startStaticServer();
@@ -449,25 +549,19 @@ test("readable PDFs fall back to local review when Gemini is rate limited", {
     });
 
     await page.locator(".source-item", { hasText: "text-layer-report.pdf" }).getByRole("button", { name: "Process" }).click();
-    await page.locator(".source-item.ready-to-write", { hasText: "text-layer-report.pdf" }).waitFor();
-
-    const card = page.locator(".source-item.ready-to-write", { hasText: "text-layer-report.pdf" });
-    await openReceiptDetails(card);
+    await page.locator(".source-item", { hasText: "text-layer-report.pdf" }).locator(".run-error strong", { hasText: "Review did not finish" }).waitFor();
     const pendingText = await page.locator("#source-list").innerText();
-    assert.doesNotMatch(pendingText, /Review did not finish/);
+    assert.equal(await page.locator(".source-item.ready-to-write", { hasText: "text-layer-report.pdf" }).count(), 0);
     assert.match(pendingText, /Margins review is rate-limited right now/);
-    assert.match(pendingText, /showing the local review/);
-    assert.match(pendingText, /Retry later for model-generated questions/);
-    assert.match(pendingText, /Local review ready/);
+    assert.match(pendingText, /Retry/);
     assert.doesNotMatch(pendingText, /Margins reviewed/);
-    await card.locator(".receipt-footer").getByRole("button", { name: "Approve" }).waitFor();
   } finally {
     await browser.close();
     await server.close();
   }
 });
 
-test("malformed Gemini fallback does not invent financial extraction", {
+test("malformed Gemini review hard-fails without financial extraction", {
   skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
 }, async () => {
   const server = await startStaticServer();
@@ -498,18 +592,14 @@ test("malformed Gemini fallback does not invent financial extraction", {
     });
 
     await page.locator(".source-item", { hasText: "coleman-brokerage-2026-03.pdf" }).getByRole("button", { name: "Process" }).click();
-    const card = page.locator(".source-item.ready-to-write", { hasText: "coleman-brokerage-2026-03.pdf" });
-    await card.waitFor();
-
-    let cardText = normalizeText(await card.innerText());
+    await page.locator(".source-item", { hasText: "coleman-brokerage-2026-03.pdf" }).locator(".run-error strong", { hasText: "Review did not finish" }).waitFor();
+    const cardText = normalizeText(await page.locator(".source-item", { hasText: "coleman-brokerage-2026-03.pdf" }).innerText());
+    assert.equal(await page.locator(".source-item.ready-to-write", { hasText: "coleman-brokerage-2026-03.pdf" }).count(), 0);
+    assert.match(cardText, /malformed/i);
     assert.doesNotMatch(cardText, /Financial details/);
     assert.doesNotMatch(cardText, /Financial source/);
     assert.doesNotMatch(cardText, /Should Margins keep extracted figures and account details/);
     assert.doesNotMatch(cardText, /Keep demo figures/);
-    await openReceiptDetails(card);
-    const detailsText = normalizeText(await card.locator(".receipt-details-body").textContent());
-    assert.match(detailsText, /Margins received a malformed review/);
-    assert.doesNotMatch(detailsText, /Financial details/);
     const sourceNote = await page.evaluate(() => window.__marginsTest.sourceNoteBody("coleman-brokerage-2026-03.pdf"));
     assert.doesNotMatch(sourceNote, /## Financial Details/);
   } finally {
@@ -518,7 +608,7 @@ test("malformed Gemini fallback does not invent financial extraction", {
   }
 });
 
-test("Gemini ingest review retries once when output is cut off", {
+test("Gemini ingest review retries with compact JSON when output is cut off", {
   skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
 }, async () => {
   const server = await startStaticServer();
@@ -532,37 +622,64 @@ test("Gemini ingest review retries once when output is cut off", {
       window.__geminiCalls = [];
       window.fetch = async (_url, options) => {
         const body = JSON.parse(options.body);
-        window.__geminiCalls.push(body.generationConfig);
-        const first = window.__geminiCalls.length === 1;
+        window.__geminiCalls.push(body);
+        const done = window.__geminiCalls.length === 2;
         return new Response(JSON.stringify({
           candidates: [{
-            finishReason: first ? "MAX_TOKENS" : "STOP",
+            finishReason: done ? "STOP" : "MAX_TOKENS",
             content: {
               parts: [{
-                text: first
-                  ? "{\"summary\":{\"overview\":\"cut off before the object closed\""
-                  : JSON.stringify({
+                text: done
+                  ? JSON.stringify({
                     summary: {
                       overview: "Saved report should become a source note.",
-                      bullets: ["The retry returned a complete JSON review."]
+                      bullets: ["The compact retry returned a complete JSON review."]
                     },
                     takeaways: [],
                     connections: [],
+                    filingPlan: {
+                      whySaved: ["It preserves the saved report as source context."],
+                      candidateFiles: [],
+                      placement: {
+                        bucket: "sources",
+                        path: "wiki/sources/source-saved-report.md",
+                        title: "Saved Report",
+                        reason: "It is a standalone source note.",
+                        alternatives: []
+                      },
+                      tags: ["source"],
+                      regionTag: "",
+                      typeTag: "",
+                      typeTagNote: "",
+                      promotion: {
+                        candidate: "",
+                        recommendation: "Wait for more supporting context.",
+                        reason: "One source is enough for a source note."
+                      }
+                    },
                     filingSteps: [
                       "Reading PDF — 2 pages, ~20 words",
                       "Created Saved Report as a new source",
                       "Prepared source page · 1 flagged for review"
                     ],
+                    financialDetails: {
+                      accounts: [],
+                      figures: [],
+                      holdings: [],
+                      transactions: [],
+                      caveats: []
+                    },
                     asks: []
                   })
+                  : "{\"summary\":{\"overview\":\"cut off before the object closed\""
               }]
             }
           }],
           usageMetadata: {
             promptTokenCount: 80,
-            candidatesTokenCount: first ? 2048 : 80,
+            candidatesTokenCount: done ? 80 : 2048,
             thoughtsTokenCount: 0,
-            totalTokenCount: first ? 2128 : 160
+            totalTokenCount: done ? 160 : 2128
           }
         }), {
           status: 200,
@@ -591,18 +708,29 @@ test("Gemini ingest review retries once when output is cut off", {
     assert.doesNotMatch(cardText, /malformed review/);
     assert.doesNotMatch(cardText, /cut off before complete JSON/);
     await openReceiptDetails(card);
-    assert.match(normalizeText(await card.innerText()), /The retry returned a complete JSON review/);
+    assert.match(normalizeText(await card.innerText()), /The compact retry returned a complete JSON review/);
     const calls = await page.evaluate(() => window.__geminiCalls);
     assert.equal(calls.length, 2);
-    assert.equal(calls[0].maxOutputTokens >= 8192, true);
-    assert.equal(calls[1].maxOutputTokens >= 12288, true);
+    assert.equal(calls[0].generationConfig.maxOutputTokens >= 32768, true);
+    assert.equal(calls[1].generationConfig.maxOutputTokens >= 32768, true);
+    assert.doesNotMatch(calls[0].contents[0].parts[0].text, /COMPACT RETRY/);
+    assert.match(calls[1].contents[0].parts[0].text, /COMPACT RETRY/);
+    assert.deepEqual(calls[1].generationConfig.responseSchema.required, [
+      "summary",
+      "takeaways",
+      "connections",
+      "filingPlan",
+      "filingSteps",
+      "financialDetails",
+      "asks"
+    ]);
   } finally {
     await browser.close();
     await server.close();
   }
 });
 
-test("partial Gemini review uses local summary without misclassifying business DOCX as financial", {
+test("partial Gemini review does not use local summary or misclassify business DOCX as financial", {
   skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
 }, async () => {
   const server = await startStaticServer();
@@ -647,7 +775,7 @@ test("partial Gemini review uses local summary without misclassifying business D
     await card.waitFor();
 
     const cardText = normalizeText(await card.innerText());
-    assert.match(cardText, /Zoom transcript from April 2026/);
+    assert.match(cardText, /Model review completed, but no summary was returned/);
     assert.match(cardText, /Should this Booth conversation stay active for follow-up tracking/);
     assert.doesNotMatch(cardText, /Model review failed/);
     assert.doesNotMatch(cardText, /financial account document/);
@@ -655,13 +783,14 @@ test("partial Gemini review uses local summary without misclassifying business D
     await openReceiptDetails(card);
     const detailsText = normalizeText(await card.locator(".receipt-details-body").textContent());
     assert.match(detailsText, /Margins reviewed the source, but no card summary came back/);
+    assert.doesNotMatch(detailsText, /Zoom transcript from April 2026/);
   } finally {
     await browser.close();
     await server.close();
   }
 });
 
-test("local fallback does not label motivational money talk as financial", {
+test("partial Gemini review for motivational money talk does not use source text summary", {
   skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
 }, async () => {
   const server = await startStaticServer();
@@ -696,13 +825,14 @@ test("local fallback does not label motivational money talk as financial", {
     await card.waitFor();
 
     let cardText = normalizeText(await card.innerText());
-    assert.match(cardText, /16 Brutal Life Lessons for Ambitious People - Michael Smoak/);
+    assert.match(cardText, /Model review completed, but no summary was returned/);
     await openReceiptDetails(card);
     const detailsText = normalizeText(await card.locator(".receipt-details-body").textContent());
     const summaryText = normalizeText(await card.locator(".run-summary").innerText());
     assert.match(detailsText, /Margins reviewed the source, but no card summary came back/);
-    assert.match(summaryText, /16 Brutal Life Lessons for Ambitious People - Michael Smoak/);
-    assert.match(summaryText, /Michael Smoak is a mindset coach/);
+    assert.match(summaryText, /Model review completed, but no summary was returned/);
+    assert.doesNotMatch(summaryText, /16 Brutal Life Lessons for Ambitious People - Michael Smoak/);
+    assert.doesNotMatch(summaryText, /Michael Smoak is a mindset coach/);
     assert.doesNotMatch(summaryText, /title:/);
     assert.doesNotMatch(summaryText, /source:/);
     assert.doesNotMatch(summaryText, /tags:/);
@@ -917,11 +1047,10 @@ test("spend guard blocks model calls before fetch", {
     });
 
     await page.locator(".source-item", { hasText: "text-layer-report.pdf" }).getByRole("button", { name: "Process" }).click();
-    const card = page.locator(".source-item.ready-to-write", { hasText: "text-layer-report.pdf" });
-    await card.waitFor();
-    await openReceiptDetails(card);
+    await page.locator(".source-item", { hasText: "text-layer-report.pdf" }).locator(".run-error strong", { hasText: "Review did not finish" }).waitFor();
 
     const pendingText = await page.locator("#source-list").innerText();
+    assert.equal(await page.locator(".source-item.ready-to-write", { hasText: "text-layer-report.pdf" }).count(), 0);
     assert.match(pendingText, /Spend guard stopped this Gemini call before it ran/);
     assert.equal(await page.evaluate(() => window.__fetchCount), 0);
     assert.equal((await page.evaluate(() => window.__marginsTest.apiUsage())).requests, 0);
@@ -1158,7 +1287,7 @@ test("Gemini review shows concise summary bullets and model questions", {
       "connections",
       "asks"
     ]);
-    assert.equal(calls[0].body.generationConfig.maxOutputTokens >= 8192, true);
+    assert.equal(calls[0].body.generationConfig.maxOutputTokens >= 32768, true);
 
     const card = page.locator(".source-item.ready-to-write", { hasText: "model-source-1.txt" });
     await card.locator(".receipt-log").getByText(/Created Larry opportunity call/).waitFor();
@@ -1503,6 +1632,7 @@ test("vault source files without source notes appear in the pending inbox", {
 
     const pendingText = await page.locator("#source-list").innerText();
     assert.match(pendingText, /unfiled-note\.md/);
+    assert.doesNotMatch(pendingText, /legacy-heuristic\.md/);
     assert.doesNotMatch(pendingText, /^filed-note\.md$/m);
     assert.equal(await page.locator(".upload-stats").count(), 0);
   } finally {
@@ -1551,6 +1681,48 @@ test("activity tab interleaves pending source files as ghost cards", {
     await page.locator(".activity-pill", { hasText: "Briefly" }).first().click();
     assert.equal(await page.locator(".tab.active").innerText(), "Files");
     assert.match(await page.locator("#doc-title").innerText(), /briefly/);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("activity cards can delete processed sources and paired raw files", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(async () => {
+      window.__confirmMessages = [];
+      window.confirm = (message) => {
+        window.__confirmMessages.push(message);
+        return true;
+      };
+      await window.__marginsTest.seedDeletableSourceVault();
+    });
+
+    await page.locator(".activity-card", { hasText: "Delete Me Source" })
+      .getByRole("button", { name: "Delete Delete Me Source" })
+      .click();
+    await page.locator("#recent-activity-list", { hasNotText: "Delete Me Source" }).waitFor();
+
+    const snapshot = await page.evaluate(() => window.__marginsTest.deleteSnapshot());
+    assert.equal(snapshot.sourceExists, false);
+    assert.equal(snapshot.rawExists, false);
+    assert.equal(snapshot.keepExists, true);
+    assert.equal(snapshot.currentPaths.includes("wiki/sources/source-delete-me.md"), false);
+    assert.equal(snapshot.loadedPaths.includes("wiki/sources/source-delete-me.md"), false);
+    assert.deepEqual(snapshot.vaultFiles, []);
+    assert.deepEqual(snapshot.pendingFiles, []);
+    assert.match(snapshot.statsText, /Deleted Delete Me Source and its raw source file/);
+    assert.deepEqual(await page.evaluate(() => window.__confirmMessages), [
+      "Delete Delete Me Source and its raw source file?"
+    ]);
   } finally {
     await browser.close();
     await server.close();
@@ -2015,6 +2187,47 @@ test("dream helper uses Gemini even when Anthropic is selected", {
     assert.equal(calls[0].headers["x-goog-api-key"], "test-anthropic-key");
     assert.equal(calls[0].headers["x-api-key"], undefined);
     assert.match(calls[0].body.contents[0].parts[0].text, /Improve sparse entity pages/);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("files tab can delete the selected source and paired raw file", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(async () => {
+      window.__confirmMessages = [];
+      window.confirm = (message) => {
+        window.__confirmMessages.push(message);
+        return true;
+      };
+      await window.__marginsTest.seedDeletableSourceVault();
+    });
+    await page.getByRole("button", { name: "Files", exact: true }).click();
+    await page.locator("#wiki-view.active").waitFor();
+    await page.locator("#vault-search").fill("source-delete-me");
+    await page.locator(".vault-file[data-path='wiki/sources/source-delete-me.md']").click();
+    await page.locator("#doc-delete-btn").click();
+
+    const snapshot = await page.evaluate(() => window.__marginsTest.deleteSnapshot());
+    assert.equal(snapshot.sourceExists, false);
+    assert.equal(snapshot.rawExists, false);
+    assert.equal(snapshot.keepExists, true);
+    assert.equal(snapshot.filesText.includes("source-delete-me.md"), false);
+    assert.equal(snapshot.filesText.includes("delete-me.md"), false);
+    assert.equal(snapshot.docDeleteDisabled, true);
+    assert.deepEqual(snapshot.pendingFiles, []);
+    assert.deepEqual(await page.evaluate(() => window.__confirmMessages), [
+      "Delete Delete Me Source and its raw source file?"
+    ]);
   } finally {
     await browser.close();
     await server.close();
@@ -2552,6 +2765,37 @@ test("hung model requests time out into a retryable inbox state", {
 
     await page.locator(".source-item", { hasText: "saved-report.pdf" }).getByRole("button", { name: "Process" }).click();
     await page.getByText(/timed out after 1 seconds/i).waitFor();
+    const pendingText = await page.locator("#source-list").innerText();
+    assert.match(pendingText, /Review did not finish/);
+    assert.match(pendingText, /Retry/);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("active model requests can be cancelled from the workflow button", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => {
+      window.fetch = async (_url, options = {}) => new Promise((_, reject) => {
+        options.signal?.addEventListener("abort", () => {
+          reject(options.signal.reason || new DOMException("Aborted", "AbortError"));
+        });
+      });
+      window.__marginsTest.seedVaultPdfAttachmentSource();
+    });
+
+    await page.locator(".source-item", { hasText: "saved-report.pdf" }).getByRole("button", { name: "Process" }).click();
+    await page.locator("#workflow-btn", { hasText: "Cancel" }).click();
+    await page.getByText(/Model review was cancelled/i).waitFor();
     const pendingText = await page.locator("#source-list").innerText();
     assert.match(pendingText, /Review did not finish/);
     assert.match(pendingText, /Retry/);

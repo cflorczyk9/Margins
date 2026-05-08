@@ -117,9 +117,12 @@ export function renderWikiFiles(fileMap) {
   if (entries.length === 0) {
     els.wikiTree.className = "tree-list empty";
     els.wikiTree.textContent = "Open a vault or add documents to browse source files and wiki notes.";
+    state.selectedPath = null;
+    state.selectedKind = "";
     callbacks.setDocumentHeader?.(null, "", { title: "No file selected", meta: "No file selected" });
     callbacks.setDocBody?.("Open a source file or wiki note, then choose a file.", { readOnly: true });
     if (els.docSaveBtn) els.docSaveBtn.disabled = true;
+    callbacks.updateSaveButtonState?.();
     return;
   }
 
@@ -148,6 +151,7 @@ export function renderWikiFiles(fileMap) {
   callbacks.setDocumentHeader?.(null, "", { title: "No file selected", meta: "No file selected" });
   callbacks.setDocBody?.("Choose a source file or wiki note.", { readOnly: true });
   if (els.docSaveBtn) els.docSaveBtn.disabled = true;
+  callbacks.updateSaveButtonState?.();
 }
 
 function defaultVaultBrowserPath(entries = []) {

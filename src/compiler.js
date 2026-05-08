@@ -1,3 +1,15 @@
+import {
+  cleanSummary,
+  formatConnectionLine,
+  formatFilingJudgmentMarkdown,
+  formatFinancialDetailsMarkdown,
+  hasFilingPlan,
+  hasFinancialDetails,
+  normalizeFilingPath,
+  sourcePathForBucket,
+  sourceTagsFromFilingPlan
+} from "./core/wiki.js";
+
 const STOP_WORDS = new Set([
   "about", "after", "again", "against", "also", "because", "before", "being", "between",
   "could", "during", "every", "first", "from", "have", "into", "more", "most", "other",
@@ -71,7 +83,10 @@ export function localDateString(date = new Date()) {
 export function compileVault(files, options = {}) {
   const today = options.today || localDateString();
   const normalized = files.map((file, index) => normalizeFile(file, index));
-  const sourceNodes = normalized.map((file) => buildSourceNode(file, today));
+  const ingestReviews = normalizeIngestReviewMap(options.ingestReviews);
+  const sourceNodes = normalized
+    .map((file) => buildSourceNode(file, today, ingestReviews.get(file.name)))
+    .filter(Boolean);
   const candidateConcepts = buildConceptNodes(sourceNodes, today);
   const candidateEntities = buildEntityNodes(sourceNodes, today);
   const conceptNodes = options.promoteHeuristicCandidates ? candidateConcepts : [];
@@ -103,14 +118,14 @@ export function compileVault(files, options = {}) {
     name: options.name || "Karpathy Original",
     schema_version: "margins-v1",
     template: "karpathy-original",
-    compiler: "local-heuristic",
+    compiler: "model-review",
     version: "0.1.0",
     generated_at: `${today}T00:00:00.000Z`,
     privacy: {
       storage: "local-first",
       hosted_documents: false,
       silent_write_back: false,
-      requires_secrets: false
+      requires_secrets: true
     },
     paths: {
       raw_sources: "raw/",
@@ -177,7 +192,7 @@ export function vaultToFiles(vault) {
   const files = new Map();
 
   for (const source of vault.wiki.sources) {
-    files.set(`wiki/sources/${source.slug}.md`, source.markdown);
+    files.set(source.path || `wiki/sources/${source.slug}.md`, source.markdown);
   }
   for (const concept of vault.wiki.concepts) {
     files.set(`wiki/concepts/${concept.slug}.md`, concept.markdown);
@@ -231,48 +246,58 @@ function normalizeFile(file, index) {
   };
 }
 
-function buildSourceNode(file, today) {
-  const title = titleize(file.slug);
-  const summary = summarize(file.text, file.unsupported);
+function normalizeIngestReviewMap(reviews) {
+  if (!reviews) return new Map();
+  if (reviews instanceof Map) return reviews;
+  if (Array.isArray(reviews)) return new Map(reviews);
+  if (typeof reviews === "object") return new Map(Object.entries(reviews));
+  return new Map();
+}
+
+function isModelIngestReview(review) {
+  return Boolean(review && review.source === "api");
+}
+
+function buildSourceNode(file, today, review) {
+  if (!isModelIngestReview(review)) return null;
+
+  const plan = review.filingPlan || {};
+  const placement = plan.placement || {};
+  const path = normalizeFilingPath(placement.path || "", placement.bucket || "sources") ||
+    sourcePathForBucket(file.name, placement.bucket || "sources");
+  const slug = path.split("/").pop().replace(/\.md$/, "") || `source-${file.slug}`;
+  const title = cleanSummary(placement.title || titleize(slug.replace(/^source-/, ""))) || titleize(file.slug);
+  const summary = modelReviewSummary(review);
   const terms = topTerms(file.text, 10);
   const entities = extractEntities(file.text).slice(0, 8);
-  const slug = `source-${file.slug}`;
+  const tags = hasFilingPlan(plan) ? sourceTagsFromFilingPlan(plan) : ["source"];
+  const bucket = path.split("/")[1] || "sources";
+  const reviewedAt = review.reviewedAt ? `reviewed_at: ${yamlString(review.reviewedAt)}\n` : "";
+  const provider = review.provider ? `model_provider: ${yamlString(review.provider)}\n` : "";
   const markdown = `---
 type: source
-bucket: sources
+bucket: ${bucket}
 summary: ${yamlString(summary)}
-tags: [source]
+tags: [${tags.map(yamlInlineValue).join(", ")}]
 created: ${today}
 updated: ${today}
 event_date: ${today}
 voice: claude-draft
 raw_file: raw/${file.name}
+${provider}${reviewedAt}
 ---
 
 # Source: ${title}
 
 Original file: \`raw/${file.name}\`
 
-## Summary
-
-${summary}
-
-## Key Terms
-
-${terms.map((term) => `- ${term}`).join("\n") || "- _(none detected)_"}
-
-## Entity Candidates
-
-${entities.map((entity) => `- ${entity}`).join("\n") || "- _(none detected)_"}
-
-## Notes
-
-${file.unsupported ? "This file appears to need text extraction before high-quality ingest." : excerpt(file.text, 900)}
+${modelReviewMarkdown(review)}
 `;
 
   return {
     id: slug,
     type: "source",
+    path,
     slug,
     title,
     summary,
@@ -282,6 +307,107 @@ ${file.unsupported ? "This file appears to need text extraction before high-qual
     text: file.text,
     markdown
   };
+}
+
+function modelReviewSummary(review) {
+  const summary = cleanSummary(review?.summary || "");
+  if (summary) return summary;
+  const mission = cleanSummary(review?.missionFrame?.oneLine || "");
+  if (mission) return mission;
+  const takeaway = (review?.takeaways || []).map((item) => cleanSummary(item?.point || "")).find(Boolean);
+  if (takeaway) return takeaway;
+  const bullet = (review?.summaryBullets || []).map(cleanSummary).find(Boolean);
+  return bullet || "";
+}
+
+function modelReviewMarkdown(review) {
+  const sections = [
+    summarySection(review),
+    takeawaysSection(review),
+    hasFilingPlan(review?.filingPlan) ? formatFilingJudgmentMarkdown(review.filingPlan) : "",
+    connectionsSection(review),
+    hasFinancialDetails(review?.financialDetails) ? `## Financial Details\n\n${formatFinancialDetailsMarkdown(review.financialDetails)}` : "",
+    lightTouchSection(review),
+    propagationSection(review),
+    discoveriesSection(review),
+    questionsSection(review)
+  ].map((section) => String(section || "").trim()).filter(Boolean);
+
+  return sections.join("\n\n") || "## Model Review\n\nModel review completed, but no source-page sections were returned.";
+}
+
+function summarySection(review) {
+  const summary = modelReviewSummary(review);
+  const bullets = (review?.summaryBullets || []).map(cleanSummary).filter(Boolean);
+  if (!summary && bullets.length === 0) return "";
+  return [
+    "## Summary",
+    "",
+    summary,
+    bullets.length ? ["", ...bullets.map((item) => `- ${item}`)].join("\n") : ""
+  ].filter((part) => part !== "").join("\n");
+}
+
+function takeawaysSection(review) {
+  const takeaways = (review?.takeaways || [])
+    .map((item) => {
+      const point = cleanSummary(item?.point || "");
+      if (!point) return "";
+      const label = cleanSummary(item?.label || item?.relevance || "Takeaway");
+      const why = cleanSummary(item?.whyItMatters || "");
+      return `- ${label ? `**${label}:** ` : ""}${point}${why ? ` ${why}` : ""}`;
+    })
+    .filter(Boolean);
+  return takeaways.length ? `## Key Takeaways\n\n${takeaways.join("\n")}` : "";
+}
+
+function connectionsSection(review) {
+  const connections = (review?.connections || []).filter((connection) => (
+    connection?.title || connection?.path || connection?.reason
+  ));
+  return connections.length ? `## Connections\n\n${connections.map(formatConnectionLine).join("\n")}` : "";
+}
+
+function lightTouchSection(review) {
+  const notes = (review?.lightTouch || [])
+    .map((item) => {
+      const note = cleanSummary(item?.note || item?.point || item?.text || "");
+      const reason = cleanSummary(item?.reason || "");
+      return note ? `- ${note}${reason ? ` — ${reason}` : ""}` : "";
+    })
+    .filter(Boolean);
+  return notes.length ? `## Light Touch\n\n${notes.join("\n")}` : "";
+}
+
+function propagationSection(review) {
+  const updates = (review?.propagation || [])
+    .map((item) => {
+      const target = cleanSummary(item?.targetPath || item?.path || "");
+      const action = cleanSummary(item?.action || "");
+      const rationale = cleanSummary(item?.rationale || item?.reason || "");
+      const line = [target, action, rationale].filter(Boolean).join(" — ");
+      return line ? `- ${line}` : "";
+    })
+    .filter(Boolean);
+  return updates.length ? `## Proposed Propagation\n\n${updates.join("\n")}` : "";
+}
+
+function discoveriesSection(review) {
+  const discoveries = (review?.discoveries || [])
+    .map((item) => {
+      const title = cleanSummary(item?.title || item?.kind || "Discovery");
+      const detail = cleanSummary(item?.detail || item?.summary || "");
+      return detail ? `- ${title ? `${title}: ` : ""}${detail}` : "";
+    })
+    .filter(Boolean);
+  return discoveries.length ? `## Discoveries\n\n${discoveries.join("\n")}` : "";
+}
+
+function questionsSection(review) {
+  const questions = (review?.questions || [])
+    .map((item) => cleanSummary(item?.question || ""))
+    .filter(Boolean);
+  return questions.length ? `## Open Questions\n\n${questions.map((item) => `- ${item}`).join("\n")}` : "";
 }
 
 function buildConceptNodes(sourceNodes, today) {
@@ -534,17 +660,16 @@ function buildIngestTracker({ today, files, sourceNodes, conceptNodes, entityNod
   const conceptBySource = nodesBySource(conceptNodes);
   const entityBySource = nodesBySource(entityNodes);
   const synthesisBySource = nodesBySource(synthesisNodes);
-  const rows = sourceNodes.map((source, index) => {
-    const raw = files[index];
+  const rawByName = new Map(files.map((file) => [file.name, file]));
+  const rows = sourceNodes.map((source) => {
+    const raw = rawByName.get(source.rawFile) || { name: source.rawFile, wordCount: 0, unsupported: false };
     const connected = [
       ...(conceptBySource.get(source.slug) || []),
       ...(entityBySource.get(source.slug) || []),
       ...(synthesisBySource.get(source.slug) || [])
     ];
-    const status = raw.unsupported ? "needs-extraction" : "ingested";
-    const notes = raw.unsupported
-      ? "Original preserved; add text extraction before relying on summary."
-      : "Source page generated from extracted text.";
+    const status = "ingested";
+    const notes = "Source page generated from model review.";
     return `| ${tableCell(`raw/${raw.name}`)} | ${status} | [[${source.slug}]] | ${connected.map((node) => `[[${node.slug}]]`).join(", ") || "-"} | ${raw.wordCount} | ${tableCell(notes)} |`;
   }).join("\n");
 
@@ -564,7 +689,7 @@ This is the single source of truth for which source files in raw/ have been conv
 
 | Source file | Status | Source page | Connected pages | Words | Notes |
 |---|---|---|---|---:|---|
-${rows || "| - | - | - | - | 0 | No source files registered yet. |"}
+${rows || "| - | - | - | - | 0 | No model-reviewed source pages created yet. |"}
 
 ## Status Vocabulary
 
@@ -1116,7 +1241,7 @@ function buildIngestReport({
   return `# Ingest Report
 
 Generated: ${today}
-Compiler: local heuristic
+Compiler: model review
 
 ## Summary
 
@@ -1154,7 +1279,7 @@ ${[
 - Local heuristic concept/entity detections remain report-only candidates until a user or model explicitly promotes them.
 - Entity roles, relationships, priorities, and next moves require user confirmation.
 - Concept pages should be created only when they are useful durable retrieval surfaces across future sources.
-- Unsupported or low-text files are not summarized beyond registration.
+- Source pages are emitted only for files with a completed model review.
 
 ## Needs Review
 
@@ -1223,14 +1348,6 @@ function toGraphNode(node) {
     title: node.title,
     summary: node.summary
   };
-}
-
-function summarize(text, unsupported) {
-  if (unsupported) return "Source file registered, but text extraction is needed before high-quality summarization.";
-  const clean = stripMarkdownNoise(text).replace(/\s+/g, " ").trim();
-  if (!clean) return "Empty source. Add text before ingesting.";
-  const sentences = clean.match(/[^.!?]+[.!?]+/g) || [clean];
-  return excerpt(sentences.slice(0, 2).join(" "), 280);
 }
 
 function topTerms(text, limit = 10) {
@@ -1348,4 +1465,9 @@ function titleize(slug) {
 
 function yamlString(value) {
   return JSON.stringify(String(value || "").replace(/\n/g, " "));
+}
+
+function yamlInlineValue(value) {
+  const text = String(value || "").trim();
+  return /^[A-Za-z0-9_/-]+$/.test(text) ? text : yamlString(text);
 }
