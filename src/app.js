@@ -1,7 +1,354 @@
 import { compileVault, localDateString, vaultToFiles } from "./compiler.js";
 import { clearApiSettings, loadApiSettings, maskSecret, saveApiSettings } from "./apiSettingsStore.js";
-import { hasFileSystemAccess, loadVaultHandle, saveVaultHandle } from "./vaultHandleStore.js";
 import { STORAGE_KEYS } from "./storageKeys.js";
+import { state } from "./core/state.js";
+import {
+  RAW_SOURCE_DIR,
+  LEGACY_RAW_SOURCE_DIR,
+  bodyReferencesRawSource,
+  createVault,
+  deleteGeneratedTextFile,
+  deleteRawSourceFromVault,
+  directoryHandleForPath,
+  ensureDirectory,
+  fileHandleForPath,
+  hasVaultWikiContent,
+  initVaultModule,
+  isDeletableGeneratedTextPath,
+  isMissingEntryError,
+  isRawSourceIngested,
+  isRawSourcePath,
+  isSourceOnlyWikiPage,
+  isVaultTextPath,
+  legacyRawSourceOutputPath,
+  loadExistingVault,
+  normalizeVaultOutputPath,
+  openVault,
+  pendingRawSourcesFromVault,
+  prepareSourcesForProcessing,
+  queryVaultPermission,
+  rawSourceCandidatePaths,
+  rawSourceFromFileHandle,
+  rawSourceOutputPath,
+  rawSourceRelativeName,
+  readDirectoryTextFiles,
+  readRawSourceDirectory,
+  readRawSourcesFromVault,
+  readRootTextFile,
+  readTextHandle,
+  readVaultFileMap,
+  reconnectRememberedVault,
+  refreshRawSourceBlobFromVault,
+  requestVaultPermission,
+  restoreRememberedVault,
+  safeRelativePath,
+  saveCurrentVault,
+  savePendingRawSourcesImmediately,
+  scaffoldVault,
+  setActiveVault,
+  sourceNoteEntryForFile,
+  updateVaultStatus,
+  writeBlobFile,
+  writeFileMap,
+  writeRawSources,
+  writeTextFile,
+  writeTextFileIfMissing
+} from "./core/vault.js";
+import {
+  apiProviderRequiresSecret,
+  balancedJsonSubstring,
+  dedupeQuestions,
+  defaultApiGuardSettings,
+  defaultEndpointForProvider,
+  defaultModelForProvider,
+  emptyApiUsage,
+  formatControlNumber,
+  hasUnclosedJsonStructure,
+  isGeminiOutputTruncated,
+  isModelOutputTruncatedError,
+  isRateLimitError,
+  isSpendGuardError,
+  jsonParseCandidates,
+  loadApiGuardSettings,
+  looksLikeTruncatedJson,
+  modelJsonParseError,
+  modelOutputTruncatedError,
+  modelQuestionsOrFallback,
+  nonNegativeNumber,
+  normalizeApiGuardSettings,
+  parseDotEnv,
+  parseJsonCandidate,
+  parseJsonObject,
+  parseLlmFiles,
+  positiveInteger,
+  positiveNumber,
+  providerLabel,
+  providerValue,
+  retryAfterText,
+  reviewModeLabel,
+  reviewQuestion,
+  stripJsonCodeFence
+} from "./core/api.js";
+import {
+  arrayFromUnknown,
+  basename,
+  chunkLongSummary,
+  bodyWithoutFrontmatter,
+  cleanBucket,
+  cleanDisplaySummary,
+  cleanExtractedSourceText,
+  cleanSummary,
+  cleanTag,
+  cleanWikiLinkLabel,
+  clampSentence,
+  confidenceValue,
+  contextSnippet,
+  entityPinnedBody,
+  escapeRegExp,
+  extractInlineTags,
+  extractSourceSummary,
+  extractWikiLinks,
+  financialAccountLine,
+  financialHoldingLine,
+  financialTransactionLine,
+  firstMatch,
+  formatConnectionLine,
+  formatFilingJudgmentMarkdown,
+  formatFinancialDetailsMarkdown,
+  frontmatterFields,
+  frontmatterList,
+  graphTypeFromPath,
+  hasFilingPlan,
+  hasFinancialDetails,
+  hasYamlFrontmatter,
+  insertFrontmatterLine,
+  isBucketOverviewPath,
+  isContextWikiPagePath,
+  isFolderIndexPath,
+  isGenericChecklistLink,
+  isPinnedFrontmatterValue,
+  isPromotedWikiPagePath,
+  isReadableSourceTextPath,
+  isSourceNodePagePath,
+  isWikiPagePath,
+  GENERIC_CHECKLIST_LINKS,
+  markdownTitle,
+  normalizeEntityTag,
+  normalizeFilingPath,
+  normalizeMarginsPath,
+  normalizePrimaryTypeValue,
+  removePinnedFrontmatterSignals,
+  relevanceValue,
+  replaceSourceHeading,
+  setEntityPrimaryTypeBody,
+  setFrontmatterScalarField,
+  setPinnedFrontmatterField,
+  slugifyLoose,
+  sourcePathForBucket,
+  sourceSlugForFile,
+  sourceTagsFromFilingPlan,
+  splitSummaryForCard,
+  stringListFromUnknown,
+  stripTrailingEllipsis,
+  summaryFallbackParts,
+  summaryLabelSections,
+  summarySentences,
+  summaryTextValue,
+  tagListFromUnknown,
+  titleFromSlug,
+  uniqueBy,
+  uniqueEntityTags,
+  upsertFrontmatterList,
+  upsertFrontmatterScalar,
+  warningLabel,
+  wikiContextRecord,
+  wikiContextRecords,
+  WIKI_SOURCE_BUCKETS,
+  yamlInlineScalar,
+  yamlScalar
+} from "./core/wiki.js";
+import {
+  clamp,
+  escapeHtml,
+  excerptForQuestion,
+  field,
+  firstDefined,
+  firstLine,
+  formatByteSize,
+  formatFileSize,
+  formatProcessDuration,
+  formatStatNumber,
+  formatUsd,
+  hashString,
+  nextAnimationFrame,
+  normalizedFieldName,
+  parseJsonLine,
+  pluralize,
+  redactEndpoint,
+  safeNumber,
+  textSizeBytes,
+  wordCount
+} from "./core/utils.js";
+import {
+  drawGraph,
+  graphFromFileMap,
+  graphView,
+  initGraphView,
+  openSelectedGraphNode,
+  resetGraphCamera,
+  selectGraphNode,
+  setupGraphInteractions,
+  startGraphSimulation,
+  stopGraphSimulation,
+  updateGraphSelection
+} from "./views/graph.js";
+import {
+  initWikiView,
+  isOperatingBrowserPath,
+  renderVaultTree,
+  renderWikiFiles,
+  selectVaultPath
+} from "./views/wiki.js";
+import {
+  base64ByteLength,
+  beginModelTiming,
+  beginProcessTimingRecord,
+  beginProcessTimings,
+  elapsedSince,
+  finishModelTiming,
+  finishProcessTiming,
+  finishProcessTimingsAfterRender,
+  geminiAttachmentBytes,
+  initTimingModule,
+  latestProcessTimingForFile,
+  loadModelTimingLog,
+  loadProcessTimingLog,
+  markModelTimingParseFailure,
+  markProcessTimingPhase,
+  modelTimingErrorLabel,
+  modelTimingSourceMetadata,
+  publicModelTiming,
+  publicProcessTiming,
+  saveModelTimingLog,
+  saveProcessTimingLog,
+  trimModelTimingLog,
+  trimProcessTimingLog
+} from "./core/timing.js";
+import {
+  formatSourceTimestamp,
+  ingestAnswerKey,
+  needsTextExtraction,
+  renderSourceTimestamp,
+  requiresModelReview,
+  sourceDateFromPath,
+  sourceTimestampDate
+} from "./views/inbox.js";
+import {
+  acceptLlmFiles,
+  buildLlmIngestPrompt,
+  buildLlmRepairPrompt,
+  buildReviewResponsePrompt,
+  copyLlmIngestPrompt,
+  copyLlmRepairPrompt,
+  copyReviewResponsePrompt,
+  initLlmView,
+  serializeLlmFiles,
+  serializeReviewQuestions,
+  serializeVaultContext,
+  truncateForPrompt,
+  wikiSchemaPack
+} from "./views/llm.js";
+import {
+  CANONICAL_ENTITY_TYPES,
+  ENTITY_RECENT_PAGE_SIZE,
+  entityHasPinnedSignal,
+  entityRecord,
+  entityRecordsFromFileMap,
+  isEntityPagePath
+} from "./core/entities.js";
+import {
+  DREAM_LOG_PATH,
+  DREAM_MODES,
+  DREAM_PLACEHOLDER_LINKS,
+  DREAM_STAGES,
+  dreamBrokenLinkKey,
+  dreamBrokenLinks,
+  dreamChangedFilesFromRun,
+  dreamCleanupEstimateMs,
+  dreamGraphStats,
+  dreamPageType,
+  dreamRepairItems,
+  dreamStageMetric,
+  dreamStageName,
+  dreamUnmatchedLinkEntries,
+  formatDreamRunDuration,
+  isDreamBrokenLinkScanPath,
+  isDreamPlaceholderLink,
+  wikiLinkTargetForPath
+} from "./core/dream-stats.js";
+import {
+  activeEntityFileMap,
+  handleEntityBrowserActionClick,
+  handleEntityBrowserKeydown,
+  handleEntityFilterClick,
+  initEntitiesView,
+  renderEntities,
+  resetEntityRecentLimit
+} from "./views/entities.js";
+import {
+  apiSummaryBullets,
+  apiSummaryParts,
+  cleanAccountLast4,
+  cleanFilingStep,
+  cleanFinancialValue,
+  closestFinancialLabel,
+  emptyFilingPlan,
+  emptyFinancialDetails,
+  financialDetailsPayload,
+  financialFigureFromString,
+  financialLabelFromContext,
+  financialTransactionFromString,
+  hasReviewPayloadSignal,
+  isCandidateFileObject,
+  isConnectionObject,
+  isDiscoveryObject,
+  isFilingStepObject,
+  isFinancialAccountObject,
+  isFinancialFigureObject,
+  isFinancialHoldingObject,
+  isFinancialTransactionObject,
+  isLightTouchObject,
+  isPropagationObject,
+  isQuestionObject,
+  isTakeawayObject,
+  labelBeforeValue,
+  MONEY_PATTERN,
+  normalizeReviewPayload,
+  optionListFromUnknown,
+  parseCandidateFiles,
+  parseConnections,
+  parseDiscoveries,
+  parseFilingPlacement,
+  parseFilingPlan,
+  parseFilingSteps,
+  parseFinancialAccounts,
+  parseFinancialCaveats,
+  parseFinancialDetails,
+  parseFinancialFigures,
+  parseFinancialHoldings,
+  parseFinancialTransactions,
+  parseLightTouch,
+  parseMissionFrame,
+  parsePromotion,
+  parsePropagation,
+  parseReviewQuestions,
+  parseTakeaways,
+  questionBudgetForMode,
+  reviewItemsFromUnknown,
+  takeawayItemsFromUnknown,
+  titleCaseLabel,
+  transactionTypeFromText
+} from "./core/review-parser.js";
 import * as pdfjsLib from "../node_modules/pdfjs-dist/build/pdf.mjs";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
@@ -12,63 +359,16 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
 const initialTheme = localStorage.getItem(STORAGE_KEYS.theme) || "light";
 document.documentElement.dataset.theme = initialTheme;
 let apiSecretHydrationPromise = null;
-const API_REQUEST_TIMEOUT_MS = 60_000;
-const ENTITY_RECENT_PAGE_SIZE = 12;
+// TODO(post-refactor): replace this hard timeout with streaming response
+// rendering — fields appear as they arrive, no all-or-nothing wait. See TODO.md.
+const API_REQUEST_TIMEOUT_MS = 180_000;
 const ACTIVITY_RECENT_PAGE_SIZE = 12;
 const PENDING_SOURCE_PAGE_SIZE = 6;
-const CANONICAL_ENTITY_TYPES = ["person", "company", "project", "concept", "synthesis"];
-const RAW_SOURCE_DIR = "raw";
-const LEGACY_RAW_SOURCE_DIR = "raw_sources";
-const DREAM_LOG_PATH = "wiki/.margins/dream-log.md";
-const DREAM_MODES = {
-  watch: {
-    label: "Quick scan",
-    help: "Only checks the vault and explains what needs attention."
-  },
-  walk: {
-    label: "Deep API review",
-    help: "Runs standard cleanup, then calls the API helpers for reviewable fixes."
-  },
-  hybrid: {
-    label: "Standard cleanup",
-    help: "Scans existing vault notes, records the pass, and queues review items."
-  }
-};
-const DREAM_STAGES = [
-  {
-    id: "replay",
-    name: "Vault scan",
-    label: "Read existing notes",
-    description: "Scans existing wiki pages and source notes for retrieval problems without touching pending uploads."
-  },
-  {
-    id: "pruning",
-    name: "Entity cleanup",
-    label: "Find weak pages",
-    description: "Flags sparse entity pages, stale drafts, and cleanup candidates without deleting anything."
-  },
-  {
-    id: "association",
-    name: "Link cleanup",
-    label: "Strengthen links",
-    description: "Looks for pages that should be reviewed for backlinks, citations, or graph structure."
-  },
-  {
-    id: "synthesis",
-    name: "Cross-source review",
-    label: "Surface patterns",
-    description: "Queues cross-source summary opportunities for review instead of creating them silently."
-  },
-  {
-    id: "clearance",
-    name: "System cleanup",
-    label: "Repair structure",
-    description: "Handles direct-read cleanup such as check logs, unmatched wikilinks, and safe metadata repairs."
-  }
-];
+// DREAM_LOG_PATH, DREAM_MODES, DREAM_STAGES → core/dream-stats.js
+// RAW_SOURCE_DIR, LEGACY_RAW_SOURCE_DIR → core/vault.js
 const INGEST_PROGRESS_STEP_DELAYS_MS = [0, 1400, 4400, 12000];
-const INGEST_REVIEW_OUTPUT_TOKEN_FLOOR = 8192;
-const INGEST_REVIEW_RETRY_OUTPUT_TOKEN_FLOOR = 12288;
+const INGEST_REVIEW_OUTPUT_TOKEN_FLOOR = 32768;
+const INGEST_REVIEW_COMPACT_RETRY_OUTPUT_TOKEN_FLOOR = 32768;
 const DREAM_HELPER_OUTPUT_TOKEN_FLOOR = 12288;
 const DREAM_HELPER_RETRY_OUTPUT_TOKEN_FLOOR = 12288;
 const DREAM_BROKEN_LINK_DEFAULT_MAX_LINKS = 10;
@@ -77,23 +377,20 @@ const DREAM_BROKEN_LINK_FULL_FILE_CHAR_LIMIT = 7000;
 const DREAM_BROKEN_LINK_SNIPPET_RADIUS = 700;
 const DREAM_BROKEN_LINK_SNIPPETS_PER_FILE = 4;
 const DREAM_AUTO_LINK_SCORE = 82;
-const DREAM_PLACEHOLDER_LINKS = new Set([
-  "source-slug",
-  "page-name",
-  "entity-name",
-  "concept-name",
-  "target-page",
-  "target-slug",
-  "example",
-  "example-page"
-]);
+// DREAM_PLACEHOLDER_LINKS → core/dream-stats.js
 let apiRequestTimeoutMs = API_REQUEST_TIMEOUT_MS;
 let ingestProgressStepDelaysMs = INGEST_PROGRESS_STEP_DELAYS_MS;
 let activeOperation = "";
+const activeFetchControllers = new Set();
 let dreamRunTickerId = 0;
 const ingestProgressTimers = new Map();
 
-const state = {
+// Hydrate the singleton state imported from core/state.js. Runs at
+// module-load time, before any event handlers fire. Function refs
+// (loadApiGuardSettings, emptyApiUsage, loadModelTimingLog,
+// loadProcessTimingLog) are hoisted, so initialization order matches
+// the original inline definition.
+Object.assign(state, {
   files: [],
   editedRawFiles: new Map(),
   vaultFiles: [],
@@ -130,6 +427,7 @@ const state = {
   activeProcessTimings: new Map(),
   expandedReceiptLinks: new Set(),
   expandedSummaries: new Set(),
+  revealedReceipts: new Set(),
   entityQuery: "",
   entityFilterKind: "all",
   entityFilterValue: "",
@@ -149,27 +447,12 @@ const state = {
   dreamPreparedRun: null,
   dreamLastRun: null,
   dreamActiveStage: ""
-};
+});
 
 const apiThrottle = {
   queue: Promise.resolve(),
   lastStartedAt: 0,
   startedAt: []
-};
-
-const graphView = {
-  width: 1120,
-  height: 700,
-  nodes: [],
-  edges: [],
-  transform: { x: 0, y: 0, k: 1 },
-  selectedId: "",
-  hoverId: "",
-  alpha: 0,
-  tick: 0,
-  raf: 0,
-  pointer: null,
-  bound: false
 };
 
 const els = {
@@ -187,6 +470,7 @@ const els = {
   apiMaxRequests: document.getElementById("api-max-requests"),
   apiMaxOutputTokens: document.getElementById("api-max-output-tokens"),
   apiMaxSessionTokens: document.getElementById("api-max-session-tokens"),
+  apiMaxRequestUsd: document.getElementById("api-max-request-usd"),
   apiMaxSessionUsd: document.getElementById("api-max-session-usd"),
   apiMinRequestDelay: document.getElementById("api-min-request-delay"),
   apiMaxWindowRequests: document.getElementById("api-max-window-requests"),
@@ -255,6 +539,7 @@ const els = {
   docMeta: document.getElementById("doc-meta"),
   docHighlight: document.getElementById("doc-highlight"),
   docBody: document.getElementById("doc-body"),
+  docDeleteBtn: document.getElementById("doc-delete-btn"),
   docSaveBtn: document.getElementById("doc-save-btn"),
   graphSvg: document.getElementById("graph-svg"),
   graphSelection: document.getElementById("graph-selection"),
@@ -300,6 +585,119 @@ if (els.inlineReviewPanel) {
   els.llmStatus.after(els.changePreview);
 }
 
+// Wire the graph view module with the DOM cache and the navigation
+// callback. Hoisted function declarations (activateTab, selectVaultPath)
+// are visible here even though their definitions appear later in the
+// module body.
+initGraphView({
+  els,
+  onOpenNode: (path) => {
+    activateTab("wiki");
+    selectVaultPath(path);
+  }
+});
+
+initWikiView({
+  els,
+  callbacks: {
+    renderRecentActivity,
+    renderDream,
+    renderEntities,
+    activeActivityFileMap,
+    ingestionStats,
+    setDocumentHeader,
+    setDocBody,
+    updateSaveButtonState,
+    pathKind,
+    rawFileForPath,
+    rawSourceOutputPath,
+    allSourceFiles
+  }
+});
+
+initLlmView({
+  els,
+  callbacks: {
+    activateTab,
+    renderLlmReview,
+    renderChangePreview,
+    renderWikiFiles,
+    renderOperatingLayer,
+    renderAcceptedLlmEditState,
+    drawGraph,
+    graphFromFileMap,
+    updateWorkflowState,
+    updateSaveButtonState,
+    updateReviewResponseState,
+    withBusyOperation,
+    mergeFileMaps,
+    validateLlmFiles
+  }
+});
+
+initEntitiesView({
+  els,
+  callbacks: {
+    selectVaultPath,
+    activateTab,
+    renderWikiFiles,
+    drawGraph,
+    graphFromFileMap,
+    requestVaultPermission,
+    writeTextFile,
+    updateVaultStatus,
+    setDocumentHeader,
+    setDocBody,
+    updateSaveButtonState,
+    withBusyOperation
+  }
+});
+
+// Wire the vault module (file-system access + lifecycle). Picker and
+// permission round-trips MUST run synchronously inside click handlers,
+// so createVault/openVault are bound directly without busy-op wrappers
+// before the picker fires.
+initVaultModule({
+  els,
+  callbacks: {
+    renderSources,
+    renderVaultTree,
+    renderChangePreview,
+    renderWikiFiles,
+    renderOperatingLayer,
+    renderAcceptedLlmEditState,
+    drawGraph,
+    graphFromFileMap,
+    updateActionState,
+    updateSaveButtonState,
+    updateWorkflowState,
+    activateTab,
+    runVaultOperation
+  },
+  helpers: {
+    allSourceFiles,
+    mergeSourceFiles,
+    rawSourceAlreadySaved,
+    rawSourcesNeedingWrite,
+    buildReviewDecisionLog,
+    extractDocxText,
+    extractDocxTextForSource,
+    extractPdfTextForSource,
+    isActivitySourcePagePath
+  }
+});
+
+// Wire timing telemetry. Three callbacks needed: isSourceReviewReady gates
+// the post-finish renderSources call, and sourceAttachmentMimeType tags
+// model-call records with canonical MIME types.
+initTimingModule({
+  callbacks: {
+    isSourceReviewReady,
+    renderSources,
+    sourceAttachmentMimeType
+  }
+});
+
 els.themeToggle.checked = state.theme === "dark";
 updateThemeToggleLabel();
 hydrateApiControls();
@@ -324,6 +722,7 @@ els.dreamRunScope?.addEventListener("click", handleDreamRunScopeClick);
 els.bulkIngestBtn?.addEventListener("click", () => withBusyOperation("bulk process", bulkIngestPendingSources));
 els.docBody?.addEventListener("input", handleVaultDocumentEdit);
 els.docBody?.addEventListener("scroll", syncDocHighlightScroll);
+els.docDeleteBtn?.addEventListener("click", () => withBusyOperation("file deletion", deleteSelectedVaultPath));
 els.docSaveBtn?.addEventListener("click", () => withBusyOperation("vault save", saveCurrentVault));
 els.reviewMode.value = state.reviewMode;
 updateReviewModeHelp();
@@ -372,6 +771,7 @@ els.apiGuardEnabled?.addEventListener("change", saveApiGuardControls);
 els.apiMaxRequests?.addEventListener("change", saveApiGuardControls);
 els.apiMaxOutputTokens?.addEventListener("change", saveApiGuardControls);
 els.apiMaxSessionTokens?.addEventListener("change", saveApiGuardControls);
+els.apiMaxRequestUsd?.addEventListener("change", saveApiGuardControls);
 els.apiMaxSessionUsd?.addEventListener("change", saveApiGuardControls);
 els.apiMinRequestDelay?.addEventListener("change", saveApiGuardControls);
 els.apiMaxWindowRequests?.addEventListener("change", saveApiGuardControls);
@@ -434,34 +834,6 @@ function isBusyOperation() {
   return Boolean(activeOperation);
 }
 
-async function restoreRememberedVault() {
-  if (!hasFileSystemAccess()) {
-    updateVaultStatus("Local vault persistence needs Chrome or Edge on localhost.");
-    return;
-  }
-
-  try {
-    const handle = await loadVaultHandle();
-    if (!handle) {
-      updateVaultStatus("No local vault connected.");
-      return;
-    }
-
-    state.rememberedVaultHandle = handle;
-    updateVaultStatus(`Last vault: ${handle.name}. Click Reconnect to open it.`);
-    const permission = await queryVaultPermission(handle);
-    if (permission === "granted") {
-      setActiveVault(handle, handle.name);
-      await scaffoldVault(handle);
-      await loadExistingVault(handle);
-    } else {
-      updateWorkflowState();
-    }
-  } catch (error) {
-    updateVaultStatus(`Could not restore last vault: ${error.message || "unknown error"}`);
-  }
-}
-
 function hydrateApiControls() {
   if (!els.apiProvider) return;
   const settings = state.apiSettings;
@@ -495,17 +867,6 @@ function ensureApiSecretReady() {
     apiSecretHydrationPromise = hydrateLocalEnvApiSecret();
   }
   return apiSecretHydrationPromise;
-}
-
-function parseDotEnv(text) {
-  const env = {};
-  for (const line of String(text || "").split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) continue;
-    const [key, ...rest] = trimmed.split("=");
-    env[key.trim()] = rest.join("=").trim().replace(/^["']|["']$/g, "");
-  }
-  return env;
 }
 
 function updateThemeToggleLabel() {
@@ -554,47 +915,13 @@ function renderApiStatus(message = "") {
     : "Optional. Stored only in this browser for model-generated filing questions.");
 }
 
-function defaultApiGuardSettings() {
-  return {
-    enabled: true,
-    maxRequests: 20,
-    maxOutputTokens: 8192,
-    maxSessionTokens: 250000,
-    maxSessionUsd: 1,
-    minRequestDelaySeconds: 2,
-    maxRequestsPerWindow: 3,
-    requestWindowSeconds: 10
-  };
-}
-
-function loadApiGuardSettings() {
-  try {
-    return normalizeApiGuardSettings(JSON.parse(localStorage.getItem(STORAGE_KEYS.apiGuard) || "{}"));
-  } catch {
-    return defaultApiGuardSettings();
-  }
-}
-
-function normalizeApiGuardSettings(settings = {}) {
-  const defaults = defaultApiGuardSettings();
-  return {
-    enabled: settings.enabled !== false,
-    maxRequests: positiveInteger(settings.maxRequests, defaults.maxRequests),
-    maxOutputTokens: positiveInteger(settings.maxOutputTokens, defaults.maxOutputTokens),
-    maxSessionTokens: positiveInteger(settings.maxSessionTokens, defaults.maxSessionTokens),
-    maxSessionUsd: positiveNumber(settings.maxSessionUsd, defaults.maxSessionUsd),
-    minRequestDelaySeconds: nonNegativeNumber(settings.minRequestDelaySeconds, defaults.minRequestDelaySeconds),
-    maxRequestsPerWindow: positiveInteger(settings.maxRequestsPerWindow, defaults.maxRequestsPerWindow),
-    requestWindowSeconds: positiveNumber(settings.requestWindowSeconds, defaults.requestWindowSeconds)
-  };
-}
-
 function hydrateApiGuardControls() {
   const settings = state.apiGuardSettings;
   if (els.apiGuardEnabled) els.apiGuardEnabled.checked = settings.enabled;
   if (els.apiMaxRequests) els.apiMaxRequests.value = settings.maxRequests;
   if (els.apiMaxOutputTokens) els.apiMaxOutputTokens.value = settings.maxOutputTokens;
   if (els.apiMaxSessionTokens) els.apiMaxSessionTokens.value = settings.maxSessionTokens;
+  if (els.apiMaxRequestUsd) els.apiMaxRequestUsd.value = settings.maxRequestUsd.toFixed(2);
   if (els.apiMaxSessionUsd) els.apiMaxSessionUsd.value = settings.maxSessionUsd.toFixed(2);
   if (els.apiMinRequestDelay) els.apiMinRequestDelay.value = formatControlNumber(settings.minRequestDelaySeconds);
   if (els.apiMaxWindowRequests) els.apiMaxWindowRequests.value = settings.maxRequestsPerWindow;
@@ -607,6 +934,7 @@ function saveApiGuardControls() {
     maxRequests: els.apiMaxRequests?.value,
     maxOutputTokens: els.apiMaxOutputTokens?.value,
     maxSessionTokens: els.apiMaxSessionTokens?.value,
+    maxRequestUsd: els.apiMaxRequestUsd?.value,
     maxSessionUsd: els.apiMaxSessionUsd?.value,
     minRequestDelaySeconds: els.apiMinRequestDelay?.value,
     maxRequestsPerWindow: els.apiMaxWindowRequests?.value,
@@ -635,80 +963,9 @@ function renderApiGuardStatus(message = "") {
       ? "conservative estimate"
       : `${rates.source} pricing`;
   const body = settings.enabled
-    ? `${usage.requests}/${settings.maxRequests} attempts · ${formatStatNumber(usage.totalTokens)}/${formatStatNumber(settings.maxSessionTokens)} tokens · ${formatUsd(usage.estimatedUsd)}/${formatUsd(settings.maxSessionUsd)} estimated · ${formatControlNumber(settings.minRequestDelaySeconds)}s gap · ${settings.maxRequestsPerWindow}/${formatControlNumber(settings.requestWindowSeconds)}s cap · ${priceLabel}.`
+    ? `${usage.requests}/${settings.maxRequests} attempts · ${formatStatNumber(usage.totalTokens)}/${formatStatNumber(settings.maxSessionTokens)} tokens · ${formatUsd(usage.estimatedUsd)}/${formatUsd(settings.maxSessionUsd)} session · ${formatUsd(settings.maxRequestUsd)} call cap · ${formatControlNumber(settings.minRequestDelaySeconds)}s gap · ${settings.maxRequestsPerWindow}/${formatControlNumber(settings.requestWindowSeconds)}s cap · ${priceLabel}.`
     : "Spend guard is off.";
   els.apiGuardStatus.textContent = message ? `${message} ${body}` : body;
-}
-
-function emptyApiUsage() {
-  return {
-    requests: 0,
-    inputTokens: 0,
-    outputTokens: 0,
-    totalTokens: 0,
-    estimatedUsd: 0
-  };
-}
-
-function positiveInteger(value, fallback) {
-  const number = Number.parseInt(value, 10);
-  return Number.isFinite(number) && number > 0 ? number : fallback;
-}
-
-function positiveNumber(value, fallback) {
-  const number = Number.parseFloat(value);
-  return Number.isFinite(number) && number > 0 ? number : fallback;
-}
-
-function nonNegativeNumber(value, fallback) {
-  const number = Number.parseFloat(value);
-  return Number.isFinite(number) && number >= 0 ? number : fallback;
-}
-
-function formatControlNumber(value) {
-  return Number(value || 0).toLocaleString("en-US", {
-    maximumFractionDigits: 1
-  });
-}
-
-function providerValue(label) {
-  const value = String(label || "").toLowerCase();
-  if (value.includes("gemini") || value.includes("google")) return "gemini";
-  if (value.includes("anthropic")) return "anthropic";
-  if (value.includes("local")) return "local";
-  if (value.includes("openai")) return "openai";
-  return value;
-}
-
-function providerLabel(value) {
-  return {
-    gemini: "Gemini",
-    openai: "OpenAI",
-    anthropic: "Anthropic",
-    local: "Local model"
-  }[value] || "Gemini";
-}
-
-function defaultModelForProvider(provider) {
-  return {
-    gemini: "gemini-2.5-flash",
-    openai: "gpt-5-mini",
-    anthropic: "claude-3-5-haiku-latest",
-    local: "local-filing-helper"
-  }[provider] || "gemini-2.5-flash";
-}
-
-function defaultEndpointForProvider(provider) {
-  return {
-    gemini: "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
-    openai: "https://api.openai.com/v1/chat/completions",
-    anthropic: "https://api.anthropic.com/v1/messages",
-    local: "http://localhost:11434/v1/chat/completions"
-  }[provider] || "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent";
-}
-
-function apiProviderRequiresSecret(provider) {
-  return provider !== "local";
 }
 
 async function setSourceFiles(files) {
@@ -728,6 +985,7 @@ async function setSourceFiles(files) {
   state.ingestReviews = new Map();
   state.ingestAnswers = new Map();
   state.expandedSummaries = new Set();
+  state.revealedReceipts = new Set();
   els.llmInput.value = "";
   state.llmPromptCopied = false;
   state.hasSavedCurrent = false;
@@ -791,14 +1049,22 @@ async function activeVaultForRawImport() {
 els.extractBtn.addEventListener("click", () => withBusyOperation("PDF extraction", extractPdfSources));
 
 els.compileBtn.addEventListener("click", async () => {
-  await withBusyOperation("local compile", async () => {
-    state.vault = compileVault(state.files, { name: "Karpathy Original" });
+  await withBusyOperation("reviewed compile", async () => {
+    const reviewedFiles = state.files.filter((file) => state.ingestReviews.has(file.name) && !state.ingestErrors.has(file.name));
+    if (reviewedFiles.length === 0) {
+      els.llmStatus.textContent = "Model review is required before Margins can compile source pages.";
+      return;
+    }
+    state.vault = compileVault(reviewedFiles, {
+      name: "Karpathy Original",
+      ingestReviews: state.ingestReviews
+    });
     state.selectedPath = null;
     state.currentFileMap = null;
     state.hasSavedCurrent = false;
     state.pendingSave = true;
     renderVault();
-    await prepareReviewForCurrentFileMap("Local compile ready. Review the filing questions, then save to your vault.");
+    await prepareReviewForCurrentFileMap("Reviewed compile ready. Review the filing questions, then save to your vault.", []);
     updateWorkflowState();
   });
 });
@@ -825,8 +1091,8 @@ els.exportBtn.addEventListener("click", () => {
   }
 });
 
-els.createVaultBtn.addEventListener("click", () => withBusyOperation("vault creation", createVault));
-els.openVaultBtn.addEventListener("click", () => withBusyOperation("vault open", openVault));
+els.createVaultBtn.addEventListener("click", createVault);
+els.openVaultBtn.addEventListener("click", openVault);
 els.saveVaultBtn.addEventListener("click", () => withBusyOperation("vault write", handleSaveAndOrganize));
 
 els.copyBtn.addEventListener("click", async () => {
@@ -836,145 +1102,9 @@ els.copyBtn.addEventListener("click", async () => {
   setTimeout(() => { els.copyBtn.textContent = "Copy operator manual"; }, 1100);
 });
 
-async function createVault() {
-  if (!("showDirectoryPicker" in window)) {
-    els.stats.textContent = "Local vaults need Chrome or Edge on localhost. Use Download vault JSON for now.";
-    return null;
-  }
-
-  try {
-    const handle = await window.showDirectoryPicker({ mode: "readwrite" });
-    await scaffoldVault(handle);
-    setActiveVault(handle, handle.name);
-    state.loadedFileMap = await readVaultFileMap(handle);
-    renderChangePreview();
-    renderVaultTree();
-    els.stats.textContent = `Created vault structure in: ${handle.name}`;
-    return handle;
-  } catch (error) {
-    if (error.name !== "AbortError") {
-      els.stats.textContent = `Vault creation failed: ${error.message || "unknown error"}`;
-    }
-    return null;
-  }
-}
-
-async function openVault() {
-  if (!("showDirectoryPicker" in window)) {
-    els.stats.textContent = "Local vaults need Chrome or Edge on localhost. Use Download vault JSON for now.";
-    return null;
-  }
-
-  try {
-    const handle = await window.showDirectoryPicker({ mode: "readwrite" });
-    await scaffoldVault(handle);
-    setActiveVault(handle, handle.name);
-    await loadExistingVault(handle);
-    return handle;
-  } catch (error) {
-    if (error.name !== "AbortError") {
-      els.stats.textContent = `Vault open failed: ${error.message || "unknown error"}`;
-    }
-    return null;
-  }
-}
-
-function setActiveVault(handle, name) {
-  state.vaultHandle = handle;
-  state.rememberedVaultHandle = handle;
-  state.vaultName = name;
-  els.createVaultBtn.textContent = "Create vault";
-  els.openVaultBtn.textContent = "Change vault";
-  updateSaveButtonState();
-  updateVaultStatus(name);
-  saveVaultHandle(handle).catch(() => {});
-  updateWorkflowState();
-}
-
-function updateVaultStatus(message) {
-  if (els.vaultStatus) els.vaultStatus.textContent = message;
-}
-
-async function queryVaultPermission(handle) {
-  if (!handle || typeof handle.queryPermission !== "function") return "prompt";
-  try {
-    return await handle.queryPermission({ mode: "readwrite" });
-  } catch {
-    return "prompt";
-  }
-}
-
-async function requestVaultPermission(handle) {
-  if (!handle) return false;
-  const current = await queryVaultPermission(handle);
-  if (current === "granted") return true;
-  if (typeof handle.requestPermission !== "function") return false;
-  try {
-    return await handle.requestPermission({ mode: "readwrite" }) === "granted";
-  } catch {
-    return false;
-  }
-}
-
-async function reconnectRememberedVault() {
-  const handle = state.rememberedVaultHandle;
-  if (!handle) return false;
-  const granted = await requestVaultPermission(handle);
-  if (!granted) {
-    updateVaultStatus("Reconnect was not granted. Open a vault folder to continue.");
-    return false;
-  }
-  await scaffoldVault(handle);
-  setActiveVault(handle, handle.name);
-  await loadExistingVault(handle);
-  return true;
-}
-
-async function loadExistingVault(handle) {
-  const [fileMap, rawFiles] = await Promise.all([
-    readVaultFileMap(handle),
-    readRawSourcesFromVault(handle)
-  ]);
-
-  state.vaultFiles = rawFiles;
-  state.editedRawFiles = new Map();
-  state.loadedFileMap = new Map(fileMap);
-  state.files = pendingRawSourcesFromVault(fileMap, rawFiles);
-  renderSources();
-  renderVaultTree(fileMap);
-  updateActionState();
-
-  if (hasVaultWikiContent(fileMap)) {
-    state.vault = null;
-    state.currentFileMap = fileMap;
-    state.selectedPath = null;
-    state.selectedKind = "";
-    state.llmFiles = new Map();
-    state.llmSelectedPath = null;
-    state.currentMaterialQuestions = [];
-    state.llmPromptCopied = false;
-    state.hasSavedCurrent = true;
-    state.hasUnsavedEdits = false;
-    state.pendingSave = false;
-    renderWikiFiles(fileMap);
-    renderOperatingLayer(fileMap);
-    renderAcceptedLlmEditState();
-    drawGraph(graphFromFileMap(fileMap));
-    renderChangePreview();
-    els.exportBtn.disabled = false;
-    updateSaveButtonState();
-    els.copyBtn.disabled = true;
-    els.stats.textContent = `Opened ${state.vaultName}: ${fileMap.size} wiki/operating file${fileMap.size === 1 ? "" : "s"} loaded`;
-    updateWorkflowState();
-    return;
-  }
-
-  clearLoadedWiki();
-  renderChangePreview();
-  renderVaultTree(fileMap);
-  els.stats.textContent = rawFiles.length
-    ? `Opened ${state.vaultName}: ${rawFiles.length} source file${rawFiles.length === 1 ? "" : "s"} loaded from raw/`
-    : `Opened vault: ${state.vaultName}`;
+async function runVaultOperation(label, run) {
+  if (activeOperation) return run();
+  return withBusyOperation(label, run);
 }
 
 function clearLoadedWiki() {
@@ -1001,22 +1131,6 @@ function clearLoadedWiki() {
   els.copyBtn.disabled = true;
   renderChangePreview();
   updateWorkflowState();
-}
-
-function hasVaultWikiContent(fileMap) {
-  return [...fileMap.entries()].some(([path, body]) => (
-    isContextWikiPagePath(path) &&
-    !isFolderIndexPath(path) &&
-    !isSourceOnlyWikiPage(path, body)
-  ));
-}
-
-function isSourceOnlyWikiPage(path, body) {
-  if (path === "wiki/index.md" || /^wiki\/(ingest-tracker|log|wiki-stats)\.md$/.test(path)) return true;
-  if (path.startsWith("wiki/sources/") || /^wiki\/[^/]+\/source[-/]/.test(path)) return true;
-  if (isBucketOverviewPath(path)) return true;
-  const type = String(frontmatterFields(body).type || "").toLowerCase();
-  return ["source", "log", "index", "template"].includes(type);
 }
 
 async function handleSaveAndOrganize() {
@@ -1116,17 +1230,165 @@ async function removePendingSource(fileName) {
   }
 }
 
-function removeSourceFromState(fileName) {
+async function deleteSelectedVaultPath() {
+  if (!state.selectedPath || state.processingInbox) return;
+  await deleteVaultEntry(state.selectedPath);
+}
+
+async function deleteVaultEntry(path) {
+  const plan = vaultDeletePlan(path);
+  if (!plan) return;
+  if (!confirm(deletePlanMessage(plan))) return;
+
+  try {
+    await applyVaultDeletePlan(plan);
+    els.stats.textContent = deletePlanStatus(plan);
+  } catch (error) {
+    els.stats.textContent = `Could not delete ${deletePlanLabel(plan)}: ${error.message || "unknown error"}`;
+  }
+}
+
+function vaultDeletePlan(path) {
+  const normalizedPath = normalizeMarginsPath(path || "");
+  if (!normalizedPath) return null;
+
+  const rawFile = rawFileForPath(normalizedPath);
+  if (rawFile) {
+    return {
+      kind: "raw",
+      label: basename(rawFile.name),
+      selectedPath: rawSourceOutputPath(rawFile.name),
+      rawNames: [rawFile.name],
+      filePaths: sourceNotePathsForRawName(rawFile.name)
+    };
+  }
+
+  const body = state.currentFileMap?.get(normalizedPath);
+  if (typeof body !== "string") return null;
+  if (!isDeletableGeneratedTextPath(normalizedPath)) return null;
+
+  const sourcePage = isActivitySourcePagePath(normalizedPath, body);
+  const rawName = sourcePage ? rawNameForSourceBody(body) : "";
+  const linkedSourcePaths = sourcePage && rawName
+    ? sourceNotePathsForRawName(rawName)
+    : [normalizedPath];
+  const filePaths = [...new Set(linkedSourcePaths.includes(normalizedPath)
+    ? linkedSourcePaths
+    : [normalizedPath, ...linkedSourcePaths])];
+  return {
+    kind: sourcePage ? "source" : "file",
+    label: sourcePage ? sourceActivityTitle(normalizedPath, body) : basename(normalizedPath),
+    selectedPath: normalizedPath,
+    rawNames: rawName && allSourceFiles().some((file) => file.name === rawName) ? [rawName] : [],
+    filePaths
+  };
+}
+
+function rawNameForSourceBody(body) {
+  const rawPath = sourceActivityRawPath(frontmatterFields(body), body);
+  return rawPath && isRawSourcePath(rawPath) ? rawSourceRelativeName(rawPath) : "";
+}
+
+function sourceNotePathsForRawName(fileName) {
+  if (!fileName || !state.currentFileMap) return [];
+  const rawPaths = rawSourceCandidatePaths(fileName);
+  return [...state.currentFileMap.entries()]
+    .filter(([path, body]) => isActivitySourcePagePath(path, body) && bodyReferencesRawSource(body, rawPaths))
+    .map(([path]) => path);
+}
+
+function deletePlanMessage(plan) {
+  const sourceCount = plan.filePaths.length;
+  const rawCount = plan.rawNames.length;
+  if (plan.kind === "raw") {
+    const suffix = sourceCount ? ` and ${sourceCount} source note${sourceCount === 1 ? "" : "s"}` : "";
+    return `Delete ${plan.label} from raw/${suffix}?`;
+  }
+  if (plan.kind === "source") {
+    const extraSources = Math.max(0, sourceCount - 1);
+    const rawText = rawCount ? " and its raw source file" : "";
+    const extraText = extraSources ? ` plus ${extraSources} duplicate source note${extraSources === 1 ? "" : "s"}` : "";
+    return `Delete ${plan.label}${rawText}${extraText}?`;
+  }
+  return `Delete ${plan.selectedPath}?`;
+}
+
+function deletePlanStatus(plan) {
+  const sourceCount = plan.filePaths.length;
+  const rawCount = plan.rawNames.length;
+  if (plan.kind === "raw") {
+    const suffix = sourceCount ? ` and ${sourceCount} source note${sourceCount === 1 ? "" : "s"}` : "";
+    return `Deleted ${plan.label} from raw/${suffix}.`;
+  }
+  if (plan.kind === "source") {
+    const rawText = rawCount ? " and its raw source file" : "";
+    const extraSources = Math.max(0, sourceCount - 1);
+    const extraText = extraSources ? ` plus ${extraSources} duplicate source note${extraSources === 1 ? "" : "s"}` : "";
+    return `Deleted ${plan.label}${rawText}${extraText}.`;
+  }
+  return `Deleted ${plan.selectedPath}.`;
+}
+
+function deletePlanLabel(plan) {
+  return plan?.label || plan?.selectedPath || "file";
+}
+
+async function applyVaultDeletePlan(plan) {
+  const directVaultDelete = Boolean(state.vaultHandle);
+
+  for (const rawName of plan.rawNames) {
+    const file = allSourceFiles().find((entry) => entry.name === rawName);
+    if (file && directVaultDelete && rawSourceAlreadySaved(file)) {
+      await deleteRawSourceFromVault(state.vaultHandle, rawName);
+    }
+  }
+
+  for (const path of plan.filePaths) {
+    if (!state.currentFileMap?.has(path)) continue;
+    if (directVaultDelete && state.loadedFileMap?.has(path)) {
+      await deleteGeneratedTextFile(state.vaultHandle, path);
+      state.loadedFileMap.delete(path);
+    }
+    state.currentFileMap.delete(path);
+  }
+
+  for (const rawName of plan.rawNames) {
+    removeSourceFromState(rawName, { render: false });
+  }
+
+  if (!directVaultDelete) {
+    state.pendingSave = true;
+    state.hasUnsavedEdits = true;
+  }
+
+  if (plan.filePaths.includes(state.selectedPath) || plan.rawNames.some((rawName) => rawSourceOutputPath(rawName) === state.selectedPath)) {
+    state.selectedPath = null;
+    state.selectedKind = "";
+  }
+
+  renderSources();
+  renderVaultTree(state.currentFileMap);
+  renderWikiFiles(state.currentFileMap);
+  renderOperatingLayer(state.currentFileMap || new Map());
+  drawGraph(graphFromFileMap(state.currentFileMap || new Map()));
+  renderChangePreview();
+  updateActionState();
+  updateWorkflowState();
+}
+
+function removeSourceFromState(fileName, options = {}) {
   state.files = state.files.filter((file) => file.name !== fileName);
   state.vaultFiles = state.vaultFiles.filter((file) => file.name !== fileName);
   state.editedRawFiles.delete(fileName);
   state.ingestReviews.delete(fileName);
   state.ingestErrors.delete(fileName);
   state.expandedReceiptLinks.delete(fileName);
+  state.revealedReceipts.delete(fileName);
   for (const key of [...state.ingestAnswers.keys()]) {
     if (key.startsWith(`${fileName}::`)) state.ingestAnswers.delete(key);
   }
   state.expandedSummaries.delete(fileName);
+  if (options.render === false) return;
   renderSources();
   renderVaultTree(state.currentFileMap);
   renderWikiFiles(state.currentFileMap);
@@ -1154,10 +1416,6 @@ function toggleReceiptLinkedEntities(fileName) {
   if (state.expandedReceiptLinks.has(fileName)) state.expandedReceiptLinks.delete(fileName);
   else state.expandedReceiptLinks.add(fileName);
   renderSources();
-}
-
-function ingestAnswerKey(fileName, question) {
-  return `${fileName}::${question}`;
 }
 
 function ingestAnswerFor(fileName, question) {
@@ -1244,7 +1502,28 @@ async function prepareInboxSave(fileName = "", options = {}) {
   markProcessTimingPhase(targetFiles, "textReadyMs");
 
   const existingFileMap = new Map(state.currentFileMap || []);
-  state.vault = compileVault(targetFiles, { name: state.vaultName || "Karpathy Original" });
+  await prepareIngestReviews(
+    options.autoFile ? "Margins reviewed and filed the pending documents." : "Margins prepared this document. Answer any quick checks, then approve it.",
+    targetFiles,
+    { ...options, contextFileMap: existingFileMap }
+  );
+  markProcessTimingPhase(targetFiles, "reviewReadyMs");
+
+  const reviewedFiles = targetFiles.filter((file) => state.ingestReviews.has(file.name) && !state.ingestErrors.has(file.name));
+  if (reviewedFiles.length === 0) {
+    state.pendingSave = false;
+    state.hasSavedCurrent = false;
+    renderSources();
+    updateSaveButtonState();
+    els.llmStatus.textContent = "Model review did not finish. Resolve the error and retry the source.";
+    return;
+  }
+
+  removeExistingSourceNotesForFiles(reviewedFiles);
+  state.vault = compileVault(reviewedFiles, {
+    name: state.vaultName || "Karpathy Original",
+    ingestReviews: state.ingestReviews
+  });
   state.selectedPath = null;
   state.currentFileMap = mergeFileMaps(state.currentFileMap, vaultToFiles(state.vault));
   state.hasSavedCurrent = false;
@@ -1260,12 +1539,6 @@ async function prepareInboxSave(fileName = "", options = {}) {
   updateSaveButtonState();
   els.copyBtn.disabled = false;
   markProcessTimingPhase(targetFiles, "draftReadyMs");
-  await prepareReviewForCurrentFileMap(
-    options.autoFile ? "Margins reviewed and filed the pending documents." : "Margins prepared this document. Answer any quick checks, then approve it.",
-    targetFiles,
-    { ...options, contextFileMap: existingFileMap }
-  );
-  markProcessTimingPhase(targetFiles, "reviewReadyMs");
   if (options.autoFile) {
     await saveCurrentVault();
   }
@@ -1278,6 +1551,17 @@ function filesForInboxProcess(fileName = "") {
   }
   const file = state.files.find((entry) => entry.name === fileName);
   return file ? [file] : [];
+}
+
+function removeExistingSourceNotesForFiles(files = []) {
+  if (!state.currentFileMap) return [];
+  const removed = [];
+  for (const file of files) {
+    for (const path of sourceNotePathsForRawName(file.name)) {
+      if (state.currentFileMap.delete(path)) removed.push(path);
+    }
+  }
+  return removed;
 }
 
 function shouldTrackProcessTiming(fileName = "", targetFiles = []) {
@@ -1317,108 +1601,6 @@ function clearIngestProgress(fileNames = null) {
     for (const timer of ingestProgressTimers.get(name) || []) clearTimeout(timer);
     ingestProgressTimers.delete(name);
     state.ingestProgress.delete(name);
-  }
-}
-
-async function savePendingRawSourcesImmediately(files = state.files) {
-  if (!state.vaultHandle || files.length === 0) return 0;
-  const toWrite = files
-    .filter((file) => !rawSourceAlreadySaved(file))
-    .map((file) => ({ ...file, sourceScope: "vault" }));
-  const written = toWrite.length ? await writeRawSources(state.vaultHandle, toWrite) : 0;
-  for (const file of files) {
-    file.sourceScope = "vault";
-    await refreshRawSourceBlobFromVault(file);
-  }
-  state.vaultFiles = mergeSourceFiles(state.vaultFiles, files.map((file) => ({ ...file, sourceScope: "vault", dirtyRaw: false })));
-  renderVaultTree(state.currentFileMap);
-  return written;
-}
-
-async function prepareSourcesForProcessing(files) {
-  for (const file of files) {
-    if (file.text) continue;
-
-    if (file.type === "pdf") {
-      await extractPdfTextForSource(file);
-    } else if (file.type === "docx") {
-      await extractDocxTextForSource(file);
-    }
-  }
-}
-
-async function saveCurrentVault(options = {}) {
-  if (!state.currentFileMap) return;
-  const vault = state.vaultHandle || await createVault();
-  if (!vault) return;
-
-  els.saveVaultBtn.disabled = true;
-  if (els.docSaveBtn) els.docSaveBtn.disabled = true;
-  const originalText = els.saveVaultBtn.textContent;
-  els.saveVaultBtn.textContent = "Saving...";
-  if (els.docSaveBtn) els.docSaveBtn.textContent = "Saving...";
-
-  try {
-    const pendingRaw = mergeSourceFiles(state.files, [...state.editedRawFiles.values()]);
-    const sourceCount = allSourceFiles().length;
-    const rawToWrite = rawSourcesNeedingWrite(pendingRaw);
-    const writtenRaw = rawToWrite.length ? await writeRawSources(vault, rawToWrite) : 0;
-    const reviewNotes = els.reviewReply.value.trim();
-    if (reviewNotes) {
-      state.currentFileMap.set("wiki/.margins/review-decisions.md", buildReviewDecisionLog(reviewNotes));
-    }
-    const writtenFiles = await writeFileMap(vault, state.currentFileMap, state.loadedFileMap || new Map());
-    await writeTextFile(vault, "wiki/.margins/export-summary.json", JSON.stringify({
-      saved_at: new Date().toISOString(),
-      vault: state.vaultName,
-      raw_sources: writtenRaw,
-      generated_files: writtenFiles,
-      new_source_count: pendingRaw.length,
-      source_count: sourceCount,
-      file_count: state.currentFileMap.size,
-      write_mode: "direct-vault-save",
-      warning: sourceCount === 0
-        ? "No original source files were loaded in the browser when this folder was written."
-        : ""
-    }, null, 2));
-    state.vaultFiles = mergeSourceFiles(state.vaultFiles, pendingRaw.map((file) => ({ ...file, sourceScope: "vault", dirtyRaw: false })));
-    state.files = pendingRawSourcesFromVault(state.currentFileMap, state.vaultFiles);
-    state.editedRawFiles = new Map();
-    state.ingestReviews = new Map();
-    state.ingestAnswers = new Map();
-    state.ingestErrors = new Map();
-    state.expandedSummaries = new Set();
-    state.expandedReceiptLinks = new Set();
-    state.loadedFileMap = new Map(state.currentFileMap);
-    renderSources();
-    renderVaultTree(state.currentFileMap);
-    state.hasSavedCurrent = true;
-    state.hasUnsavedEdits = false;
-    state.pendingSave = false;
-    state.llmPromptCopied = false;
-    els.reviewReply.value = "";
-    els.stats.textContent = pendingRaw.length === 0
-      ? `Saved ${writtenFiles} wiki/operating files to ${state.vaultName}`
-      : `Saved ${writtenFiles} wiki/operating file${writtenFiles === 1 ? "" : "s"} + ${writtenRaw} new source file${writtenRaw === 1 ? "" : "s"} to ${state.vaultName}`;
-    els.saveVaultBtn.textContent = "Saved";
-    if (els.docSaveBtn) els.docSaveBtn.textContent = "Saved";
-    renderWikiFiles(state.currentFileMap);
-    activateTab(options.afterSaveView || "wiki");
-    renderChangePreview();
-    setTimeout(() => {
-      els.saveVaultBtn.textContent = originalText;
-      if (els.docSaveBtn) els.docSaveBtn.textContent = "Save";
-      updateSaveButtonState();
-    }, 1500);
-  } catch (error) {
-    if (error.name !== "AbortError") {
-      els.stats.textContent = `Vault save failed: ${error.message || "unknown error"}`;
-    }
-    els.saveVaultBtn.textContent = originalText;
-    if (els.docSaveBtn) els.docSaveBtn.textContent = "Save";
-  } finally {
-    updateSaveButtonState();
-    updateWorkflowState();
   }
 }
 
@@ -1496,67 +1678,6 @@ els.acceptLlmBtn.addEventListener("click", () => {
   withBusyOperation("accepting model files", async () => acceptLlmFiles());
 });
 
-async function copyLlmIngestPrompt() {
-  if (state.files.length === 0) return;
-  await navigator.clipboard.writeText(buildLlmIngestPrompt(state.files, state.currentFileMap));
-  state.llmPromptCopied = true;
-  els.llmBtn.textContent = "Copied";
-  setTimeout(() => { els.llmBtn.textContent = "Copy LLM process prompt"; }, 1100);
-  activateTab("llm");
-  els.llmInput.focus();
-  updateWorkflowState();
-}
-
-async function copyLlmRepairPrompt() {
-  if (state.llmFiles.size === 0) return;
-  await navigator.clipboard.writeText(buildLlmRepairPrompt(state.llmFiles));
-  els.repairLlmBtn.textContent = "Copied";
-  setTimeout(() => { els.repairLlmBtn.textContent = "Copy repair prompt"; }, 1100);
-  activateTab("llm");
-  updateWorkflowState();
-}
-
-async function copyReviewResponsePrompt() {
-  const reply = els.reviewReply.value.trim();
-  if (state.llmFiles.size === 0 || !reply) return;
-  await navigator.clipboard.writeText(buildReviewResponsePrompt(
-    state.llmFiles,
-    state.currentMaterialQuestions,
-    reply,
-    state.reviewMode
-  ));
-  els.reviewResponseBtn.textContent = "Copied";
-  setTimeout(() => { els.reviewResponseBtn.textContent = "Copy review response prompt"; }, 1100);
-  activateTab("llm");
-  updateWorkflowState();
-}
-
-function acceptLlmFiles() {
-  if (state.llmFiles.size === 0) return false;
-  const acceptedCount = state.llmFiles.size;
-  state.vault = null;
-  state.currentFileMap = mergeFileMaps(state.currentFileMap, state.llmFiles);
-  state.selectedPath = null;
-  state.hasSavedCurrent = false;
-  state.pendingSave = true;
-  state.llmFiles = new Map();
-  state.currentMaterialQuestions = [];
-  renderWikiFiles(state.currentFileMap);
-  renderOperatingLayer(state.currentFileMap);
-  renderAcceptedLlmEditState();
-  drawGraph(graphFromFileMap(state.currentFileMap));
-  renderChangePreview();
-  els.exportBtn.disabled = false;
-  updateSaveButtonState();
-  els.acceptLlmBtn.disabled = true;
-  els.repairLlmBtn.disabled = true;
-  els.copyBtn.disabled = true;
-  els.llmStatus.textContent = `Accepted ${acceptedCount} returned file${acceptedCount === 1 ? "" : "s"} into the current wiki. Save to write the vault.`;
-  activateTab("wiki");
-  updateWorkflowState();
-  return true;
-}
-
 async function prepareReviewForCurrentFileMap(statusText, files = state.files, options = {}) {
   if (!state.currentFileMap) return;
   if (files.length > 0) {
@@ -1577,7 +1698,7 @@ async function prepareReviewForCurrentFileMap(statusText, files = state.files, o
         state.apiQuestionSource = "api";
       }
     } catch (error) {
-      els.llmStatus.textContent = `API question generation failed, using local questions: ${error.message || "unknown error"}`;
+      els.llmStatus.textContent = `API question generation failed; review questions were not updated: ${error.message || "unknown error"}`;
     }
   }
 
@@ -1598,7 +1719,7 @@ async function prepareIngestReviews(statusText, files = state.files, options = {
   const apiContextFileMap = options.contextFileMap || state.currentFileMap;
 
   for (const file of files) {
-    let review = localIngestReview(file, state.currentFileMap, reviewMode);
+    let review = null;
     if (requiresModelReview(file) && !canSendSourceToModel(file)) {
       state.ingestErrors.set(file.name, "Model review needs the original file or readable text. Re-add the file, then retry.");
       reviewMap.delete(file.name);
@@ -1613,34 +1734,36 @@ async function prepareIngestReviews(statusText, files = state.files, options = {
       els.llmStatus.textContent = `Sending ${file.name} to the configured model with vault context...`;
       try {
         const apiReview = await generateApiIngestReview(file, apiContextFileMap, reviewMode);
-        review = mergeIngestReview(review, apiReview, "api");
+        review = mergeIngestReview(apiReview, "api");
         state.apiQuestionSource = "api";
       } catch (error) {
-        if (requiresModelReview(file)) {
-          state.ingestErrors.set(file.name, ingestModelErrorMessage(error));
-          reviewMap.delete(file.name);
-          state.apiQuestionSource = "error";
-          continue;
-        }
-        review.status = localFallbackStatusForModelError(error);
-        review.modelTiming = error.modelTiming || null;
-        state.apiQuestionSource = "heuristic";
+        console.error("[margins] API ingest failed for", file.name, "Error:", error);
+        state.ingestErrors.set(file.name, ingestModelErrorMessage(error));
+        reviewMap.delete(file.name);
+        state.apiQuestionSource = "error";
+        continue;
       }
+    }
+    if (!review) {
+      state.ingestErrors.set(file.name, "Model review did not run. Add a model key, reconnect the source file, then retry.");
+      reviewMap.delete(file.name);
+      state.apiQuestionSource = "error";
+      continue;
     }
     state.ingestErrors.delete(file.name);
     reviewMap.set(file.name, review);
     for (const question of review.questions || []) allQuestions.push(question);
-    applyIngestReviewToFileMap(file, review);
   }
 
   state.ingestReviews = reviewMap;
   state.currentMaterialQuestions = options.autoFile ? [] : limitMaterialQuestions(allQuestions, state.reviewMode);
   renderMaterialQuestions(state.currentMaterialQuestions);
-  renderWikiFiles(state.currentFileMap);
-  renderOperatingLayer(state.currentFileMap);
-  drawGraph(graphFromFileMap(state.currentFileMap));
+  const renderMap = state.currentFileMap || new Map();
+  renderWikiFiles(renderMap);
+  renderOperatingLayer(renderMap);
+  drawGraph(graphFromFileMap(renderMap));
   renderSources();
-  renderVaultTree(state.currentFileMap);
+  renderVaultTree(renderMap);
   els.llmStatus.textContent = state.currentMaterialQuestions.length
     ? `${statusText} ${state.currentMaterialQuestions.length} quick check${state.currentMaterialQuestions.length === 1 ? "" : "s"} need your call.`
     : `${statusText} No questions needed.`;
@@ -1648,26 +1771,14 @@ async function prepareIngestReviews(statusText, files = state.files, options = {
   updateWorkflowState();
 }
 
-function localIngestReview(file, fileMap, mode) {
-  const summaryParts = localSourceSummaryParts(file);
-  return {
-    source: "local",
-    status: state.apiSecret
-      ? "Local fallback shown. The model review did not finish, so this is only a triage read."
-      : "Local fallback shown. Add a model key for a Claude-style source review with takeaways and filing judgment.",
-    summary: summaryParts.overview,
-    summaryBullets: summaryParts.bullets,
-    filingPlan: emptyFilingPlan(),
-    filingSteps: [],
-    discoveries: [],
-    financialDetails: emptyFinancialDetails(),
-    connections: [],
-    questions: mode === "auto" ? [] : currentIngestQuestionsForFile(file, fileMap, mode)
-  };
-}
-
 function ingestModelErrorMessage(error) {
+  if (isApiCancelledError(error)) {
+    return "Model review was cancelled. The source file is saved. Retry this file when ready.";
+  }
   if (isModelOutputTruncatedError(error)) {
+    if (error?.compactRetry) {
+      return "Margins compact review was still cut off before complete JSON came back. The source file is saved. Retry later or split the source into smaller files.";
+    }
     return "Margins review was cut off before complete JSON came back. The source file is saved. Retry this file; Margins will ask for a larger response.";
   }
   if (isSpendGuardError(error)) {
@@ -1679,39 +1790,8 @@ function ingestModelErrorMessage(error) {
   return `Model review did not finish: ${error.message || "unknown error"}`;
 }
 
-function localFallbackStatusForModelError(error) {
-  if (isModelOutputTruncatedError(error)) {
-    return "Margins review was cut off before complete JSON came back, so it is showing local checks. Retry this file to ask for a larger response.";
-  }
-  if (isModelJsonParseError(error)) {
-    return "Margins received a malformed review, so it is showing local checks. Retry this file to ask for a fresh review.";
-  }
-  if (isSpendGuardError(error)) {
-    return `${error.message} Local review shown. Raise the guard or reset usage if you want model-generated questions.`;
-  }
-  if (isRateLimitError(error)) {
-    return `Margins review is rate-limited right now. Local review shown. ${retryAfterText(error)}Retry later if you want model-generated questions.`;
-  }
-  return `Model review failed, using local checks: ${error.message || "unknown error"}`;
-}
-
-function retryAfterText(error) {
-  if (!error?.retryAfter) return "Wait a minute, then ";
-  const seconds = Number(error.retryAfter);
-  if (Number.isFinite(seconds) && seconds > 0) return `Wait about ${Math.ceil(seconds)} seconds, then `;
-  return "";
-}
-
-function isRateLimitError(error) {
-  return Number(error?.status) === 429 || /rate limit|rate-limited|quota|resource exhausted|free-tier limit|limit reached|HTTP 429/i.test(`${error?.message || error || ""}`);
-}
-
-function isSpendGuardError(error) {
-  return error?.code === "MARGINS_SPEND_GUARD" || /spend guard stopped/i.test(`${error?.message || error || ""}`);
-}
-
-function isModelJsonParseError(error) {
-  return error?.code === "MARGINS_MODEL_JSON_PARSE";
+function isApiCancelledError(error) {
+  return error?.code === "MARGINS_API_CANCELLED";
 }
 
 function canSendSourceToModel(file) {
@@ -1721,187 +1801,36 @@ function canSendSourceToModel(file) {
   return provider === "gemini" && canAttachSourceToGemini(file);
 }
 
-function requiresModelReview(file) {
-  return needsTextExtraction(file) && !file.text;
-}
-
 function canAttachSourceToGemini(file) {
   return Boolean(file && (file.browserFile || file.rawSourceHandle || rawSourceAlreadySaved(file)) && sourceAttachmentMimeType(file));
 }
 
-function localSourceSummary(file) {
-  const parts = localSourceSummaryParts(file);
-  return cleanSummary([parts.overview, ...parts.bullets].filter(Boolean).join(" "));
-}
-
-function localSourceSummaryParts(file) {
-  const markdownSummary = localMarkdownClipSummaryParts(file);
-  if (markdownSummary) return markdownSummary;
-
-  const clean = cleanDisplaySummary(localReadableSourceText(file.text || ""));
-  if (!clean) {
-    return {
-      overview: "Margins saved the source file, but there is not enough readable text to summarize yet.",
-      bullets: [
-        "Use model review with the original file attached if this document matters.",
-        "Do not rely on local fallback for scanned, image-only, or complex documents."
-      ]
-    };
-  }
-  const sentences = clean.match(/[^.!?]+[.!?]+/g) || [clean];
-  const overview = clampSentence(sentences[0] || clean, 220);
-  const bullets = sentences
-    .slice(1, 6)
-    .map((sentence) => clampSentence(sentence, 180))
-    .filter(Boolean);
-  return { overview, bullets };
-}
-
-function localMarkdownClipSummaryParts(file) {
-  const raw = String(file?.text || "");
-  const { fields, body, hasFrontmatter } = looseFrontmatterFields(raw);
-  if (!hasFrontmatter) return null;
-
-  const title = cleanSummary(fields.title || markdownTitle(body) || "");
-  const description = cleanSummary(fields.description || fields.summary || "");
-  const cleanBody = cleanSummary(localReadableSourceText(body));
-  const bodySentences = cleanBody.match(/[^.!?]+[.!?]+/g) || (cleanBody ? [cleanBody] : []);
-  const overview = clampSentence(title || description || bodySentences[0] || "", 220);
-  const bullets = [
-    title && description ? clampSentence(description, 220) : "",
-    ...bodySentences
-      .filter((sentence) => cleanSummary(sentence) !== overview && cleanSummary(sentence) !== description)
-      .slice(0, 4)
-      .map((sentence) => clampSentence(sentence, 180))
-  ].filter(Boolean);
-
-  return overview || bullets.length ? { overview, bullets } : null;
-}
-
-function looseFrontmatterFields(text) {
-  const source = String(text || "").replace(/\r\n?/g, "\n").trimStart();
-  let block = "";
-  let body = source;
-  let hasFrontmatter = false;
-  const fenced = source.match(/^---\s*\n([\s\S]*?)\n---\s*(?:\n|$)([\s\S]*)$/);
-  if (fenced) {
-    block = fenced[1];
-    body = fenced[2] || "";
-    hasFrontmatter = true;
-  } else if (/^(title|description|summary|source|url|author|published|created|tags):\s*/i.test(source)) {
-    const end = source.search(/\n---\s*(?:\n|$)/);
-    if (end > 0) {
-      block = source.slice(0, end);
-      body = source.slice(end).replace(/^\n---\s*(?:\n|$)/, "");
-      hasFrontmatter = true;
-    }
-  }
-  if (!hasFrontmatter) return { fields: {}, body: source, hasFrontmatter: false };
-
-  const fields = {};
-  let currentKey = "";
-  for (const line of block.split("\n")) {
-    const field = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
-    if (field) {
-      currentKey = field[1].toLowerCase();
-      fields[currentKey] = cleanYamlScalar(field[2]);
-      continue;
-    }
-    if (currentKey && line.trim() && !/^\s*-\s+/.test(line)) {
-      fields[currentKey] = cleanYamlScalar(`${fields[currentKey] || ""} ${line.trim()}`);
-    }
-  }
-
-  return { fields, body, hasFrontmatter: true };
-}
-
-function cleanYamlScalar(value) {
-  return cleanSummary(String(value || "")
-    .replace(/^[>|]\s*/, "")
-    .replace(/^['"]|['"]$/g, "")
-    .replace(/\\(["'])/g, "$1"));
-}
-
-function localReadableSourceText(text) {
-  return String(text || "")
-    .replace(/^---\s*\n[\s\S]*?\n---\s*(?:\n|$)/, "")
-    .replace(/^(?:title|description|summary|source|url|author|published|created|tags):[\s\S]*?\n---\s*(?:\n|$)/i, "")
-    .replace(/```[\s\S]*?```/g, " ")
-    .replace(/!\[[^\]]*]\([^)]*\)/g, " ")
-    .replace(/\[([^\]]+)]\([^)]*\)/g, "$1")
-    .replace(/^#+\s+/gm, "")
-    .replace(/^\s*[-*]\s+/gm, "");
-}
-
-function cleanExtractedSourceText(text) {
-  return cleanSummary(String(text || "")
-    .replace(/\bPage\s+\d+\b/gi, " ")
-    .replace(/\bDEMO\b/gi, " demo ")
-    .replace(/\s*[|•]\s*/g, " ")
-    .replace(/\b(?:Member SIPC|Not an actual account statement|Sample client data)\b/gi, (match) => ` ${match}. `));
-}
-
-function firstMatch(text, pattern) {
-  const match = String(text || "").match(pattern);
-  return match?.[1] ? cleanSummary(match[1]) : match?.[0] ? cleanSummary(match[0]) : "";
-}
-
-function mergeIngestReview(localReview, apiReview, source) {
+function mergeIngestReview(apiReview, source) {
   const questions = source === "api"
     ? modelQuestionsOrFallback(apiReview)
-    : apiReview.questions?.length ? apiReview.questions : localReview.questions;
+    : apiReview.questions?.length ? apiReview.questions : [];
   return {
     source,
     status: apiReview.status || "Model reviewed the source against the current vault.",
     provider: apiReview.provider || "",
     reviewedAt: apiReview.reviewedAt || "",
-    missionFrame: apiReview.missionFrame || localReview.missionFrame || null,
-    takeaways: apiReview.takeaways?.length ? apiReview.takeaways : localReview.takeaways || [],
-    lightTouch: apiReview.lightTouch?.length ? apiReview.lightTouch : localReview.lightTouch || [],
-    propagation: apiReview.propagation?.length ? apiReview.propagation : localReview.propagation || [],
-    filingPlan: hasFilingPlan(apiReview.filingPlan) ? apiReview.filingPlan : localReview.filingPlan || emptyFilingPlan(),
-    filingSteps: apiReview.filingSteps?.length ? apiReview.filingSteps : localReview.filingSteps || [],
-    discoveries: apiReview.discoveries?.length ? apiReview.discoveries : localReview.discoveries || [],
-    financialDetails: hasFinancialDetails(apiReview.financialDetails) ? apiReview.financialDetails : localReview.financialDetails || emptyFinancialDetails(),
-    summary: apiReview.summary || localReview.summary,
-    summaryBullets: apiReview.summaryBullets?.length ? apiReview.summaryBullets : localReview.summaryBullets || [],
-    connections: apiReview.connections?.length ? apiReview.connections : localReview.connections,
+    missionFrame: apiReview.missionFrame || null,
+    takeaways: apiReview.takeaways?.length ? apiReview.takeaways : [],
+    lightTouch: apiReview.lightTouch?.length ? apiReview.lightTouch : [],
+    propagation: apiReview.propagation?.length ? apiReview.propagation : [],
+    filingPlan: hasFilingPlan(apiReview.filingPlan) ? apiReview.filingPlan : emptyFilingPlan(),
+    filingSteps: apiReview.filingSteps?.length ? apiReview.filingSteps : [],
+    discoveries: apiReview.discoveries?.length ? apiReview.discoveries : [],
+    financialDetails: hasFinancialDetails(apiReview.financialDetails) ? apiReview.financialDetails : emptyFinancialDetails(),
+    summary: apiReview.summary || "",
+    summaryBullets: apiReview.summaryBullets?.length ? apiReview.summaryBullets : [],
+    connections: apiReview.connections?.length ? apiReview.connections : [],
     questions,
     modelReturnedNoQuestions: Boolean(apiReview.modelReturnedNoQuestions),
     modelSummaryFallback: Boolean(apiReview.modelSummaryFallback),
-    modelTiming: apiReview.modelTiming || localReview.modelTiming || null,
+    modelTiming: apiReview.modelTiming || null,
     fallbackQuestions: apiReview.fallbackQuestions || []
   };
-}
-
-function modelQuestionsOrFallback(apiReview) {
-  if (apiReview.questions?.length) return apiReview.questions;
-  if (apiReview.modelReturnedNoQuestions && apiReview.fallbackQuestions?.length) return apiReview.fallbackQuestions;
-  return [];
-}
-
-function applyIngestReviewToFileMap(file, review) {
-  if (!state.currentFileMap || !review) return;
-  const entry = sourceNoteEntryForFile(file);
-  if (!entry) return;
-
-  let body = entry.body;
-  body = applyFilingPlanToSourceBody(body, review.filingPlan);
-  if (review.summary) {
-    body = replaceYamlSummary(body, review.summary);
-    body = replaceSummarySection(body, review.summary);
-  }
-  if (review.connections?.length) {
-    body = upsertConnectionsSection(body, review.connections);
-  }
-  if (hasFinancialDetails(review.financialDetails)) {
-    body = upsertFinancialDetailsSection(body, review.financialDetails);
-  }
-  const targetPath = sourceTargetPathFromReview(entry.path, review);
-  if (targetPath !== entry.path && !state.currentFileMap.has(targetPath)) {
-    state.currentFileMap.delete(entry.path);
-  }
-  state.currentFileMap.set(targetPath, body);
 }
 
 function sourceTargetPathFromReview(currentPath, review) {
@@ -1911,194 +1840,6 @@ function sourceTargetPathFromReview(currentPath, review) {
   return target;
 }
 
-function applyFilingPlanToSourceBody(body, plan) {
-  if (!hasFilingPlan(plan)) return body;
-  let next = body;
-  const placement = plan.placement || {};
-  if (placement.bucket) next = upsertFrontmatterScalar(next, "bucket", placement.bucket);
-  const tags = sourceTagsFromFilingPlan(plan);
-  if (tags.length) next = upsertFrontmatterList(next, "tags", tags);
-  if (placement.title) next = replaceSourceHeading(next, placement.title);
-  next = upsertFilingJudgmentSection(next, plan);
-  return next;
-}
-
-function sourceTagsFromFilingPlan(plan) {
-  return uniqueBy([
-    "source",
-    ...tagListFromUnknown(plan.tags),
-    plan.regionTag,
-    plan.typeTag
-  ].map(cleanTag).filter(Boolean), (tag) => tag);
-}
-
-function sourceNoteEntryForFile(file) {
-  return sourceNoteEntryForFileMap(file, state.currentFileMap);
-}
-
-function sourceNoteEntryForFileMap(file, fileMap) {
-  if (!fileMap || !file?.name) return null;
-  const rawPaths = rawSourceCandidatePaths(file.name);
-  for (const [path, body] of fileMap.entries()) {
-    if (isActivitySourcePagePath(path, body) && bodyReferencesRawSource(body, rawPaths)) return { path, body };
-  }
-  return null;
-}
-
-function bodyReferencesRawSource(body, rawPaths) {
-  const text = String(body || "");
-  const candidates = Array.isArray(rawPaths) ? rawPaths : [rawPaths];
-  if (candidates.some((rawPath) => text.includes(rawPath))) return true;
-  const fields = frontmatterFields(text);
-  const frontmatterPaths = frontmatterList(fields.raw_file).map((path) => normalizeMarginsPath(path));
-  return candidates.some((rawPath) => frontmatterPaths.includes(rawPath));
-}
-
-function isRawSourceIngested(file, fileMap = state.currentFileMap) {
-  return Boolean(sourceNoteEntryForFileMap(file, fileMap));
-}
-
-function pendingRawSourcesFromVault(fileMap = state.currentFileMap, rawFiles = state.vaultFiles) {
-  return rawFiles
-    .filter((file) => !isRawSourceIngested(file, fileMap))
-    .map((file) => ({ ...file, sourceScope: "vault" }));
-}
-
-function replaceYamlSummary(body, summary) {
-  const line = `summary: ${JSON.stringify(cleanSummary(summary))}`;
-  return body.replace(/^summary:\s*.*$/m, line);
-}
-
-function upsertFrontmatterScalar(body, key, value) {
-  const cleanValue = String(value || "").trim();
-  if (!cleanValue) return body;
-  const line = `${key}: ${cleanValue}`;
-  if (new RegExp(`^${escapeRegExp(key)}:\\s*.*$`, "m").test(body)) {
-    return body.replace(new RegExp(`^${escapeRegExp(key)}:\\s*.*$`, "m"), line);
-  }
-  return insertFrontmatterLine(body, line);
-}
-
-function upsertFrontmatterList(body, key, values) {
-  const cleanValues = uniqueBy(values.map(cleanTag).filter(Boolean), (tag) => tag);
-  if (cleanValues.length === 0) return body;
-  const line = `${key}: [${cleanValues.join(", ")}]`;
-  if (new RegExp(`^${escapeRegExp(key)}:\\s*\\[[^\\n]*\\]\\s*$`, "m").test(body)) {
-    return body.replace(new RegExp(`^${escapeRegExp(key)}:\\s*\\[[^\\n]*\\]\\s*$`, "m"), line);
-  }
-  if (new RegExp(`^${escapeRegExp(key)}:\\s*$`, "m").test(body)) {
-    return body.replace(new RegExp(`^${escapeRegExp(key)}:\\s*\\n(?:\\s*-\\s*.*\\n?)*`, "m"), `${line}\n`);
-  }
-  return insertFrontmatterLine(body, line);
-}
-
-function insertFrontmatterLine(body, line) {
-  if (/^---\n/.test(body)) return body.replace(/^---\n/, `---\n${line}\n`);
-  return `---\n${line}\n---\n\n${body}`;
-}
-
-function replaceSourceHeading(body, title) {
-  const heading = `# Source: ${cleanSummary(title)}`;
-  if (/^# Source:\s*.*$/m.test(body)) return body.replace(/^# Source:\s*.*$/m, heading);
-  if (/^#\s+.*$/m.test(body)) return body.replace(/^#\s+.*$/m, heading);
-  return `${heading}\n\n${body}`;
-}
-
-function upsertFilingJudgmentSection(body, plan) {
-  const section = formatFilingJudgmentMarkdown(plan);
-  if (!section) return body;
-  if (/## Filing Judgment\s+[\s\S]*?(?=\n##\s|$)/.test(body)) {
-    return body.replace(/## Filing Judgment\s+[\s\S]*?(?=\n##\s|$)/, section);
-  }
-  return `${body.trim()}\n\n${section}\n`;
-}
-
-function formatFilingJudgmentMarkdown(plan) {
-  const lines = ["## Filing Judgment", ""];
-  const placement = plan.placement || {};
-  if (placement.path || placement.bucket || placement.reason) {
-    lines.push(`- Placement: ${[placement.path, placement.bucket ? `bucket ${placement.bucket}` : "", placement.reason].filter(Boolean).join(" — ")}`);
-  }
-  if (plan.tags?.length || plan.regionTag || plan.typeTag || plan.typeTagNote) {
-    lines.push(`- Tags: ${sourceTagsFromFilingPlan(plan).join(", ") || "source"}`);
-    if (plan.typeTagNote) lines.push(`- Type tag note: ${plan.typeTagNote}`);
-  }
-  if (plan.whySaved?.length) {
-    lines.push("", "### Why this belongs");
-    lines.push(...plan.whySaved.map((item) => `- ${item}`));
-  }
-  if (plan.candidateFiles?.length) {
-    lines.push("", "### Files checked");
-    lines.push(...plan.candidateFiles.map((item) => `- ${item.path}${item.reason ? ` — ${item.reason}` : ""}`));
-  }
-  if (plan.promotion?.candidate || plan.promotion?.recommendation) {
-    lines.push("", "### Promotion");
-    lines.push(`- ${[plan.promotion.candidate, plan.promotion.recommendation, plan.promotion.reason].filter(Boolean).join(" — ")}`);
-  }
-  return lines.join("\n");
-}
-
-function replaceSummarySection(body, summary) {
-  const section = `## Summary\n\n${cleanSummary(summary)}`;
-  if (/## Summary\s+[\s\S]*?(?=\n##\s|$)/.test(body)) {
-    return body.replace(/## Summary\s+[\s\S]*?(?=\n##\s|$)/, section);
-  }
-  return `${body.trim()}\n\n${section}\n`;
-}
-
-function upsertConnectionsSection(body, connections) {
-  const section = `## Connections\n\n${connections.map(formatConnectionLine).join("\n")}`;
-  if (/## Connections\s+[\s\S]*?(?=\n##\s|$)/.test(body)) {
-    return body.replace(/## Connections\s+[\s\S]*?(?=\n##\s|$)/, section);
-  }
-  return `${body.trim()}\n\n${section}\n`;
-}
-
-function upsertFinancialDetailsSection(body, details) {
-  const section = `## Financial Details\n\n${formatFinancialDetailsMarkdown(details)}`;
-  if (/## Financial Details\s+[\s\S]*?(?=\n##\s|$)/.test(body)) {
-    return body.replace(/## Financial Details\s+[\s\S]*?(?=\n##\s|$)/, section);
-  }
-  return `${body.trim()}\n\n${section}\n`;
-}
-
-function formatFinancialDetailsMarkdown(details) {
-  const lines = [];
-  if (details.accounts?.length) {
-    lines.push("### Accounts");
-    lines.push(...details.accounts.map((account) => `- ${financialAccountLine(account)}`));
-    lines.push("");
-  }
-  if (details.figures?.length) {
-    lines.push("### Important Figures");
-    lines.push(...details.figures.map((figure) => `- ${[figure.label || "Figure", figure.value, figure.date, figure.context].filter(Boolean).join(" — ")}`));
-    lines.push("");
-  }
-  if (details.holdings?.length) {
-    lines.push("### Holdings");
-    lines.push(...details.holdings.map((holding) => `- ${financialHoldingLine(holding)}`));
-    lines.push("");
-  }
-  if (details.transactions?.length) {
-    lines.push("### Transactions");
-    lines.push(...details.transactions.map((transaction) => `- ${financialTransactionLine(transaction)}`));
-    lines.push("");
-  }
-  if (details.caveats?.length) {
-    lines.push("### Caveats");
-    lines.push(...details.caveats.map((caveat) => `- ${caveat}`));
-  }
-  return lines.join("\n").trim() || "- No structured financial details extracted.";
-}
-
-function formatConnectionLine(connection) {
-  const title = connection.title || titleFromSlug(basename(connection.path || "connection").replace(/\.md$/, ""));
-  const link = connection.path && connection.path.startsWith("wiki/")
-    ? `[[${basename(connection.path).replace(/\.md$/, "")}|${title}]]`
-    : title;
-  const label = connection.type === "new" ? "new page" : "existing";
-  return `- ${link} (${label}) — ${connection.reason || "Relevant to this source."}`;
-}
 
 async function generateApiReviewQuestions(fileMap, files) {
   const provider = els.apiProvider?.value || providerValue(state.apiSettings.providerLabel) || "gemini";
@@ -2172,21 +1913,28 @@ async function generateApiIngestReview(file, fileMap, mode) {
   };
   let content = "";
   let retriedAfterTruncation = false;
-  let retryGeminiIngestReview = null;
+  let runGeminiIngestReview = null;
 
   if (provider === "gemini") {
     const sourceParts = await geminiSourceParts(file);
-    const schema = geminiIngestReviewResponseSchema();
-    retryGeminiIngestReview = (isRetry) => generateGeminiJsonContent(model, prompt, sourceParts, timing, {
-      responseSchema: schema,
-      outputTokenLimit: ingestReviewOutputTokenLimit(isRetry)
-    });
+    const compactPrompt = buildCompactApiIngestReviewPrompt(file, fileMap, mode);
+    const fullSchema = geminiIngestReviewResponseSchema();
+    const compactSchema = geminiCompactIngestReviewResponseSchema();
+    runGeminiIngestReview = (variant = "full") => {
+      const compact = variant === "compact";
+      return generateGeminiJsonContent(model, compact ? compactPrompt : prompt, sourceParts, timing, {
+        responseSchema: compact ? compactSchema : fullSchema,
+        outputTokenLimit: compact
+          ? apiOutputTokenLimit(INGEST_REVIEW_COMPACT_RETRY_OUTPUT_TOKEN_FLOOR)
+          : ingestReviewOutputTokenLimit()
+      });
+    };
     try {
-      content = await retryGeminiIngestReview(false);
+      content = await runGeminiIngestReview("full");
     } catch (error) {
       if (!isModelOutputTruncatedError(error)) throw error;
       retriedAfterTruncation = true;
-      content = await retryGeminiIngestReview(true);
+      content = await runCompactGeminiIngestRetry(runGeminiIngestReview);
     }
   } else if (provider === "openai" || provider === "local") {
     content = await generateOpenAiCompatibleJsonContent(provider, model, prompt, timing);
@@ -2199,10 +1947,16 @@ async function generateApiIngestReview(file, fileMap, mode) {
     review.modelTiming = publicModelTiming(timing.record);
     return review;
   } catch (error) {
-    if (provider === "gemini" && retryGeminiIngestReview && isModelOutputTruncatedError(error) && !retriedAfterTruncation) {
+    if (provider === "gemini" && runGeminiIngestReview && isModelOutputTruncatedError(error) && !retriedAfterTruncation) {
       markModelTimingParseFailure(timing.record, error);
       retriedAfterTruncation = true;
-      content = await retryGeminiIngestReview(true);
+      try {
+        content = await runCompactGeminiIngestRetry(runGeminiIngestReview);
+      } catch (retryRequestError) {
+        markModelTimingParseFailure(timing.record, retryRequestError);
+        retryRequestError.modelTiming = publicModelTiming(timing.record);
+        throw retryRequestError;
+      }
       try {
         const review = parseApiIngestReview(content, file, mode, provider);
         review.modelTiming = publicModelTiming(timing.record);
@@ -2215,6 +1969,15 @@ async function generateApiIngestReview(file, fileMap, mode) {
     }
     markModelTimingParseFailure(timing.record, error);
     error.modelTiming = publicModelTiming(timing.record);
+    throw error;
+  }
+}
+
+async function runCompactGeminiIngestRetry(runGeminiIngestReview) {
+  try {
+    return await runGeminiIngestReview("compact");
+  } catch (error) {
+    if (isModelOutputTruncatedError(error)) error.compactRetry = true;
     throw error;
   }
 }
@@ -2770,462 +2533,158 @@ function geminiIngestReviewResponseSchema() {
   };
 }
 
-function beginProcessTimings(files = [], { action = "single", autoFile = false } = {}) {
-  const now = performance.now();
-  const startedAt = new Date().toISOString();
-  const batchSize = files.length;
-  for (const file of files) {
-    if (!file?.name) continue;
-    const record = beginProcessTimingRecord(file, {
-      action,
-      autoFile,
-      batchSize,
-      startedAt,
-      startedAtMs: now
-    });
-    state.activeProcessTimings.set(file.name, record);
-  }
-}
-
-function beginProcessTimingRecord(file, {
-  action = "single",
-  autoFile = false,
-  batchSize = 1,
-  startedAt = new Date().toISOString(),
-  startedAtMs = performance.now()
-} = {}) {
+function geminiCompactIngestReviewResponseSchema() {
   return {
-    id: `process-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    purpose: "ingest_process",
-    fileName: file.name,
-    ...modelTimingSourceMetadata(file, state.currentFileMap),
-    action,
-    autoFile: Boolean(autoFile),
-    batchSize,
-    startedAt,
-    startedAtMs,
-    rawSavedMs: 0,
-    textReadyMs: 0,
-    draftReadyMs: 0,
-    reviewReadyMs: 0,
-    renderReadyMs: 0,
-    totalMs: 0,
-    finishedAt: "",
-    readyToApprove: false,
-    filed: false,
-    ok: false,
-    error: "",
-    modelProvider: "",
-    modelName: "",
-    modelTotalMs: 0,
-    modelRoundTripMs: 0,
-    modelOk: false,
-    modelParseOk: true,
-    modelError: ""
+    type: "OBJECT",
+    properties: {
+      summary: {
+        type: "OBJECT",
+        properties: {
+          overview: { type: "STRING" },
+          bullets: { type: "ARRAY", items: { type: "STRING" } }
+        },
+        required: ["overview", "bullets"]
+      },
+      takeaways: {
+        type: "ARRAY",
+        items: {
+          type: "OBJECT",
+          properties: {
+            label: { type: "STRING" },
+            point: { type: "STRING" }
+          },
+          required: ["label", "point"]
+        }
+      },
+      connections: {
+        type: "ARRAY",
+        items: {
+          type: "OBJECT",
+          properties: {
+            path: { type: "STRING" },
+            title: { type: "STRING" },
+            type: { type: "STRING" },
+            reason: { type: "STRING" }
+          }
+        }
+      },
+      filingPlan: {
+        type: "OBJECT",
+        properties: {
+          whySaved: { type: "ARRAY", items: { type: "STRING" } },
+          candidateFiles: {
+            type: "ARRAY",
+            items: {
+              type: "OBJECT",
+              properties: {
+                path: { type: "STRING" },
+                reason: { type: "STRING" },
+                priority: { type: "STRING" }
+              }
+            }
+          },
+          placement: {
+            type: "OBJECT",
+            properties: {
+              bucket: { type: "STRING" },
+              path: { type: "STRING" },
+              title: { type: "STRING" },
+              reason: { type: "STRING" },
+              alternatives: { type: "ARRAY", items: { type: "STRING" } }
+            }
+          },
+          tags: { type: "ARRAY", items: { type: "STRING" } },
+          regionTag: { type: "STRING" },
+          typeTag: { type: "STRING" },
+          typeTagNote: { type: "STRING" },
+          promotion: {
+            type: "OBJECT",
+            properties: {
+              candidate: { type: "STRING" },
+              recommendation: { type: "STRING" },
+              reason: { type: "STRING" }
+            }
+          }
+        }
+      },
+      filingSteps: {
+        type: "ARRAY",
+        items: { type: "STRING" }
+      },
+      financialDetails: {
+        type: "OBJECT",
+        properties: {
+          accounts: {
+            type: "ARRAY",
+            items: {
+              type: "OBJECT",
+              properties: {
+                institution: { type: "STRING" },
+                accountType: { type: "STRING" },
+                accountNumberLast4: { type: "STRING" },
+                period: { type: "STRING" }
+              }
+            }
+          },
+          figures: {
+            type: "ARRAY",
+            items: {
+              type: "OBJECT",
+              properties: {
+                label: { type: "STRING" },
+                value: { type: "STRING" },
+                date: { type: "STRING" }
+              }
+            }
+          },
+          holdings: {
+            type: "ARRAY",
+            items: {
+              type: "OBJECT",
+              properties: {
+                symbol: { type: "STRING" },
+                name: { type: "STRING" },
+                value: { type: "STRING" }
+              }
+            }
+          },
+          transactions: {
+            type: "ARRAY",
+            items: {
+              type: "OBJECT",
+              properties: {
+                date: { type: "STRING" },
+                description: { type: "STRING" },
+                amount: { type: "STRING" }
+              }
+            }
+          },
+          caveats: { type: "ARRAY", items: { type: "STRING" } }
+        }
+      },
+      asks: {
+        type: "ARRAY",
+        items: {
+          type: "OBJECT",
+          properties: {
+            kind: { type: "STRING" },
+            question: { type: "STRING" },
+            whyAsk: { type: "STRING" },
+            recommendation: { type: "STRING" },
+            options: { type: "ARRAY", items: { type: "STRING" } }
+          }
+        }
+      }
+    },
+    required: ["summary", "takeaways", "connections", "filingPlan", "filingSteps", "financialDetails", "asks"]
   };
 }
 
-function markProcessTimingPhase(files = [], fieldName = "") {
-  if (!fieldName) return;
-  const now = performance.now();
-  for (const file of files) {
-    const record = state.activeProcessTimings.get(file?.name || "");
-    if (!record || record[fieldName]) continue;
-    record[fieldName] = Math.max(0, Math.round(now - record.startedAtMs));
-  }
-}
-
-async function finishProcessTimingsAfterRender(files = [], { error = null, autoFile = false } = {}) {
-  const records = files
-    .map((file) => ({ file, record: state.activeProcessTimings.get(file?.name || "") }))
-    .filter((entry) => entry.record);
-  if (!records.length) return;
-
-  await nextAnimationFrame();
-  for (const { file, record } of records) {
-    finishProcessTiming(file, record, { error, autoFile });
-    state.activeProcessTimings.delete(file.name);
-  }
-  saveProcessTimingLog();
-  if (!autoFile && records.some(({ file }) => isSourceReviewReady(file))) renderSources();
-}
-
-function finishProcessTiming(file, record, { error = null, autoFile = false } = {}) {
-  const now = performance.now();
-  const review = state.ingestReviews.get(file?.name || "");
-  const readyToApprove = Boolean(file && isSourceReviewReady(file));
-  const filed = Boolean(autoFile && !readyToApprove && !state.ingestErrors.has(file?.name || ""));
-  const processError = error || state.ingestErrors.get(file?.name || "") || null;
-  const modelTiming = review?.modelTiming || null;
-  Object.assign(record, modelTimingSourceMetadata(file, state.currentFileMap));
-
-  record.finishedAt = new Date().toISOString();
-  record.renderReadyMs = Math.max(0, Math.round(now - record.startedAtMs));
-  record.totalMs = record.renderReadyMs;
-  record.readyToApprove = readyToApprove;
-  record.filed = filed;
-  record.ok = Boolean(!processError && (readyToApprove || filed));
-  record.error = processError ? processTimingErrorLabel(processError) : "";
-  if (modelTiming) {
-    record.modelProvider = modelTiming.provider || "";
-    record.modelName = modelTiming.model || "";
-    record.modelTotalMs = safeNumber(modelTiming.totalMs);
-    record.modelRoundTripMs = safeNumber(modelTiming.roundTripMs);
-    record.modelOk = Boolean(modelTiming.ok);
-    record.modelParseOk = modelTiming.parseOk !== false;
-    record.modelError = clampSentence(modelTiming.error || "", 180);
-  }
-  state.processTimings.push(record);
-  trimProcessTimingLog();
-  return record;
-}
-
-function publicProcessTiming(record) {
-  if (!record) return null;
-  return {
-    purpose: record.purpose || "ingest_process",
-    fileName: record.fileName,
-    sourceType: record.sourceType,
-    sourceScope: record.sourceScope,
-    sourceMimeType: record.sourceMimeType,
-    sourceSizeBytes: record.sourceSizeBytes,
-    sourceTextChars: record.sourceTextChars,
-    vaultContextFileCount: record.vaultContextFileCount,
-    action: record.action,
-    autoFile: record.autoFile,
-    batchSize: record.batchSize,
-    startedAt: record.startedAt,
-    finishedAt: record.finishedAt || "",
-    rawSavedMs: record.rawSavedMs,
-    textReadyMs: record.textReadyMs,
-    draftReadyMs: record.draftReadyMs,
-    reviewReadyMs: record.reviewReadyMs,
-    renderReadyMs: record.renderReadyMs,
-    totalMs: record.totalMs,
-    readyToApprove: record.readyToApprove,
-    filed: record.filed,
-    ok: record.ok,
-    error: record.error,
-    modelProvider: record.modelProvider,
-    modelName: record.modelName,
-    modelTotalMs: record.modelTotalMs,
-    modelRoundTripMs: record.modelRoundTripMs,
-    modelOk: record.modelOk,
-    modelParseOk: record.modelParseOk,
-    modelError: record.modelError
-  };
-}
-
-function loadProcessTimingLog() {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEYS.processTimings) || "[]");
-    return Array.isArray(parsed) ? parsed.map(normalizeStoredProcessTiming).filter(Boolean).slice(-100) : [];
-  } catch {
-    return [];
-  }
-}
-
-function normalizeStoredProcessTiming(record) {
-  if (!record || typeof record !== "object") return null;
-  return {
-    id: String(record.id || `process-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`),
-    purpose: cleanSummary(record.purpose || "ingest_process"),
-    fileName: cleanSummary(record.fileName || ""),
-    sourceType: cleanSummary(record.sourceType || ""),
-    sourceScope: cleanSummary(record.sourceScope || ""),
-    sourceMimeType: cleanSummary(record.sourceMimeType || ""),
-    sourceSizeBytes: safeNumber(record.sourceSizeBytes),
-    sourceTextChars: safeNumber(record.sourceTextChars),
-    vaultContextFileCount: safeNumber(record.vaultContextFileCount),
-    action: cleanSummary(record.action || ""),
-    autoFile: Boolean(record.autoFile),
-    batchSize: safeNumber(record.batchSize),
-    startedAt: cleanSummary(record.startedAt || ""),
-    finishedAt: cleanSummary(record.finishedAt || ""),
-    rawSavedMs: safeNumber(record.rawSavedMs),
-    textReadyMs: safeNumber(record.textReadyMs),
-    draftReadyMs: safeNumber(record.draftReadyMs),
-    reviewReadyMs: safeNumber(record.reviewReadyMs),
-    renderReadyMs: safeNumber(record.renderReadyMs),
-    totalMs: safeNumber(record.totalMs),
-    readyToApprove: Boolean(record.readyToApprove),
-    filed: Boolean(record.filed),
-    ok: Boolean(record.ok),
-    error: clampSentence(record.error || "", 180),
-    modelProvider: cleanSummary(record.modelProvider || ""),
-    modelName: cleanSummary(record.modelName || ""),
-    modelTotalMs: safeNumber(record.modelTotalMs),
-    modelRoundTripMs: safeNumber(record.modelRoundTripMs),
-    modelOk: Boolean(record.modelOk),
-    modelParseOk: record.modelParseOk !== false,
-    modelError: clampSentence(record.modelError || "", 180)
-  };
-}
-
-function saveProcessTimingLog() {
-  trimProcessTimingLog();
-  try {
-    localStorage.setItem(STORAGE_KEYS.processTimings, JSON.stringify(state.processTimings.map(publicProcessTiming)));
-  } catch {
-    // Local timing diagnostics should never block ingest or approval.
-  }
-}
-
-function trimProcessTimingLog() {
-  if (state.processTimings.length > 100) {
-    state.processTimings.splice(0, state.processTimings.length - 100);
-  }
-}
-
-function latestProcessTimingForFile(fileName) {
-  if (!fileName) return null;
-  for (let index = state.processTimings.length - 1; index >= 0; index -= 1) {
-    const record = state.processTimings[index];
-    if (record.fileName === fileName) return record;
-  }
-  return null;
-}
-
-function processTimingErrorLabel(error) {
-  if (!error) return "";
-  if (typeof error === "string") return clampSentence(error, 180);
-  return clampSentence(error.message || String(error), 180);
-}
-
-function beginModelTiming({
-  purpose = "model_call",
-  fileName = "",
-  sourceType = "",
-  sourceScope = "",
-  sourceMimeType = "",
-  sourceSizeBytes = 0,
-  sourceTextChars = 0,
-  vaultContextFileCount = 0,
-  provider = "",
-  model = "",
-  endpoint = "",
-  promptChars = 0,
-  attachmentCount = 0,
-  attachmentBytes = 0,
-  outputTokenLimit = 0
-} = {}) {
-  const now = performance.now();
-  const record = {
-    id: `model-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    purpose,
-    fileName,
-    sourceType,
-    sourceScope,
-    sourceMimeType,
-    sourceSizeBytes,
-    sourceTextChars,
-    vaultContextFileCount,
-    provider,
-    model,
-    endpoint: redactEndpoint(endpoint),
-    promptChars,
-    attachmentCount,
-    attachmentBytes,
-    outputTokenLimit,
-    startedAt: new Date().toISOString(),
-    startedAtMs: now,
-    throttleStartedAt: now,
-    throttleMs: 0,
-    requestStartedAt: 0,
-    roundTripMs: 0,
-    totalMs: 0,
-    httpStatus: 0,
-    inputTokens: 0,
-    outputTokens: 0,
-    estimatedTokens: false,
-    contentChars: 0,
-    ok: false,
-    parseOk: true,
-    error: ""
-  };
-  state.modelTimings.push(record);
-  trimModelTimingLog();
-  return record;
-}
-
-function finishModelTiming(record, { ok, usage = {}, contentChars = 0, error = null } = {}) {
-  if (!record) return null;
-  const now = performance.now();
-  record.finishedAt = new Date().toISOString();
-  record.roundTripMs = record.requestStartedAt ? Math.round(now - record.requestStartedAt) : 0;
-  record.totalMs = Math.round(now - record.startedAtMs);
-  record.ok = Boolean(ok);
-  record.inputTokens = usage.inputTokens || 0;
-  record.outputTokens = usage.outputTokens || 0;
-  record.estimatedTokens = Boolean(usage.estimated);
-  record.contentChars = contentChars || 0;
-  if (error) record.error = modelTimingErrorLabel(error);
-  saveModelTimingLog();
-  return record;
-}
-
-function markModelTimingParseFailure(record, error) {
-  if (!record) return null;
-  record.parseOk = false;
-  record.error = modelTimingErrorLabel(error);
-  saveModelTimingLog();
-  return record;
-}
-
-function publicModelTiming(record) {
-  if (!record) return null;
-  return {
-    purpose: record.purpose,
-    fileName: record.fileName,
-    sourceType: record.sourceType,
-    sourceScope: record.sourceScope,
-    sourceMimeType: record.sourceMimeType,
-    sourceSizeBytes: record.sourceSizeBytes,
-    sourceTextChars: record.sourceTextChars,
-    vaultContextFileCount: record.vaultContextFileCount,
-    provider: record.provider,
-    model: record.model,
-    startedAt: record.startedAt,
-    finishedAt: record.finishedAt || "",
-    promptChars: record.promptChars,
-    attachmentCount: record.attachmentCount,
-    attachmentBytes: record.attachmentBytes,
-    outputTokenLimit: record.outputTokenLimit,
-    throttleMs: record.throttleMs,
-    roundTripMs: record.roundTripMs,
-    totalMs: record.totalMs,
-    httpStatus: record.httpStatus,
-    inputTokens: record.inputTokens,
-    outputTokens: record.outputTokens,
-    estimatedTokens: record.estimatedTokens,
-    contentChars: record.contentChars,
-    ok: record.ok,
-    parseOk: record.parseOk,
-    error: record.error
-  };
-}
-
-function modelTimingSourceMetadata(file, fileMap) {
-  const browserSize = Number(file?.browserFile?.size || 0);
-  const fileSize = Number(file?.size || 0);
-  return {
-    sourceType: file?.type || "",
-    sourceScope: file?.sourceScope || "",
-    sourceMimeType: sourceAttachmentMimeType(file),
-    sourceSizeBytes: Number.isFinite(browserSize) && browserSize > 0 ? browserSize : Number.isFinite(fileSize) ? fileSize : 0,
-    sourceTextChars: String(file?.text || "").length,
-    vaultContextFileCount: fileMap?.size || 0
-  };
-}
-
-function geminiAttachmentBytes(extraParts = []) {
-  return extraParts.reduce((total, part) => {
-    const data = part?.inline_data?.data || part?.inlineData?.data || "";
-    return total + base64ByteLength(data);
-  }, 0);
-}
-
-function base64ByteLength(value) {
-  const clean = String(value || "").replace(/\s+/g, "");
-  if (!clean) return 0;
-  const padding = clean.endsWith("==") ? 2 : clean.endsWith("=") ? 1 : 0;
-  return Math.max(0, Math.floor(clean.length * 3 / 4) - padding);
-}
-
-function loadModelTimingLog() {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEYS.modelTimings) || "[]");
-    return Array.isArray(parsed) ? parsed.map(normalizeStoredModelTiming).filter(Boolean).slice(-100) : [];
-  } catch {
-    return [];
-  }
-}
-
-function normalizeStoredModelTiming(record) {
-  if (!record || typeof record !== "object") return null;
-  return {
-    id: String(record.id || `model-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`),
-    purpose: cleanSummary(record.purpose || "model_call"),
-    fileName: cleanSummary(record.fileName || ""),
-    sourceType: cleanSummary(record.sourceType || ""),
-    sourceScope: cleanSummary(record.sourceScope || ""),
-    sourceMimeType: cleanSummary(record.sourceMimeType || ""),
-    sourceSizeBytes: safeNumber(record.sourceSizeBytes),
-    sourceTextChars: safeNumber(record.sourceTextChars),
-    vaultContextFileCount: safeNumber(record.vaultContextFileCount),
-    provider: cleanSummary(record.provider || ""),
-    model: cleanSummary(record.model || ""),
-    endpoint: redactEndpoint(record.endpoint || ""),
-    promptChars: safeNumber(record.promptChars),
-    attachmentCount: safeNumber(record.attachmentCount),
-    attachmentBytes: safeNumber(record.attachmentBytes),
-    outputTokenLimit: safeNumber(record.outputTokenLimit),
-    startedAt: cleanSummary(record.startedAt || ""),
-    finishedAt: cleanSummary(record.finishedAt || ""),
-    throttleMs: safeNumber(record.throttleMs),
-    roundTripMs: safeNumber(record.roundTripMs),
-    totalMs: safeNumber(record.totalMs),
-    httpStatus: safeNumber(record.httpStatus),
-    inputTokens: safeNumber(record.inputTokens),
-    outputTokens: safeNumber(record.outputTokens),
-    estimatedTokens: Boolean(record.estimatedTokens),
-    contentChars: safeNumber(record.contentChars),
-    ok: Boolean(record.ok),
-    parseOk: record.parseOk !== false,
-    error: clampSentence(record.error || "", 180)
-  };
-}
-
-function saveModelTimingLog() {
-  trimModelTimingLog();
-  try {
-    localStorage.setItem(STORAGE_KEYS.modelTimings, JSON.stringify(state.modelTimings.map(publicModelTiming)));
-  } catch {
-    // Timing logs are best-effort diagnostics; never block ingest on storage quota or privacy settings.
-  }
-}
-
-function trimModelTimingLog() {
-  if (state.modelTimings.length > 100) {
-    state.modelTimings.splice(0, state.modelTimings.length - 100);
-  }
-}
-
-function safeNumber(value) {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : 0;
-}
-
-function elapsedSince(startedAtMs) {
-  return Math.max(0, Math.round(performance.now() - startedAtMs));
-}
-
-function nextAnimationFrame() {
-  return new Promise((resolve) => {
-    if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => resolve());
-    else setTimeout(resolve, 0);
-  });
-}
-
-function redactEndpoint(endpoint) {
-  if (!endpoint) return "";
-  try {
-    const url = new URL(endpoint);
-    url.search = "";
-    return url.toString();
-  } catch {
-    return String(endpoint).replace(/\?.*$/, "");
-  }
-}
-
-function modelTimingErrorLabel(error) {
-  if (!error) return "";
-  const status = error.status ? `HTTP ${error.status}: ` : "";
-  return clampSentence(`${status}${error.message || error}`, 180);
-}
 
 async function fetchWithTimeout(url, options = {}) {
   const controller = new AbortController();
+  activeFetchControllers.add(controller);
+  if (activeOperation) updateWorkflowState();
   let timeoutError = null;
   const request = fetch(url, {
     ...options,
@@ -3247,6 +2706,8 @@ async function fetchWithTimeout(url, options = {}) {
     throw error;
   } finally {
     clearTimeout(timeoutId);
+    activeFetchControllers.delete(controller);
+    if (activeOperation) updateWorkflowState();
     request.catch(() => {});
   }
 }
@@ -3254,6 +2715,12 @@ async function fetchWithTimeout(url, options = {}) {
 function apiTimeoutError() {
   const error = new Error(`Model request timed out after ${Math.ceil(apiRequestTimeoutMs / 1000)} seconds.`);
   error.code = "MARGINS_API_TIMEOUT";
+  return error;
+}
+
+function apiCancelledError() {
+  const error = new Error("Model request was cancelled.");
+  error.code = "MARGINS_API_CANCELLED";
   return error;
 }
 
@@ -3288,8 +2755,8 @@ function apiOutputTokenLimit(floor = 0) {
   return Math.max(positiveInteger(configured, defaultApiGuardSettings().maxOutputTokens), floor);
 }
 
-function ingestReviewOutputTokenLimit(isRetry = false) {
-  return apiOutputTokenLimit(isRetry ? INGEST_REVIEW_RETRY_OUTPUT_TOKEN_FLOOR : INGEST_REVIEW_OUTPUT_TOKEN_FLOOR);
+function ingestReviewOutputTokenLimit() {
+  return apiOutputTokenLimit(INGEST_REVIEW_OUTPUT_TOKEN_FLOOR);
 }
 
 function reserveApiBudget({ provider, model, prompt, extraParts = [], outputTokenLimit = apiOutputTokenLimit() }) {
@@ -3308,6 +2775,9 @@ function reserveApiBudget({ provider, model, prompt, extraParts = [], outputToke
     }
     if (projectedTokens > guard.maxSessionTokens) {
       reasons.push(`${formatStatNumber(projectedTokens)}/${formatStatNumber(guard.maxSessionTokens)} tokens`);
+    }
+    if (estimatedUsd > guard.maxRequestUsd) {
+      reasons.push(`${formatUsd(estimatedUsd)}/${formatUsd(guard.maxRequestUsd)} per-call estimate`);
     }
     if (projectedUsd > guard.maxSessionUsd) {
       reasons.push(`${formatUsd(projectedUsd)}/${formatUsd(guard.maxSessionUsd)} estimated`);
@@ -3436,7 +2906,8 @@ function pricingForModel(model) {
 }
 
 async function geminiSourceParts(file) {
-  if (!file || file.text || !canAttachSourceToGemini(file)) return [];
+  if (!file || !canAttachSourceToGemini(file)) return [];
+  if (file.text && !shouldAttachReadableTextSourceToGemini(file)) return [];
   const attachment = await sourceAttachmentForModel(file);
   if (!attachment) return [];
   return [{
@@ -3447,34 +2918,16 @@ async function geminiSourceParts(file) {
   }];
 }
 
+function shouldAttachReadableTextSourceToGemini(file) {
+  if (!file?.text || estimateTextTokens(file.text) <= 12000) return false;
+  return /^(text\/plain|text\/markdown|text\/csv|text\/tab-separated-values|application\/json)$/i.test(sourceAttachmentMimeType(file));
+}
+
 async function sourceAttachmentForModel(file) {
   const blob = await refreshRawSourceBlobFromVault(file) || file.browserFile;
   if (!blob) return null;
   const mimeType = sourceAttachmentMimeType(file, blob);
   return mimeType ? { blob, mimeType } : null;
-}
-
-async function refreshRawSourceBlobFromVault(file) {
-  if (!file?.name) return null;
-  let handle = file.rawSourceHandle || null;
-  if (!handle && state.vaultHandle) {
-    for (const path of [file.rawPath, ...rawSourceCandidatePaths(file.name)].filter(Boolean)) {
-      try {
-        handle = await fileHandleForPath(state.vaultHandle, path, false);
-        file.rawSourceHandle = handle;
-        file.rawPath = path;
-        break;
-      } catch {
-        handle = null;
-      }
-    }
-  }
-  if (!handle?.getFile) return null;
-  const freshFile = await handle.getFile();
-  file.browserFile = freshFile;
-  file.size = freshFile.size;
-  file.lastModified = freshFile.lastModified;
-  return freshFile;
 }
 
 async function blobToBase64WithRefresh(file, blob) {
@@ -3613,6 +3066,61 @@ Operating guardrails:
 ${operatingContextForPrompt(fileMap)}`;
 }
 
+function buildCompactApiIngestReviewPrompt(file, fileMap, mode) {
+  const budget = questionBudgetForMode(mode);
+  const askInstruction = mode === "auto"
+    ? "Return an empty asks array in auto mode."
+    : `Return 0-${Math.min(1, budget)} ask. Ask only if the answer changes the recommended filing path or sensitivity.`;
+  return `COMPACT RETRY: the previous Margins ingest review was cut off before complete JSON. Return a smaller complete JSON object. The LLM is still the only review engine; do not use placeholders or local heuristics.
+
+Contract:
+- JSON only. No markdown, no prose outside JSON.
+- Keep every field brief so the JSON closes cleanly.
+- summary.overview: one source-supported sentence, <=160 chars.
+- summary.bullets: exactly 2 bullets, <=120 chars each.
+- takeaways: 1-2 items. Each point <=140 chars.
+- connections: 0-3 useful pages. Prefer exact existing paths from Current wiki context.
+- filingPlan.whySaved: 1-2 bullets.
+- filingPlan.candidateFiles: 0-3 exact current wiki paths.
+- filingPlan.placement: recommend one source note path.
+- filingPlan.tags: 2-6 durable tags.
+- filingSteps: 3-5 short Activity lines.
+- financialDetails: empty arrays unless this is a true financial/account/tax/payroll/equity/benefits/invoice/receipt document.
+- asks: ${askInstruction}
+- Do not include transcript dumps, YAML/frontmatter, embed syntax, source excerpts, or notes copied wholesale.
+- Review mode is ${reviewModeLabel(mode)}. Question budget: ${budget}.
+
+Return JSON in this compact shape:
+{
+  "summary": {"overview":"Required source summary.","bullets":["Required source-supported bullet.","Required source-supported bullet."]},
+  "takeaways": [{"label":"Short label","point":"Concrete takeaway."}],
+  "connections": [{"path":"wiki/...","title":"Page title","type":"existing|new","reason":"Why it matters."}],
+  "filingPlan": {
+    "whySaved":["Why this source matters."],
+    "candidateFiles":[{"path":"wiki/...","reason":"Why this path matters.","priority":"high|medium|low"}],
+    "placement":{"bucket":"coding|ideas|projects|career|personal|school|sources","path":"wiki/sources/source-example.md","title":"Source title","reason":"Why this path fits.","alternatives":[]},
+    "tags":["source","topic-tag"],
+    "regionTag":"",
+    "typeTag":"",
+    "typeTagNote":"",
+    "promotion":{"candidate":"","recommendation":"Wait for more supporting context.","reason":"One sentence."}
+  },
+  "filingSteps": ["Reading source", "Created source page", "Prepared source page"],
+  "financialDetails": {"accounts":[],"figures":[],"holdings":[],"transactions":[],"caveats":[]},
+  "asks": []
+}
+
+Uploaded source:
+Name: ${file.name}
+Type: ${file.type}
+Words: ${wordCount(file.text || "")}
+Compact text:
+${compactSourceTextForModelPrompt(file)}
+
+Current wiki context:
+${wikiContextForIngestPrompt(fileMap, file)}`;
+}
+
 function sourceTextForModelPrompt(file) {
   if (file.text) return excerptForQuestion(file.text, 12000);
   if (canAttachSourceToGemini(file)) {
@@ -3621,13 +3129,14 @@ function sourceTextForModelPrompt(file) {
   return excerptForQuestion(file.extractionError || "", 12000);
 }
 
-function questionBudgetForMode(mode) {
-  return {
-    auto: 0,
-    suggested: 2,
-    strict: 3
-  }[mode] ?? 2;
+function compactSourceTextForModelPrompt(file) {
+  if (file.text) return excerptForQuestion(file.text, 6000);
+  if (canAttachSourceToGemini(file)) {
+    return `[Original ${sourceTypeLabel(file)} file attached in this request. Read the attached file directly and summarize only what it supports.]`;
+  }
+  return excerptForQuestion(file.extractionError || "", 6000);
 }
+
 
 function wikiContextForIngestPrompt(fileMap, file = null) {
   if (!fileMap?.size) return "- No existing wiki context loaded.";
@@ -3656,115 +3165,6 @@ function wikiContextForIngestPrompt(fileMap, file = null) {
   ].join("\n");
 }
 
-function wikiContextRecords(fileMap) {
-  return [...fileMap.entries()]
-    .filter(([path]) => isContextWikiPagePath(path))
-    .map(([path, body]) => wikiContextRecord(path, body));
-}
-
-function isContextWikiPagePath(path) {
-  return path.startsWith("wiki/") &&
-    path.endsWith(".md") &&
-    !path.startsWith("wiki/.margins/") &&
-    !path.startsWith("wiki/_templates/");
-}
-
-function wikiContextRecord(path, body) {
-  const frontmatter = frontmatterFields(body);
-  const title = markdownTitle(body) || titleFromSlug(basename(path).replace(/\.md$/, ""));
-  const summary = cleanSummary(frontmatter.summary || extractSourceSummary(body) || excerptForQuestion(bodyWithoutFrontmatter(body), 260));
-  const tags = frontmatterList(frontmatter.tags);
-  const keyLinks = [
-    ...frontmatterList(frontmatter.key_links),
-    ...extractWikiLinks(body)
-  ].map((link) => cleanWikiLinkLabel(link)).filter(Boolean);
-  return {
-    path,
-    body,
-    title,
-    summary,
-    type: frontmatter.type || graphTypeFromPath(path),
-    bucket: frontmatter.bucket || path.split("/")[1] || "wiki",
-    status: frontmatter.status || "",
-    priority: frontmatter.priority || "",
-    updated: frontmatter.updated || frontmatter.created || "",
-    tags,
-    keyLinks: [...new Set(keyLinks)].slice(0, 12),
-    snippet: contextSnippet(body)
-  };
-}
-
-function frontmatterFields(body) {
-  const match = String(body || "").match(/^---\n([\s\S]*?)\n---\n/);
-  if (!match) return {};
-  const fields = {};
-  let listKey = "";
-  for (const line of match[1].split("\n")) {
-    const item = line.match(/^\s*-\s*(.*)$/);
-    if (listKey && item) {
-      if (!Array.isArray(fields[listKey])) fields[listKey] = [];
-      fields[listKey].push(yamlScalar(item[1]));
-      continue;
-    }
-    const field = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
-    if (!field) {
-      listKey = "";
-      continue;
-    }
-    const value = field[2].trim();
-    if (!value) {
-      fields[field[1]] = "";
-      listKey = field[1];
-      continue;
-    }
-    fields[field[1]] = yamlScalar(value);
-    listKey = "";
-  }
-  return fields;
-}
-
-function frontmatterList(value) {
-  if (Array.isArray(value)) return value.map((item) => yamlScalar(item)).filter(Boolean);
-  const raw = String(value || "").trim();
-  if (!raw) return [];
-  if (raw.startsWith("[") && raw.endsWith("]")) {
-    return raw
-      .slice(1, -1)
-      .split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/)
-      .map((item) => yamlScalar(item))
-      .filter(Boolean);
-  }
-  return raw.split(",").map((item) => yamlScalar(item)).filter(Boolean);
-}
-
-function yamlScalar(value) {
-  return String(value || "").trim().replace(/^['"]|['"]$/g, "");
-}
-
-function bodyWithoutFrontmatter(body) {
-  return String(body || "").replace(/^---\n[\s\S]*?\n---\n/, "");
-}
-
-function contextSnippet(body) {
-  const clean = bodyWithoutFrontmatter(body)
-    .split("\n")
-    .filter((line) => {
-      const trimmed = line.trim();
-      return trimmed && !trimmed.startsWith("# ") && !/^(?:Raw|Original) file:/i.test(trimmed);
-    })
-    .slice(0, 18)
-    .join(" ");
-  return excerptForQuestion(clean, 360);
-}
-
-function cleanWikiLinkLabel(link) {
-  return String(link || "")
-    .replace(/^\[\[/, "")
-    .replace(/\]\]$/, "")
-    .split("|")[0]
-    .replace(/\.md$/, "")
-    .trim();
-}
 
 function keywordSet(text) {
   return new Set(String(text || "")
@@ -3895,9 +3295,8 @@ function parseApiIngestReview(content, file, mode, provider = "gemini") {
     firstDefined(field(parsed, "summary", "sourceSummary", "source_summary", "overview"), structuredSummary),
     field(parsed, "summaryBullets", "summary_bullets", "bullets")
   );
-  const localSummaryParts = localSourceSummaryParts(file);
   const modelSummaryFallback = !summaryParts.overview && summaryParts.bullets.length === 0;
-  const displaySummaryParts = modelSummaryFallback ? localSummaryParts : summaryParts;
+  const displaySummaryParts = summaryParts;
   let parsedQuestions = questions
     .map((question) => reviewQuestion(
       /careful|sensitive|risk|warning/i.test(question.kind || "") ? "warn" : "suggest",
@@ -3920,7 +3319,7 @@ function parseApiIngestReview(content, file, mode, provider = "gemini") {
     provider,
     reviewedAt: new Date().toISOString(),
     status: modelSummaryFallback
-      ? "Margins reviewed the source, but no card summary came back. Showing the local summary."
+      ? "Margins reviewed the source, but no card summary came back."
       : modelReturnedNoQuestions
         ? "Margins found no required follow-up questions."
         : "Margins reviewed the source against the current vault.",
@@ -3948,460 +3347,6 @@ function parseApiIngestReview(content, file, mode, provider = "gemini") {
     modelReturnedNoQuestions,
     modelSummaryFallback,
     fallbackQuestions: []
-  };
-}
-
-function firstDefined(...values) {
-  return values.find((value) => value !== undefined && value !== null);
-}
-
-function financialDetailsPayload(parsed) {
-  const explicit = field(parsed, "financialDetails", "financial_details", "finance");
-  if (explicit) return explicit;
-  const payload = {};
-  const accounts = field(parsed, "accounts", "accountDetails", "account_details");
-  const figures = field(parsed, "figures", "importantFigures", "important_figures", "balances", "values", "amounts");
-  const holdings = field(parsed, "holdings", "positions", "securities");
-  const transactions = field(parsed, "transactions", "activity", "cashActivity", "cash_activity");
-  const caveats = field(parsed, "financialCaveats", "financial_caveats", "caveats");
-  if (accounts !== undefined) payload.accounts = accounts;
-  if (figures !== undefined) payload.figures = figures;
-  if (holdings !== undefined) payload.holdings = holdings;
-  if (transactions !== undefined) payload.transactions = transactions;
-  if (caveats !== undefined) payload.caveats = caveats;
-  return Object.keys(payload).length ? payload : null;
-}
-
-function normalizeReviewPayload(parsed) {
-  if (!parsed || typeof parsed !== "object") return null;
-  if (Array.isArray(parsed)) return { takeaways: parsed };
-  let current = parsed;
-  for (let depth = 0; depth < 3; depth += 1) {
-    const nested = firstDefined(
-      field(current, "review", "ingestReview", "ingest_review", "sourceReview", "source_review"),
-      field(current, "result", "data", "response", "payload")
-    );
-    if (!nested || typeof nested !== "object" || Array.isArray(nested) || !hasReviewPayloadSignal(nested)) break;
-    current = nested;
-  }
-  return current;
-}
-
-function hasReviewPayloadSignal(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  return [
-    "missionFrame", "mission_frame", "summary", "overview", "takeaways", "keyTakeaways",
-    "key_takeaways", "lightTouch", "light_touch", "connections", "propagation",
-    "sourceSummary", "source_summary", "summaryBullets", "summary_bullets",
-    "relatedPages", "related_pages", "proposedUpdates", "proposed_updates",
-    "followUps", "follow_ups", "filingPlan", "filing_plan", "placement",
-    "filingSteps", "filing_steps", "discoveries", "discovery", "contradictions",
-    "financialDetails", "financial_details", "figures", "transactions", "accountDetails",
-    "account_details", "asks", "questions", "followupQuestions", "follow_up_questions"
-  ].some((key) => field(value, key) !== undefined);
-}
-
-function field(value, ...names) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-  for (const name of names) {
-    if (Object.prototype.hasOwnProperty.call(value, name)) return value[name];
-  }
-  const normalizedNames = new Set(names.map(normalizedFieldName));
-  for (const [key, fieldValue] of Object.entries(value)) {
-    if (normalizedNames.has(normalizedFieldName(key))) return fieldValue;
-  }
-  return undefined;
-}
-
-function normalizedFieldName(name) {
-  return String(name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-}
-
-function modelJsonParseError(provider, content) {
-  if (looksLikeTruncatedJson(content)) {
-    return modelOutputTruncatedError(provider, content, "");
-  }
-  const preview = clampSentence(String(content || "").replace(/\s+/g, " "), 240);
-  const error = new Error(`Margins received malformed JSON for the review${preview ? `: ${preview}` : "."}`);
-  error.code = "MARGINS_MODEL_JSON_PARSE";
-  error.provider = provider;
-  return error;
-}
-
-function modelOutputTruncatedError(provider, content, finishReason = "", outputKind = "") {
-  const preview = clampSentence(String(content || "").replace(/\s+/g, " "), 240);
-  const reason = finishReason ? ` (${finishReason})` : "";
-  const kind = outputKind || (String(content || "").includes("```margins-file") ? "margins-file blocks" : "JSON");
-  const subject = kind === "margins-file blocks" ? "helper output" : "review";
-  const error = new Error(`Margins ${subject} was cut off before complete ${kind} came back${reason}${preview ? `: ${preview}` : "."}`);
-  error.code = "MARGINS_MODEL_OUTPUT_TRUNCATED";
-  error.provider = provider;
-  error.finishReason = finishReason;
-  error.partialContent = String(content || "");
-  return error;
-}
-
-function isModelOutputTruncatedError(error) {
-  return error?.code === "MARGINS_MODEL_OUTPUT_TRUNCATED";
-}
-
-function isGeminiOutputTruncated(candidate, content) {
-  return /MAX_TOKENS/i.test(candidate?.finishReason || "") || looksLikeTruncatedJson(content);
-}
-
-function looksLikeTruncatedJson(content) {
-  const text = stripJsonCodeFence(String(content || "").trim());
-  if (!/^[{\[]/.test(text)) return false;
-  if (parseJsonCandidate(text)) return false;
-  return hasUnclosedJsonStructure(text) || /[:,]\s*$/.test(text);
-}
-
-function hasUnclosedJsonStructure(text) {
-  const stack = [];
-  let inString = false;
-  let escaped = false;
-  for (const char of String(text || "")) {
-    if (inString) {
-      if (escaped) {
-        escaped = false;
-      } else if (char === "\\") {
-        escaped = true;
-      } else if (char === "\"") {
-        inString = false;
-      }
-      continue;
-    }
-    if (char === "\"") {
-      inString = true;
-      continue;
-    }
-    if (char === "{" || char === "[") {
-      stack.push(char === "{" ? "}" : "]");
-      continue;
-    }
-    if (char === "}" || char === "]") {
-      if (char !== stack.pop()) return false;
-    }
-  }
-  return inString || stack.length > 0;
-}
-
-function apiSummaryParts(summary, extraBullets = []) {
-  if (Array.isArray(summary)) {
-    const parts = summary.map(summaryTextValue).filter(Boolean);
-    const fallback = summaryFallbackParts(parts.join(" "));
-    return {
-      overview: parts[0] ? clampSentence(parts[0], 220) : fallback.overview,
-      bullets: parts.length > 1 ? parts.slice(1, 6).map((item) => clampSentence(item, 220)) : fallback.bullets
-    };
-  }
-  if (summary && typeof summary === "object" && !Array.isArray(summary)) {
-    const overview = summaryTextValue(firstDefined(
-      field(summary, "overview", "oneLine", "one_line", "title", "text", "summary", "description"),
-      summary
-    ));
-    const bullets = apiSummaryBullets(summary, extraBullets);
-    const fallback = summaryFallbackParts(cleanSummary([overview, ...bullets].filter(Boolean).join(" ")));
-    return {
-      overview: overview || fallback.overview,
-      bullets: bullets.length ? bullets : fallback.bullets
-    };
-  }
-  return summaryFallbackParts(summary);
-}
-
-function parseMissionFrame(value) {
-  if (typeof value === "string") {
-    const oneLine = clampSentence(value, 180);
-    return oneLine ? { oneLine, sourceRole: "reference", confidence: "medium" } : null;
-  }
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const oneLine = clampSentence(field(value, "oneLine", "one_line", "overview", "summary", "mission", "job", "role", "description") || "", 180);
-  if (!oneLine) return null;
-  return {
-    oneLine,
-    sourceRole: String(field(value, "sourceRole", "source_role", "role", "type") || "reference").trim() || "reference",
-    confidence: confidenceValue(field(value, "confidence"))
-  };
-}
-
-function parseTakeaways(value) {
-  return takeawayItemsFromUnknown(value)
-    .map((item) => {
-      if (typeof item === "string") {
-        return { relevance: "primary", label: "", point: clampSentence(item, 180), whyItMatters: "" };
-      }
-      if (!item || typeof item !== "object") return null;
-      const point = clampSentence(summaryTextValue(firstDefined(
-        field(item, "point", "takeaway", "text", "summary", "insight", "detail", "value"),
-        typeof item === "string" ? item : ""
-      )), 180);
-      if (!point) return null;
-      return {
-        relevance: relevanceValue(field(item, "relevance", "priority", "group")),
-        label: clampSentence(field(item, "label", "title", "kind", "category") || "", 42),
-        point,
-        whyItMatters: clampSentence(field(item, "whyItMatters", "why_it_matters", "reason", "rationale", "why") || "", 180)
-      };
-    })
-    .filter(Boolean)
-    .slice(0, 4);
-}
-
-function parseLightTouch(value) {
-  return reviewItemsFromUnknown(value, isLightTouchObject)
-    .map((item) => {
-      if (typeof item === "string") return { note: clampSentence(item, 180), reason: "" };
-      if (!item || typeof item !== "object") return null;
-      const note = clampSentence(summaryTextValue(field(item, "note", "point", "text", "summary", "mention")), 180);
-      if (!note) return null;
-      return {
-        note,
-        reason: clampSentence(field(item, "reason", "rationale", "why") || "", 180)
-      };
-    })
-    .filter(Boolean)
-    .slice(0, 2);
-}
-
-function parsePropagation(value) {
-  return reviewItemsFromUnknown(value, isPropagationObject)
-    .map((item) => {
-      if (!item || typeof item !== "object") return null;
-      const targetPath = normalizeMarginsPath(String(field(item, "targetPath", "target_path", "path", "wikiPath", "wiki_path") || "").trim());
-      const action = String(field(item, "action", "type") || "link").trim() || "link";
-      const rationale = clampSentence(field(item, "rationale", "reason", "why", "summary") || "", 190);
-      if (!targetPath && !rationale) return null;
-      return {
-        targetPath,
-        action,
-        rationale,
-        confidence: confidenceValue(field(item, "confidence"))
-      };
-    })
-    .filter(Boolean)
-    .slice(0, 3);
-}
-
-function parseConnections(value) {
-  return reviewItemsFromUnknown(value, isConnectionObject)
-    .map((item) => {
-      if (typeof item === "string") {
-        return { title: clampSentence(item, 60), path: "", type: "existing", relevance: "context", reason: "" };
-      }
-      if (!item || typeof item !== "object") return null;
-      const path = String(field(item, "path", "targetPath", "target_path", "wikiPath", "wiki_path", "href") || "").trim();
-      const title = String(field(item, "title", "label", "name") || "").trim();
-      const reason = cleanSummary(field(item, "reason", "rationale", "why", "summary") || "");
-      if (isGenericChecklistLink(title || path)) return null;
-      if (!path && !title && !reason) return null;
-      return {
-        path,
-        title,
-        type: /new/i.test(field(item, "type", "status") || "") ? "new" : "existing",
-        relevance: relevanceValue(field(item, "relevance", "priority", "group")),
-        reason
-      };
-    })
-    .filter(Boolean)
-    .slice(0, 5);
-}
-
-function parseFinancialDetails(value) {
-  const details = emptyFinancialDetails();
-  if (!value) return details;
-  const source = typeof value === "object" && !Array.isArray(value) ? value : { figures: value };
-  details.accounts = parseFinancialAccounts(field(source, "accounts", "account", "accountDetails", "account_details"));
-  details.figures = parseFinancialFigures(field(source, "figures", "importantFigures", "important_figures", "balances", "values", "amounts"));
-  details.holdings = parseFinancialHoldings(field(source, "holdings", "positions", "securities"));
-  details.transactions = parseFinancialTransactions(field(source, "transactions", "activity", "cashActivity", "cash_activity"));
-  details.caveats = parseFinancialCaveats(field(source, "caveats", "warnings", "notes", "assumptions"));
-  if (!hasFinancialDetails(details) && typeof value === "object" && !Array.isArray(value)) {
-    details.figures = parseFinancialFigures(value);
-  }
-  return details;
-}
-
-function parseFinancialAccounts(value) {
-  return reviewItemsFromUnknown(value, isFinancialAccountObject)
-    .map((item) => {
-      if (typeof item === "string") return { accountName: clampSentence(item, 90) };
-      if (!item || typeof item !== "object") return null;
-      const account = {
-        institution: cleanSummary(field(item, "institution", "provider", "custodian", "bank", "brokerage") || ""),
-        owner: cleanSummary(field(item, "owner", "accountOwner", "account_owner", "holder", "name") || ""),
-        accountType: cleanSummary(field(item, "accountType", "account_type", "type", "kind") || ""),
-        accountName: cleanSummary(field(item, "accountName", "account_name", "name", "title", "label") || ""),
-        accountNumberLast4: cleanAccountLast4(field(item, "accountNumberLast4", "account_number_last4", "last4", "last_four", "accountNumber", "account_number")),
-        period: cleanSummary(field(item, "period", "statementPeriod", "statement_period", "date") || "")
-      };
-      return Object.values(account).some(Boolean) ? account : null;
-    })
-    .filter(Boolean)
-    .slice(0, 4);
-}
-
-function parseFinancialFigures(value) {
-  return reviewItemsFromUnknown(value, isFinancialFigureObject)
-    .map((item) => {
-      if (typeof item === "string") return financialFigureFromString(item);
-      if (!item || typeof item !== "object") return null;
-      const figure = {
-        label: cleanSummary(field(item, "label", "name", "type", "kind", "metric") || ""),
-        value: cleanFinancialValue(field(item, "value", "amount", "balance", "figure")),
-        date: cleanSummary(field(item, "date", "period", "asOf", "as_of") || ""),
-        context: clampSentence(field(item, "context", "sourceContext", "source_context", "note", "description") || "", 160)
-      };
-      if (!figure.value && figure.context) {
-        figure.value = firstMatch(figure.context, MONEY_PATTERN);
-      }
-      return figure.value || figure.label ? figure : null;
-    })
-    .filter(Boolean)
-    .slice(0, 8);
-}
-
-function parseFinancialHoldings(value) {
-  return reviewItemsFromUnknown(value, isFinancialHoldingObject)
-    .map((item) => {
-      if (!item || typeof item !== "object") return null;
-      const holding = {
-        symbol: cleanSummary(field(item, "symbol", "ticker") || ""),
-        name: cleanSummary(field(item, "name", "security", "description") || ""),
-        quantity: cleanSummary(field(item, "quantity", "shares", "units") || ""),
-        value: cleanFinancialValue(field(item, "value", "marketValue", "market_value", "amount")),
-        context: clampSentence(field(item, "context", "note") || "", 140)
-      };
-      return Object.values(holding).some(Boolean) ? holding : null;
-    })
-    .filter(Boolean)
-    .slice(0, 8);
-}
-
-function parseFinancialTransactions(value) {
-  return reviewItemsFromUnknown(value, isFinancialTransactionObject)
-    .map((item) => {
-      if (typeof item === "string") return financialTransactionFromString(item);
-      if (!item || typeof item !== "object") return null;
-      const transaction = {
-        date: cleanSummary(field(item, "date", "posted", "tradeDate", "trade_date", "settlementDate", "settlement_date") || ""),
-        description: clampSentence(field(item, "description", "memo", "name", "label", "security") || "", 160),
-        amount: cleanFinancialValue(field(item, "amount", "value", "netAmount", "net_amount")),
-        type: cleanSummary(field(item, "type", "kind", "category") || "unknown")
-      };
-      return transaction.amount || transaction.description ? transaction : null;
-    })
-    .filter(Boolean)
-    .slice(0, 8);
-}
-
-function parseFinancialCaveats(value) {
-  return arrayFromUnknown(value)
-    .flatMap((item) => Array.isArray(item) ? item : [item])
-    .map(summaryTextValue)
-    .filter(Boolean)
-    .slice(0, 4);
-}
-
-function parseFilingPlan(value, file = null) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return emptyFilingPlan(file);
-  const placement = parseFilingPlacement(firstDefined(
-    field(value, "placement", "placementPlan", "placement_plan", "bucketCall", "bucket_call"),
-    value
-  ), file);
-  return {
-    whySaved: stringListFromUnknown(field(value, "whySaved", "why_saved", "whyItMatters", "why_it_matters", "rationale")).slice(0, 4),
-    candidateFiles: parseCandidateFiles(field(value, "candidateFiles", "candidate_files", "filesToRead", "files_to_read", "filesChecked", "files_checked")).slice(0, 8),
-    placement,
-    tags: tagListFromUnknown(field(value, "tags", "topicTags", "topic_tags", "frontmatterTags", "frontmatter_tags")).slice(0, 12),
-    regionTag: cleanTag(field(value, "regionTag", "region_tag", "region")),
-    typeTag: cleanTag(field(value, "typeTag", "type_tag", "type")),
-    typeTagNote: clampSentence(field(value, "typeTagNote", "type_tag_note", "typeNote", "type_note") || "", 180),
-    promotion: parsePromotion(field(value, "promotion", "promotionCandidate", "promotion_candidate", "concept", "conceptPromotion"))
-  };
-}
-
-function emptyFilingPlan(file = null) {
-  return {
-    whySaved: [],
-    candidateFiles: [],
-    placement: {
-      bucket: "",
-      path: "",
-      title: "",
-      reason: "",
-      alternatives: []
-    },
-    tags: [],
-    regionTag: "",
-    typeTag: "",
-    typeTagNote: "",
-    promotion: { candidate: "", recommendation: "", reason: "" }
-  };
-}
-
-function hasFilingPlan(plan) {
-  return Boolean(plan && (
-    plan.whySaved?.length ||
-    plan.candidateFiles?.length ||
-    plan.tags?.length ||
-    plan.regionTag ||
-    plan.typeTag ||
-    plan.typeTagNote ||
-    plan.promotion?.candidate ||
-    plan.promotion?.recommendation ||
-    plan.placement?.path ||
-    plan.placement?.reason
-  ));
-}
-
-function parseFilingPlacement(value, file = null) {
-  const fallback = emptyFilingPlan(file).placement;
-  if (typeof value === "string") {
-    return { ...fallback, bucket: cleanBucket(value) || "sources", reason: clampSentence(value, 180) };
-  }
-  if (!value || typeof value !== "object" || Array.isArray(value)) return fallback;
-  const bucket = cleanBucket(field(value, "bucket", "folder", "section")) || fallback.bucket || "sources";
-  const explicitPath = normalizeFilingPath(field(value, "path", "sourcePath", "source_path", "wikiPath", "wiki_path"), bucket);
-  const title = clampSentence(field(value, "title", "name") || fallback.title, 90);
-  return {
-    bucket,
-    path: explicitPath || sourcePathForBucket(file?.name || title, bucket),
-    title: title || (file?.name ? titleFromSlug(basename(file.name).replace(/\.[^.]+$/, "")) : ""),
-    reason: clampSentence(field(value, "reason", "rationale", "why") || "", 220),
-    alternatives: stringListFromUnknown(field(value, "alternatives", "alternativePaths", "alternative_paths", "alsoConsider")).slice(0, 3)
-      .map((path) => normalizeFilingPath(path, bucket) || path)
-      .filter(Boolean)
-  };
-}
-
-function parseCandidateFiles(value) {
-  return reviewItemsFromUnknown(value, isCandidateFileObject)
-    .map((item) => {
-      if (typeof item === "string") {
-        return { path: normalizeMarginsPath(item), reason: "", priority: "" };
-      }
-      if (!item || typeof item !== "object") return null;
-      const path = normalizeMarginsPath(field(item, "path", "file", "wikiPath", "wiki_path") || "");
-      const reason = clampSentence(field(item, "reason", "why", "rationale", "note") || "", 180);
-      const priority = cleanSummary(field(item, "priority", "rank", "importance") || "");
-      return path ? { path, reason, priority } : null;
-    })
-    .filter(Boolean)
-    .filter((item) => isContextWikiPagePath(item.path));
-}
-
-function parsePromotion(value) {
-  if (typeof value === "string") {
-    return { candidate: "", recommendation: clampSentence(value, 180), reason: "" };
-  }
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return { candidate: "", recommendation: "", reason: "" };
-  }
-  return {
-    candidate: clampSentence(field(value, "candidate", "title", "name", "path") || "", 90),
-    recommendation: clampSentence(field(value, "recommendation", "decision", "action") || "", 180),
-    reason: clampSentence(field(value, "reason", "rationale", "why") || "", 180)
   };
 }
 
@@ -4445,438 +3390,11 @@ function filingPlanQuestions(file, plan) {
   return questions;
 }
 
-function parseFilingSteps(value) {
-  return reviewItemsFromUnknown(value, isFilingStepObject)
-    .map((item) => {
-      const text = typeof item === "string"
-        ? item
-        : firstDefined(
-          field(item, "text", "step", "line", "summary", "detail", "description"),
-          [field(item, "action", "verb", "kind"), field(item, "target", "title", "name"), field(item, "detail", "reason")].filter(Boolean).join(" · ")
-        );
-      return cleanFilingStep(text);
-    })
-    .filter(Boolean)
-    .slice(0, 8);
-}
 
-function parseDiscoveries(value) {
-  return reviewItemsFromUnknown(value, isDiscoveryObject)
-    .map((item) => {
-      if (typeof item === "string") {
-        const detail = clampSentence(item, 220);
-        return detail ? { kind: "Discovery", title: "", detail, severity: "review" } : null;
-      }
-      if (!item || typeof item !== "object") return null;
-      const detail = clampSentence(field(item, "detail", "text", "summary", "description", "reason") || "", 220);
-      const title = clampSentence(field(item, "title", "label", "name", "kind") || "", 80);
-      if (!detail && !title) return null;
-      return {
-        kind: clampSentence(field(item, "kind", "type", "category") || "Discovery", 48),
-        title,
-        detail,
-        severity: String(field(item, "severity", "priority", "status") || "review").trim() || "review"
-      };
-    })
-    .filter(Boolean)
-    .slice(0, 3);
-}
 
-function cleanFilingStep(value) {
-  return clampSentence(String(value || "").replace(/^[✓✔\-\s]+/u, ""), 190);
-}
 
-function parseReviewQuestions(value) {
-  return reviewItemsFromUnknown(value, isQuestionObject)
-    .map((item) => {
-      if (typeof item === "string") {
-        return {
-          kind: "Quick check",
-          question: clampSentence(item, 220),
-          whyAsk: "The model flagged this as useful before filing.",
-          recommendation: "My take: use the default unless it looks wrong.",
-          options: ["Yes", "No", "Use default"]
-        };
-      }
-      if (!item || typeof item !== "object") return null;
-      const question = clampSentence(field(item, "question", "ask", "prompt", "text") || "", 240);
-      if (!question) return null;
-      return {
-        kind: String(field(item, "kind", "type", "label", "category", "group") || "Quick check").trim() || "Quick check",
-        question,
-        whyAsk: cleanSummary(field(item, "whyAsk", "why_ask", "reason", "rationale", "why") || ""),
-        recommendation: cleanSummary(field(item, "recommendation", "default", "take", "suggestion") || ""),
-        options: optionListFromUnknown(field(item, "options", "choices", "buttons", "answers"))
-      };
-    })
-    .filter(Boolean);
-}
 
-function takeawayItemsFromUnknown(value, group = "") {
-  if (value === undefined || value === null) return [];
-  if (Array.isArray(value)) {
-    return value.flatMap((item) => takeawayItemsFromUnknown(item, group));
-  }
-  if (typeof value === "string") return group ? [{ point: value, group }] : [value];
-  if (typeof value !== "object") return [];
-  if (isTakeawayObject(value)) {
-    return [{ ...value, group: field(value, "relevance", "group") || group }];
-  }
-  return Object.entries(value).flatMap(([key, nested]) => (
-    takeawayItemsFromUnknown(nested, key)
-  ));
-}
 
-function reviewItemsFromUnknown(value, isSingleItem, group = "") {
-  if (value === undefined || value === null) return [];
-  if (Array.isArray(value)) {
-    return value.flatMap((item) => reviewItemsFromUnknown(item, isSingleItem, group));
-  }
-  if (typeof value === "string") return [value];
-  if (typeof value !== "object") return [];
-  if (isSingleItem(value)) {
-    return group && !field(value, "group", "kind", "relevance")
-      ? [{ ...value, group }]
-      : [value];
-  }
-  const nestedList = field(value, "items", "values", "entries", "list");
-  if (nestedList !== undefined) return reviewItemsFromUnknown(nestedList, isSingleItem, group);
-  return Object.entries(value).flatMap(([key, nested]) => (
-    reviewItemsFromUnknown(nested, isSingleItem, key)
-  ));
-}
-
-function isTakeawayObject(value) {
-  return Boolean(field(value, "point", "takeaway", "text", "summary", "insight", "detail", "value"));
-}
-
-function isLightTouchObject(value) {
-  return Boolean(field(value, "note", "point", "text", "summary", "mention"));
-}
-
-function isPropagationObject(value) {
-  return Boolean(field(value, "targetPath", "target_path", "path", "wikiPath", "wiki_path", "action", "rationale", "reason"));
-}
-
-function isConnectionObject(value) {
-  return Boolean(field(value, "path", "targetPath", "target_path", "wikiPath", "wiki_path", "href", "title", "label", "name", "reason"));
-}
-
-function isFilingStepObject(value) {
-  return Boolean(field(value, "text", "step", "line", "summary", "detail", "description", "action", "target", "title", "name"));
-}
-
-function isDiscoveryObject(value) {
-  return Boolean(field(value, "detail", "text", "summary", "description", "reason", "title", "label", "kind", "type"));
-}
-
-function isCandidateFileObject(value) {
-  return Boolean(field(value, "path", "file", "wikiPath", "wiki_path", "reason", "rationale", "priority"));
-}
-
-function isQuestionObject(value) {
-  return Boolean(field(value, "question", "ask", "prompt", "text"));
-}
-
-function isFinancialAccountObject(value) {
-  return Boolean(field(value, "institution", "provider", "custodian", "owner", "accountType", "account_type", "accountName", "account_name", "accountNumber", "account_number", "last4"));
-}
-
-function isFinancialFigureObject(value) {
-  return Boolean(field(value, "value", "amount", "balance", "figure", "metric", "label", "name"));
-}
-
-function isFinancialHoldingObject(value) {
-  return Boolean(field(value, "symbol", "ticker", "security", "quantity", "shares", "units", "marketValue", "market_value", "value"));
-}
-
-function isFinancialTransactionObject(value) {
-  return Boolean(field(value, "date", "description", "memo", "amount", "netAmount", "net_amount", "type", "category"));
-}
-
-function summaryTextValue(value) {
-  if (value === undefined || value === null) return "";
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-    return cleanDisplaySummary(value);
-  }
-  if (Array.isArray(value)) {
-    return cleanDisplaySummary(value.map(summaryTextValue).filter(Boolean).join(" "));
-  }
-  if (typeof value === "object") {
-    return cleanDisplaySummary(firstDefined(
-      field(value, "point", "takeaway", "text", "summary", "overview", "oneLine", "one_line", "note", "reason", "title", "description"),
-      ""
-    ));
-  }
-  return "";
-}
-
-function optionListFromUnknown(value) {
-  const options = Array.isArray(value)
-    ? value
-    : typeof value === "string"
-      ? value.split(/\s*(?:\||,|;)\s+/)
-      : [];
-  return options
-    .map((option) => cleanSummary(option))
-    .filter(Boolean)
-    .slice(0, 4);
-}
-
-const MONEY_PATTERN = /(?:[$€£]\s?-?\d[\d,]*(?:\.\d{2})?|-?\d[\d,]*(?:\.\d{2})?\s?(?:USD|EUR|GBP))/i;
-
-function emptyFinancialDetails() {
-  return {
-    accounts: [],
-    figures: [],
-    holdings: [],
-    transactions: [],
-    caveats: []
-  };
-}
-
-function hasFinancialDetails(details) {
-  return Boolean(details && (
-    details.accounts?.length ||
-    details.figures?.length ||
-    details.holdings?.length ||
-    details.transactions?.length ||
-    details.caveats?.length
-  ));
-}
-
-function cleanFinancialValue(value) {
-  const clean = cleanSummary(value);
-  if (!clean) return "";
-  const money = firstMatch(clean, MONEY_PATTERN);
-  return money || clean;
-}
-
-function cleanAccountLast4(value) {
-  const raw = cleanSummary(value);
-  if (/^\d{4}$/.test(raw)) return raw;
-  const explicit = raw.match(/\b(?:account|acct)?[^.\n]{0,60}?\b(?:ending(?:\s+in)?|ends\s+in|last\s*(?:4|four))\b[^0-9]{0,20}(\d{4})(?!\d)/i);
-  if (explicit?.[1]) return explicit[1];
-  const numbered = raw.match(/\b(?:account|acct)[^.\n]{0,40}?\b(?:number|no\.?|#)\b[^0-9]{0,20}(?:x{2,}|\*{2,}|•{2,})?\s*(\d{4})(?!\d)/i);
-  if (numbered?.[1]) return numbered[1];
-  const masked = raw.match(/(?:x{2,}|\*{2,}|•{2,})\s*(\d{4})(?!\d)/i);
-  if (masked?.[1]) return masked[1];
-  return "";
-}
-
-function financialFigureFromString(text) {
-  const clean = cleanSummary(text);
-  if (!clean) return null;
-  const value = firstMatch(clean, MONEY_PATTERN);
-  return value ? {
-    label: financialLabelFromContext(clean, value),
-    value,
-    date: firstMatch(clean, /\b(?:20\d{2}[-/]\d{2}(?:[-/]\d{2})?|Q[1-4]\s+20\d{2}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+20\d{2})\b/i),
-    context: clampSentence(clean, 160)
-  } : null;
-}
-
-function financialTransactionFromString(text) {
-  const clean = cleanSummary(text);
-  if (!clean) return null;
-  const amount = firstMatch(clean, MONEY_PATTERN);
-  if (!amount) return null;
-  const amountIndex = clean.indexOf(amount);
-  const descriptionSource = amountIndex >= 0 ? clean.slice(0, amountIndex).trim() : clean.replace(amount, "").trim();
-  return {
-    date: firstMatch(clean, /\b(?:20\d{2}[-/]\d{2}[-/]\d{2}|\d{1,2}\/\d{1,2}\/(?:\d{2}|\d{4})|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2})\b/i),
-    description: clampSentence(descriptionSource, 120),
-    amount,
-    type: transactionTypeFromText(clean)
-  };
-}
-
-function labelBeforeValue(text, value) {
-  const index = text.indexOf(value);
-  if (index <= 0) return "";
-  return cleanSummary(text.slice(Math.max(0, index - 70), index).replace(/[:\-–—|]+$/g, ""));
-}
-
-function financialLabelFromContext(text, value) {
-  const clean = cleanSummary(text);
-  return closestFinancialLabel(clean) || labelBeforeValue(clean, value) || "Visible amount";
-}
-
-function titleCaseLabel(value) {
-  return cleanSummary(value)
-    .toLowerCase()
-    .replace(/\b[a-z]/g, (char) => char.toUpperCase());
-}
-
-function closestFinancialLabel(text) {
-  const clean = cleanSummary(text);
-  const candidates = [];
-  const add = (pattern, labelForMatch) => {
-    for (const match of clean.matchAll(pattern)) {
-      const label = typeof labelForMatch === "function" ? labelForMatch(match) : labelForMatch;
-      if (label) candidates.push({ index: match.index || 0, label });
-    }
-  };
-  add(/\btotal account value\b/gi, "Total account value");
-  add(/\baccount value\b/gi, (match) => (
-    /\btotal\s+$/i.test(clean.slice(Math.max(0, match.index - 8), match.index)) ? "" : "Account value"
-  ));
-  add(/\bcash balance\b/gi, "Cash balance");
-  add(/\bmarket value\b/gi, "Market value");
-  add(/\bdividend\s+([A-Z]{2,5})\b/gi, (match) => `Dividend ${match[1].toUpperCase()}`);
-  add(/\bdividend\b/gi, "Dividend");
-  add(/\btransfer\s+from\s+([A-Za-z][A-Za-z ]{1,30}?)(?=\s+\d|\s*$)/gi, (match) => `Transfer from ${titleCaseLabel(match[1])}`);
-  add(/\btransfer\b/gi, "Transfer");
-  add(/\b([A-Z]{2,5})\s+\d+(?:\.\d+)?\s+(?:shares|units)\b/g, (match) => `${match[1].toUpperCase()} holding`);
-  add(/\bfees?\b/gi, "Fee");
-  add(/\bcontribution\b/gi, "Contribution");
-  add(/\bdistribution\b/gi, "Distribution");
-  add(/\btaxable amount\b/gi, "Taxable amount");
-  candidates.sort((a, b) => b.index - a.index);
-  return candidates[0]?.label || "";
-}
-
-function transactionTypeFromText(text) {
-  if (/\b(dividend|interest)\b/i.test(text)) return "dividend";
-  if (/\b(fee|charge)\b/i.test(text)) return "fee";
-  if (/\b(buy|bought|purchase)\b/i.test(text)) return "buy";
-  if (/\b(sell|sold|redemption)\b/i.test(text)) return "sell";
-  if (/\b(transfer|deposit|contribution|rollover)\b/i.test(text)) return "transfer";
-  if (/\b(withdrawal|distribution)\b/i.test(text)) return "debit";
-  return "unknown";
-}
-
-function relevanceValue(value) {
-  const normalized = String(value || "").toLowerCase();
-  if (normalized === "secondary" || normalized === "context") return normalized;
-  return "primary";
-}
-
-function confidenceValue(value) {
-  const normalized = String(value || "").toLowerCase();
-  if (normalized === "high" || normalized === "medium" || normalized === "low") return normalized;
-  return "medium";
-}
-
-function apiSummaryBullets(summary, extraBullets = []) {
-  const values = [];
-  if (summary && typeof summary === "object" && !Array.isArray(summary)) {
-    values.push(...arrayFromUnknown(field(summary, "bullets")));
-    values.push(...arrayFromUnknown(field(summary, "points")));
-    values.push(...arrayFromUnknown(field(summary, "keyPoints", "key_points")));
-    values.push(...arrayFromUnknown(field(summary, "takeaways")));
-  }
-  values.push(...arrayFromUnknown(extraBullets));
-  return values
-    .map(summaryTextValue)
-    .filter(Boolean)
-    .slice(0, 5);
-}
-
-function arrayFromUnknown(value) {
-  if (Array.isArray(value)) return value;
-  if (typeof value === "string" && value.trim()) return [value];
-  return [];
-}
-
-function stringListFromUnknown(value) {
-  return arrayFromUnknown(value)
-    .flatMap((item) => Array.isArray(item) ? item : [item])
-    .map(summaryTextValue)
-    .filter(Boolean);
-}
-
-function tagListFromUnknown(value) {
-  return stringListFromUnknown(value)
-    .flatMap((item) => item.split(/[,|]/))
-    .map(cleanTag)
-    .filter(Boolean);
-}
-
-function cleanTag(value) {
-  return String(value || "")
-    .trim()
-    .replace(/^#/, "")
-    .replace(/\s+/g, "-")
-    .replace(/[^A-Za-z0-9_/-]/g, "")
-    .replace(/-+/g, "-")
-    .toLowerCase();
-}
-
-const WIKI_SOURCE_BUCKETS = new Set(["sources", "coding", "ideas", "projects", "career", "personal", "school"]);
-
-function cleanBucket(value) {
-  const bucket = cleanTag(value).replace(/^wiki\//, "").split("/")[0];
-  return WIKI_SOURCE_BUCKETS.has(bucket) ? bucket : "";
-}
-
-function sourceSlugForFile(name) {
-  const slug = slugifyLoose(basename(name || "source").replace(/\.[^.]+$/, ""));
-  return slug.startsWith("source-") ? slug : `source-${slug || "source"}`;
-}
-
-function sourcePathForBucket(name, bucket = "sources") {
-  const clean = cleanBucket(bucket) || "sources";
-  return `wiki/${clean}/${sourceSlugForFile(name)}.md`;
-}
-
-function normalizeFilingPath(path, bucket = "sources") {
-  const raw = String(path || "").trim();
-  if (!raw) return "";
-  let normalized = normalizeMarginsPath(raw).replace(/^\/+/, "");
-  if (!normalized.startsWith("wiki/")) normalized = `wiki/${normalized}`;
-  if (!normalized.endsWith(".md")) normalized = `${normalized}.md`;
-  const folder = normalized.split("/")[1] || "";
-  if (!WIKI_SOURCE_BUCKETS.has(folder)) {
-    normalized = sourcePathForBucket(basename(normalized).replace(/\.md$/, ""), bucket);
-  }
-  const filename = basename(normalized);
-  if (!filename.startsWith("source-")) {
-    normalized = normalized.replace(/\/[^/]+\.md$/, `/${sourceSlugForFile(filename)}.md`);
-  }
-  return normalizeMarginsPath(normalized);
-}
-
-function summaryFallbackParts(summary) {
-  const parts = splitSummaryForCard(summary);
-  return {
-    overview: parts[0] ? clampSentence(parts[0], 220) : "",
-    bullets: parts.slice(1, 6).map((part) => clampSentence(part, 220)).filter(Boolean)
-  };
-}
-
-function splitSummaryForCard(summary) {
-  const clean = cleanDisplaySummary(summary);
-  if (!clean) return [];
-  const markdownParts = clean
-    .split(/\s+(?:[-*]|\d+[.)])\s+/)
-    .map((part) => cleanSummary(part))
-    .filter(Boolean);
-  if (markdownParts.length > 2) return markdownParts;
-  const labeledParts = summaryLabelSections(clean);
-  if (labeledParts.length > 2) return labeledParts;
-  const sentenceParts = summarySentences(clean);
-  if (sentenceParts.length > 2) return sentenceParts;
-  return chunkLongSummary(clean, 180).slice(0, 6);
-}
-
-function chunkLongSummary(summary, maxLength) {
-  const clean = cleanSummary(summary);
-  if (clean.length <= maxLength) return [clean];
-  const words = clean.split(/\s+/);
-  const chunks = [];
-  let current = "";
-  for (const word of words) {
-    if (`${current} ${word}`.trim().length > maxLength && current) {
-      chunks.push(current.trim());
-      current = word;
-    } else {
-      current = `${current} ${word}`.trim();
-    }
-  }
-  if (current) chunks.push(current.trim());
-  return chunks;
-}
 
 function buildApiQuestionPrompt(fileMap, files) {
   const sourceNames = files.map((file) => `- ${file.name}: ${excerptForQuestion(file.text || file.extractionError || "", 600)}`).join("\n") || "- No new source text available.";
@@ -4921,97 +3439,7 @@ function parseApiQuestions(content) {
     .filter((question) => question.question);
 }
 
-function parseJsonObject(content) {
-  for (const candidate of jsonParseCandidates(content)) {
-    const parsed = parseJsonCandidate(candidate);
-    if (parsed && typeof parsed === "object") return parsed;
-  }
-  return null;
-}
 
-function jsonParseCandidates(content) {
-  const text = String(content || "").trim();
-  if (!text) return [];
-  const candidates = new Set([text, stripJsonCodeFence(text)]);
-  for (const match of text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)) {
-    candidates.add(match[1].trim());
-  }
-  const balanced = balancedJsonSubstring(text);
-  if (balanced) candidates.add(balanced);
-  return [...candidates].filter(Boolean);
-}
-
-function stripJsonCodeFence(text) {
-  return String(text || "")
-    .trim()
-    .replace(/^\uFEFF/, "")
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/i, "")
-    .trim();
-}
-
-function parseJsonCandidate(candidate) {
-  const stripped = stripJsonCodeFence(candidate);
-  const variants = [
-    candidate,
-    stripped,
-    candidate.replace(/,\s*([}\]])/g, "$1"),
-    stripped.replace(/,\s*([}\]])/g, "$1")
-  ];
-  for (const variant of variants) {
-    try {
-      const parsed = JSON.parse(variant);
-      if (typeof parsed === "string") return parseJsonObject(parsed);
-      return parsed;
-    } catch {
-      // Try the next repair variant.
-    }
-  }
-  return null;
-}
-
-function balancedJsonSubstring(text) {
-  const source = String(text || "");
-  for (let start = 0; start < source.length; start += 1) {
-    const opener = source[start];
-    if (opener !== "{" && opener !== "[") continue;
-    const closerFor = opener === "{" ? "}" : "]";
-    const stack = [closerFor];
-    let inString = false;
-    let escaped = false;
-    for (let index = start + 1; index < source.length; index += 1) {
-      const char = source[index];
-      if (inString) {
-        if (escaped) {
-          escaped = false;
-        } else if (char === "\\") {
-          escaped = true;
-        } else if (char === "\"") {
-          inString = false;
-        }
-        continue;
-      }
-      if (char === "\"") {
-        inString = true;
-        continue;
-      }
-      if (char === "{" || char === "[") {
-        stack.push(char === "{" ? "}" : "]");
-        continue;
-      }
-      if (char === "}" || char === "]") {
-        if (char !== stack.pop()) break;
-        if (stack.length === 0) return source.slice(start, index + 1);
-      }
-    }
-  }
-  return "";
-}
-
-function excerptForQuestion(text, max) {
-  const clean = String(text || "").replace(/\s+/g, " ").trim();
-  return clean.length <= max ? clean : `${clean.slice(0, max).trim()}...`;
-}
 
 function renderChangePreview() {
   const parsedMode = state.llmFiles.size > 0;
@@ -5237,31 +3665,6 @@ function renderPendingSourceActions(visibleCount, totalCount) {
       </button>
     </div>
   `;
-}
-
-function renderSourceTimestamp(file) {
-  const date = sourceTimestampDate(file);
-  if (!date) return "";
-  return `<time class="source-timestamp" datetime="${escapeHtml(date.toISOString())}">${escapeHtml(formatSourceTimestamp(date))}</time>`;
-}
-
-function sourceTimestampDate(file) {
-  const value = Number(file?.lastModified || 0);
-  if (!Number.isFinite(value) || value <= 0) return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function formatSourceTimestamp(date) {
-  const now = new Date();
-  const includeYear = date.getFullYear() !== now.getFullYear();
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    ...(includeYear ? { year: "numeric" } : {}),
-    hour: "numeric",
-    minute: "2-digit"
-  }).format(date);
 }
 
 function bindSourceListControls() {
@@ -6039,11 +4442,7 @@ function autoRepairDreamBrokenLinks(fileMap, stats) {
   return repairs;
 }
 
-function dreamBrokenLinkKey(fromPath, brokenTarget) {
-  const from = normalizeMarginsPath(fromPath || "");
-  const target = cleanWikiLinkLabel(brokenTarget || "");
-  return from && target ? `${from}::${slugifyLoose(target)}` : "";
-}
+// dreamBrokenLinkKey → core/dream-stats.js
 
 function approveDreamBrokenLink(fromPath, brokenTarget, targetPath) {
   const normalizedFrom = normalizeMarginsPath(fromPath || "");
@@ -6082,9 +4481,7 @@ function replaceWikiLinkTarget(body, brokenTarget, nextTarget) {
   return { body: nextBody, count };
 }
 
-function wikiLinkTargetForPath(path) {
-  return basename(normalizeMarginsPath(path).replace(/\.md$/, ""));
-}
+// wikiLinkTargetForPath → core/dream-stats.js
 
 async function runPreparedDreamHelper() {
   const prepared = state.dreamPreparedRun;
@@ -6879,43 +5276,7 @@ function dreamRunningStatus() {
   return `Cleaning ${dreamStageName(state.dreamActiveStage)}. ${stepText}. ${timingText}. Scanning existing wiki notes only.`;
 }
 
-function dreamCleanupEstimateMs(stats = {}) {
-  const brokenLinkCount = Math.max(0, Number(stats.brokenLinkCount) || 0);
-  const sparseEntityCount = Math.max(0, Number(stats.sparseEntityCount) || 0);
-  const graphNodeCount = Math.max(0, Number(stats.graphNodeCount) || 0);
-  const baseMs = 4200 + (graphNodeCount * 28) + (brokenLinkCount * 450) + (sparseEntityCount * 260);
-  return clamp(baseMs, 5000, 36000);
-}
-
-function formatDreamRunDuration(milliseconds) {
-  const seconds = Math.max(0, Math.round((Number(milliseconds) || 0) / 1000));
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
-  return remainingSeconds
-    ? `${minutes}m ${String(remainingSeconds).padStart(2, "0")}s`
-    : `${minutes}m`;
-}
-
-function dreamChangedFilesFromRun(beforeMap, afterMap) {
-  const before = beforeMap instanceof Map ? beforeMap : new Map();
-  const after = afterMap instanceof Map ? afterMap : new Map();
-  const paths = new Set([...before.keys(), ...after.keys()].map(normalizeMarginsPath));
-  return [...paths].sort().reduce((changes, path) => {
-    const beforeHas = before.has(path);
-    const afterHas = after.has(path);
-    const beforeBody = beforeHas ? before.get(path) : "";
-    const afterBody = afterHas ? after.get(path) : "";
-    if (beforeHas === afterHas && beforeBody === afterBody) return changes;
-    changes.push({
-      path,
-      kind: beforeHas ? afterHas ? "updated" : "removed" : "added",
-      beforeWords: beforeBody ? wordCount(beforeBody) : 0,
-      afterWords: afterBody ? wordCount(afterBody) : 0
-    });
-    return changes;
-  }, []);
-}
+// dreamCleanupEstimateMs, formatDreamRunDuration, dreamChangedFilesFromRun → core/dream-stats.js
 
 function dreamVaultStats(fileMap) {
   const entries = [...(fileMap || new Map()).entries()];
@@ -6947,80 +5308,8 @@ function dreamVaultStats(fileMap) {
   };
 }
 
-function dreamPageType(path, body) {
-  const fields = frontmatterFields(body);
-  const type = normalizeEntityTag(fields.type || fields.primary_type || "");
-  if (type === "source") return "source";
-  if (type === "concept") return "concept";
-  if (type === "synthesis") return "synthesis";
-  if (["entity", "person", "company", "project"].includes(type)) return "entity";
-  if (path.startsWith("wiki/concepts/") || path.startsWith("wiki/ideas/")) return "concept";
-  if (path.startsWith("wiki/entities/") || path.startsWith("wiki/personal/") || path.startsWith("wiki/projects/")) return "entity";
-  if (path.startsWith("wiki/synthesis/") || path.startsWith("wiki/queries/")) return "synthesis";
-  return "";
-}
-
-function dreamBrokenLinks(fileMap) {
-  const byPath = new Set();
-  const bySlug = new Set();
-  for (const [path, body] of fileMap.entries()) {
-    if (!path.endsWith(".md")) continue;
-    const normalizedPath = normalizeMarginsPath(path);
-    byPath.add(normalizedPath);
-    byPath.add(normalizedPath.replace(/\.md$/, ""));
-    bySlug.add(slugifyLoose(basename(normalizedPath).replace(/\.md$/, "")));
-    const title = markdownTitle(body);
-    if (title) bySlug.add(slugifyLoose(title));
-  }
-
-  const missing = [];
-  for (const [path, body] of fileMap.entries()) {
-    if (!isDreamBrokenLinkScanPath(path)) continue;
-    for (const target of extractWikiLinks(body)) {
-      if (isDreamPlaceholderLink(target)) continue;
-      const trimmed = normalizeMarginsPath(target.replace(/^\//, "").replace(/\.md$/, ""));
-      const candidates = [
-        trimmed,
-        `${trimmed}.md`,
-        `wiki/${trimmed}`,
-        `wiki/${trimmed}.md`,
-        `wiki/sources/${trimmed}.md`,
-        `wiki/concepts/${trimmed}.md`,
-        `wiki/entities/${trimmed}.md`,
-        `wiki/projects/${trimmed}.md`,
-        `wiki/synthesis/${trimmed}.md`
-      ];
-      const found = candidates.some((candidate) => byPath.has(normalizeMarginsPath(candidate))) || bySlug.has(slugifyLoose(trimmed));
-      if (!found) missing.push({ from: path, to: target });
-    }
-  }
-  return missing;
-}
-
-function isDreamBrokenLinkScanPath(path) {
-  return path.startsWith("wiki/") &&
-    path.endsWith(".md") &&
-    !path.startsWith("wiki/.margins/") &&
-    !path.startsWith("wiki/_templates/");
-}
-
-function isDreamPlaceholderLink(target) {
-  const slug = slugifyLoose(cleanWikiLinkLabel(target));
-  if (!slug) return true;
-  if (DREAM_PLACEHOLDER_LINKS.has(slug)) return true;
-  if (/^(?:example|sample|template|placeholder)(?:-|$)/.test(slug)) return true;
-  if (/^(?:source|page|entity|concept|target)-slug$/.test(slug)) return true;
-  return false;
-}
-
-function dreamGraphStats(fileMap) {
-  const wikiPages = [...fileMap.entries()].filter(([path]) => path.startsWith("wiki/") && path.endsWith(".md"));
-  const linkCount = wikiPages.reduce((sum, [, body]) => sum + extractWikiLinks(body).length, 0);
-  return {
-    nodes: wikiPages,
-    edges: Array.from({ length: linkCount })
-  };
-}
+// dreamPageType, dreamBrokenLinks, isDreamBrokenLinkScanPath,
+// isDreamPlaceholderLink, dreamGraphStats → core/dream-stats.js
 
 function dreamOperations(stats, connected, items = []) {
   const lastResults = state.dreamLastRun?.stageResults || {};
@@ -7053,61 +5342,9 @@ function dreamOperations(stats, connected, items = []) {
   });
 }
 
-function dreamStageMetric(queued, applied, deferred) {
-  if (applied) return `${formatStatNumber(applied)} applied`;
-  if (deferred) return `${formatStatNumber(deferred)} review`;
-  if (queued) return `${formatStatNumber(queued)} queued`;
-  return "clear";
-}
+// dreamStageMetric → core/dream-stats.js
 
-function dreamRepairItems(stats) {
-  const items = [];
-  items.push({
-    id: "pruning-sparse-entities",
-    stage: "pruning",
-    safety: "review",
-    title: stats.sparseEntityCount
-      ? `${formatStatNumber(stats.sparseEntityCount)} sparse entity page${stats.sparseEntityCount === 1 ? "" : "s"}`
-      : "Improve entity pages",
-    body: stats.sparseEntityCount
-      ? `${formatStatNumber(stats.sparseEntityCount)} entity page${stats.sparseEntityCount === 1 ? " is" : "s are"} missing a summary or useful supporting context.`
-      : "No sparse entity pages found.",
-    runBody: "Reviews thin entity pages that may be hurting retrieval.",
-    action: "dream-agent",
-    actionLabel: "Improve entities",
-    target: "pruning-sparse-entities",
-    disabled: stats.sparseEntityCount === 0
-  });
-  items.push({
-    id: "association-source-links",
-    stage: "association",
-    safety: "review",
-    title: "Find source-backed backlinks",
-    body: stats.sourceCount >= 2
-      ? "Recent source notes may support better links to durable pages."
-      : "Needs at least two processed source notes.",
-    runBody: "Looks for high-value backlinks that need judgment before adding.",
-    action: "dream-agent",
-    actionLabel: "Propose backlinks",
-    target: "association-source-links",
-    disabled: stats.sourceCount < 2
-  });
-  items.push({
-    id: "synthesis-cross-source",
-    stage: "synthesis",
-    safety: "review",
-    title: "Look for one cross-source summary",
-    body: stats.sourceCount >= 2
-      ? "Recent source notes may share a pattern worth summarizing."
-      : "Needs at least two processed source notes.",
-    runBody: "Looks for one cross-source summary worth creating.",
-    action: "dream-agent",
-    actionLabel: "Check for summary",
-    target: "synthesis-cross-source",
-    disabled: stats.sourceCount < 2
-  });
-  return items;
-}
+// dreamRepairItems → core/dream-stats.js
 
 function dreamLogEntries(stats, lastRun = null) {
   if (lastRun?.running) {
@@ -7199,19 +5436,7 @@ function dreamCompletedActivityEntries(stats, lastRun = null) {
   return entries.slice(0, 14);
 }
 
-function dreamUnmatchedLinkEntries(links = []) {
-  return links.slice(0, 4).map((link) => ({
-    kind: "scan",
-    title: "Left wikilink alone",
-    file: link.from,
-    broken: link.to,
-    context: "No confident existing target."
-  }));
-}
-
-function dreamStageName(stageId) {
-  return DREAM_STAGES.find((stage) => stage.id === stageId)?.name || "maintenance";
-}
+// dreamUnmatchedLinkEntries, dreamStageName → core/dream-stats.js
 
 function formatDreamModeLabel(mode) {
   return DREAM_MODES[mode]?.label || DREAM_MODES.hybrid.label;
@@ -7496,10 +5721,21 @@ function dreamWikiPathCatalog(fileMap) {
 }
 
 function recentActivityRecords(fileMap) {
+  // Hide sources whose raw file is still in state.files (pending or
+  // currently being processed). compileVault writes the source page
+  // into the file map before the API review completes, which would
+  // otherwise make the source flash into "Recent activity" while the
+  // pending card is still showing the processing animation.
+  const pendingRawNames = new Set(state.files.map((file) => file.name));
   return [...fileMap.entries()]
     .filter(([path, body]) => isActivitySourcePagePath(path, body))
     .map(([path, body]) => activitySourceRecord(path, body, fileMap))
     .filter(Boolean)
+    .filter((record) => {
+      if (!record.rawPath) return true;
+      const rawName = basename(record.rawPath);
+      return !pendingRawNames.has(rawName);
+    })
     .sort((left, right) => (
       right.sortTimestamp - left.sortTimestamp ||
       left.title.localeCompare(right.title)
@@ -7623,10 +5859,6 @@ function sourceActivityRawPath(fields, body) {
 
 function sourceActivityDateValue(fields, path) {
   return cleanSummary(fields.updated || fields.created || fields.event_date || sourceDateFromPath(path));
-}
-
-function sourceDateFromPath(path) {
-  return path.match(/(?:^|\/)source-(\d{4}-\d{2}-\d{2})/)?.[1] || "";
 }
 
 function sourceActivitySortTimestamp(value) {
@@ -7789,6 +6021,7 @@ function renderRecentActivityCard(record) {
         <span class="source-icon ${escapeHtml(record.typeClass)}">${escapeHtml(record.typeLabel)}</span>
         <div class="activity-card-title">${escapeHtml(record.title)}</div>
         ${dateLabel ? `<time class="activity-card-date" datetime="${escapeHtml(record.dateValue)}">${escapeHtml(dateLabel)}</time>` : ""}
+        <button class="activity-delete-btn" type="button" data-activity-delete-path="${escapeHtml(record.path)}" aria-label="Delete ${escapeHtml(record.title)}">Delete</button>
       </div>
       <p class="activity-card-summary">${escapeHtml(record.summary)}</p>
       ${renderActivityPills(record)}
@@ -7882,6 +6115,14 @@ async function handleRecentActivityClick(event) {
     return;
   }
 
+  const activityDelete = event.target.closest("[data-activity-delete-path]");
+  if (activityDelete && els.recentActivityList?.contains(activityDelete)) {
+    event.preventDefault();
+    event.stopPropagation();
+    await withBusyOperation("source deletion", () => deleteVaultEntry(activityDelete.dataset.activityDeletePath));
+    return;
+  }
+
   const deleteButton = event.target.closest("[data-source-delete]");
   if (deleteButton && els.recentActivityList?.contains(deleteButton)) {
     event.preventDefault();
@@ -7938,14 +6179,18 @@ function openActivityTag(tag) {
 
 function renderSourceIngestRun(file) {
   const processingThis = state.processingInbox && (!state.processingFileName || state.processingFileName === file.name);
-  const isReady = isSourceReviewReady(file) && !processingThis;
+  const reviewReady = isSourceReviewReady(file);
   const error = state.ingestErrors.get(file.name);
-  if (!processingThis && !isReady && !error) return "";
+  if (!processingThis && !reviewReady && !error) return "";
   if (error && !processingThis) return renderSourceIngestError(file, error);
   const review = state.ingestReviews.get(file.name);
+  // If a review already exists, keep showing the receipt — don't fall back
+  // to the processing checklist when the user clicks Approve (which sets
+  // processingInbox=true during the save). That would look like reprocessing.
+  const showReceipt = reviewReady;
   return `
     <div class="source-ingest-run">
-      ${isReady ? renderSourceReceipt(file, review) : renderSourceProcessingChecklist(file)}
+      ${showReceipt ? renderSourceReceipt(file, review) : renderSourceProcessingChecklist(file)}
     </div>
   `;
 }
@@ -7973,8 +6218,14 @@ function renderSourceReceipt(file, review) {
   const path = entry?.path || sourceTargetPathFromReview(rawSourceOutputPath(file.name), review);
   const essence = sourceReceiptEssence(file, review);
   const questions = state.reviewMode === "auto" ? [] : reviewQuestionsForCard(file, review);
+  // Stage the staged-reveal class on the FIRST render of this file's receipt
+  // so the receipt sections fade in one-by-one. Subsequent re-renders (Approve,
+  // decision-button click, etc.) do NOT get the class — the receipt stays static.
+  const firstReveal = !state.revealedReceipts.has(file.name);
+  if (firstReveal) state.revealedReceipts.add(file.name);
+  const cls = `source-receipt${firstReveal ? " is-revealing" : ""}`;
   return `
-    <div class="source-receipt">
+    <div class="${cls}">
       ${essence ? `<p class="receipt-essence">${escapeHtml(essence)}</p>` : ""}
       ${renderSourceReceiptChecklist(file, review, path)}
       ${renderSourceReceiptDecision(file, questions)}
@@ -8278,7 +6529,7 @@ function processingFilingLines(file) {
     {
       html: escapeHtml(state.apiSecret && canSendSourceToModel(file)
         ? "Margins is comparing it against your brain"
-        : "Generating a local filing review"),
+        : "Waiting for model review"),
       done: stage > 2,
       active: stage === 2,
       pending: stage < 2
@@ -8460,53 +6711,6 @@ function sourceChecklistConnections(review, sourceLinks = []) {
   return uniqueBy(records.filter((record) => record.title), (record) => record.key || slugifyLoose(record.title)).slice(0, 8);
 }
 
-const GENERIC_CHECKLIST_LINKS = new Set([
-  "abstract",
-  "analysis",
-  "actually",
-  "condition",
-  "conditions",
-  "conclusion",
-  "data",
-  "display",
-  "displays",
-  "discussion",
-  "experiment",
-  "experiments",
-  "figure",
-  "figures",
-  "going",
-  "introduction",
-  "know",
-  "method",
-  "methods",
-  "paper",
-  "participant",
-  "participants",
-  "procedure",
-  "reference",
-  "references",
-  "result",
-  "results",
-  "section",
-  "study",
-  "subjects",
-  "table",
-  "thats",
-  "that-s",
-  "thing",
-  "things",
-  "think",
-  "task",
-  "tasks",
-  "really",
-  "yeah"
-]);
-
-function isGenericChecklistLink(link) {
-  const slug = slugifyLoose(cleanWikiLinkLabel(link));
-  return slug.length < 3 || GENERIC_CHECKLIST_LINKS.has(slug);
-}
 
 function changedEntityRecords(records) {
   const changed = [];
@@ -8660,21 +6864,6 @@ function dedupeFilingLines(lines) {
   });
 }
 
-function uniqueBy(items, keyFn) {
-  const seen = new Set();
-  return items.filter((item) => {
-    const key = keyFn(item);
-    if (!key || seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
-function pluralize(noun, count) {
-  if (Number(count) === 1) return noun;
-  if (noun === "entity") return "entities";
-  return `${noun}${Number(count) === 1 ? "" : "s"}`;
-}
 
 function renderSourceIngestError(file, error) {
   return `
@@ -8694,10 +6883,7 @@ function renderSourceRunNotice(review) {
     return `<div class="run-warning">${escapeHtml(review.status)}</div>`;
   }
   if (isRateLimitError(review.status)) {
-    return `<div class="run-warning">Margins review is rate-limited right now, so Margins is showing the local review. Retry later for model-generated questions.</div>`;
-  }
-  if (review.source === "local") {
-    return `<div class="run-warning">${escapeHtml(review.status)}</div>`;
+    return `<div class="run-warning">Margins review is rate-limited right now. Retry later for a model-generated review.</div>`;
   }
   if (review.modelSummaryFallback) {
     return `<div class="run-note">${escapeHtml(review.status)}</div>`;
@@ -8721,7 +6907,7 @@ function renderProcessingIndicator(file) {
 }
 
 function pendingReviewStepLabel(file) {
-  return state.apiSecret && canSendSourceToModel(file) ? "Sending to model" : "Preparing review";
+  return state.apiSecret && canSendSourceToModel(file) ? "Sending to model" : "Model review needed";
 }
 
 function pendingReviewNote(file) {
@@ -8731,7 +6917,7 @@ function pendingReviewNote(file) {
   if (needsTextExtraction(file)) {
     return "Saved locally. Checking readable text.";
   }
-  return "Saved locally. Preparing review.";
+  return "Saved locally. Add a model key, then retry.";
 }
 
 function modelReviewStepLabel(review) {
@@ -8941,28 +7127,6 @@ function summaryOverview(summary, bullets) {
   return clampSentence(overview, 220);
 }
 
-function summarySentences(summary) {
-  const clean = cleanSummary(summary);
-  const matches = clean.match(/[^.!?]+[.!?]+(?:\s|$)/g);
-  if (!matches || matches.length < 2) {
-    const sections = summaryLabelSections(clean);
-    return sections.length > 1 ? sections : clean ? [clean] : [];
-  }
-  const consumed = matches.join("").trim();
-  const tail = clean.slice(consumed.length).trim();
-  return [...matches.map((part) => part.trim()), ...(tail ? [tail] : [])].filter(Boolean);
-}
-
-function summaryLabelSections(summary) {
-  const clean = cleanSummary(summary);
-  if (clean.length < 260) return clean ? [clean] : [];
-  return clean
-    .replace(/\s+(Date|Participants|Background|Opportunity|Assessment|Current status|Next steps|Risks|Decision|Follow-up|Context|Transcript)\b/g, "\n$1")
-    .split(/\n+/)
-    .map((part) => cleanSummary(part))
-    .filter(Boolean)
-    .slice(0, 8);
-}
 
 function renderSourceConnections(file) {
   const connections = state.ingestReviews.get(file.name)?.connections || [];
@@ -9019,34 +7183,6 @@ function renderSourceFinancialDetails(file) {
   `;
 }
 
-function financialAccountLine(account) {
-  return [
-    account.institution,
-    account.accountType,
-    account.owner ? `owner: ${account.owner}` : "",
-    account.accountNumberLast4 ? `last4: ${account.accountNumberLast4}` : "",
-    account.period
-  ].filter(Boolean).join(" · ");
-}
-
-function financialHoldingLine(holding) {
-  return [
-    holding.symbol,
-    holding.name,
-    holding.quantity,
-    holding.value,
-    holding.context
-  ].filter(Boolean).join(" · ");
-}
-
-function financialTransactionLine(transaction) {
-  return [
-    transaction.date,
-    transaction.type && transaction.type !== "unknown" ? transaction.type : "",
-    transaction.description,
-    transaction.amount
-  ].filter(Boolean).join(" · ");
-}
 
 function renderSourceLightTouch(file) {
   const notes = state.ingestReviews.get(file.name)?.lightTouch || [];
@@ -9093,8 +7229,14 @@ function sourceIngestSummary(file) {
 function sourceIngestFullSummary(file) {
   const review = state.ingestReviews.get(file.name);
   if (review?.summary) return stripTrailingEllipsis(cleanDisplaySummary(review.summary));
+  if (review?.summaryBullets?.length) {
+    return stripTrailingEllipsis(cleanDisplaySummary(review.summaryBullets.map((item) => cleanSummary(item)).filter(Boolean).join(" ")));
+  }
+  if (review?.modelSummaryFallback) {
+    return "Model review completed, but no summary was returned.";
+  }
   const sourceNote = sourceNoteForFile(file);
-  return stripTrailingEllipsis(cleanDisplaySummary(extractSourceSummary(sourceNote) || localSourceSummary(file) || "Margins preserved the source file and prepared it for filing."));
+  return stripTrailingEllipsis(cleanDisplaySummary(extractSourceSummary(sourceNote) || ""));
 }
 
 function sourceIngestSummaryBullets(file) {
@@ -9105,47 +7247,12 @@ function sourceIngestSummaryBullets(file) {
   return parts.length > 2 ? parts.slice(1, 6) : [];
 }
 
-function stripTrailingEllipsis(value) {
-  return String(value || "").replace(/\s*(?:\.{3}|…)\s*$/u, "").trim();
-}
-
-function clampSentence(value, limit) {
-  const text = cleanSummary(value);
-  if (text.length <= limit) return text;
-  return `${text.slice(0, limit - 3).trim()}...`;
-}
 
 function sourceNoteForFile(file) {
   return sourceNoteEntryForFile(file)?.body || "";
 }
 
-function extractSourceSummary(body) {
-  if (!body) return "";
-  const section = body.match(/## Summary\s+([\s\S]*?)(?:\n##\s|$)/);
-  if (section?.[1]) return cleanSummary(section[1]);
-  const yaml = body.match(/^summary:\s*("?)(.*?)\1\s*$/m);
-  return yaml?.[2] ? cleanSummary(yaml[2]) : "";
-}
 
-function cleanSummary(value) {
-  return String(value || "")
-    .replace(/\s+/g, " ")
-    .replace(/\[\[([^\]]+)\]\]/g, "$1")
-    .trim();
-}
-
-function escapeRegExp(value) {
-  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function cleanDisplaySummary(value) {
-  return cleanSummary(String(value || "")
-    .replace(/\b[A-Z0-9._%+-]+@\s*[A-Z0-9.-]+(?:\s*\.\s*[A-Z]{2,})+\b/gi, " ")
-    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, " ")
-    .replace(/\b[A-Z][A-Za-z-]+(?:\s+[A-Z][A-Za-z-]+){0,3}\s+(?:Department|School|Faculty|Institute)\s+of\s+[^.!?]{0,180}/g, " ")
-    .replace(/\b(?:Department|School|Faculty|Institute)\s+of\s+[^.!?]{0,160}/gi, " ")
-    .replace(/\s{2,}/g, " "));
-}
 
 function installTestHooks() {
   if (!new URLSearchParams(location.search).has("marginsTest")) return;
@@ -9223,6 +7330,8 @@ ${summary || ""}
 type: source
 summary: Workspace map notes.
 raw_file: ${rawPath}
+model_provider: gemini
+reviewed_at: 2026-05-08T00:00:00.000Z
 ---
 
 # Source: Workspace Map Notes
@@ -9233,21 +7342,17 @@ Original file: \`${rawPath}\`
 
 Notes describe how a workspace map should connect remembered entities to interface decisions.
 
-## Key Terms
+## Key Takeaways
 
-- [[know|know]]
-- [[think|think]]
-- [[things|things]]
-- [[going|going]]
-- [[thats|thats]]
+- Workspace map notes should connect remembered entities to interface decisions.
 
-## Entity Candidates
-
-- [[Some Weak Candidate]]
-
-## Notes
+## Connections
 
 Links: [[display]], [[subjects]], [[results]], [[Workspace Map]], [[Interface Decisions]], [[Graph View]], [[Spatial Memory]], [[Margins UI]]
+
+## Open Questions
+
+- None.
 `],
         ["wiki/concepts/workspace-map.md", "# Workspace Map\n"],
         ["wiki/concepts/interface-decisions.md", "# Interface Decisions\n"],
@@ -9652,6 +7757,28 @@ tags: [source, riviera]
         entityText: document.querySelector("#entity-browser")?.innerText || ""
       };
     },
+    async loadSourceOnlyWikiVault() {
+      const handle = createMemoryVaultHandle();
+      await writeTextFile(handle, "wiki/sources/source-filed-note.md", `---
+type: source
+summary: Source note without a promoted entity page.
+raw_file: raw/filed-note.md
+---
+
+# Source: Filed Note
+
+This source-only vault should still be browsable from Files.
+`);
+      await writeTextFile(handle, "wiki/index.md", "# Index\n");
+      setActiveVault(handle, "Source Only Wiki Vault");
+      await loadExistingVault(handle);
+      return {
+        currentFileCount: state.currentFileMap?.size || 0,
+        filesText: document.querySelector("#wiki-tree")?.innerText || "",
+        entityText: document.querySelector("#entity-browser")?.innerText || "",
+        statsText: els.stats?.textContent || ""
+      };
+    },
     async seedEntityPinningVault() {
       const handle = createMemoryVaultHandle();
       await writeTextFile(handle, "wiki/entities/pin-target.md", `---
@@ -9820,6 +7947,45 @@ next_move: Confirm reconnect loads the previous vault.
         keptBody: await testReadTextFile(handle, "wiki/sources/kept.md"),
         loadedHasOld: state.loadedFileMap.has("wiki/sources/old.md"),
         pendingSave: state.pendingSave
+      };
+    },
+    async seedDeletableSourceVault() {
+      const handle = createMemoryVaultHandle();
+      await writeTextFile(handle, "raw/delete-me.md", "Delete me source body.\n");
+      await writeTextFile(handle, "wiki/sources/source-delete-me.md", `---
+type: source
+summary: Delete me source.
+raw_file: raw/delete-me.md
+updated: 2026-05-08
+---
+
+# Source: Delete Me Source
+
+## Summary
+
+Delete me source body.
+`);
+      await writeTextFile(handle, "wiki/projects/keep.md", "# Keep\n\nThis file should remain.\n");
+      await writeTextFile(handle, "wiki/index.md", "# Index\n");
+      setActiveVault(handle, "Delete Test Vault");
+      await loadExistingVault(handle);
+      return this.deleteSnapshot();
+    },
+    async deleteSnapshot() {
+      const pathExists = async (path) => state.vaultHandle ? testFileExists(state.vaultHandle, path) : false;
+      return {
+        currentPaths: [...(state.currentFileMap || new Map()).keys()].sort(),
+        loadedPaths: [...(state.loadedFileMap || new Map()).keys()].sort(),
+        vaultFiles: state.vaultFiles.map((file) => file.name).sort(),
+        pendingFiles: state.files.map((file) => file.name).sort(),
+        selectedPath: state.selectedPath || "",
+        recentText: document.querySelector("#recent-activity-list")?.innerText || "",
+        filesText: document.querySelector("#wiki-tree")?.innerText || "",
+        statsText: els.stats?.textContent || "",
+        docDeleteDisabled: Boolean(els.docDeleteBtn?.disabled),
+        rawExists: await pathExists("raw/delete-me.md"),
+        sourceExists: await pathExists("wiki/sources/source-delete-me.md"),
+        keepExists: await pathExists("wiki/projects/keep.md")
       };
     },
     async importSourceAndReloadFromRaw() {
@@ -10096,6 +8262,16 @@ tags: [person]
           sourceScope: "vault",
           extractionStatus: "ready",
           extractionError: ""
+        },
+        {
+          name: "legacy-heuristic.md",
+          text: "Legacy heuristic source note already exists and should not be treated as pending.",
+          type: "text",
+          size: 68,
+          lastModified: new Date(2026, 4, 5, 18, 30).getTime(),
+          sourceScope: "vault",
+          extractionStatus: "ready",
+          extractionError: ""
         }
       ];
       const fileMap = new Map([
@@ -10106,6 +8282,31 @@ raw_file: raw/filed-note.md
 ---
 
 # Source: Filed Note
+`],
+        ["wiki/sources/source-legacy-heuristic.md", `---
+type: source
+summary: Legacy heuristic source.
+raw_file: raw/legacy-heuristic.md
+---
+
+# Source: Legacy Heuristic
+
+## Summary
+
+Legacy heuristic source.
+
+## Key Terms
+
+- know
+- think
+
+## Entity Candidates
+
+- Yeah
+
+## Notes
+
+Legacy local fallback body.
 `],
         ["wiki/index.md", "# Index\n"]
       ]);
@@ -10351,6 +8552,35 @@ updated: ${yesterday}
       };
     },
     seedSourceStatusCards() {
+      const defaultReviewFetch = async () => new Response(JSON.stringify({
+        candidates: [{
+          content: {
+            parts: [{ text: JSON.stringify({
+              summary: {
+                overview: "Model reviewed this pending source for filing.",
+                bullets: ["The source is ready to become a source note."]
+              },
+              takeaways: [],
+              connections: [],
+              asks: []
+            }) }]
+          }
+        }],
+        usageMetadata: {
+          promptTokenCount: 40,
+          candidatesTokenCount: 30,
+          thoughtsTokenCount: 0,
+          totalTokenCount: 70
+        }
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+      const rawFileHandle = (body, name, type) => ({
+        async getFile() {
+          return new File([body], name, { type, lastModified: new Date(2026, 4, 5, 9, 30).getTime() });
+        }
+      });
       state.files = [
         {
           name: "pending-word.docx",
@@ -10358,6 +8588,7 @@ updated: ${yesterday}
           type: "docx",
           size: 12400,
           lastModified: new Date(2026, 4, 5, 9, 30).getTime(),
+          rawSourceHandle: rawFileHandle("browser test docx attachment", "pending-word.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
           sourceScope: "vault",
           extractionStatus: "failed",
           extractionError: "No readable text found in DOCX."
@@ -10368,6 +8599,7 @@ updated: ${yesterday}
           type: "pdf",
           size: 88000,
           lastModified: new Date(2026, 4, 5, 10, 15).getTime(),
+          rawSourceHandle: rawFileHandle("%PDF-1.7\nbrowser test pdf body", "pending-statement.pdf", "application/pdf"),
           sourceScope: "vault",
           extractionStatus: "needed",
           extractionError: ""
@@ -10389,7 +8621,87 @@ updated: ${yesterday}
       state.currentFileMap = new Map([["wiki/index.md", "# Index\n"]]);
       state.pendingSave = false;
       state.processingInbox = false;
+      state.apiSecret = "test-gemini-key";
+      state.ingestReviews = new Map();
+      state.ingestErrors = new Map();
+      state.apiUsage = emptyApiUsage();
+      apiThrottle.startedAt = [];
+      apiThrottle.lastStartedAt = 0;
+      window.fetch = defaultReviewFetch;
       renderSources();
+      updateActionState();
+      return document.querySelector("#source-list")?.innerText || "";
+    },
+    seedLegacySourceReprocess() {
+      const file = {
+        name: "How Stripe Built Their New Website.md",
+        text: `--- title: "How Stripe Built Their New Website" source: "https://www.youtube.com/watch?v=ypzNhwpmOD4" ---
+Stripe rebuilt its website after six years, with Katie Dill discussing design priorities, company evolution, and homepage messaging.`,
+        type: "text",
+        size: 240,
+        lastModified: new Date(2026, 4, 8, 9, 0).getTime(),
+        sourceScope: "pending",
+        extractionStatus: "ready",
+        extractionError: ""
+      };
+      const legacyBody = `---
+type: source
+bucket: sources
+summary: "[](https://www. youtube."
+tags: [source]
+created: 2026-05-08
+updated: 2026-05-08
+event_date: 2026-05-08
+voice: claude-draft
+raw_file: raw/How Stripe Built Their New Website.md
+---
+
+# Source: How Stripe Built Their New Website
+
+Original file: \`raw/How Stripe Built Their New Website.md\`
+
+## Summary
+
+[](https://www. youtube.
+
+## Key Terms
+
+- know
+- really
+- we're
+
+## Entity Candidates
+
+- Uh
+- Yeah
+
+## Notes
+
+Legacy local fallback body.
+`;
+      state.files = [file];
+      state.vaultFiles = [];
+      state.vaultHandle = createMemoryVaultHandle();
+      state.vaultName = "Browser Test Vault";
+      state.currentFileMap = new Map([
+        ["wiki/sources/source-how-stripe-built-their-new-website.md", legacyBody],
+        ["wiki/index.md", "# Index\n"]
+      ]);
+      state.loadedFileMap = new Map(state.currentFileMap);
+      state.selectedPath = null;
+      state.selectedKind = "";
+      state.pendingSave = false;
+      state.processingInbox = false;
+      state.apiSecret = "test-gemini-key";
+      state.ingestReviews = new Map();
+      state.ingestErrors = new Map();
+      state.ingestAnswers = new Map();
+      state.apiUsage = emptyApiUsage();
+      apiThrottle.startedAt = [];
+      apiThrottle.lastStartedAt = 0;
+      renderSources();
+      renderVaultTree(state.currentFileMap);
+      renderWikiFiles(state.currentFileMap);
       updateActionState();
       return document.querySelector("#source-list")?.innerText || "";
     },
@@ -10737,934 +9049,8 @@ function isSourceReviewReady(file) {
   return Boolean(file?.name && state.pendingSave && state.currentFileMap && state.ingestReviews.has(file.name) && !state.ingestErrors.has(file.name));
 }
 
-function renderVaultTree(fileMap = state.currentFileMap) {
-  renderRecentActivity(fileMap || activeActivityFileMap());
-  renderDream(fileMap || activeActivityFileMap());
-  renderEntities(fileMap || new Map());
-  if (!els.vaultTree || els.vaultTree.hidden) return;
-  const stats = ingestionStats(fileMap || new Map());
-  els.vaultTree.innerHTML = `
-    <div class="upload-stats">
-      <div class="section-kicker">Processing</div>
-      <div class="upload-stat-grid">
-        ${uploadStat("Parsed", stats.parsedFiles)}
-        ${uploadStat("Processed", stats.ingestedFiles)}
-        ${uploadStat("Pending", stats.pendingFiles)}
-        ${uploadStat("Words", formatStatNumber(stats.totalWords))}
-      </div>
-      <div class="upload-detail-list">
-        ${uploadDetail("Model attempts", stats.modelCalls)}
-        ${uploadDetail("Wiki notes", stats.wikiFiles)}
-        ${uploadDetail("Cited links", stats.graphEdges)}
-        ${uploadDetail("Needs extraction", stats.needsExtraction)}
-        ${uploadDetail("Unsaved edits", stats.unsavedEdits)}
-      </div>
-    </div>
-  `;
-}
 
-function renderEntities(fileMap = state.currentFileMap) {
-  if (!els.entityBrowser) return;
-  const records = entityRecordsFromFileMap(fileMap || new Map());
-  state.entityFileMap = records.length ? new Map(fileMap || []) : null;
-  state.entityTypeOptions = entityTypePickerOptions(records);
-  if (state.entityTypePickerPath && !records.some((record) => record.path === state.entityTypePickerPath)) {
-    state.entityTypePickerPath = "";
-  }
-  syncEntityRecentSource(records);
-  syncEntityFilter(records);
-  renderEntitySummary(records);
-  renderEntityFilters(records);
 
-  if (records.length === 0) {
-    if (els.entityControls) els.entityControls.hidden = true;
-    els.entityBrowser.className = "entity-empty-state";
-    els.entityBrowser.innerHTML = `
-      <div class="empty-icon" aria-hidden="true"></div>
-      <h3>No entities loaded</h3>
-      <p>Open a local vault or process a source. Margins will only show entities backed by real vault files.</p>
-    `;
-    return;
-  }
-
-  if (els.entityControls) els.entityControls.hidden = false;
-  const filteredRecords = filterEntityRecords(records);
-  if (filteredRecords.length === 0) {
-    els.entityBrowser.className = "entity-empty-state";
-    els.entityBrowser.innerHTML = `
-      <div class="empty-icon" aria-hidden="true"></div>
-      <h3>No matching entities</h3>
-      <p>Try a different search, type, or wiki tag.</p>
-    `;
-    return;
-  }
-
-  els.entityBrowser.className = "entity-board";
-  els.entityBrowser.innerHTML = renderEntitySections(filteredRecords);
-}
-
-function renderEntitySections(records) {
-  const query = String(state.entityQuery || "").trim();
-  const filtered = query || state.entityFilterKind !== "all";
-  if (filtered) {
-    return `
-      <section class="entity-section" data-entity-section="results">
-        ${renderEntitySectionHead("Results", `${records.length} shown`)}
-        <div class="entity-grid">${records.map(renderEntityCard).join("")}</div>
-      </section>
-    `;
-  }
-
-  const pinned = records.filter(entityHasPinnedSignal).slice(0, 6);
-  const pinnedPaths = new Set(pinned.map((record) => record.path));
-  const recent = records.filter((record) => !pinnedPaths.has(record.path));
-  const visibleRecentCount = visibleEntityRecentCount(recent.length);
-  const visibleRecent = recent.slice(0, visibleRecentCount);
-  const sections = [];
-  if (pinned.length) {
-    sections.push(`
-      <section class="entity-section" data-entity-section="pinned">
-        ${renderEntitySectionHead("Pinned")}
-        <div class="entity-grid">${pinned.map(renderEntityCard).join("")}</div>
-      </section>
-    `);
-  }
-  if (recent.length) {
-    const actionLabel = recent.length > visibleRecentCount ? `${visibleRecentCount} of ${recent.length}` : "";
-    sections.push(`
-      <section class="entity-section" data-entity-section="recent">
-        ${renderEntitySectionHead("Recently Active", actionLabel)}
-        <div class="entity-grid">${visibleRecent.map(renderEntityCard).join("")}</div>
-        ${renderEntityRecentActions(visibleRecentCount, recent.length)}
-      </section>
-    `);
-  }
-  return sections.join("");
-}
-
-function renderEntityRecentActions(visibleCount, totalCount) {
-  if (visibleCount >= totalCount) return "";
-  const remaining = totalCount - visibleCount;
-  const nextCount = Math.min(ENTITY_RECENT_PAGE_SIZE, remaining);
-  const showMoreLabel = remaining > ENTITY_RECENT_PAGE_SIZE ? `Show ${nextCount} more` : `Show remaining ${remaining}`;
-  return `
-    <div class="entity-section-actions">
-      <button class="entity-list-button primary" type="button" data-entity-list-action="show-more-recent" data-entity-recent-total="${escapeHtml(String(totalCount))}">
-        ${escapeHtml(showMoreLabel)}
-      </button>
-      <button class="entity-list-button" type="button" data-entity-list-action="show-all-recent" data-entity-recent-total="${escapeHtml(String(totalCount))}">
-        Show all ${escapeHtml(String(totalCount))}
-      </button>
-    </div>
-  `;
-}
-
-function renderEntitySectionHead(title, action = "") {
-  return `
-    <div class="entity-section-head">
-      <h3>${escapeHtml(title)}</h3>
-      ${action ? `<span>${escapeHtml(action)}</span>` : ""}
-    </div>
-  `;
-}
-
-function renderEntityCard(record) {
-  const pinned = entityHasPinnedSignal(record);
-  const pinAction = pinned ? "Unpin" : "Pin";
-  const pickerOpen = state.entityTypePickerPath === record.path;
-  return `
-    <article class="entity-card" role="button" tabindex="0" data-entity-path="${escapeHtml(record.path)}">
-      <div class="entity-card-top">
-        <span class="entity-vibe ${escapeHtml(entityVibeClass(record))} t-${escapeHtml(normalizePrimaryTypeValue(record.typeLabel) || "concept")}"></span>
-        <strong>${escapeHtml(record.title)}</strong>
-        <button class="entity-pin-button ${pinned ? "active" : ""}" type="button" data-entity-pin-path="${escapeHtml(record.path)}" aria-pressed="${pinned ? "true" : "false"}" aria-label="${escapeHtml(`${pinAction} ${record.title}`)}" title="${escapeHtml(pinAction)}">
-          <span aria-hidden="true">${escapeHtml(pinned ? "Pinned" : "Pin")}</span>
-        </button>
-        <button class="type-tag entity-type-chip ${pickerOpen ? "active" : ""}" type="button" data-entity-type-open="${escapeHtml(record.path)}" aria-expanded="${pickerOpen ? "true" : "false"}" aria-label="${escapeHtml(`Change type for ${record.title}. Current type ${record.typeLabel}`)}">${escapeHtml(record.typeLabel)}</button>
-      </div>
-      ${pickerOpen ? renderEntityTypePicker(record) : ""}
-      ${record.meta ? `<div class="entity-card-meta-line">${escapeHtml(record.meta)}</div>` : ""}
-      <p class="entity-card-summary">${escapeHtml(record.summary || "No summary yet.")}</p>
-      ${record.nextAction ? `<div class="entity-card-next"><span>Next:</span> ${escapeHtml(record.nextAction)}</div>` : ""}
-    </article>
-  `;
-}
-
-function renderEntityTypePicker(record) {
-  const options = state.entityTypeOptions?.length ? state.entityTypeOptions : entityTypePickerOptions([record]);
-  return `
-    <div class="entity-type-picker" data-entity-type-picker-path="${escapeHtml(record.path)}">
-      <div class="entity-type-picker-head">
-        <span>Set primary type</span>
-        <button type="button" data-entity-type-close="${escapeHtml(record.path)}" aria-label="Close type picker">×</button>
-      </div>
-      <div class="entity-type-custom-row">
-        <input data-entity-type-custom-input="${escapeHtml(record.path)}" type="text" placeholder="Type custom..." autocomplete="off">
-        <button type="button" data-entity-type-custom="${escapeHtml(record.path)}">Use</button>
-      </div>
-      <div class="entity-type-option-list" role="listbox" aria-label="Entity type options">
-        ${options.map((option) => `
-          <button class="entity-type-option ${normalizePrimaryTypeValue(record.typeLabel) === option.value ? "selected" : ""}" type="button" data-entity-type-path="${escapeHtml(record.path)}" data-entity-type-value="${escapeHtml(option.value)}">
-            <span>${escapeHtml(option.label)}</span>
-            <span>${escapeHtml(String(option.count))}</span>
-          </button>
-        `).join("")}
-      </div>
-    </div>
-  `;
-}
-
-function renderEntitySummary(records) {
-  if (!els.entityMeta) return;
-  if (records.length === 0) {
-    els.entityMeta.textContent = "People, projects, companies, and ideas from the connected vault.";
-    return;
-  }
-  const activeThisWeek = records.filter((record) => isEntityActiveThisWeek(record.lastTouch || record.updated)).length;
-  const pinned = records.filter((record) => entityHasPinnedSignal(record)).length;
-  els.entityMeta.textContent = [
-    `${records.length} in your brain`,
-    `${activeThisWeek} active this week`,
-    `${pinned} pinned`
-  ].join(" · ");
-}
-
-function syncEntityFilter(records) {
-  if (state.entityFilterKind === "all") return;
-  const stillAvailable = state.entityFilterKind === "type"
-    ? records.some((record) => record.typeLabel === state.entityFilterValue)
-    : records.some((record) => record.filterTags.includes(state.entityFilterValue));
-  if (stillAvailable) return;
-  state.entityFilterKind = "all";
-  state.entityFilterValue = "";
-}
-
-function syncEntityRecentSource(records) {
-  const sourceKey = records.map((record) => record.path).join("\n");
-  if (sourceKey === state.entityRecentSourceKey) return;
-  state.entityRecentSourceKey = sourceKey;
-  resetEntityRecentLimit();
-}
-
-function resetEntityRecentLimit() {
-  state.entityRecentVisibleCount = ENTITY_RECENT_PAGE_SIZE;
-}
-
-function visibleEntityRecentCount(totalCount) {
-  if (totalCount <= ENTITY_RECENT_PAGE_SIZE) return totalCount;
-  const requested = Math.max(
-    ENTITY_RECENT_PAGE_SIZE,
-    Number(state.entityRecentVisibleCount) || ENTITY_RECENT_PAGE_SIZE
-  );
-  state.entityRecentVisibleCount = Math.min(requested, totalCount);
-  return state.entityRecentVisibleCount;
-}
-
-function renderEntityFilters(records) {
-  if (els.entitySearch && els.entitySearch.value !== state.entityQuery) {
-    els.entitySearch.value = state.entityQuery;
-  }
-  if (records.length === 0) {
-    if (els.entityTypeFilters) els.entityTypeFilters.innerHTML = "";
-    if (els.entityTagFilters) els.entityTagFilters.innerHTML = "";
-    return;
-  }
-  if (els.entityTypeFilters) {
-    const typeFacets = entityTypeFacets(records);
-    els.entityTypeFilters.innerHTML = typeFacets.map((facet) => renderEntityChip(facet)).join("");
-  }
-  if (els.entityTagFilters) {
-    const tagFacets = entityTagFacets(records);
-    els.entityTagFilters.hidden = tagFacets.length === 0;
-    els.entityTagFilters.innerHTML = tagFacets.map((facet) => renderEntityChip(facet)).join("");
-  }
-}
-
-function renderEntityChip(facet) {
-  const active = isEntityFilterActive(facet.kind, facet.value);
-  return `
-    <button class="entity-chip ${active ? "active" : ""}" type="button" data-entity-filter-kind="${escapeHtml(facet.kind)}" data-entity-filter-value="${escapeHtml(facet.value)}" aria-pressed="${active ? "true" : "false"}">
-      <span>${escapeHtml(facet.label)}</span>
-      <span>${escapeHtml(String(facet.count))}</span>
-    </button>
-  `;
-}
-
-function handleEntityFilterClick(event) {
-  const button = event.target.closest("[data-entity-filter-kind]");
-  if (!button) return;
-  state.entityFilterKind = button.dataset.entityFilterKind || "all";
-  state.entityFilterValue = button.dataset.entityFilterValue || "";
-  if (state.entityFilterKind === "all") state.entityFilterValue = "";
-  resetEntityRecentLimit();
-  renderEntities(activeEntityFileMap());
-}
-
-async function handleEntityBrowserActionClick(event) {
-  const typeCloseButton = event.target.closest("[data-entity-type-close]");
-  if (typeCloseButton) {
-    event.preventDefault();
-    event.stopPropagation();
-    state.entityTypePickerPath = "";
-    renderEntities(activeEntityFileMap());
-    return;
-  }
-
-  const typeChoiceButton = event.target.closest("[data-entity-type-value]");
-  if (typeChoiceButton) {
-    event.preventDefault();
-    event.stopPropagation();
-    await withBusyOperation("entity type", () => setEntityPrimaryType(
-      typeChoiceButton.dataset.entityTypePath,
-      typeChoiceButton.dataset.entityTypeValue
-    ));
-    return;
-  }
-
-  const typeCustomButton = event.target.closest("[data-entity-type-custom]");
-  if (typeCustomButton) {
-    event.preventDefault();
-    event.stopPropagation();
-    const picker = typeCustomButton.closest(".entity-type-picker");
-    const input = picker?.querySelector("[data-entity-type-custom-input]");
-    await withBusyOperation("entity type", () => setEntityPrimaryType(
-      typeCustomButton.dataset.entityTypeCustom,
-      input?.value || ""
-    ));
-    return;
-  }
-
-  const typeOpenButton = event.target.closest("[data-entity-type-open]");
-  if (typeOpenButton) {
-    event.preventDefault();
-    event.stopPropagation();
-    const path = normalizeMarginsPath(typeOpenButton.dataset.entityTypeOpen || "");
-    state.entityTypePickerPath = state.entityTypePickerPath === path ? "" : path;
-    renderEntities(activeEntityFileMap());
-    if (state.entityTypePickerPath) requestAnimationFrame(() => {
-      els.entityBrowser?.querySelector(".entity-type-picker input")?.focus({ preventScroll: true });
-    });
-    return;
-  }
-
-  if (event.target.closest(".entity-type-picker")) {
-    event.stopPropagation();
-    return;
-  }
-
-  const button = event.target.closest("[data-entity-list-action]");
-  if (button) {
-    event.preventDefault();
-    event.stopPropagation();
-    const totalCount = Math.max(0, Number(button.dataset.entityRecentTotal) || 0);
-    if (button.dataset.entityListAction === "show-more-recent") {
-      state.entityRecentVisibleCount = Math.min(
-        totalCount,
-        Math.max(ENTITY_RECENT_PAGE_SIZE, state.entityRecentVisibleCount) + ENTITY_RECENT_PAGE_SIZE
-      );
-    } else if (button.dataset.entityListAction === "show-all-recent") {
-      state.entityRecentVisibleCount = totalCount;
-    }
-    renderEntities(activeEntityFileMap());
-    return;
-  }
-
-  const pinButton = event.target.closest("[data-entity-pin-path]");
-  if (pinButton) {
-    event.preventDefault();
-    event.stopPropagation();
-    await withBusyOperation("entity pin", () => toggleEntityPin(pinButton.dataset.entityPinPath));
-    return;
-  }
-
-  const card = event.target.closest("[data-entity-path]");
-  if (card && els.entityBrowser?.contains(card)) {
-    activateTab("wiki");
-    selectVaultPath(card.dataset.entityPath);
-  }
-}
-
-function handleEntityBrowserKeydown(event) {
-  if (!["Enter", " "].includes(event.key)) return;
-  if (event.target.closest("button, input, textarea, select, a")) return;
-  const card = event.target.closest("[data-entity-path]");
-  if (!card || !els.entityBrowser?.contains(card)) return;
-  event.preventDefault();
-  activateTab("wiki");
-  selectVaultPath(card.dataset.entityPath);
-}
-
-async function toggleEntityPin(path) {
-  const normalizedPath = normalizeMarginsPath(path);
-  if (!normalizedPath || !state.currentFileMap?.has(normalizedPath)) return false;
-  if (!state.vaultHandle) {
-    els.stats.textContent = "Open a vault before pinning entities.";
-    return false;
-  }
-
-  const currentBody = state.currentFileMap.get(normalizedPath);
-  const record = entityRecord(normalizedPath, currentBody);
-  if (!record) return false;
-  const shouldPin = !entityHasPinnedSignal(record);
-  const nextBody = entityPinnedBody(currentBody, shouldPin);
-  if (nextBody === currentBody) return false;
-
-  const granted = await requestVaultPermission(state.vaultHandle);
-  if (!granted) {
-    updateVaultStatus("Pinning needs vault write permission.");
-    return false;
-  }
-
-  await writeTextFile(state.vaultHandle, normalizedPath, nextBody);
-  state.currentFileMap.set(normalizedPath, nextBody);
-  state.loadedFileMap.set(normalizedPath, nextBody);
-  if (state.selectedPath === normalizedPath) {
-    setDocumentHeader(normalizedPath, nextBody, { kind: state.selectedKind || "wiki", readOnly: false });
-    setDocBody(nextBody, { readOnly: false });
-  }
-  renderEntities(activeEntityFileMap());
-  renderWikiFiles(state.currentFileMap);
-  drawGraph(graphFromFileMap(state.currentFileMap));
-  els.stats.textContent = `${shouldPin ? "Pinned" : "Unpinned"} ${record.title}`;
-  updateSaveButtonState();
-  return true;
-}
-
-async function setEntityPrimaryType(path, rawType) {
-  const normalizedPath = normalizeMarginsPath(path);
-  const primaryType = normalizePrimaryTypeValue(rawType);
-  if (!normalizedPath || !primaryType || !state.currentFileMap?.has(normalizedPath)) return false;
-
-  const currentBody = state.currentFileMap.get(normalizedPath);
-  const record = entityRecord(normalizedPath, currentBody);
-  if (!record) return false;
-  const nextBody = setEntityPrimaryTypeBody(currentBody, primaryType);
-  if (nextBody === currentBody) {
-    state.entityTypePickerPath = "";
-    renderEntities(activeEntityFileMap());
-    return false;
-  }
-
-  if (state.vaultHandle) {
-    const granted = await requestVaultPermission(state.vaultHandle);
-    if (!granted) {
-      updateVaultStatus("Changing entity type needs vault write permission.");
-      return false;
-    }
-    await writeTextFile(state.vaultHandle, normalizedPath, nextBody);
-    state.loadedFileMap.set(normalizedPath, nextBody);
-    state.hasUnsavedEdits = false;
-  } else {
-    state.hasUnsavedEdits = true;
-  }
-
-  state.currentFileMap.set(normalizedPath, nextBody);
-  if (state.selectedPath === normalizedPath) {
-    setDocumentHeader(normalizedPath, nextBody, { kind: state.selectedKind || "wiki", readOnly: false });
-    setDocBody(nextBody, { readOnly: false });
-  }
-  state.entityTypePickerPath = "";
-  renderEntities(activeEntityFileMap());
-  renderWikiFiles(state.currentFileMap);
-  drawGraph(graphFromFileMap(state.currentFileMap));
-  els.stats.textContent = `Set ${record.title} to ${entityTypeDisplayLabel(primaryType)}.`;
-  updateSaveButtonState();
-  return true;
-}
-
-function activeEntityFileMap() {
-  return state.currentFileMap || state.entityFileMap || new Map();
-}
-
-function setEntityPrimaryTypeBody(body, primaryType) {
-  return setFrontmatterScalarField(body, "primary_type", normalizePrimaryTypeValue(primaryType));
-}
-
-function setFrontmatterScalarField(body, key, value) {
-  const source = String(body || "");
-  const cleanKey = String(key || "").trim();
-  const cleanValue = String(value || "").trim();
-  if (!cleanKey || !cleanValue) return source;
-  const line = `${cleanKey}: ${yamlInlineScalar(cleanValue)}`;
-  const match = source.match(/^---\n([\s\S]*?)\n---\n?/);
-  if (!match) return `---\n${line}\n---\n\n${source}`;
-
-  const lines = match[1].split("\n");
-  const keyPattern = new RegExp(`^${escapeRegExp(cleanKey)}:\\s*`, "i");
-  let replaced = false;
-  const nextLines = lines.map((item) => {
-    if (keyPattern.test(item)) {
-      replaced = true;
-      return line;
-    }
-    return item;
-  });
-  if (!replaced) {
-    const typeIndex = nextLines.findIndex((item) => /^type:\s*/i.test(item));
-    nextLines.splice(typeIndex >= 0 ? typeIndex + 1 : nextLines.length, 0, line);
-  }
-  return `---\n${nextLines.join("\n")}${nextLines.length && !nextLines[nextLines.length - 1].endsWith("\n") ? "\n" : ""}---\n${source.slice(match[0].length)}`;
-}
-
-function entityPinnedBody(body, shouldPin) {
-  const source = String(body || "");
-  const match = source.match(/^---\n([\s\S]*?)\n---\n?/);
-  if (!match) {
-    return shouldPin ? `---\npriority: pinned\n---\n\n${source}` : source;
-  }
-
-  const frontmatter = shouldPin
-    ? setPinnedFrontmatterField(match[1])
-    : removePinnedFrontmatterSignals(match[1]);
-  return `---\n${frontmatter}${frontmatter.endsWith("\n") ? "" : "\n"}---\n${source.slice(match[0].length)}`;
-}
-
-function setPinnedFrontmatterField(frontmatter) {
-  const lines = frontmatter.split("\n");
-  let foundPriority = false;
-  const nextLines = lines
-    .filter((line) => !/^pinned:\s*/i.test(line))
-    .map((line) => {
-      if (/^priority:\s*/i.test(line)) {
-        foundPriority = true;
-        return "priority: pinned";
-      }
-      return line;
-    });
-  if (!foundPriority) nextLines.push("priority: pinned");
-  return nextLines.join("\n");
-}
-
-function removePinnedFrontmatterSignals(frontmatter) {
-  const lines = frontmatter.split("\n");
-  const nextLines = [];
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index];
-    const field = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
-    if (!field) {
-      nextLines.push(line);
-      continue;
-    }
-
-    const key = field[1].toLowerCase();
-    const value = yamlScalar(field[2]).toLowerCase();
-    if ((key === "priority" || key === "status") && value === "pinned") continue;
-    if (key === "pinned") continue;
-    if (key === "tags") {
-      if (field[2].trim()) {
-        const tags = frontmatterList(field[2]).filter((tag) => normalizeEntityTag(tag) !== "pinned");
-        if (tags.length) nextLines.push(`tags: [${tags.map(yamlInlineScalar).join(", ")}]`);
-        continue;
-      }
-
-      const listItems = [];
-      let cursor = index + 1;
-      while (cursor < lines.length && /^\s*-\s*/.test(lines[cursor])) {
-        const tag = yamlScalar(lines[cursor].replace(/^\s*-\s*/, ""));
-        if (normalizeEntityTag(tag) !== "pinned") listItems.push(lines[cursor]);
-        cursor += 1;
-      }
-      if (listItems.length) {
-        nextLines.push(line);
-        nextLines.push(...listItems);
-      }
-      index = cursor - 1;
-      continue;
-    }
-
-    nextLines.push(line);
-  }
-  return nextLines.filter((line, index, list) => line.trim() || index < list.length - 1).join("\n");
-}
-
-function yamlInlineScalar(value) {
-  const text = String(value || "").trim();
-  return /^[A-Za-z0-9_/-]+$/.test(text) ? text : JSON.stringify(text);
-}
-
-function isEntityFilterActive(kind, value) {
-  if (kind === "all") return state.entityFilterKind === "all";
-  return state.entityFilterKind === kind && state.entityFilterValue === value;
-}
-
-function filterEntityRecords(records) {
-  const query = String(state.entityQuery || "").trim().toLowerCase();
-  return records.filter((record) => {
-    if (state.entityFilterKind === "type" && record.typeLabel !== state.entityFilterValue) return false;
-    if (state.entityFilterKind === "tag" && !record.filterTags.includes(state.entityFilterValue)) return false;
-    if (!query) return true;
-    const searchable = [
-      record.title,
-      record.summary,
-      record.typeLabel,
-      record.bucketLabel,
-      ...record.tags
-    ].join(" ").toLowerCase();
-    return searchable.includes(query);
-  });
-}
-
-function entityTypeFacets(records) {
-  const counts = countBy(records, (record) => record.typeLabel);
-  const typeOrder = ["Person", "Advisor", "Company", "Project", "Concept", "Idea", "School", "Career", "Synthesis", "Entity"];
-  const orderedTypes = [...counts.entries()]
-    .sort((left, right) => {
-      const leftIndex = typeOrder.indexOf(left[0]);
-      const rightIndex = typeOrder.indexOf(right[0]);
-      const leftRank = leftIndex === -1 ? typeOrder.length : leftIndex;
-      const rightRank = rightIndex === -1 ? typeOrder.length : rightIndex;
-      return leftRank - rightRank || right[1] - left[1] || left[0].localeCompare(right[0]);
-    });
-  return [
-    { kind: "all", value: "", label: "All", count: records.length },
-    ...orderedTypes.map(([label, count]) => ({
-      kind: "type",
-      value: label,
-      label: pluralEntityTypeLabel(label),
-      count
-    }))
-  ];
-}
-
-function entityTagFacets(records) {
-  return [...countBy(records.flatMap((record) => record.filterTags), (tag) => tag).entries()]
-    .filter(([tag]) => tag)
-    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
-    .slice(0, 10)
-    .map(([tag, count]) => ({
-      kind: "tag",
-      value: tag,
-      label: tag,
-      count
-    }));
-}
-
-function entityTypePickerOptions(records = []) {
-  const counts = countBy(records, (record) => entityTypeDisplayLabel(record.typeLabel));
-  const canonicalLabels = CANONICAL_ENTITY_TYPES.map(entityTypeDisplayLabel);
-  const canonicalSet = new Set(canonicalLabels.map((label) => label.toLowerCase()));
-  const canonical = CANONICAL_ENTITY_TYPES.map((value, index) => ({
-    value,
-    label: canonicalLabels[index],
-    count: counts.get(canonicalLabels[index]) || 0
-  }));
-  const extras = [...counts.entries()]
-    .filter(([label]) => !canonicalSet.has(String(label).toLowerCase()))
-    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
-    .map(([label, count]) => ({
-      value: normalizePrimaryTypeValue(label),
-      label,
-      count
-    }));
-  return [...canonical, ...extras];
-}
-
-function countBy(items, keyForItem) {
-  const counts = new Map();
-  items.forEach((item) => {
-    const key = keyForItem(item);
-    if (!key) return;
-    counts.set(key, (counts.get(key) || 0) + 1);
-  });
-  return counts;
-}
-
-function pluralEntityTypeLabel(label) {
-  return {
-    Person: "People",
-    Advisor: "Advisors",
-    Company: "Companies",
-    Project: "Projects",
-    Concept: "Concepts",
-    Idea: "Ideas",
-    School: "School",
-    Career: "Career",
-    Synthesis: "Synthesis",
-    Entity: "Entities"
-  }[label] || `${label}s`;
-}
-
-function isEntityActiveThisWeek(updated) {
-  const timestamp = Date.parse(updated || "");
-  if (!Number.isFinite(timestamp)) return false;
-  return Date.now() - timestamp <= 7 * 24 * 60 * 60 * 1000;
-}
-
-function entityHasPinnedSignal(record) {
-  return Boolean(record.pinnedFlag) || record.priority === "pinned" || record.status === "pinned" || record.tags.includes("pinned");
-}
-
-function entityRecordsFromFileMap(fileMap) {
-  return [...fileMap.entries()]
-    .filter(([path, body]) => isEntityPagePath(path, body))
-    .map(([path, body]) => entityRecord(path, body))
-    .filter(Boolean)
-    .sort(entityRecordSort);
-}
-
-function isEntityPagePath(path, body) {
-  if (!path.startsWith("wiki/") || !path.endsWith(".md")) return false;
-  if (path.startsWith("wiki/.margins/") || path.startsWith("wiki/_templates/")) return false;
-  if (isBucketOverviewPath(path)) return false;
-  if (isFolderIndexPath(path)) return false;
-  if (path === "wiki/index.md" || /^wiki\/(ingest-tracker|log|wiki-stats)\.md$/.test(path)) return false;
-  if (path.startsWith("wiki/sources/")) return false;
-  if (/^wiki\/[^/]+\/source[-/]/.test(path)) return false;
-
-  const fields = frontmatterFields(body);
-  const type = String(fields.type || fields.kind || "").toLowerCase();
-  if (["source", "log", "index", "template"].includes(type)) return false;
-  if (["entity", "person", "company", "project", "concept", "school", "advisor", "family", "synthesis", "idea"].includes(type)) return true;
-  return /^wiki\/(concepts|entities|synthesis|personal|projects|career|ideas|school|coding)\//.test(path);
-}
-
-function isFolderIndexPath(path) {
-  const parts = path.split("/");
-  if (parts.length !== 3) return false;
-  return parts[2].replace(/\.md$/, "") === parts[1];
-}
-
-function entityRecord(path, body) {
-  const context = wikiContextRecord(path, body);
-  const fields = frontmatterFields(body);
-  const title = cleanSummary(context.title || titleFromSlug(basename(path).replace(/\.md$/, "")));
-  if (!title || /^(entities|projects|ideas|career|school|personal)$/i.test(title)) return null;
-  const filterTags = uniqueEntityTags([
-    ...context.tags,
-    ...extractInlineTags(body)
-  ]);
-  const typeLabel = entityTypeLabel(context.type, path, fields, filterTags, context.bucket);
-  const summary = cleanSummary(entityField(fields, "card_summary", "one_line", "one_liner") || context.summary || excerptForQuestion(bodyWithoutFrontmatter(body), 180));
-  const lastTouch = entityField(fields, "last_contact", "last_touch", "updated", "created") || context.updated || "";
-  const tags = [...new Set([
-    ...filterTags,
-    context.bucket,
-    context.status,
-    context.priority
-  ].filter(Boolean).map(normalizeEntityTag).filter(Boolean))];
-  return {
-    path,
-    title,
-    summary: clampSentence(summary, 180),
-    typeLabel,
-    bucketLabel: entityBucketLabel(path, context.bucket),
-    updated: context.updated || "",
-    lastTouch,
-    meta: entityMetaLine(fields, context, filterTags, lastTouch),
-    nextAction: entityNextAction(fields, body),
-    pinnedFlag: isPinnedFrontmatterValue(fields.pinned),
-    status: normalizeEntityTag(context.status),
-    priority: normalizeEntityTag(context.priority),
-    tags,
-    filterTags,
-    connectionCount: context.keyLinks.length
-  };
-}
-
-function isPinnedFrontmatterValue(value) {
-  return /^(true|yes|1|pinned)$/i.test(String(value || "").trim());
-}
-
-function entityField(fields, ...names) {
-  for (const name of names) {
-    const value = fields?.[name];
-    if (Array.isArray(value)) {
-      const joined = value.map((item) => cleanSummary(item)).filter(Boolean).join(", ");
-      if (joined) return joined;
-    } else if (String(value || "").trim()) {
-      return cleanSummary(value);
-    }
-  }
-  return "";
-}
-
-function entityMetaLine(fields, context, tags, lastTouch) {
-  const descriptors = [];
-  const role = shortEntityDescriptor(entityField(fields, "role", "job", "position"));
-  const firm = shortEntityDescriptor(entityField(fields, "firm", "company", "organization", "org"));
-  const category = shortEntityDescriptor(entityField(fields, "category"));
-  const relationship = shortEntityDescriptor(entityField(fields, "relationship"));
-  const status = shortEntityDescriptor(firstStatusPart(entityField(fields, "status")));
-
-  if (role && firm && !/independent advisor/i.test(firm)) descriptors.push(`${role} at ${firm}`);
-  else if (role) descriptors.push(role);
-  else if (firm) descriptors.push(firm);
-
-  for (const descriptor of [category, relationship, status, entityTagDescriptor(tags, context.bucket)]) {
-    if (!descriptor || descriptors.some((item) => item.toLowerCase() === descriptor.toLowerCase())) continue;
-    descriptors.push(descriptor);
-    if (descriptors.length >= 2) break;
-  }
-
-  const touch = lastTouchPhrase(lastTouch);
-  if (touch) descriptors.push(touch);
-  return descriptors.slice(0, touch ? 3 : 2).join(" · ");
-}
-
-function shortEntityDescriptor(value) {
-  return cleanSummary(value)
-    .replace(/\s*\([^)]*\)\s*$/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function firstStatusPart(value) {
-  return String(value || "").split(",")[0].trim();
-}
-
-function entityTagDescriptor(tags, bucket) {
-  const stop = new Set([
-    "active",
-    "advisor",
-    "aged",
-    "briefly",
-    "company",
-    "concept",
-    "contact",
-    "entity",
-    "fresh",
-    "old",
-    "peak",
-    "person",
-    "pinned",
-    "project",
-    "recent",
-    "source",
-    "vibrance/aged",
-    "vibrance/fresh",
-    "vibrance/old",
-    "vibrance/peak",
-    "vibrance/recent"
-  ]);
-  const tag = tags.find((item) => {
-    const normalized = normalizeEntityTag(item);
-    return normalized && !stop.has(normalized) && !normalized.startsWith("region/") && !normalized.startsWith("vibrance/");
-  });
-  if (tag) return titleFromSlug(tag.replace(/\//g, "-"));
-  return titleFromSlug(bucket || "wiki");
-}
-
-function lastTouchPhrase(value) {
-  const timestamp = Date.parse(value || "");
-  if (!Number.isFinite(timestamp)) return "";
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const then = new Date(timestamp);
-  const thenDay = new Date(then.getFullYear(), then.getMonth(), then.getDate()).getTime();
-  const days = Math.round((today - thenDay) / (24 * 60 * 60 * 1000));
-  if (days <= 0) return "last touch today";
-  if (days === 1) return "last touch yesterday";
-  if (days < 14) return `last touch ${days}d ago`;
-  if (days < 60) return `last touch ${Math.round(days / 7)}w ago`;
-  return `last touch ${then.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
-}
-
-function entityNextAction(fields, body) {
-  const direct = entityField(fields, "next_move", "next", "follow_up", "action", "todo");
-  if (direct) return clampSentence(direct, 96);
-  const section = bodyWithoutFrontmatter(body).match(/^##\s+(?:Next|Next move|Follow[- ]?up|Action)\b[^\n]*\n([\s\S]*?)(?=\n##\s|$)/im);
-  if (!section?.[1]) return "";
-  const line = section[1]
-    .split("\n")
-    .map((item) => item.replace(/^[-*]\s*/, "").trim())
-    .find(Boolean);
-  return clampSentence(line || "", 96);
-}
-
-function extractInlineTags(body) {
-  const text = bodyWithoutFrontmatter(body)
-    .replace(/```[\s\S]*?```/g, " ")
-    .split("\n")
-    .filter((line) => !/^#{1,6}\s/.test(line.trim()))
-    .join("\n");
-  const tags = [];
-  const pattern = /(^|[\s([{])#([A-Za-z0-9][A-Za-z0-9/_-]{0,64})\b/g;
-  let match;
-  while ((match = pattern.exec(text)) !== null) {
-    tags.push(match[2]);
-  }
-  return tags;
-}
-
-function uniqueEntityTags(tags) {
-  return [...new Set(tags.map(normalizeEntityTag).filter(Boolean))];
-}
-
-function normalizeEntityTag(tag) {
-  return String(tag || "")
-    .trim()
-    .replace(/^#/, "")
-    .replace(/^['"]|['"]$/g, "")
-    .toLowerCase();
-}
-
-function entityRecordSort(left, right) {
-  const leftDate = Date.parse(left.updated || "");
-  const rightDate = Date.parse(right.updated || "");
-  if (Number.isFinite(leftDate) || Number.isFinite(rightDate)) {
-    return (Number.isFinite(rightDate) ? rightDate : 0) - (Number.isFinite(leftDate) ? leftDate : 0);
-  }
-  return left.title.localeCompare(right.title);
-}
-
-function entityTypeLabel(type, path, fields = {}, tags = [], bucket = "") {
-  const primaryType = normalizePrimaryTypeValue(entityField(fields, "primary_type", "primaryType"));
-  if (primaryType) return entityTypeDisplayLabel(primaryType);
-  const normalized = String(type || "").toLowerCase();
-  const tagSet = new Set(tags.map(normalizeEntityTag));
-  const category = normalizeEntityTag(entityField(fields, "category"));
-  const role = normalizeEntityTag(entityField(fields, "role"));
-  const folder = normalizeEntityTag(bucket || path.split("/")[1] || "");
-  if (normalized === "entity") {
-    if (tagSet.has("advisor") || category === "coach" || /advisor|coach/.test(role)) return "Advisor";
-    if (tagSet.has("person") || tagSet.has("contact") || path.startsWith("wiki/personal/")) return "Person";
-    if (tagSet.has("company") || tagSet.has("firm") || tagSet.has("family-office") || tagSet.has("wealth-management")) return "Company";
-    if (tagSet.has("project") || tagSet.has("startup") || folder === "projects") return "Project";
-    if (tagSet.has("concept") || folder === "concepts" || folder === "ideas") return "Concept";
-    return "Entity";
-  }
-  if (normalized === "person") return "Person";
-  if (normalized === "company") return "Company";
-  if (normalized === "project") return "Project";
-  if (normalized === "concept") return "Concept";
-  if (normalized === "advisor") return "Advisor";
-  if (normalized === "school") return "School";
-  if (path.startsWith("wiki/personal/")) return "Person";
-  if (path.startsWith("wiki/projects/")) return "Project";
-  if (path.startsWith("wiki/ideas/")) return "Idea";
-  if (path.startsWith("wiki/career/")) return "Career";
-  if (path.startsWith("wiki/school/")) return "School";
-  return titleFromSlug(normalized || "entity");
-}
-
-function normalizePrimaryTypeValue(value) {
-  return slugifyLoose(cleanSummary(value));
-}
-
-function entityTypeDisplayLabel(value) {
-  const normalized = normalizePrimaryTypeValue(value);
-  return normalized ? titleFromSlug(normalized) : "Entity";
-}
-
-function entityBucketLabel(path, bucket) {
-  const folder = path.split("/")[1] || bucket || "wiki";
-  return titleFromSlug(bucket || folder);
-}
-
-function entityVibeClass(record) {
-  for (const vibe of ["peak", "fresh", "recent", "aged", "old"]) {
-    if (record.filterTags.includes(`vibrance/${vibe}`) || record.filterTags.includes(vibe)) return vibe;
-  }
-  const timestamp = Date.parse(record.lastTouch || record.updated || "");
-  if (Number.isFinite(timestamp)) {
-    const days = Math.max(0, Math.round((Date.now() - timestamp) / (24 * 60 * 60 * 1000)));
-    if (days <= 2) return "peak";
-    if (days <= 7) return "fresh";
-    if (days <= 30) return "recent";
-    if (days <= 90) return "aged";
-  }
-  return "old";
-}
 
 function ingestionStats(fileMap) {
   const sources = allSourceFiles();
@@ -11695,67 +9081,6 @@ function ingestionStats(fileMap) {
     graphEdges: graph.edges.length,
     unsavedEdits
   };
-}
-
-function uploadStat(label, value) {
-  return `
-    <div class="upload-stat">
-      <strong>${escapeHtml(value)}</strong>
-      <span>${escapeHtml(label)}</span>
-    </div>
-  `;
-}
-
-function uploadDetail(label, value) {
-  return `
-    <div>
-      <span>${escapeHtml(label)}</span>
-      <strong>${escapeHtml(formatStatNumber(value))}</strong>
-    </div>
-  `;
-}
-
-function formatStatNumber(value) {
-  return Number(value || 0).toLocaleString("en-US");
-}
-
-function textSizeBytes(value) {
-  const text = String(value || "");
-  try {
-    return new TextEncoder().encode(text).length;
-  } catch {
-    return text.length;
-  }
-}
-
-function formatByteSize(bytes) {
-  const value = Math.max(0, Number(bytes) || 0);
-  if (value < 1024) return `${formatStatNumber(value)} B`;
-  if (value < 1024 * 1024) return `${(value / 1024).toFixed(value < 10 * 1024 ? 1 : 0)} KB`;
-  return `${(value / (1024 * 1024)).toFixed(value < 10 * 1024 * 1024 ? 1 : 0)} MB`;
-}
-
-function formatProcessDuration(milliseconds) {
-  const seconds = Math.max(0, Number(milliseconds) || 0) / 1000;
-  if (seconds < 10) return `${seconds.toFixed(1)}s`;
-  if (seconds < 60) return `${Math.round(seconds)}s`;
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = Math.round(seconds % 60);
-  return `${minutes}m ${String(remainingSeconds).padStart(2, "0")}s`;
-}
-
-function formatUsd(value) {
-  return `$${Number(value || 0).toFixed(4).replace(/0+$/, "").replace(/\.$/, ".00")}`;
-}
-
-function sidebarFolderOrder(name) {
-  return {
-    raw: 0,
-    raw_sources: 1,
-    wiki: 2,
-    commands: 3,
-    agents: 4
-  }[name] ?? 4;
 }
 
 function allSourceFiles() {
@@ -11789,7 +9114,25 @@ function updateReviewModeHelp() {
 async function handleWorkflowButtonClick() {
   const step = workflowStep();
   if (step.disabled) return;
+  if (step.action === "cancel") {
+    cancelActiveOperation();
+    return;
+  }
+  if (step.action === "vault" || step.action === "reconnectVault") {
+    await runWorkflowStep(step);
+    return;
+  }
   await withBusyOperation(step.label, () => runWorkflowStep(step));
+}
+
+function cancelActiveOperation() {
+  if (!activeOperation || activeFetchControllers.size === 0) return;
+  const error = apiCancelledError();
+  for (const controller of activeFetchControllers) {
+    controller.abort(error);
+  }
+  els.stats.textContent = `Cancelling ${activeOperation}...`;
+  updateWorkflowState();
 }
 
 async function runWorkflowStep(step = workflowStep()) {
@@ -11827,6 +9170,7 @@ async function runWorkflowStep(step = workflowStep()) {
 function updateWorkflowState() {
   const step = workflowStep();
   els.workflowPanel?.classList.toggle("vault-connected", !!state.vaultHandle);
+  els.workflowPanel?.classList.toggle("busy", Boolean(activeOperation));
   els.workflowGuidance.textContent = step.guidance;
   els.workflowBtn.textContent = step.label;
   els.workflowBtn.disabled = !!step.disabled;
@@ -11835,10 +9179,10 @@ function updateWorkflowState() {
 function workflowStep() {
   if (activeOperation) {
     return {
-      action: "busy",
-      label: "Working...",
+      action: "cancel",
+      label: activeFetchControllers.size ? "Cancel" : "Working...",
       guidance: `${activeOperation} is running.`,
-      disabled: true
+      disabled: activeFetchControllers.size === 0
     };
   }
 
@@ -12038,194 +9382,6 @@ function renderAcceptedLlmEditState() {
   `).join("");
 }
 
-function renderWikiFiles(fileMap) {
-  const query = (els.vaultSearch?.value || "").trim().toLowerCase();
-  const entries = vaultBrowserEntries(fileMap || new Map()).filter((entry) => (
-    !query || entry.path.toLowerCase().includes(query) || entry.body.toLowerCase().includes(query)
-  ));
-  if (els.vaultTreeCount) els.vaultTreeCount.textContent = fileCountLabel(entries.length);
-
-  if (entries.length === 0) {
-    els.wikiTree.className = "tree-list empty";
-    els.wikiTree.textContent = "Open a vault or add documents to browse source files and wiki notes.";
-    setDocumentHeader(null, "", { title: "No file selected", meta: "No file selected" });
-    setDocBody("Open a source file or wiki note, then choose a file.", { readOnly: true });
-    if (els.docSaveBtn) els.docSaveBtn.disabled = true;
-    return;
-  }
-
-  const hasSelectedEntry = state.selectedPath && entries.some((entry) => entry.path === state.selectedPath);
-  if (!hasSelectedEntry && !query) {
-    state.selectedPath = defaultVaultBrowserPath(entries);
-    state.selectedKind = state.selectedPath ? pathKind(state.selectedPath) : "";
-  }
-
-  els.wikiTree.className = "vault-file-browser";
-  els.wikiTree.innerHTML = renderVaultFolderTree(entries);
-
-  els.wikiTree.querySelectorAll(".vault-file").forEach((item) => {
-    item.addEventListener("click", () => {
-      selectVaultPath(item.dataset.path);
-    });
-  });
-
-  if (state.selectedPath && entries.some((entry) => entry.path === state.selectedPath)) {
-    selectVaultPath(state.selectedPath, { preserveFocus: true });
-    return;
-  }
-
-  state.selectedPath = null;
-  state.selectedKind = "";
-  setDocumentHeader(null, "", { title: "No file selected", meta: "No file selected" });
-  setDocBody("Choose a source file or wiki note.", { readOnly: true });
-  if (els.docSaveBtn) els.docSaveBtn.disabled = true;
-}
-
-function defaultVaultBrowserPath(entries = []) {
-  const paths = entries.map((entry) => entry.path);
-  return paths.find((path) => path === "CLAUDE.md")
-    || paths.find((path) => path === "wiki/index.md")
-    || paths.find((path) => /^wiki\/[^/]+\/index\.md$/i.test(path))
-    || paths.find((path) => path.startsWith("wiki/") && path.endsWith(".md"))
-    || paths[0]
-    || "";
-}
-
-function vaultBrowserEntries(fileMap) {
-  const rawEntries = allSourceFiles().map((file) => ({
-    path: rawSourceOutputPath(file.name),
-    body: file.text || (file.type === "pdf" ? "PDF source preserved in raw/." : "Original file preserved in raw/."),
-    kind: "raw",
-    editable: (file.type !== "pdf" && file.type !== "attachment") || !!file.text
-  }));
-  const wikiEntries = [...fileMap.entries()]
-    .filter(([path]) => path.startsWith("wiki/") && !path.startsWith("wiki/.margins/"))
-    .map(([path, body]) => ({
-      path: normalizeMarginsPath(path),
-      body,
-      kind: "wiki",
-      editable: true
-    }));
-  const operatingEntries = [...fileMap.entries()]
-    .filter(([path]) => isOperatingBrowserPath(path))
-    .map(([path, body]) => ({
-      path: normalizeMarginsPath(path),
-      body,
-      kind: "operating",
-      editable: true
-    }));
-  return [...operatingEntries, ...rawEntries, ...wikiEntries].sort((left, right) => (
-    browserPathRank(left.path) - browserPathRank(right.path) || left.path.localeCompare(right.path)
-  ));
-}
-
-function isOperatingBrowserPath(path) {
-  const normalizedPath = normalizeMarginsPath(path);
-  return ROOT_GENERATED_TEXT_FILES.has(normalizedPath) ||
-    normalizedPath.startsWith("commands/") ||
-    normalizedPath.startsWith("agents/");
-}
-
-function browserPathRank(path) {
-  const normalizedPath = normalizeMarginsPath(path);
-  if (ROOT_GENERATED_TEXT_FILES.has(normalizedPath)) return 0;
-  if (normalizedPath.startsWith("commands/") || normalizedPath.startsWith("agents/")) return 1;
-  if (normalizedPath.startsWith("raw/")) return 2;
-  if (normalizedPath.startsWith("wiki/")) return 3;
-  return 4;
-}
-
-function renderVaultFolderTree(entries) {
-  const root = { folders: new Map(), files: [] };
-  for (const entry of entries) {
-    const parts = entry.path.split("/");
-    let node = root;
-    for (const part of parts.slice(0, -1)) {
-      if (!node.folders.has(part)) node.folders.set(part, { folders: new Map(), files: [] });
-      node = node.folders.get(part);
-    }
-    node.files.push(entry);
-  }
-  const rootFiles = renderVaultFiles(root.files, 0);
-  const folders = [...root.folders.entries()]
-    .sort(([left], [right]) => sidebarFolderOrder(left) - sidebarFolderOrder(right) || left.localeCompare(right))
-    .map(([name, node]) => renderVaultFolder(name, node, 0))
-    .join("");
-  return `${rootFiles}${folders}`;
-}
-
-function renderVaultFolder(name, node, depth, parentPath = "") {
-  const folderPath = parentPath ? `${parentPath}/${name}` : name;
-  const hasQuery = !!(els.vaultSearch?.value || "").trim();
-  const shouldOpen = hasQuery || state.selectedPath?.startsWith(`${folderPath}/`);
-  const folders = [...node.folders.entries()]
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([childName, childNode]) => renderVaultFolder(childName, childNode, depth + 1, folderPath))
-    .join("");
-  const files = node.files
-    .sort((left, right) => browserPathRank(left.path) - browserPathRank(right.path) || left.path.localeCompare(right.path));
-  return `
-    <details class="vault-folder" style="--depth: ${depth}"${shouldOpen ? " open" : ""}>
-      <summary><span>${escapeHtml(name)}</span></summary>
-      ${folders}${renderVaultFiles(files, depth + 1)}
-    </details>
-  `;
-}
-
-function renderVaultFiles(files, depth) {
-  return files.map((file) => `
-    <button class="vault-file" type="button" data-path="${escapeHtml(file.path)}" style="--depth: ${depth}">
-      <span>${escapeHtml(basename(file.path))}</span>
-    </button>
-  `).join("");
-}
-
-function vaultFolderCount(node) {
-  let count = node.files.length;
-  for (const child of node.folders.values()) count += vaultFolderCount(child);
-  return count;
-}
-
-function selectVaultPath(path, options = {}) {
-  const normalizedPath = normalizeMarginsPath(path);
-  const rawFile = rawFileForPath(normalizedPath);
-  if (rawFile) {
-    state.selectedPath = rawSourceOutputPath(rawFile.name);
-    state.selectedKind = "raw";
-    const body = rawFile.text || (rawFile.type === "pdf" ? "PDF source preserved in raw/." : "Original file preserved in raw/.");
-    const readOnly = (rawFile.type === "pdf" || rawFile.type === "attachment") && !rawFile.text;
-    setDocumentHeader(state.selectedPath, body, { kind: "raw", readOnly });
-    setDocBody(body, { readOnly });
-    updateSelectedFileState(options);
-    return true;
-  }
-
-  if (state.currentFileMap?.has(normalizedPath)) {
-    state.selectedPath = normalizedPath;
-    state.selectedKind = normalizedPath.startsWith("wiki/") ? "wiki" : "system";
-    const body = state.currentFileMap.get(normalizedPath);
-    setDocumentHeader(normalizedPath, body, { kind: state.selectedKind, readOnly: false });
-    setDocBody(body, { readOnly: false });
-    updateSelectedFileState(options);
-    return true;
-  }
-
-  return false;
-}
-
-function updateSelectedFileState(options = {}) {
-  els.wikiTree?.querySelectorAll(".vault-file").forEach((item) => {
-    item.classList.toggle("active", item.dataset.path === state.selectedPath);
-  });
-  if (!options.preserveFocus && document.activeElement !== els.docBody) {
-    els.docBody?.focus({ preventScroll: true });
-  }
-  updateSaveButtonState();
-}
-
-function fileCountLabel(count) {
-  return `${count} file${count === 1 ? "" : "s"}`;
-}
 
 function setDocumentHeader(path, body = "", options = {}) {
   if (els.docPath) els.docPath.textContent = path ? documentBreadcrumb(path) : "Vault";
@@ -12681,20 +9837,6 @@ function strictReviewQuestions(fileMap) {
   )];
 }
 
-function reviewQuestion(severity, kind, path, question, reason, recommendation, options = ["Yes", "No", "Use default"]) {
-  return { severity, kind, path, question, reason, recommendation, options };
-}
-
-function dedupeQuestions(questions) {
-  const seen = new Set();
-  return questions.filter((question) => {
-    const key = `${question.kind}:${question.question}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
 function validateLlmFiles(fileMap) {
   const warningsByPath = new Map();
   const entries = [...fileMap.entries()];
@@ -12734,656 +9876,6 @@ function validateLlmFiles(fileMap) {
   return warningsByPath;
 }
 
-function hasYamlFrontmatter(body) {
-  return /^---\n[\s\S]+?\n---\n/.test(body);
-}
-
-function isWikiPagePath(path) {
-  return (/^wiki\/(sources|concepts|entities|synthesis)\/[^/]+\.md$/.test(path) ||
-    /^wiki\/(ingest-tracker|log|wiki-stats)\.md$/.test(path) ||
-    path === "wiki/index.md");
-}
-
-function isSourceNodePagePath(path) {
-  return path.startsWith("wiki/sources/") && !isBucketOverviewPath(path);
-}
-
-function isPromotedWikiPagePath(path) {
-  return (
-    path.startsWith("wiki/concepts/") ||
-    path.startsWith("wiki/entities/") ||
-    path.startsWith("wiki/synthesis/")
-  ) && !isBucketOverviewPath(path);
-}
-
-function isBucketOverviewPath(path) {
-  return /^wiki\/(sources\/sources|concepts\/concepts|entities\/entities|synthesis\/synthesis)\.md$/.test(path);
-}
-
-function warningLabel(warnings) {
-  return warnings.length ? ` · ${warnings.length} warning${warnings.length === 1 ? "" : "s"}` : "";
-}
-
-function drawGraph(graph) {
-  setupGraphInteractions();
-  if (!graph || graph.nodes.length === 0) {
-    stopGraphSimulation();
-    graphView.nodes = [];
-    graphView.edges = [];
-    graphView.selectedId = "";
-    graphView.hoverId = "";
-    graphView.transform = { x: 0, y: 0, k: 1 };
-    updateGraphSelection();
-    els.graphSvg.setAttribute("viewBox", `0 0 ${graphView.width} ${graphView.height}`);
-    els.graphSvg.innerHTML = `
-      <rect class="graph-backdrop" width="${graphView.width}" height="${graphView.height}" />
-      <text class="graph-empty" x="${graphView.width / 2}" y="${graphView.height / 2}" text-anchor="middle">No accepted graph nodes yet.</text>
-    `;
-    return;
-  }
-
-  const previous = new Map(graphView.nodes.map((node) => [node.id, node]));
-  const degree = new Map(graph.nodes.map((node) => [node.id, 0]));
-  graph.edges.forEach((edge) => {
-    degree.set(edge.from, (degree.get(edge.from) || 0) + 1);
-    degree.set(edge.to, (degree.get(edge.to) || 0) + 1);
-  });
-
-  graphView.nodes = graph.nodes.map((node, index) => {
-    const prior = previous.get(node.id);
-    const seeded = seededGraphPoint(node, index, graph.nodes.length);
-    return {
-      ...node,
-      path: graphNodePath(node),
-      degree: degree.get(node.id) || 0,
-      x: prior?.x ?? seeded.x,
-      y: prior?.y ?? seeded.y,
-      vx: prior?.vx ?? 0,
-      vy: prior?.vy ?? 0
-    };
-  });
-  const byId = new Map(graphView.nodes.map((node) => [node.id, node]));
-  graphView.edges = graph.edges
-    .map((edge) => ({ ...edge, source: byId.get(edge.from), target: byId.get(edge.to) }))
-    .filter((edge) => edge.source && edge.target);
-  graphView.selectedId = "";
-  graphView.hoverId = "";
-  els.graphSvg.setAttribute("viewBox", `0 0 ${graphView.width} ${graphView.height}`);
-  updateGraphSelection();
-  renderGraphFrame();
-  startGraphSimulation(0.86);
-}
-
-function setupGraphInteractions() {
-  if (graphView.bound) return;
-  graphView.bound = true;
-
-  els.graphSvg.addEventListener("pointerdown", (event) => {
-    const point = graphPointer(event);
-    const node = graphNodeFromEvent(event) || graphNodeAtPoint(point);
-    if (node) {
-      graphView.pointer = {
-        type: "node",
-        id: node.id,
-        startX: point.x,
-        startY: point.y,
-        offsetX: node.x - point.x,
-        offsetY: node.y - point.y,
-        lastX: node.x,
-        lastY: node.y,
-        moved: false
-      };
-      graphView.hoverId = node.id;
-      updateGraphSelection();
-      renderGraphFrame();
-      startGraphSimulation(0.42);
-    } else {
-      graphView.pointer = {
-        type: "pan",
-        startX: event.clientX,
-        startY: event.clientY,
-        x: graphView.transform.x,
-        y: graphView.transform.y,
-        moved: false
-      };
-    }
-    try {
-      els.graphSvg.setPointerCapture?.(event.pointerId);
-    } catch {
-      // Synthetic test events and some browsers may not expose an active pointer id.
-    }
-  });
-
-  els.graphSvg.addEventListener("pointermove", (event) => {
-    const active = graphView.pointer;
-    if (active?.type === "node") {
-      const node = graphView.nodes.find((item) => item.id === active.id);
-      if (!node) return;
-      const point = graphPointer(event);
-      const nextX = clamp(point.x + active.offsetX, 44, graphView.width - 44);
-      const nextY = clamp(point.y + active.offsetY, 44, graphView.height - 44);
-      node.vx = (nextX - active.lastX) * 0.28;
-      node.vy = (nextY - active.lastY) * 0.28;
-      node.x = nextX;
-      node.y = nextY;
-      active.lastX = nextX;
-      active.lastY = nextY;
-      active.moved = active.moved || Math.hypot(point.x - active.startX, point.y - active.startY) > 4;
-      graphView.hoverId = node.id;
-      pullConnectedGraphNodes(node);
-      startGraphSimulation(0.5);
-      renderGraphFrame();
-      return;
-    }
-
-    if (active?.type === "pan") {
-      const dx = event.clientX - active.startX;
-      const dy = event.clientY - active.startY;
-      graphView.transform.x = active.x + dx * (graphView.width / Math.max(els.graphSvg.clientWidth, 1));
-      graphView.transform.y = active.y + dy * (graphView.height / Math.max(els.graphSvg.clientHeight, 1));
-      active.moved = active.moved || Math.hypot(dx, dy) > 4;
-      renderGraphFrame();
-      return;
-    }
-
-    const hoverPoint = graphPointer(event);
-    const hoverNode = graphNodeFromEvent(event) || graphNodeAtPoint(hoverPoint);
-    const nextHoverId = hoverNode?.id || "";
-    if (nextHoverId !== graphView.hoverId) {
-      graphView.hoverId = nextHoverId;
-      renderGraphFrame();
-    }
-  });
-
-  els.graphSvg.addEventListener("pointerup", (event) => {
-    const active = graphView.pointer;
-    if (active?.type === "node") {
-      const node = graphView.nodes.find((item) => item.id === active.id);
-      if (node && !active.moved) {
-        openGraphNode(node);
-      } else if (node) {
-        graphView.hoverId = node.id;
-        startGraphSimulation(0.36);
-      }
-    }
-    graphView.pointer = null;
-    try {
-      els.graphSvg.releasePointerCapture?.(event.pointerId);
-    } catch {
-      // Ignore missing pointer capture; the graph state has already been released.
-    }
-  });
-
-  els.graphSvg.addEventListener("pointerleave", () => {
-    if (graphView.pointer) return;
-    graphView.hoverId = "";
-    renderGraphFrame();
-  });
-
-  document.addEventListener("pointermove", (event) => {
-    if (!graphView.hoverId || graphView.pointer) return;
-    if (els.graphSvg.contains(event.target)) return;
-    graphView.hoverId = "";
-    renderGraphFrame();
-  });
-
-  els.graphSvg.addEventListener("dblclick", (event) => {
-    const node = graphNodeFromEvent(event) || graphNodeAtPoint(graphPointer(event));
-    if (node) {
-      openGraphNode(node);
-      return;
-    }
-    resetGraphCamera();
-  });
-
-  els.graphSvg.addEventListener("wheel", (event) => {
-    event.preventDefault();
-    zoomGraphFromWheel(event);
-  }, { passive: false });
-}
-
-function startGraphSimulation(alpha = 0.7) {
-  graphView.alpha = Math.max(graphView.alpha, alpha);
-  if (graphView.raf) return;
-  graphView.raf = requestAnimationFrame(runGraphSimulation);
-}
-
-function stopGraphSimulation() {
-  if (graphView.raf) cancelAnimationFrame(graphView.raf);
-  graphView.raf = 0;
-  graphView.alpha = 0;
-}
-
-function runGraphSimulation() {
-  graphView.raf = 0;
-  const ambientAlpha = graphAmbientAlpha();
-  if (graphView.nodes.length === 0 || graphView.alpha < 0.01 && ambientAlpha === 0) {
-    graphView.alpha = 0;
-    renderGraphFrame();
-    return;
-  }
-
-  graphView.alpha = Math.max(graphView.alpha, ambientAlpha);
-  tickGraphForces();
-  renderGraphFrame();
-  graphView.alpha *= graphView.alpha > 0.18 ? 0.972 : 0.988;
-  graphView.raf = requestAnimationFrame(runGraphSimulation);
-}
-
-function graphAmbientAlpha() {
-  const graphActive = document.getElementById("graph-view")?.classList.contains("active");
-  if (!graphActive || graphView.nodes.length > 180) return 0;
-  return graphView.pointer ? 0.05 : 0.024;
-}
-
-function tickGraphForces() {
-  const nodes = graphView.nodes;
-  const alpha = graphView.alpha;
-  const centerX = graphView.width / 2;
-  const centerY = graphView.height / 2;
-  const draggingId = graphView.pointer?.type === "node" ? graphView.pointer.id : "";
-  graphView.tick += 1;
-
-  for (let i = 0; i < nodes.length; i += 1) {
-    const left = nodes[i];
-    for (let j = i + 1; j < nodes.length; j += 1) {
-      const right = nodes[j];
-      let dx = right.x - left.x;
-      let dy = right.y - left.y;
-      let distanceSq = dx * dx + dy * dy;
-      if (distanceSq < 0.01) {
-        dx = ((hashString(left.id) % 17) - 8) / 10;
-        dy = ((hashString(right.id) % 19) - 9) / 10;
-        distanceSq = dx * dx + dy * dy;
-      }
-      const distance = Math.sqrt(distanceSq);
-      const minDistance = nodeRadius(left.type, left.degree) + nodeRadius(right.type, right.degree) + 24;
-      const charge = (430 * alpha) / Math.max(distanceSq, 140);
-      const nx = dx / distance;
-      const ny = dy / distance;
-      left.vx -= nx * charge;
-      left.vy -= ny * charge;
-      right.vx += nx * charge;
-      right.vy += ny * charge;
-
-      if (distance < minDistance) {
-        const collision = (minDistance - distance) * 0.038 * alpha;
-        left.vx -= nx * collision;
-        left.vy -= ny * collision;
-        right.vx += nx * collision;
-        right.vy += ny * collision;
-      }
-    }
-  }
-
-  for (const edge of graphView.edges) {
-    const source = edge.source;
-    const target = edge.target;
-    const dx = target.x - source.x;
-    const dy = target.y - source.y;
-    const distance = Math.max(Math.sqrt(dx * dx + dy * dy), 1);
-    const desired = graphLinkDistance(source, target);
-    const stretch = distance - desired;
-    const force = stretch * (stretch > 0 ? 0.022 : 0.009) * alpha;
-    const fx = (dx / distance) * force;
-    const fy = (dy / distance) * force;
-    source.vx += fx;
-    source.vy += fy;
-    target.vx -= fx;
-    target.vy -= fy;
-  }
-
-  for (const node of nodes) {
-    if (node.id === draggingId) {
-      node.vx *= 0.62;
-      node.vy *= 0.62;
-      continue;
-    }
-    const home = graphNodeHome(node);
-    const drift = graphAmbientDrift(node);
-    node.vx += (home.x - node.x) * 0.0014 * alpha;
-    node.vy += (home.y - node.y) * 0.0014 * alpha;
-    node.vx += (centerX - node.x) * 0.00016 * alpha;
-    node.vy += (centerY - node.y) * 0.00016 * alpha;
-    node.vx += drift.x * alpha;
-    node.vy += drift.y * alpha;
-    node.vx *= 0.9;
-    node.vy *= 0.9;
-    node.x = clamp(node.x + node.vx, 44, graphView.width - 44);
-    node.y = clamp(node.y + node.vy, 44, graphView.height - 44);
-  }
-}
-
-function graphAmbientDrift(node) {
-  if (graphView.alpha > 0.09 || graphView.nodes.length > 180) return { x: 0, y: 0 };
-  const phase = (hashString(node.id) % 628) / 100;
-  const t = graphView.tick / 80;
-  return {
-    x: Math.sin(t + phase) * 0.018,
-    y: Math.cos(t * 0.86 + phase) * 0.018
-  };
-}
-
-function pullConnectedGraphNodes(node) {
-  for (const edge of graphView.edges) {
-    const neighbor = edge.source === node ? edge.target : edge.target === node ? edge.source : null;
-    if (!neighbor) continue;
-    const dx = node.x - neighbor.x;
-    const dy = node.y - neighbor.y;
-    const distance = Math.max(Math.sqrt(dx * dx + dy * dy), 1);
-    const desired = graphLinkDistance(node, neighbor);
-    const stretch = Math.max(0, distance - desired * 0.62);
-    const pull = Math.min(9, stretch * 0.045);
-    neighbor.vx += (dx / distance) * pull;
-    neighbor.vy += (dy / distance) * pull;
-  }
-}
-
-function renderGraphFrame() {
-  const activeId = graphView.hoverId;
-  const relatedIds = activeId ? graphRelatedIds(activeId) : new Set();
-  const transform = graphView.transform;
-  const edgeSvg = graphView.edges.map((edge) => {
-    const active = activeId && (edge.from === activeId || edge.to === activeId);
-    const faded = activeId && !active;
-    return `
-      <line class="graph-edge${active ? " active" : ""}${faded ? " faded" : ""}"
-        x1="${edge.source.x.toFixed(2)}" y1="${edge.source.y.toFixed(2)}"
-        x2="${edge.target.x.toFixed(2)}" y2="${edge.target.y.toFixed(2)}" />
-    `;
-  }).join("");
-
-  const nodeSvg = graphView.nodes.map((node) => {
-    const selected = false;
-    const hovered = node.id === graphView.hoverId;
-    const related = relatedIds.has(node.id);
-    const faded = activeId && !selected && !hovered && !related;
-    const radius = nodeRadius(node.type, node.degree);
-    const scale = hovered ? 1.16 : 1;
-    return `
-      <g class="graph-node type-${escapeHtml(node.type)}${selected ? " selected" : ""}${hovered ? " hovered" : ""}${related ? " related" : ""}${faded ? " faded" : ""}"
-        data-id="${escapeHtml(node.id)}" transform="translate(${node.x.toFixed(2)} ${node.y.toFixed(2)}) scale(${scale.toFixed(3)})" tabindex="0" role="button">
-        <circle class="node-glow" r="${(radius + 6).toFixed(2)}" />
-        <circle class="node-core" r="${radius.toFixed(2)}" />
-        <circle class="node-rim" r="${radius.toFixed(2)}" />
-        <text class="node-label" x="${(radius + 10).toFixed(2)}" y="4">${escapeHtml(shortLabel(node.title))}</text>
-        <title>${escapeHtml(node.title)}</title>
-      </g>
-    `;
-  }).join("");
-
-  els.graphSvg.innerHTML = `
-    <rect class="graph-backdrop" width="${graphView.width}" height="${graphView.height}" />
-    <g class="graph-camera" transform="translate(${transform.x.toFixed(2)} ${transform.y.toFixed(2)}) scale(${transform.k.toFixed(4)})">
-      <g class="graph-edge-layer">${edgeSvg}</g>
-      <g class="graph-node-layer">${nodeSvg}</g>
-    </g>
-  `;
-}
-
-function graphPointer(event) {
-  const svgPoint = graphSvgPoint(event);
-  return {
-    x: (svgPoint.x - graphView.transform.x) / graphView.transform.k,
-    y: (svgPoint.y - graphView.transform.y) / graphView.transform.k
-  };
-}
-
-function graphSvgPoint(event) {
-  const rect = els.graphSvg.getBoundingClientRect();
-  return {
-    x: ((event.clientX - rect.left) / Math.max(rect.width, 1)) * graphView.width,
-    y: ((event.clientY - rect.top) / Math.max(rect.height, 1)) * graphView.height
-  };
-}
-
-function graphNodeFromEvent(event) {
-  const element = event.target.closest?.(".graph-node");
-  if (!element) return null;
-  const id = element.dataset.id;
-  return graphView.nodes.find((node) => node.id === id) || null;
-}
-
-function graphNodeAtPoint(point) {
-  let best = null;
-  let bestDistance = Infinity;
-  const hitPadding = 8 / Math.max(graphView.transform.k, 0.35);
-  for (const node of graphView.nodes) {
-    const distance = Math.hypot(point.x - node.x, point.y - node.y);
-    const radius = nodeRadius(node.type, node.degree) + hitPadding;
-    if (distance <= radius && distance < bestDistance) {
-      best = node;
-      bestDistance = distance;
-    }
-  }
-  return best;
-}
-
-function selectGraphNode(id, options = {}) {
-  graphView.selectedId = id;
-  graphView.hoverId = "";
-  updateGraphSelection();
-  renderGraphFrame();
-  if (options.open) {
-    const node = graphView.nodes.find((item) => item.id === id);
-    if (node) openGraphNode(node);
-  }
-}
-
-function updateGraphSelection() {
-  if (!els.graphSelection) return;
-  const node = graphView.nodes.find((item) => item.id === graphView.selectedId);
-  els.graphSelection.hidden = !node;
-  if (!node) return;
-  els.graphSelectionMeta.textContent = graphNodeTypeLabel(node.type);
-  els.graphSelectionTitle.textContent = node.title;
-}
-
-function openSelectedGraphNode() {
-  const node = graphView.nodes.find((item) => item.id === graphView.selectedId);
-  if (node) openGraphNode(node);
-}
-
-function openGraphNode(node) {
-  const path = graphNodePath(node);
-  if (!path || !state.currentFileMap?.has(path)) return;
-  activateTab("wiki");
-  selectVaultPath(path);
-}
-
-function resetGraphCamera() {
-  graphView.transform = { x: 0, y: 0, k: 1 };
-  startGraphSimulation(0.28);
-  renderGraphFrame();
-}
-
-function zoomGraphFromWheel(event) {
-  const deltaPixels = event.deltaMode === 1
-    ? event.deltaY * 16
-    : event.deltaMode === 2
-      ? event.deltaY * 320
-      : event.deltaY;
-  const factor = clamp(Math.exp(-deltaPixels * 0.0011), 0.84, 1.19);
-  zoomGraph(event, factor);
-}
-
-function zoomGraph(event, factor) {
-  const point = graphSvgPoint(event);
-  const old = graphView.transform;
-  const nextK = clamp(old.k * factor, 0.35, 3.2);
-  const graphX = (point.x - old.x) / old.k;
-  const graphY = (point.y - old.y) / old.k;
-  graphView.transform = {
-    x: point.x - graphX * nextK,
-    y: point.y - graphY * nextK,
-    k: nextK
-  };
-  renderGraphFrame();
-}
-
-function graphRelatedIds(id) {
-  const related = new Set([id]);
-  graphView.edges.forEach((edge) => {
-    if (edge.from === id) related.add(edge.to);
-    if (edge.to === id) related.add(edge.from);
-  });
-  return related;
-}
-
-function seededGraphPoint(node, index, total) {
-  const home = graphNodeHome(node);
-  const seed = hashString(node.id || node.title || index);
-  const angle = ((seed % 360) / 360) * Math.PI * 2;
-  const spread = Math.min(240, 80 + total * 8);
-  return {
-    x: clamp(home.x + Math.cos(angle) * spread * (0.45 + ((seed % 13) / 30)), 60, graphView.width - 60),
-    y: clamp(home.y + Math.sin(angle) * spread * (0.45 + ((seed % 17) / 34)), 60, graphView.height - 60)
-  };
-}
-
-function graphNodeHome(node) {
-  const width = graphView.width;
-  const height = graphView.height;
-  return {
-    index: { x: width * 0.5, y: height * 0.48 },
-    source: { x: width * 0.29, y: height * 0.58 },
-    concept: { x: width * 0.52, y: height * 0.38 },
-    project: { x: width * 0.39, y: height * 0.72 },
-    entity: { x: width * 0.72, y: height * 0.55 },
-    synthesis: { x: width * 0.56, y: height * 0.68 }
-  }[node.type] || { x: width * 0.5, y: height * 0.5 };
-}
-
-function graphLinkDistance(source, target) {
-  const sourceRadius = nodeRadius(source.type, source.degree);
-  const targetRadius = nodeRadius(target.type, target.degree);
-  const typeBonus = source.type === target.type ? 30 : 0;
-  return sourceRadius + targetRadius + 92 + typeBonus;
-}
-
-function graphNodePath(node) {
-  if (node.path) return node.path;
-  if (node.id === "index" || node.type === "index") return "wiki/index.md";
-  if (/^(sources|concepts|entities|projects|synthesis)\//.test(node.id)) return `wiki/${node.id}.md`;
-  const bucket = {
-    source: "sources",
-    concept: "concepts",
-    entity: "entities",
-    project: "projects",
-    synthesis: "synthesis"
-  }[node.type];
-  return bucket ? `wiki/${bucket}/${node.id}.md` : "";
-}
-
-function graphNodeTypeLabel(type) {
-  return {
-    index: "Index",
-    source: "Source",
-    concept: "Concept",
-    entity: "Entity",
-    project: "Project",
-    synthesis: "Synthesis"
-  }[type] || "Node";
-}
-
-function graphFromFileMap(fileMap) {
-  const nodeEntries = [...fileMap.entries()]
-    .filter(([path]) => isGraphNodePath(path))
-    .map(([path, body]) => nodeFromMarkdownFile(path, body));
-  const nodes = nodeEntries.map(({ node }) => node);
-  const bySlug = new Map();
-  const byPath = new Map();
-
-  for (const entry of nodeEntries) {
-    byPath.set(entry.path, entry.node);
-    bySlug.set(entry.slug, entry.node);
-    bySlug.set(entry.node.id, entry.node);
-    bySlug.set(slugifyLoose(entry.node.title), entry.node);
-  }
-
-  const edges = [];
-  const seen = new Set();
-  for (const { path, body, node } of nodeEntries) {
-    for (const target of extractWikiLinks(body)) {
-      const to = resolveGraphLink(target, byPath, bySlug);
-      if (!to || to.id === node.id) continue;
-      const key = `${node.id}->${to.id}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      edges.push({ from: node.id, to: to.id, type: "wiki-link" });
-    }
-  }
-
-  const graph = { nodes, edges };
-  els.stats.textContent = `${fileMap.size} accepted file${fileMap.size === 1 ? "" : "s"} · ${nodes.length} reviewed nodes · ${edges.length} cited links`;
-  return graph;
-}
-
-function nodeFromMarkdownFile(path, body) {
-  const slug = basename(path).replace(/\.md$/, "");
-  const id = path.replace(/^wiki\//, "").replace(/\.md$/, "");
-  return {
-    path,
-    body,
-    slug,
-    node: {
-      id,
-      path,
-      type: graphTypeFromPath(path, body),
-      title: markdownTitle(body) || titleFromSlug(slug)
-    }
-  };
-}
-
-function isGraphNodePath(path) {
-  return /^wiki\/(sources|concepts|entities|projects|synthesis)\/[^/]+\.md$/.test(path) || path === "wiki/index.md";
-}
-
-function graphTypeFromPath(path, body = "") {
-  const fields = frontmatterFields(body);
-  const frontmatterType = normalizeEntityTag(fields.type || fields.primary_type || "");
-  if (frontmatterType === "source") return "source";
-  if (frontmatterType === "concept") return "concept";
-  if (frontmatterType === "entity" || frontmatterType === "person" || frontmatterType === "company") return "entity";
-  if (frontmatterType === "project") return "project";
-  if (frontmatterType === "synthesis") return "synthesis";
-  if (path.startsWith("wiki/sources/")) return "source";
-  if (path.startsWith("wiki/concepts/")) return "concept";
-  if (path.startsWith("wiki/entities/")) return "entity";
-  if (path.startsWith("wiki/projects/")) return "project";
-  if (path.startsWith("wiki/synthesis/")) return "synthesis";
-  return "index";
-}
-
-function extractWikiLinks(body) {
-  const links = [];
-  const pattern = /\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]/g;
-  let match;
-  while ((match = pattern.exec(body)) !== null) {
-    links.push(match[1].trim());
-  }
-  return links;
-}
-
-function resolveGraphLink(target, byPath, bySlug) {
-  const trimmed = target.replace(/^\//, "").replace(/\.md$/, "");
-  const pathCandidates = [
-    target,
-    `${trimmed}.md`,
-    `wiki/sources/${trimmed}.md`,
-    `wiki/concepts/${trimmed}.md`,
-    `wiki/entities/${trimmed}.md`,
-    `wiki/projects/${trimmed}.md`,
-    `wiki/synthesis/${trimmed}.md`
-  ];
-
-  for (const candidate of pathCandidates) {
-    const node = byPath.get(candidate);
-    if (node) return node;
-  }
-
-  return bySlug.get(slugifyLoose(trimmed)) || bySlug.get(trimmed);
-}
 
 async function readBrowserFile(file) {
   const isPdf = /\.pdf$/i.test(file.name);
@@ -13584,6 +10076,13 @@ function updateSaveButtonState() {
       els.docSaveBtn.textContent = "Save";
     }
   }
+  if (els.docDeleteBtn) {
+    els.docDeleteBtn.disabled = busy || !canDeleteSelectedVaultPath();
+  }
+}
+
+function canDeleteSelectedVaultPath() {
+  return Boolean(state.selectedPath && vaultDeletePlan(state.selectedPath));
 }
 
 function sourceClass(file) {
@@ -13592,10 +10091,6 @@ function sourceClass(file) {
   else if (isSourceReviewReady(file)) classes.push("ready-to-write");
   else if (!state.ingestErrors.has(file?.name)) classes.push("pending-ghost");
   return classes.join(" ");
-}
-
-function needsTextExtraction(file) {
-  return (file.type === "pdf" || file.type === "docx" || file.type === "attachment") && !file.text;
 }
 
 function rawSourceAlreadySaved(file) {
@@ -13646,377 +10141,6 @@ function normalizeSelectedFiles(files) {
   });
 }
 
-function buildLlmIngestPrompt(files, existingFileMap = null) {
-  const textFiles = files.filter((file) => file.text.trim());
-  const attachmentFiles = files.filter((file) => !file.text.trim());
-  const attachmentList = attachmentFiles.map((file) => `- ${file.name}`).join("\n") || "- none";
-  const sourceBlocks = textFiles.map((file) => (
-    `## Source: ${file.name}\n\n${file.text.trim()}`
-  )).join("\n\n---\n\n") || "_No extracted text sources were available._";
-  const incremental = existingFileMap && hasVaultWikiContent(existingFileMap);
-  const existingVaultContext = incremental
-    ? `\n\nCurrent vault context:\nThe following files already exist in the user's vault. Treat them as the current wiki state. Preserve them unless the new source requires a specific update.\n\n${serializeVaultContext(existingFileMap)}`
-    : "";
-  const outputMode = incremental
-    ? `This is an incremental ingest into an existing vault. Return only files that should be created or replaced. Margins will merge returned files into the current vault. Include wiki/index.md, wiki/.margins/manifest.json, wiki/.margins/ingest-report.md, wiki/.margins/edit-log.jsonl, and any existing concept/entity/synthesis/source pages only if they need updates. Do not return unchanged files.`
-    : `This is a fresh ingest. Return the complete starter file set for the vault.`;
-
-  return `You are operating Margins, a local-first personal wiki compiler.
-
-Goal:
-Turn source files into a useful wiki, not a chat transcript and not a generic file organizer. Preserve originals in raw/ as evidence. Create source pages first, then only create durable concept/entity/synthesis pages when the source material actually supports them.
-
-Mode:
-${outputMode}
-
-Use this operating context as law:
-
-${wikiSchemaPack()}
-${existingVaultContext}
-
-The model behavior should match this operating philosophy:
-- The wiki is the user's external memory. Correct recall matters more than producing many nodes.
-- Source pages are faithful direct reads. Synthesis is allowed only when labeled.
-- The best graph is conservative: fewer true links beat many weak links.
-- Do not infer silently. If a relationship, role, date, amount, intent, next move, or strategic implication is not a direct read, flag it as an open question or Claude synthesis.
-- If you considered an inference but did not write it as fact, list it in an "Inferences refused" section.
-
-Important:
-- The following files did not expose text in the browser and must be attached or extracted before you summarize them:
-${attachmentList}
-- Do not pretend to have read an attachment unless it is actually available in this conversation.
-- If a source is unavailable, create a source placeholder and mark it "needs text extraction".
-
-Output format:
-Return Markdown files in this exact fenced-block format so Margins can parse them:
-
-\`\`\`margins-file path="wiki/sources/source-example.md"
----
-type: source
-bucket: sources
-summary: One sentence direct-read summary.
-tags: [source]
-created: YYYY-MM-DD
-updated: YYYY-MM-DD
-voice: claude-draft
----
-
-# Source: Example
-
-Markdown body here.
-\`\`\`
-
-Use one fenced block per returned file. Use this structure:
-- wiki/sources/source-{slug}.md
-- wiki/concepts/{slug}.md
-- wiki/entities/{slug}.md
-- wiki/synthesis/{slug}.md
-- wiki/index.md
-- wiki/ingest-tracker.md
-- wiki/log.md
-- wiki/wiki-stats.md
-- wiki/_templates/source.md
-- wiki/_templates/entity.md
-- wiki/_templates/concept.md
-- wiki/sources/sources.md
-- wiki/concepts/concepts.md
-- wiki/entities/entities.md
-- wiki/synthesis/synthesis.md
-- CLAUDE.md
-- operator-manual.md
-- query-cookbook.md
-- commands/ingest.md
-- commands/query.md
-- commands/compile.md
-- commands/lint.md
-- commands/propose-edit.md
-- commands/apply-edit.md
-- agents/wiki-ingest.md
-- agents/wiki-compiler.md
-- agents/wiki-query.md
-- agents/wiki-editor.md
-- wiki/.margins/manifest.json
-- wiki/.margins/ingest-report.md
-- wiki/.margins/edit-log.jsonl
-
-Page rules:
-- Every source, concept, entity, synthesis, and index Markdown page under wiki/ must start with YAML frontmatter. Operational files under wiki/.margins/ do not need page frontmatter.
-- Every factual claim needs a durable source citation. Do not use ChatGPT-only citation tokens such as :contentReference, oaicite, turn references, or hidden attachment ids. Cite with source page links and plain file/section references that will still make sense after export.
-- Synthesis is allowed, but label it as synthesis.
-- Do not invent account balances, transaction details, dates, roles, or relationships.
-- Prefer useful connection-point summaries over generic tags.
-- Only create concept pages for durable ideas that will remain useful across future sources.
-- Only create entity pages for real people, organizations, named accounts, tools, securities, projects, or places.
-- Do not create concept/entity pages for generic labels, PDF artifacts, table headers, UI labels, or section names such as page, positions, spec, inch, flow, append, value, account, or description.
-- Treat "positions" as source content or a synthesis section unless the source names a specific position that matters.
-- Add wiki links only when the relationship is explicit and useful. Weak keyword overlap should stay unlinked.
-- Make edit proposals before changing important structure.
-- Use wiki links for source-supported proper nouns and durable pages only.
-- When you create a concept, entity, or synthesis page, add backlinks from the relevant source pages using [[page-slug]] links so the graph is navigable.
-- Promoted concept/entity/synthesis pages must link back to their supporting source pages.
-- Do not create stub pages just to resolve a mention. Put those in "Mentioned but missing" instead.
-
-For each source:
-1. Write a faithful source page with frontmatter, summary, context, key takeaways, concrete facts, and open questions.
-2. Extract concrete entities, dates, accounts, projects, decisions, and unresolved questions, but keep weak candidates inside the source page.
-3. Identify concepts that should become durable wiki pages. A concept should be reusable across future sources, not just a word that appeared in this file.
-4. Add a "Mentioned but missing" section for proper nouns that might need pages but should not be auto-promoted.
-5. Add an "Inferences refused" section for tempting claims you did not promote because the source does not directly support them.
-
-Across sources:
-1. Link related source nodes only when the connection is explicit or strongly source-supported.
-2. Create synthesis pages that explain why sources connect, and label them as synthesis / not user-confirmed.
-3. Create entity pages only for real named people, organizations, named accounts, tools, securities, projects, or places that matter.
-4. Create concept pages only for load-bearing ideas that will help future retrieval.
-5. List open questions and next actions separately from direct-read facts.
-
-Operating-layer files:
-- operator-manual.md should teach a future language model how to read, query, edit, and avoid overreaching in this wiki.
-- query-cookbook.md should include practical lookup patterns.
-- commands/*.md should be short executable workflow specs.
-- agents/*.md should describe conservative recurring roles: ingest, compile, query, and editor.
-- wiki/.margins/manifest.json should describe the vault template, privacy posture, enabled commands, enabled agents, and generated counts.
-- wiki/.margins/ingest-report.md should summarize files created, links made, inferences refused, mentioned-but-missing candidates, and anything that needs user review.
-
-Extracted text sources:
-
-${sourceBlocks}`;
-}
-
-function serializeVaultContext(fileMap) {
-  const entries = [...fileMap.entries()]
-    .filter(([path]) => shouldIncludeInVaultContext(path))
-    .sort(([left], [right]) => contextPathRank(left) - contextPathRank(right) || left.localeCompare(right));
-
-  return entries.map(([path, body]) => {
-    const budget = path.startsWith("wiki/sources/") ? 2400 : 1800;
-    return `\`\`\`margins-file path="${path}"\n${truncateForPrompt(body, budget)}\n\`\`\``;
-  }).join("\n\n") || "_No existing wiki context was loaded._";
-}
-
-function shouldIncludeInVaultContext(path) {
-  return isWikiPagePath(path) ||
-    path === "CLAUDE.md" ||
-    path.startsWith("commands/") ||
-    path.startsWith("agents/") ||
-    path === "operator-manual.md" ||
-    path === "query-cookbook.md" ||
-    path === "wiki/ingest-tracker.md" ||
-    path === "wiki/log.md" ||
-    path === "wiki/wiki-stats.md" ||
-    path === "wiki/.margins/ingest-report.md";
-}
-
-function contextPathRank(path) {
-  if (path === "wiki/index.md") return 0;
-  if (path.startsWith("wiki/sources/")) return 1;
-  if (path.startsWith("wiki/concepts/")) return 2;
-  if (path.startsWith("wiki/entities/")) return 3;
-  if (path.startsWith("wiki/synthesis/")) return 4;
-  return 5;
-}
-
-function truncateForPrompt(body, maxChars) {
-  if (body.length <= maxChars) return body;
-  return `${body.slice(0, maxChars).trim()}\n\n[Truncated for prompt. Preserve this file unless the new source clearly requires an update.]`;
-}
-
-function wikiSchemaPack() {
-  return `## Margins Wiki Schema Pack
-
-Architecture:
-- raw/ stores immutable original files.
-- wiki/ stores LLM-operable Markdown: source pages, concept pages, entity pages, synthesis pages, index pages, an ingest tracker, an operation log, stats, bucket overviews, and templates.
-- CLAUDE.md, operator-manual.md, query-cookbook.md, commands/, agents/, and wiki/.margins/ tell future models how to operate the wiki.
-
-Required frontmatter for wiki source, concept, entity, synthesis, and index pages:
----
-type: source | concept | entity | synthesis | index
-bucket: sources | concepts | entities | synthesis | index
-summary: One sentence direct-read summary.
-tags: [source]
-created: YYYY-MM-DD
-updated: YYYY-MM-DD
-voice: claude-draft
----
-
-Structural files every generated vault should include:
-- CLAUDE.md: first-read agent operating skeleton.
-- wiki/ingest-tracker.md: table mapping source files in raw/ to generated pages.
-- wiki/log.md: human-readable log with ops limited to ingest | query | compile | lint | update.
-- wiki/wiki-stats.md: drift, compression, extraction, and size dashboard.
-- wiki/{sources,concepts,entities,synthesis}/{bucket}.md: bucket overview pages.
-- wiki/_templates/*.md: source/entity/concept/synthesis/meeting/daily shapes for future ingest.
-
-Citation rules:
-- Use durable wiki/file citations only.
-- Good: "Ending value was $40,053.97 (source file: coleman-brokerage-2026-03.pdf, Account Summary)."
-- Good: "See [[source-coleman-brokerage-2026-03]]."
-- Bad: ":contentReference[oaicite:10]{index=10}", hidden attachment ids, turn ids, or any citation that disappears outside the chat.
-
-Good source page shape:
----
-type: source
-bucket: sources
-summary: Demo brokerage statement for Sarah Coleman covering March 2026 account values, allocation, holdings, and withdrawals.
-tags: [source, statement, demo]
-created: YYYY-MM-DD
-updated: YYYY-MM-DD
-event_date: 2026-03-31
-voice: claude-draft
----
-
-# Source: Coleman Brokerage Statement, March 2026
-
-Original file: coleman-brokerage-2026-03.pdf
-
-## Summary
-Direct-read summary with durable citations to the original file or source page.
-
-## Context
-- Link durable promoted pages when supported: [[demo-financial-statements]]
-
-## Concrete Facts
-- Fact with original file / section citation.
-
-## Related Pages
-- [[demo-financial-statements]] -- why this page connects
-
-## Mentioned but missing
-- Candidate -- why it was not promoted
-
-## Inferences refused
-- Tempting unsupported claim -- why it stayed out
-
-Good promoted page rule:
-- A concept/entity/synthesis page must link back to supporting sources with [[source-slug]].
-- Do not promote demo-only names unless the name itself will help future retrieval.
-
-Good ingest report shape:
-# Ingest Report
-
-## Files Created
-## Links Made
-## Inferences Refused
-## Mentioned but Missing
-## Needs Review
-
-Self-check before returning:
-1. Every wiki source, concept, entity, synthesis, and index page has YAML frontmatter.
-2. No ChatGPT-only citation artifacts remain.
-3. Every source page has Mentioned but missing and Inferences refused.
-4. Every promoted page links back to a source page.
-5. Source pages link to promoted pages where supported.
-6. Fictional/demo-only names are not promoted unless useful durable entities.`;
-}
-
-function buildLlmRepairPrompt(fileMap) {
-  const warningsByPath = validateLlmFiles(fileMap);
-  const groupedWarnings = [...warningsByPath.entries()]
-    .filter(([, warnings]) => warnings.length > 0)
-    .map(([path, warnings]) => `## ${path}\n${warnings.map((warning) => `- ${warning}`).join("\n")}`)
-    .join("\n\n") || "No warnings.";
-
-  return `Repair this Margins wiki output.
-
-Use this operating context as law:
-
-${wikiSchemaPack()}
-
-Your task:
-1. Regenerate the complete returned file set, not a diff patch.
-2. Keep the exact \`\`\`margins-file path="..."\`\`\` fenced block format.
-3. Fix every warning listed below.
-4. Remove all :contentReference, oaicite, hidden attachment ids, and turn references.
-5. Add YAML frontmatter to every wiki source, concept, entity, synthesis, and index page.
-6. Use durable citations only: source page links, filenames in raw/, and plain section names.
-7. Add source-page backlinks to promoted pages where supported.
-8. Demote fictional/demo-only entity pages into Mentioned but missing or Needs Review unless they are useful durable entities.
-9. Preserve good source facts and refused inferences.
-
-Review warnings:
-
-${groupedWarnings}
-
-Current output to repair:
-
-${serializeLlmFiles(fileMap)}`;
-}
-
-function buildReviewResponsePrompt(fileMap, questions, reply, reviewMode) {
-  return `You are operating Margins, a local-first personal wiki compiler.
-
-The user is responding conversationally to review questions about generated wiki files. Use their reply as judgment, then regenerate the complete returned file set.
-
-Current review mode: ${reviewModeLabel(reviewMode)}
-
-Operating context:
-
-${wikiSchemaPack()}
-
-Review questions Margins asked:
-
-${serializeReviewQuestions(questions)}
-
-User reply:
-
-${reply}
-
-Task:
-1. Apply the user's guidance conservatively to the wiki files below.
-2. Return complete replacement contents for each file you return, not a diff patch.
-3. Keep the exact \`\`\`margins-file path="..."\`\`\` fenced block format.
-4. Prefer fewer, stronger concept/entity/synthesis pages over many weak pages.
-5. Demote nodes the user does not want into source-page sections, "Mentioned but missing", or draft synthesis notes as appropriate.
-6. Preserve source pages and concrete facts unless the user explicitly says they are wrong.
-7. Keep all synthesis labeled. Do not turn guesses into facts.
-8. If the user's reply contains a stable preference for future ingests, create or update wiki/.margins/preferences.json with a concise machine-readable preference.
-9. Only add a follow-up question if the user's answer is needed to avoid a wrong durable wiki decision.
-
-Current file set:
-
-${serializeLlmFiles(fileMap)}`;
-}
-
-function serializeReviewQuestions(questions) {
-  if (!questions.length) {
-    return "- No material questions were generated. The user is giving optional filing guidance.";
-  }
-  return questions.map((question) => [
-    `- ${question.question}`,
-    `  Why Margins asked: ${question.reason}`,
-    `  ${question.recommendation}`,
-    `  File: ${question.path || "vault"}`
-  ].join("\n")).join("\n");
-}
-
-function reviewModeLabel(mode) {
-  return {
-    auto: "Auto-file",
-    suggested: "Suggested review",
-    strict: "Strict review"
-  }[mode] || mode;
-}
-
-function parseLlmFiles(value) {
-  const files = new Map();
-  const pattern = /```margins-file\s+path="([^"]+)"\s*\n([\s\S]*?)```/g;
-  let match;
-
-  while ((match = pattern.exec(value)) !== null) {
-    const path = normalizeMarginsPath(match[1].trim());
-    const body = match[2].trim();
-    if (path && body) files.set(path, body);
-  }
-
-  return files;
-}
-
-function serializeLlmFiles(fileMap) {
-  return [...fileMap.entries()]
-    .map(([path, body]) => `\`\`\`margins-file path="${path}"\n${body}\n\`\`\``)
-    .join("\n\n");
-}
 
 function activateTab(view) {
   document.querySelectorAll(".tab").forEach((item) => {
@@ -14059,450 +10183,7 @@ function download(name, body) {
   URL.revokeObjectURL(url);
 }
 
-async function scaffoldVault(rootHandle) {
-  await ensureDirectory(rootHandle, RAW_SOURCE_DIR);
-  await ensureDirectory(rootHandle, "wiki/sources");
-  await ensureDirectory(rootHandle, "wiki/concepts");
-  await ensureDirectory(rootHandle, "wiki/entities");
-  await ensureDirectory(rootHandle, "wiki/synthesis");
-  await ensureDirectory(rootHandle, "wiki/_templates");
-  await ensureDirectory(rootHandle, "commands");
-  await ensureDirectory(rootHandle, "agents");
-  await ensureDirectory(rootHandle, "wiki/.margins");
-  await writeTextFileIfMissing(rootHandle, `${RAW_SOURCE_DIR}/README.md`, `# Original Sources
-
-Drop original source files here. Margins treats this folder as evidence and writes generated knowledge into wiki/.
-`);
-  await writeTextFileIfMissing(rootHandle, "CLAUDE.md", "# CLAUDE.md\n\nMargins will write the agent operating skeleton here.\n");
-  await writeTextFileIfMissing(rootHandle, "operator-manual.md", "# Operator Manual\n\nMargins will write model operating instructions here.\n");
-  await writeTextFileIfMissing(rootHandle, "query-cookbook.md", "# Query Cookbook\n\nMargins will write query recipes here.\n");
-  await writeTextFileIfMissing(rootHandle, "wiki/.margins/manifest.json", JSON.stringify({
-    name: "Margins Vault",
-    template: "karpathy-original",
-    version: "0.1.0",
-    created_at: new Date().toISOString(),
-    storage: "local-folder"
-  }, null, 2));
-}
-
-async function ensureDirectory(rootHandle, path) {
-  const parts = safeRelativePath(path).split("/").filter(Boolean);
-  let dir = rootHandle;
-  for (const part of parts) {
-    dir = await dir.getDirectoryHandle(part, { create: true });
-  }
-  return dir;
-}
-
-async function directoryHandleForPath(rootHandle, path, create = true) {
-  const parts = safeRelativePath(path).split("/").filter(Boolean);
-  let dir = rootHandle;
-  for (const part of parts) {
-    dir = await dir.getDirectoryHandle(part, { create });
-  }
-  return dir;
-}
-
-async function readVaultFileMap(rootHandle) {
-  const fileMap = new Map();
-  await readDirectoryTextFiles(rootHandle, ".margins", fileMap);
-  await readDirectoryTextFiles(rootHandle, "wiki", fileMap);
-  await readDirectoryTextFiles(rootHandle, "commands", fileMap);
-  await readDirectoryTextFiles(rootHandle, "agents", fileMap);
-  await readRootTextFile(rootHandle, "CLAUDE.md", fileMap);
-  await readRootTextFile(rootHandle, "operator-manual.md", fileMap);
-  await readRootTextFile(rootHandle, "query-cookbook.md", fileMap);
-  return fileMap;
-}
-
-async function readRawSourcesFromVault(rootHandle) {
-  const files = [];
-  await readRawSourceDirectory(rootHandle, RAW_SOURCE_DIR, files);
-  if (files.length > 0) return files.sort((left, right) => left.name.localeCompare(right.name));
-
-  const legacyFiles = [];
-  await readRawSourceDirectory(rootHandle, LEGACY_RAW_SOURCE_DIR, legacyFiles);
-  return legacyFiles.sort((left, right) => left.name.localeCompare(right.name));
-}
-
-async function readDirectoryTextFiles(rootHandle, path, fileMap) {
-  let dir;
-  try {
-    dir = await directoryHandleForPath(rootHandle, path, false);
-  } catch {
-    return;
-  }
-
-  for await (const [name, handle] of dir.entries()) {
-    const childPath = `${path}/${name}`;
-    if (handle.kind === "directory") {
-      await readDirectoryTextFiles(rootHandle, childPath, fileMap);
-    } else if (isVaultTextPath(childPath)) {
-      const normalizedPath = normalizeMarginsPath(childPath);
-      fileMap.set(normalizedPath, await readTextHandle(handle));
-    }
-  }
-}
-
-async function readRootTextFile(rootHandle, path, fileMap) {
-  try {
-    const fileHandle = await fileHandleForPath(rootHandle, path, false);
-    fileMap.set(path, await readTextHandle(fileHandle));
-  } catch {
-    // Missing operating files are allowed for partially created vaults.
-  }
-}
-
-async function readRawSourceDirectory(rootHandle, path, files) {
-  let dir;
-  try {
-    dir = await directoryHandleForPath(rootHandle, path, false);
-  } catch {
-    return;
-  }
-
-  for await (const [name, handle] of dir.entries()) {
-    const childPath = `${path}/${name}`;
-    if (name.startsWith(".")) continue;
-    if (handle.kind === "directory") {
-      await readRawSourceDirectory(rootHandle, childPath, files);
-    } else if (name !== "README.md") {
-      files.push(await rawSourceFromFileHandle(handle, rawSourceRelativeName(childPath), normalizeMarginsPath(childPath)));
-    }
-  }
-}
-
-async function rawSourceFromFileHandle(fileHandle, name, rawPath = rawSourceOutputPath(name)) {
-  const file = await fileHandle.getFile();
-  const isPdf = /\.pdf$/i.test(name);
-  const isDocx = /\.docx$/i.test(name);
-  const isReadableText = isReadableSourceTextPath(name);
-  let text = "";
-  let extractionStatus = "ready";
-  let extractionError = "";
-  let type = "text";
-  if (isPdf) {
-    extractionStatus = "needed";
-    type = "pdf";
-  } else if (isDocx) {
-    type = "docx";
-    try {
-      text = await extractDocxText(file);
-      extractionStatus = text ? "extracted" : "failed";
-      extractionError = text ? "" : "No readable text found in DOCX.";
-    } catch (error) {
-      text = "";
-      extractionStatus = "failed";
-      extractionError = error.message || "DOCX extraction failed.";
-    }
-  } else if (isReadableText) {
-    try {
-      text = await file.text();
-    } catch {
-      text = "";
-      extractionStatus = "failed";
-      extractionError = "Text could not be read.";
-    }
-  } else {
-    type = "attachment";
-    extractionStatus = "needed";
-    extractionError = "Needs model review from the original file.";
-  }
-  return {
-    name,
-    text,
-    browserFile: file,
-    rawSourceHandle: fileHandle,
-    rawPath,
-    size: file.size,
-    lastModified: file.lastModified,
-    type,
-    extractionStatus,
-    extractionError,
-    sourceScope: "vault"
-  };
-}
-
-async function readTextHandle(fileHandle) {
-  const file = await fileHandle.getFile();
-  return file.text();
-}
-
-function isVaultTextPath(path) {
-  return /\.(md|txt|json|jsonl)$/i.test(path);
-}
-
-function isReadableSourceTextPath(path) {
-  return /\.(md|markdown|txt|json|jsonl|csv|tsv|py|js|jsx|ts|tsx|html|css|xml|yaml|yml|log|eml|ics|ical|vtt|srt)$/i.test(path);
-}
-
-async function writeRawSources(rootHandle, files) {
-  if (files.length === 0) {
-    await writeTextFile(rootHandle, `${RAW_SOURCE_DIR}/README.md`, `# Original Sources
-
-No original source files were loaded in the browser when this Margins folder was written.
-
-To preserve original evidence, reload the original files in Margins before clicking "Save." Browsers clear selected file handles after refresh for security.
-`);
-    return 0;
-  }
-
-  let count = 0;
-  for (const file of files) {
-    const path = rawSourceOutputPath(file.name || `source-${count + 1}.txt`);
-    if (file.browserFile) {
-      await writeBlobFile(rootHandle, path, file.browserFile);
-    } else {
-      await writeTextFile(rootHandle, path, file.text || "");
-    }
-    count += 1;
-  }
-  return count;
-}
-
-function rawSourceOutputPath(path) {
-  const safePath = rawSourceRelativeName(path);
-  return `${RAW_SOURCE_DIR}/${safePath}`;
-}
-
-function legacyRawSourceOutputPath(path) {
-  const safePath = rawSourceRelativeName(path);
-  return `${LEGACY_RAW_SOURCE_DIR}/${safePath}`;
-}
-
-function rawSourceCandidatePaths(path) {
-  return [
-    rawSourceOutputPath(path),
-    legacyRawSourceOutputPath(path)
-  ];
-}
-
-function rawSourceRelativeName(path) {
-  return safeRelativePath(path)
-    .replace(new RegExp(`^${RAW_SOURCE_DIR}/`), "")
-    .replace(new RegExp(`^${LEGACY_RAW_SOURCE_DIR}/`), "");
-}
-
-function isRawSourcePath(path) {
-  const normalized = normalizeMarginsPath(path);
-  return normalized.startsWith(`${RAW_SOURCE_DIR}/`) || normalized.startsWith(`${LEGACY_RAW_SOURCE_DIR}/`);
-}
-
-async function deleteRawSourceFromVault(rootHandle, fileName) {
-  let deleted = false;
-  for (const path of rawSourceCandidatePaths(fileName)) {
-    const parts = safeRelativePath(path).split("/").filter(Boolean);
-    const entryName = parts.pop();
-    if (!entryName) continue;
-
-    try {
-      let dir = rootHandle;
-      for (const part of parts) {
-        dir = await dir.getDirectoryHandle(part, { create: false });
-      }
-      await dir.removeEntry(entryName);
-      deleted = true;
-    } catch {
-      // The active raw/ path and the legacy raw_sources/ path are both allowed.
-    }
-  }
-  if (!deleted) throw new Error(`${basename(fileName)} was not found in raw/.`);
-}
-
-const ROOT_GENERATED_TEXT_FILES = new Set(["CLAUDE.md", "operator-manual.md", "query-cookbook.md"]);
-const PRESERVED_GENERATED_TEXT_FILES = new Set(["wiki/.margins/export-summary.json"]);
-
-async function writeFileMap(rootHandle, fileMap, previousFileMap = new Map()) {
-  const nextPaths = new Set([...fileMap.keys()].map(normalizeVaultOutputPath));
-  for (const path of previousFileMap.keys()) {
-    const normalizedPath = normalizeVaultOutputPath(path);
-    if (nextPaths.has(normalizedPath) || !isDeletableGeneratedTextPath(normalizedPath)) continue;
-    await deleteGeneratedTextFile(rootHandle, normalizedPath);
-  }
-
-  let count = 0;
-  for (const [path, body] of fileMap.entries()) {
-    await writeTextFile(rootHandle, normalizeVaultOutputPath(path), body);
-    count += 1;
-  }
-  return count;
-}
-
-function normalizeVaultOutputPath(path) {
-  return safeRelativePath(normalizeMarginsPath(path));
-}
-
-function isDeletableGeneratedTextPath(path) {
-  const normalizedPath = normalizeVaultOutputPath(path);
-  if (!normalizedPath || PRESERVED_GENERATED_TEXT_FILES.has(normalizedPath)) return false;
-  return (
-    normalizedPath.startsWith("wiki/") ||
-    normalizedPath.startsWith("commands/") ||
-    normalizedPath.startsWith("agents/") ||
-    ROOT_GENERATED_TEXT_FILES.has(normalizedPath)
-  );
-}
-
-async function deleteGeneratedTextFile(rootHandle, path) {
-  const parts = normalizeVaultOutputPath(path).split("/").filter(Boolean);
-  const entryName = parts.pop();
-  if (!entryName) return false;
-
-  let dir = rootHandle;
-  try {
-    for (const part of parts) {
-      dir = await dir.getDirectoryHandle(part, { create: false });
-    }
-    await dir.removeEntry(entryName);
-    return true;
-  } catch (error) {
-    if (isMissingEntryError(error)) return false;
-    throw error;
-  }
-}
-
-function isMissingEntryError(error) {
-  return error?.name === "NotFoundError" || /missing|not found/i.test(error?.message || "");
-}
-
-async function writeTextFile(rootHandle, path, body) {
-  const fileHandle = await fileHandleForPath(rootHandle, path);
-  const writable = await fileHandle.createWritable();
-  await writable.write(body);
-  await writable.close();
-}
-
-async function writeTextFileIfMissing(rootHandle, path, body) {
-  try {
-    await fileHandleForPath(rootHandle, path, false);
-  } catch {
-    await writeTextFile(rootHandle, path, body);
-  }
-}
-
-async function writeBlobFile(rootHandle, path, blob) {
-  const fileHandle = await fileHandleForPath(rootHandle, path);
-  const writable = await fileHandle.createWritable();
-  await writable.write(blob);
-  await writable.close();
-}
-
-async function fileHandleForPath(rootHandle, path, create = true) {
-  const parts = safeRelativePath(path).split("/").filter(Boolean);
-  const fileName = parts.pop();
-  let dir = rootHandle;
-  for (const part of parts) {
-    dir = await dir.getDirectoryHandle(part, { create });
-  }
-  return dir.getFileHandle(fileName || "untitled.md", { create });
-}
-
-function safeRelativePath(path) {
-  return String(path)
-    .replace(/\\/g, "/")
-    .split("/")
-    .map((part) => part.trim())
-    .filter((part) => part && part !== "." && part !== "..")
-    .map((part) => part.replace(/[<>:"|?*\u0000-\u001F]/g, "-"))
-    .join("/");
-}
-
-function normalizeMarginsPath(path) {
-  return String(path).replace(/^\.margins\//, "wiki/.margins/");
-}
-
-function wordCount(text) {
-  return (text.match(/\S+/g) || []).length;
-}
-
-function clamp(value, min, max) {
-  return Math.min(max, Math.max(min, value));
-}
-
-function hashString(value) {
-  let hash = 2166136261;
-  const text = String(value);
-  for (let index = 0; index < text.length; index += 1) {
-    hash ^= text.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
-}
-
-function formatFileSize(size) {
-  if (!Number.isFinite(size) || size <= 0) return "";
-  if (size < 1024) return `${size} B`;
-  const units = ["KB", "MB", "GB"];
-  let value = size / 1024;
-  let unitIndex = 0;
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024;
-    unitIndex += 1;
-  }
-  return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`;
-}
 
 function todayString() {
   return localDateString();
-}
-
-function firstLine(text) {
-  return text.split("\n").find((line) => line.trim() && !line.startsWith("#")) || "";
-}
-
-function basename(path) {
-  return path.split("/").pop() || path;
-}
-
-function markdownTitle(body) {
-  const match = body.match(/^#\s+(.+)$/m);
-  return match ? match[1].trim() : "";
-}
-
-function titleFromSlug(slug) {
-  return slug
-    .split(/[-_]+/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
-function slugifyLoose(value) {
-  return String(value)
-    .toLowerCase()
-    .replace(/&/g, " and ")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
-function parseJsonLine(line) {
-  try {
-    return JSON.parse(line);
-  } catch {
-    return null;
-  }
-}
-
-function escapeHtml(value) {
-  return String(value)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function nodeRadius(type, degree = 0) {
-  const base = {
-    index: 13,
-    source: 7.5,
-    concept: 9,
-    entity: 9,
-    project: 9.5,
-    synthesis: 10.5
-  }[type] || 8;
-  return Math.min(18, base + Math.sqrt(Math.max(degree, 0)) * 1.25);
-}
-
-function shortLabel(label) {
-  return label.length > 28 ? `${label.slice(0, 25)}...` : label;
 }

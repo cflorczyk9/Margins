@@ -91,15 +91,19 @@
             </label>
             <label>
               <span>Output tokens</span>
-              <input id="api-max-output-tokens" class="text-control" type="number" min="128" step="128" value="2048">
+              <input id="api-max-output-tokens" class="text-control" type="number" min="128" step="128" value="8192">
             </label>
             <label>
               <span>Session tokens</span>
-              <input id="api-max-session-tokens" class="text-control" type="number" min="1000" step="1000" value="250000">
+              <input id="api-max-session-tokens" class="text-control" type="number" min="1000" step="1000" value="1000000">
+            </label>
+            <label>
+              <span>Call $</span>
+              <input id="api-max-request-usd" class="text-control" type="number" min="0.01" step="0.01" value="1.00">
             </label>
             <label>
               <span>Session $</span>
-              <input id="api-max-session-usd" class="text-control" type="number" min="0.01" step="0.01" value="1.00">
+              <input id="api-max-session-usd" class="text-control" type="number" min="0.01" step="0.01" value="5.00">
             </label>
             <label>
               <span>Delay sec</span>
@@ -116,7 +120,7 @@
           <p id="api-guard-status" class="status-line">Local session usage: $0.00.</p>
         </div>
         <button id="extract-btn" disabled>Extract PDF text</button>
-        <button id="compile-btn" disabled>Local compile</button>
+        <button id="compile-btn" disabled>Compile reviewed</button>
         <button id="llm-btn" disabled>Copy LLM process prompt</button>
         <button id="export-btn" disabled>Download vault JSON</button>
         <button id="copy-btn" disabled>Copy operator manual</button>
@@ -398,7 +402,10 @@
                 <div id="doc-title" class="doc-title">No file selected</div>
                 <div id="doc-meta" class="doc-meta">No file selected</div>
               </div>
-              <button id="doc-save-btn" type="button" disabled>Save</button>
+              <div class="doc-actions">
+                <button id="doc-delete-btn" class="danger" type="button" disabled>Delete</button>
+                <button id="doc-save-btn" type="button" disabled>Save</button>
+              </div>
             </div>
             <div class="vault-editor-shell">
               <pre id="doc-highlight" class="doc-highlight" aria-hidden="true"></pre>

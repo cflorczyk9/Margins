@@ -1,13 +1,47 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import test from "node:test";
 import { compileVault, localDateString, vaultToFiles } from "../src/compiler.js";
 
-const execFileAsync = promisify(execFile);
+function modelReview(fileName, overrides = {}) {
+  return {
+    source: "api",
+    provider: "gemini",
+    reviewedAt: "2026-05-05T12:00:00.000Z",
+    status: "Margins reviewed the source against the current vault.",
+    summary: "Model-authored source summary.",
+    summaryBullets: ["Model-authored detail."],
+    takeaways: [
+      {
+        label: "Takeaway",
+        point: "The model supplied this concrete source takeaway.",
+        relevance: "primary",
+        whyItMatters: ""
+      }
+    ],
+    filingPlan: {
+      whySaved: ["The model judged this source worth filing."],
+      candidateFiles: [],
+      placement: {
+        bucket: "sources",
+        path: `wiki/sources/source-${fileName.replace(/\.[^.]+$/, "")}.md`,
+        title: "Model Reviewed Source",
+        reason: "The model selected the source bucket.",
+        alternatives: []
+      },
+      tags: ["model-reviewed"],
+      regionTag: "",
+      typeTag: "",
+      typeTagNote: "",
+      promotion: { candidate: "", recommendation: "", reason: "" }
+    },
+    filingSteps: ["Created source note from model review."],
+    discoveries: [],
+    financialDetails: {},
+    connections: [],
+    questions: [],
+    ...overrides
+  };
+}
 
 test("vaultToFiles emits V1 metadata only under wiki/.margins", () => {
   const vault = compileVault([
@@ -15,7 +49,11 @@ test("vaultToFiles emits V1 metadata only under wiki/.margins", () => {
       name: "note.md",
       text: "Margins compiles source files into a wiki. The language model reads source nodes and edit proposals."
     }
-  ], { today: "2026-05-05", name: "Test Vault" });
+  ], {
+    today: "2026-05-05",
+    name: "Test Vault",
+    ingestReviews: new Map([["note.md", modelReview("note.md")]])
+  });
   const files = vaultToFiles(vault);
 
   assert.ok(files.has("wiki/.margins/manifest.json"));
@@ -47,10 +85,26 @@ test("vaultToFiles emits V1 metadata only under wiki/.margins", () => {
   const manifest = JSON.parse(files.get("wiki/.margins/manifest.json"));
   assert.equal(manifest.schema_version, "margins-v1");
   assert.equal(manifest.template, "karpathy-original");
-  assert.equal(manifest.privacy.requires_secrets, false);
+  assert.equal(manifest.compiler, "model-review");
+  assert.equal(manifest.privacy.requires_secrets, true);
   assert.equal(manifest.paths.metadata, "wiki/.margins/");
   assert.equal(manifest.paths.root_instructions, "CLAUDE.md");
   assert.equal(manifest.paths.ingest_tracker, "wiki/ingest-tracker.md");
+});
+
+test("compiler skips source markdown when no model review exists", () => {
+  const vault = compileVault([
+    {
+      name: "unreviewed.md",
+      text: "This source has readable text but no model review."
+    }
+  ], { today: "2026-05-05", name: "No Review Vault" });
+  const files = vaultToFiles(vault);
+
+  assert.equal(vault.manifest.counts.raw_sources, 1);
+  assert.equal(vault.manifest.counts.source_nodes, 0);
+  assert.equal(files.has("wiki/sources/source-unreviewed.md"), false);
+  assert.match(files.get("wiki/ingest-tracker.md"), /No model-reviewed source pages created yet/);
 });
 
 test("local heuristic candidates stay in the ingest report until promoted", () => {
@@ -62,7 +116,25 @@ test("local heuristic candidates stay in the ingest report until promoted", () =
         "The language model should help with source files, operator manual upkeep, and query cookbook maintenance."
       ].join(" ")
     }
-  ], { today: "2026-05-05", name: "Candidate Vault" });
+  ], {
+    today: "2026-05-05",
+    name: "Candidate Vault",
+    ingestReviews: new Map([[
+      "candidate-note.md",
+      modelReview("candidate-note.md", {
+        summary: "The model says Alice Morgan discussed language-model support for a local-first wiki.",
+        summaryBullets: ["The model selected this as a candidate source for future retrieval."],
+        filingPlan: {
+          ...modelReview("candidate-note.md").filingPlan,
+          placement: {
+            ...modelReview("candidate-note.md").filingPlan.placement,
+            path: "wiki/sources/source-candidate-note.md",
+            title: "Candidate Note"
+          }
+        }
+      })
+    ]])
+  });
   const files = vaultToFiles(vault);
   const report = files.get("wiki/.margins/ingest-report.md");
 
@@ -79,76 +151,14 @@ test("local heuristic candidates stay in the ingest report until promoted", () =
   assert.match(report, /Mentioned But Missing/);
 
   const sourceNote = files.get("wiki/sources/source-candidate-note.md");
-  assert.match(sourceNote, /## Key Terms/);
-  assert.match(sourceNote, /## Entity Candidates/);
+  assert.match(sourceNote, /## Summary/);
+  assert.match(sourceNote, /The model says Alice Morgan/);
+  assert.doesNotMatch(sourceNote, /## Key Terms/);
+  assert.doesNotMatch(sourceNote, /## Entity Candidates/);
   assert.doesNotMatch(sourceNote, /\[\[language-model\|language model\]\]/i);
   assert.doesNotMatch(sourceNote, /\[\[alice-morgan\|Alice Morgan\]\]/);
 });
 
 test("localDateString formats local calendar dates instead of UTC slices", () => {
   assert.equal(localDateString(new Date(2026, 0, 2, 3, 4, 5)), "2026-01-02");
-});
-
-test("sample compile creates useful V1 output without generic sample candidates", async () => {
-  const outputDir = await mkdtemp(join(tmpdir(), "margins-compile-"));
-  try {
-    await mkdir(join(outputDir, ".margins"), { recursive: true });
-    await writeFile(join(outputDir, ".margins/manifest.json"), "{}", "utf8");
-    await mkdir(join(outputDir, "wiki/concepts"), { recursive: true });
-    await writeFile(join(outputDir, "wiki/concepts/without.md"), "# stale", "utf8");
-    await mkdir(join(outputDir, "wiki/entities"), { recursive: true });
-    await writeFile(join(outputDir, "wiki/entities/if.md"), "# stale", "utf8");
-    await writeFile(join(outputDir, "wiki/log.md"), "# stale log", "utf8");
-    await writeFile(join(outputDir, "wiki/wiki-stats.md"), "# stale stats", "utf8");
-    await writeFile(join(outputDir, "CLAUDE.md"), "# stale claude", "utf8");
-
-    await execFileAsync("node", ["src/cli.js", "sample/raw_sources", outputDir], {
-      cwd: new URL("..", import.meta.url)
-    });
-
-    await assert.rejects(stat(join(outputDir, ".margins")));
-    await stat(join(outputDir, "wiki/.margins/manifest.json"));
-    await stat(join(outputDir, "wiki/.margins/edit-log.jsonl"));
-    await stat(join(outputDir, "wiki/.margins/ingest-report.md"));
-    await stat(join(outputDir, "CLAUDE.md"));
-    await stat(join(outputDir, "wiki/ingest-tracker.md"));
-    await stat(join(outputDir, "wiki/log.md"));
-    await stat(join(outputDir, "wiki/wiki-stats.md"));
-    await stat(join(outputDir, "wiki/_templates/entity.md"));
-
-    const manifest = JSON.parse(await readFile(join(outputDir, "wiki/.margins/manifest.json"), "utf8"));
-    assert.equal(manifest.counts.raw_sources, 3);
-    assert.equal(manifest.counts.source_nodes, 3);
-    assert.ok(manifest.counts.structural_files >= 10);
-
-    const claudeMd = await readFile(join(outputDir, "CLAUDE.md"), "utf8");
-    assert.match(claudeMd, /wiki\/ingest-tracker\.md/);
-    assert.match(claudeMd, /voice: claude-draft/);
-
-    const tracker = await readFile(join(outputDir, "wiki/ingest-tracker.md"), "utf8");
-    assert.match(tracker, /raw\/margins-product-call\.txt/);
-    assert.match(tracker, /\| ingested \|/);
-
-    const log = await readFile(join(outputDir, "wiki/log.md"), "utf8");
-    assert.match(log, /## \[\d{4}-\d{2}-\d{2}\] ingest/);
-    assert.doesNotMatch(log, /stale log/);
-    const stats = await readFile(join(outputDir, "wiki/wiki-stats.md"), "utf8");
-    assert.doesNotMatch(stats, /stale stats/);
-    const generatedClaudeMd = await readFile(join(outputDir, "CLAUDE.md"), "utf8");
-    assert.doesNotMatch(generatedClaudeMd, /stale claude/);
-
-    const conceptDirNames = await execFileAsync("find", [join(outputDir, "wiki/concepts"), "-maxdepth", "1", "-type", "f", "-name", "*.md"]);
-    const conceptFiles = conceptDirNames.stdout;
-    for (const generic of ["closer.md", "files.md", "pages.md", "without.md"]) {
-      assert.equal(conceptFiles.includes(`/${generic}`), false);
-    }
-
-    const entityDirNames = await execFileAsync("find", [join(outputDir, "wiki/entities"), "-maxdepth", "1", "-type", "f", "-name", "*.md"]);
-    const entityFiles = entityDirNames.stdout;
-    for (const generic of ["draft.md", "if.md", "it.md", "raw.md", "they.md", "version.md", "without.md"]) {
-      assert.equal(entityFiles.includes(`/${generic}`), false);
-    }
-  } finally {
-    await rm(outputDir, { recursive: true, force: true });
-  }
 });
