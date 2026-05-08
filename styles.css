@@ -454,6 +454,18 @@ button.primary:not(:disabled):hover,
   color: var(--on-accent);
 }
 
+button.danger {
+  border-color: color-mix(in srgb, var(--warning-line) 74%, var(--line-strong));
+  color: var(--warning-text);
+}
+
+button.danger:not(:disabled):hover,
+button.danger:focus-visible {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
 .file-picker input {
   display: none;
 }
@@ -2118,19 +2130,15 @@ button.activity-pill:focus-visible {
 
 .receipt-log-line {
   --receipt-line-gap: 10px;
-  display: grid;
-  grid-template-rows: 0fr;
-  margin-top: 0;
-  overflow: hidden;
+  margin-top: var(--receipt-line-gap);
   color: var(--ink-2);
   font-size: 13.5px;
   line-height: 1.45;
   opacity: 0;
-  transform: translateY(-3px);
-  transform-origin: top;
-  animation: receipt-line-reveal 920ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  animation-delay: calc(var(--line-index, 0) * 88ms);
-  will-change: grid-template-rows, margin-top, opacity, transform;
+  transform: translateY(-4px);
+  animation: receipt-line-reveal 460ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation-delay: calc(var(--line-index, 0) * 80ms);
+  will-change: opacity, transform;
 }
 
 .receipt-log-line-inner {
@@ -2147,12 +2155,44 @@ button.activity-pill:focus-visible {
 }
 
 .receipt-log-line.settled {
-  grid-template-rows: 1fr;
-  margin-top: var(--receipt-line-gap);
   opacity: 1;
   transform: none;
   animation: none;
-  overflow: visible;
+}
+
+/* Staged reveal for the source receipt — first render only.
+   The .is-revealing class is added in renderSourceReceipt and never re-added
+   on subsequent renders (Approve, decision-button click, etc.), so the
+   animation plays once when the receipt first appears. */
+.source-receipt.is-revealing > * {
+  opacity: 0;
+  transform: translateY(4px);
+  animation: source-receipt-fade-in 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.source-receipt.is-revealing > :nth-child(1) { animation-delay: 0ms; }
+.source-receipt.is-revealing > :nth-child(2) { animation-delay: 140ms; }
+.source-receipt.is-revealing > :nth-child(3) { animation-delay: 280ms; }
+.source-receipt.is-revealing > :nth-child(4) { animation-delay: 420ms; }
+
+.source-receipt.is-revealing .receipt-log.complete .receipt-log-line {
+  opacity: 0;
+  transform: translateY(4px);
+  animation: source-receipt-fade-in 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(280ms + min(var(--line-index, 0), 10) * 90ms);
+}
+
+@keyframes source-receipt-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .source-receipt.is-revealing > *,
+  .source-receipt.is-revealing .receipt-log.complete .receipt-log-line {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .receipt-log-line.settled .receipt-log-line-inner {
@@ -2373,24 +2413,8 @@ button.activity-pill:focus-visible {
 }
 
 @keyframes receipt-line-reveal {
-  0% {
-    grid-template-rows: 0fr;
-    margin-top: 0;
-    opacity: 0;
-    transform: translateY(-3px);
-  }
-  36% {
-    opacity: 0;
-  }
-  72% {
-    opacity: 1;
-  }
-  100% {
-    grid-template-rows: 1fr;
-    margin-top: var(--receipt-line-gap);
-    opacity: 1;
-    transform: none;
-  }
+  0%   { opacity: 0; transform: translateY(-4px); }
+  100% { opacity: 1; transform: none; }
 }
 
 @keyframes filing-dot {
@@ -2982,12 +3006,20 @@ button.activity-pill:focus-visible {
   display: none;
 }
 
+.vault-card.vault-connected.busy #workflow-btn {
+  display: block;
+}
+
 .vault-card.vault-connected .vault-status {
   font-size: 14px;
 }
 
 .vault-card.vault-connected #workflow-guidance {
   display: none;
+}
+
+.vault-card.vault-connected.busy #workflow-guidance {
+  display: block;
 }
 
 .vault-workspace {
@@ -3140,6 +3172,13 @@ button.activity-pill:focus-visible {
   min-width: 0;
 }
 
+.doc-actions {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
 .vault-document .doc-title {
   margin-bottom: 7px;
   color: var(--ink);
@@ -3155,7 +3194,8 @@ button.activity-pill:focus-visible {
   font-weight: 600;
 }
 
-#doc-save-btn {
+#doc-save-btn,
+#doc-delete-btn {
   width: auto;
   min-height: 32px;
   margin: 2px 0 0;
@@ -3397,7 +3437,12 @@ button.activity-pill:focus-visible {
     display: grid;
   }
 
-  #doc-save-btn {
+  .doc-actions {
+    width: 100%;
+  }
+
+  #doc-save-btn,
+  #doc-delete-btn {
     width: 100%;
   }
 }
@@ -6018,6 +6063,28 @@ button.type-tag.active {
   color: var(--muted);
   font-size: 12.5px;
   font-weight: 520;
+}
+
+.activity-delete-btn {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 0;
+  min-height: 28px;
+  margin: 0;
+  padding: 0 10px;
+  border-color: color-mix(in srgb, var(--warning-line) 50%, var(--line-strong));
+  border-radius: 999px;
+  background: transparent;
+  color: var(--warning-text);
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: none;
+}
+
+.activity-delete-btn:hover,
+.activity-delete-btn:focus-visible {
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 .activity-card-summary {

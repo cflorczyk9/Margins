@@ -1,7 +1,0 @@
-Margins should not become a generic chat app. The first product should be a local-first compiler for personal context.
-
-The user picks a raw source folder. Margins reads the files, keeps originals in raw_sources, and generates a wiki. The wiki contains summaries, backlinks, concept nodes, entity nodes, and synthesis nodes that explain why sources connect.
-
-Users already paying for AI plans are the first market. If they are not using Claude, ChatGPT, Cursor, or similar tools, they are probably not real early users. Corporate plans can come later once privacy, hosting, and admin controls matter.
-
-The minimum useful version should work with local files and Markdown. Hosting documents can wait. The important proof is whether the generated wiki makes Claude more useful on a real personal project.
