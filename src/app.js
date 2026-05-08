@@ -60,6 +60,7 @@ import {
   formatFinancialDetailsMarkdown,
   frontmatterFields,
   frontmatterList,
+  graphTypeFromPath,
   hasFilingPlan,
   hasFinancialDetails,
   hasYamlFrontmatter,
@@ -1033,44 +1034,41 @@ async function reconnectRememberedVault() {
 }
 
 async function loadExistingVault(handle) {
-  const [fileMap, rawFiles] = await Promise.all([
-    readVaultFileMap(handle),
-    readRawSourcesFromVault(handle)
-  ]);
+  const fileMap = await readVaultFileMap(handle);
 
-  state.vaultFiles = rawFiles;
+  state.vaultFiles = [];
   state.editedRawFiles = new Map();
   state.loadedFileMap = new Map(fileMap);
-  state.files = pendingRawSourcesFromVault(fileMap, rawFiles);
-  renderSources();
-  renderVaultTree(fileMap);
-  updateActionState();
+  state.files = [];
+  applyLoadedVaultFileMap(fileMap);
+  els.stats.textContent = fileMap.size
+    ? `Opened ${state.vaultName}: ${fileMap.size} vault file${fileMap.size === 1 ? "" : "s"} loaded. Scanning raw/ sources...`
+    : `Opened ${state.vaultName}. No wiki files found yet. Scanning raw/ sources...`;
 
-  if (hasVaultWikiContent(fileMap)) {
-    state.vault = null;
-    state.currentFileMap = fileMap;
-    state.selectedPath = null;
-    state.selectedKind = "";
-    state.llmFiles = new Map();
-    state.llmSelectedPath = null;
-    state.currentMaterialQuestions = [];
-    state.llmPromptCopied = false;
-    state.hasSavedCurrent = true;
-    state.hasUnsavedEdits = false;
-    state.pendingSave = false;
-    renderWikiFiles(fileMap);
-    renderOperatingLayer(fileMap);
-    renderAcceptedLlmEditState();
-    drawGraph(graphFromFileMap(fileMap));
-    renderChangePreview();
-    els.exportBtn.disabled = false;
-    updateSaveButtonState();
-    els.copyBtn.disabled = true;
-    els.stats.textContent = `Opened ${state.vaultName}: ${fileMap.size} wiki/operating file${fileMap.size === 1 ? "" : "s"} loaded`;
+  let rawFiles = [];
+  try {
+    rawFiles = await readRawSourcesFromVault(handle);
+  } catch (error) {
+    els.stats.textContent = fileMap.size
+      ? `Opened ${state.vaultName}: ${fileMap.size} vault file${fileMap.size === 1 ? "" : "s"} loaded. Raw scan failed: ${error.message || "unknown error"}`
+      : `Opened ${state.vaultName}, but raw scan failed: ${error.message || "unknown error"}`;
     updateWorkflowState();
     return;
   }
 
+  state.vaultFiles = rawFiles;
+  state.files = pendingRawSourcesFromVault(fileMap, rawFiles);
+  state.hasSavedCurrent = fileMap.size > 0 || rawFiles.length > 0;
+  renderSources();
+  renderVaultTree(fileMap);
+  updateSaveButtonState();
+  updateActionState();
+  els.stats.textContent = rawFiles.length
+    ? `Opened ${state.vaultName}: ${rawFiles.length} source file${rawFiles.length === 1 ? "" : "s"} loaded from raw/ and ${fileMap.size} vault file${fileMap.size === 1 ? "" : "s"} loaded`
+    : `Opened ${state.vaultName}: ${fileMap.size} vault file${fileMap.size === 1 ? "" : "s"} loaded`;
+}
+
+function applyLoadedVaultFileMap(fileMap) {
   state.vault = null;
   state.currentFileMap = fileMap;
   state.selectedPath = null;
@@ -1079,21 +1077,20 @@ async function loadExistingVault(handle) {
   state.llmSelectedPath = null;
   state.currentMaterialQuestions = [];
   state.llmPromptCopied = false;
-  state.hasSavedCurrent = fileMap.size > 0 || rawFiles.length > 0;
+  state.hasSavedCurrent = fileMap.size > 0;
   state.hasUnsavedEdits = false;
   state.pendingSave = false;
+  renderSources();
+  renderVaultTree(fileMap);
   renderWikiFiles(fileMap);
   renderOperatingLayer(fileMap);
   renderAcceptedLlmEditState();
   drawGraph(graphFromFileMap(fileMap));
-  els.exportBtn.disabled = fileMap.size === 0 && rawFiles.length === 0;
+  renderChangePreview();
+  els.exportBtn.disabled = fileMap.size === 0;
   updateSaveButtonState();
   els.copyBtn.disabled = true;
-  renderChangePreview();
-  renderVaultTree(fileMap);
-  els.stats.textContent = rawFiles.length
-    ? `Opened ${state.vaultName}: ${rawFiles.length} source file${rawFiles.length === 1 ? "" : "s"} loaded from raw/ and ${fileMap.size} vault file${fileMap.size === 1 ? "" : "s"} loaded`
-    : `Opened ${state.vaultName}: ${fileMap.size} vault file${fileMap.size === 1 ? "" : "s"} loaded`;
+  updateWorkflowState();
 }
 
 function clearLoadedWiki() {
@@ -12107,6 +12104,9 @@ async function readVaultFileMap(rootHandle) {
   await readRootTextFile(rootHandle, "CLAUDE.md", fileMap);
   await readRootTextFile(rootHandle, "operator-manual.md", fileMap);
   await readRootTextFile(rootHandle, "query-cookbook.md", fileMap);
+  if (fileMap.size === 0 && rootHandle?.name?.toLowerCase() === "wiki") {
+    await readDirectoryTextFilesFromHandle(rootHandle, "wiki", fileMap);
+  }
   return fileMap;
 }
 
@@ -12128,10 +12128,14 @@ async function readDirectoryTextFiles(rootHandle, path, fileMap) {
     return;
   }
 
+  await readDirectoryTextFilesFromHandle(dir, path, fileMap);
+}
+
+async function readDirectoryTextFilesFromHandle(dir, path, fileMap) {
   for await (const [name, handle] of dir.entries()) {
     const childPath = `${path}/${name}`;
     if (handle.kind === "directory") {
-      await readDirectoryTextFiles(rootHandle, childPath, fileMap);
+      await readDirectoryTextFilesFromHandle(handle, childPath, fileMap);
     } else if (isVaultTextPath(childPath)) {
       const normalizedPath = normalizeMarginsPath(childPath);
       fileMap.set(normalizedPath, await readTextHandle(handle));
