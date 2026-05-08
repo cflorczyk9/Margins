@@ -48,6 +48,16 @@ export function isBucketOverviewPath(path) {
   return /^wiki\/(sources\/sources|concepts\/concepts|entities\/entities|synthesis\/synthesis)\.md$/.test(path);
 }
 
+export function isFolderIndexPath(path) {
+  const parts = path.split("/");
+  if (parts.length !== 3) return false;
+  return parts[2].replace(/\.md$/, "") === parts[1];
+}
+
+export function isPinnedFrontmatterValue(value) {
+  return /^(true|yes|1|pinned)$/i.test(String(value || "").trim());
+}
+
 export function isContextWikiPagePath(path) {
   return path.startsWith("wiki/") &&
     path.endsWith(".md") &&
@@ -160,6 +170,11 @@ export function yamlScalar(value) {
   return String(value || "").trim().replace(/^['"]|['"]$/g, "");
 }
 
+export function yamlInlineScalar(value) {
+  const text = String(value || "").trim();
+  return /^[A-Za-z0-9_/-]+$/.test(text) ? text : JSON.stringify(text);
+}
+
 export function frontmatterFields(body) {
   const match = String(body || "").match(/^---\n([\s\S]*?)\n---\n/);
   if (!match) return {};
@@ -199,6 +214,25 @@ export function normalizeEntityTag(tag) {
     .replace(/^#/, "")
     .replace(/^['"]|['"]$/g, "")
     .toLowerCase();
+}
+
+export function extractInlineTags(body) {
+  const text = bodyWithoutFrontmatter(body)
+    .replace(/```[\s\S]*?```/g, " ")
+    .split("\n")
+    .filter((line) => !/^#{1,6}\s/.test(line.trim()))
+    .join("\n");
+  const tags = [];
+  const pattern = /(^|[\s([{])#([A-Za-z0-9][A-Za-z0-9/_-]{0,64})\b/g;
+  let match;
+  while ((match = pattern.exec(text)) !== null) {
+    tags.push(match[2]);
+  }
+  return tags;
+}
+
+export function uniqueEntityTags(tags) {
+  return [...new Set(tags.map(normalizeEntityTag).filter(Boolean))];
 }
 
 // ---------------------------------------------------------------------
