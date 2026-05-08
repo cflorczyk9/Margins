@@ -23,6 +23,7 @@ import {
 import {
   basename,
   bodyWithoutFrontmatter,
+  cleanBucket,
   cleanExtractedSourceText,
   cleanSummary,
   cleanTag,
@@ -36,20 +37,26 @@ import {
   insertFrontmatterLine,
   isBucketOverviewPath,
   isPromotedWikiPagePath,
+  isReadableSourceTextPath,
   isSourceNodePagePath,
   isWikiPagePath,
   localReadableSourceText,
   markdownTitle,
   normalizeEntityTag,
+  normalizeFilingPath,
+  normalizeMarginsPath,
   replaceSourceHeading,
   replaceSummarySection,
   replaceYamlSummary,
   slugifyLoose,
+  sourcePathForBucket,
+  sourceSlugForFile,
   titleFromSlug,
   uniqueBy,
   upsertFrontmatterList,
   upsertFrontmatterScalar,
   warningLabel,
+  WIKI_SOURCE_BUCKETS,
   yamlScalar
 } from "./core/wiki.js";
 import { clamp, escapeHtml, hashString } from "./core/utils.js";
@@ -4595,40 +4602,6 @@ function tagListFromUnknown(value) {
     .flatMap((item) => item.split(/[,|]/))
     .map(cleanTag)
     .filter(Boolean);
-}
-
-const WIKI_SOURCE_BUCKETS = new Set(["sources", "coding", "ideas", "projects", "career", "personal", "school"]);
-
-function cleanBucket(value) {
-  const bucket = cleanTag(value).replace(/^wiki\//, "").split("/")[0];
-  return WIKI_SOURCE_BUCKETS.has(bucket) ? bucket : "";
-}
-
-function sourceSlugForFile(name) {
-  const slug = slugifyLoose(basename(name || "source").replace(/\.[^.]+$/, ""));
-  return slug.startsWith("source-") ? slug : `source-${slug || "source"}`;
-}
-
-function sourcePathForBucket(name, bucket = "sources") {
-  const clean = cleanBucket(bucket) || "sources";
-  return `wiki/${clean}/${sourceSlugForFile(name)}.md`;
-}
-
-function normalizeFilingPath(path, bucket = "sources") {
-  const raw = String(path || "").trim();
-  if (!raw) return "";
-  let normalized = normalizeMarginsPath(raw).replace(/^\/+/, "");
-  if (!normalized.startsWith("wiki/")) normalized = `wiki/${normalized}`;
-  if (!normalized.endsWith(".md")) normalized = `${normalized}.md`;
-  const folder = normalized.split("/")[1] || "";
-  if (!WIKI_SOURCE_BUCKETS.has(folder)) {
-    normalized = sourcePathForBucket(basename(normalized).replace(/\.md$/, ""), bucket);
-  }
-  const filename = basename(normalized);
-  if (!filename.startsWith("source-")) {
-    normalized = normalized.replace(/\/[^/]+\.md$/, `/${sourceSlugForFile(filename)}.md`);
-  }
-  return normalizeMarginsPath(normalized);
 }
 
 function summaryFallbackParts(summary) {
@@ -13347,9 +13320,6 @@ function isVaultTextPath(path) {
   return /\.(md|txt|json|jsonl)$/i.test(path);
 }
 
-function isReadableSourceTextPath(path) {
-  return /\.(md|markdown|txt|json|jsonl|csv|tsv|py|js|jsx|ts|tsx|html|css|xml|yaml|yml|log|eml|ics|ical|vtt|srt)$/i.test(path);
-}
 
 async function writeRawSources(rootHandle, files) {
   if (files.length === 0) {
@@ -13520,10 +13490,6 @@ function safeRelativePath(path) {
     .filter((part) => part && part !== "." && part !== "..")
     .map((part) => part.replace(/[<>:"|?*\u0000-\u001F]/g, "-"))
     .join("/");
-}
-
-function normalizeMarginsPath(path) {
-  return String(path).replace(/^\.margins\//, "wiki/.margins/");
 }
 
 function wordCount(text) {
