@@ -237,6 +237,7 @@ import {
   serializeLlmFiles,
   serializeReviewQuestions,
   serializeVaultContext,
+  truncateForPrompt,
   wikiSchemaPack
 } from "./views/llm.js";
 import {
