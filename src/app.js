@@ -10,6 +10,10 @@ import {
   defaultModelForProvider,
   emptyApiUsage,
   formatControlNumber,
+  isModelJsonParseError,
+  isModelOutputTruncatedError,
+  isRateLimitError,
+  isSpendGuardError,
   loadApiGuardSettings,
   modelQuestionsOrFallback,
   nonNegativeNumber,
@@ -18,7 +22,8 @@ import {
   positiveInteger,
   positiveNumber,
   providerLabel,
-  providerValue
+  providerValue,
+  retryAfterText
 } from "./core/api.js";
 import {
   basename,
@@ -29,7 +34,9 @@ import {
   cleanTag,
   cleanWikiLinkLabel,
   cleanYamlScalar,
+  clampSentence,
   escapeRegExp,
+  extractWikiLinks,
   firstMatch,
   frontmatterFields,
   frontmatterList,
@@ -51,6 +58,7 @@ import {
   slugifyLoose,
   sourcePathForBucket,
   sourceSlugForFile,
+  stripTrailingEllipsis,
   titleFromSlug,
   uniqueBy,
   upsertFrontmatterList,
@@ -1649,25 +1657,6 @@ function localFallbackStatusForModelError(error) {
     return `Margins review is rate-limited right now. Local review shown. ${retryAfterText(error)}Retry later if you want model-generated questions.`;
   }
   return `Model review failed, using local checks: ${error.message || "unknown error"}`;
-}
-
-function retryAfterText(error) {
-  if (!error?.retryAfter) return "Wait a minute, then ";
-  const seconds = Number(error.retryAfter);
-  if (Number.isFinite(seconds) && seconds > 0) return `Wait about ${Math.ceil(seconds)} seconds, then `;
-  return "";
-}
-
-function isRateLimitError(error) {
-  return Number(error?.status) === 429 || /rate limit|rate-limited|quota|resource exhausted|free-tier limit|limit reached|HTTP 429/i.test(`${error?.message || error || ""}`);
-}
-
-function isSpendGuardError(error) {
-  return error?.code === "MARGINS_SPEND_GUARD" || /spend guard stopped/i.test(`${error?.message || error || ""}`);
-}
-
-function isModelJsonParseError(error) {
-  return error?.code === "MARGINS_MODEL_JSON_PARSE";
 }
 
 function canSendSourceToModel(file) {
@@ -3850,10 +3839,6 @@ function modelOutputTruncatedError(provider, content, finishReason = "", outputK
   error.finishReason = finishReason;
   error.partialContent = String(content || "");
   return error;
-}
-
-function isModelOutputTruncatedError(error) {
-  return error?.code === "MARGINS_MODEL_OUTPUT_TRUNCATED";
 }
 
 function isGeminiOutputTruncated(candidate, content) {
@@ -8862,15 +8847,6 @@ function sourceIngestSummaryBullets(file) {
   return parts.length > 2 ? parts.slice(1, 6) : [];
 }
 
-function stripTrailingEllipsis(value) {
-  return String(value || "").replace(/\s*(?:\.{3}|…)\s*$/u, "").trim();
-}
-
-function clampSentence(value, limit) {
-  const text = cleanSummary(value);
-  if (text.length <= limit) return text;
-  return `${text.slice(0, limit - 3).trim()}...`;
-}
 
 function sourceNoteForFile(file) {
   return sourceNoteEntryForFile(file)?.body || "";
@@ -13524,4 +13500,3 @@ function parseJsonLine(line) {
     return null;
   }
 }
-
