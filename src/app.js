@@ -53,6 +53,7 @@ import {
   cleanYamlScalar,
   clampSentence,
   confidenceValue,
+  contextSnippet,
   entityPinnedBody,
   escapeRegExp,
   extractInlineTags,
@@ -117,6 +118,8 @@ import {
   upsertFrontmatterList,
   upsertFrontmatterScalar,
   warningLabel,
+  wikiContextRecord,
+  wikiContextRecords,
   WIKI_SOURCE_BUCKETS,
   yamlInlineScalar,
   yamlScalar
@@ -3608,49 +3611,6 @@ function wikiContextForIngestPrompt(fileMap, file = null) {
   ].join("\n");
 }
 
-function wikiContextRecords(fileMap) {
-  return [...fileMap.entries()]
-    .filter(([path]) => isContextWikiPagePath(path))
-    .map(([path, body]) => wikiContextRecord(path, body));
-}
-
-
-function wikiContextRecord(path, body) {
-  const frontmatter = frontmatterFields(body);
-  const title = markdownTitle(body) || titleFromSlug(basename(path).replace(/\.md$/, ""));
-  const summary = cleanSummary(frontmatter.summary || extractSourceSummary(body) || excerptForQuestion(bodyWithoutFrontmatter(body), 260));
-  const tags = frontmatterList(frontmatter.tags);
-  const keyLinks = [
-    ...frontmatterList(frontmatter.key_links),
-    ...extractWikiLinks(body)
-  ].map((link) => cleanWikiLinkLabel(link)).filter(Boolean);
-  return {
-    path,
-    body,
-    title,
-    summary,
-    type: frontmatter.type || graphTypeFromPath(path),
-    bucket: frontmatter.bucket || path.split("/")[1] || "wiki",
-    status: frontmatter.status || "",
-    priority: frontmatter.priority || "",
-    updated: frontmatter.updated || frontmatter.created || "",
-    tags,
-    keyLinks: [...new Set(keyLinks)].slice(0, 12),
-    snippet: contextSnippet(body)
-  };
-}
-
-function contextSnippet(body) {
-  const clean = bodyWithoutFrontmatter(body)
-    .split("\n")
-    .filter((line) => {
-      const trimmed = line.trim();
-      return trimmed && !trimmed.startsWith("# ") && !/^(?:Raw|Original) file:/i.test(trimmed);
-    })
-    .slice(0, 18)
-    .join(" ");
-  return excerptForQuestion(clean, 360);
-}
 
 function keywordSet(text) {
   return new Set(String(text || "")
