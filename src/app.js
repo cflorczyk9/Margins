@@ -19,12 +19,78 @@ const PENDING_SOURCE_PAGE_SIZE = 6;
 const CANONICAL_ENTITY_TYPES = ["person", "company", "project", "concept", "synthesis"];
 const RAW_SOURCE_DIR = "raw";
 const LEGACY_RAW_SOURCE_DIR = "raw_sources";
+const DREAM_LOG_PATH = "wiki/.margins/dream-log.md";
+const DREAM_MODES = {
+  watch: {
+    label: "Quick scan",
+    help: "Only checks the vault and explains what needs attention."
+  },
+  walk: {
+    label: "Deep API review",
+    help: "Runs standard cleanup, then calls the API helpers for reviewable fixes."
+  },
+  hybrid: {
+    label: "Standard cleanup",
+    help: "Scans existing vault notes, records the pass, and queues review items."
+  }
+};
+const DREAM_STAGES = [
+  {
+    id: "replay",
+    name: "Vault scan",
+    label: "Read existing notes",
+    description: "Scans existing wiki pages and source notes for retrieval problems without touching pending uploads."
+  },
+  {
+    id: "pruning",
+    name: "Entity cleanup",
+    label: "Find weak pages",
+    description: "Flags sparse entity pages, stale drafts, and cleanup candidates without deleting anything."
+  },
+  {
+    id: "association",
+    name: "Link cleanup",
+    label: "Strengthen links",
+    description: "Looks for pages that should be reviewed for backlinks, citations, or graph structure."
+  },
+  {
+    id: "synthesis",
+    name: "Cross-source review",
+    label: "Surface patterns",
+    description: "Queues cross-source summary opportunities for review instead of creating them silently."
+  },
+  {
+    id: "clearance",
+    name: "System cleanup",
+    label: "Repair structure",
+    description: "Handles direct-read cleanup such as check logs, unmatched wikilinks, and safe metadata repairs."
+  }
+];
 const INGEST_PROGRESS_STEP_DELAYS_MS = [0, 1400, 4400, 12000];
 const INGEST_REVIEW_OUTPUT_TOKEN_FLOOR = 8192;
 const INGEST_REVIEW_RETRY_OUTPUT_TOKEN_FLOOR = 12288;
+const DREAM_HELPER_OUTPUT_TOKEN_FLOOR = 12288;
+const DREAM_HELPER_RETRY_OUTPUT_TOKEN_FLOOR = 12288;
+const DREAM_BROKEN_LINK_DEFAULT_MAX_LINKS = 10;
+const DREAM_BROKEN_LINK_DEFAULT_MAX_FILES = 4;
+const DREAM_BROKEN_LINK_FULL_FILE_CHAR_LIMIT = 7000;
+const DREAM_BROKEN_LINK_SNIPPET_RADIUS = 700;
+const DREAM_BROKEN_LINK_SNIPPETS_PER_FILE = 4;
+const DREAM_AUTO_LINK_SCORE = 82;
+const DREAM_PLACEHOLDER_LINKS = new Set([
+  "source-slug",
+  "page-name",
+  "entity-name",
+  "concept-name",
+  "target-page",
+  "target-slug",
+  "example",
+  "example-page"
+]);
 let apiRequestTimeoutMs = API_REQUEST_TIMEOUT_MS;
 let ingestProgressStepDelaysMs = INGEST_PROGRESS_STEP_DELAYS_MS;
 let activeOperation = "";
+let dreamRunTickerId = 0;
 const ingestProgressTimers = new Map();
 
 const state = {
@@ -75,7 +141,14 @@ const state = {
   activityRecentVisibleCount: ACTIVITY_RECENT_PAGE_SIZE,
   activityRecentSourceKey: "",
   pendingSourceVisibleCount: PENDING_SOURCE_PAGE_SIZE,
-  pendingSourceKey: ""
+  pendingSourceKey: "",
+  dreamMode: "hybrid",
+  dreamReviewActive: false,
+  dreamSkippedItems: new Set(),
+  dreamDismissedBrokenLinks: new Set(),
+  dreamPreparedRun: null,
+  dreamLastRun: null,
+  dreamActiveStage: ""
 };
 
 const apiThrottle = {
@@ -130,14 +203,34 @@ const els = {
   sourceList: document.getElementById("source-list"),
   recentActivityPanel: document.getElementById("recent-activity-panel"),
   recentActivityList: document.getElementById("recent-activity-list"),
+  dreamStateCard: document.getElementById("dream-state-card"),
   dreamMeta: document.getElementById("dream-meta"),
   dreamStateTitle: document.getElementById("dream-state-title"),
   dreamStateBody: document.getElementById("dream-state-body"),
-  dreamStats: document.getElementById("dream-stats"),
+  dreamRunBtn: document.getElementById("dream-run-btn"),
+  dreamReviewBtn: document.getElementById("dream-review-btn"),
+  dreamModeToggle: document.getElementById("dream-mode-toggle"),
+  dreamModeHelp: document.getElementById("dream-mode-help"),
+  dreamPassStatus: document.getElementById("dream-pass-status"),
   dreamOperationList: document.getElementById("dream-operation-list"),
   dreamProposalList: document.getElementById("dream-proposal-list"),
+  dreamRunPanel: document.getElementById("dream-run-panel"),
+  dreamRunTitle: document.getElementById("dream-run-title"),
+  dreamRunSummary: document.getElementById("dream-run-summary"),
+  dreamRunScope: document.getElementById("dream-run-scope"),
+  dreamLimitItemsLabel: document.getElementById("dream-limit-items-label"),
+  dreamLimitFilesLabel: document.getElementById("dream-limit-files-label"),
+  dreamLimitItems: document.getElementById("dream-limit-items"),
+  dreamLimitFiles: document.getElementById("dream-limit-files"),
+  dreamLimitUsd: document.getElementById("dream-limit-usd"),
+  dreamRunEstimate: document.getElementById("dream-run-estimate"),
+  dreamRunPreparedBtn: document.getElementById("dream-run-prepared-btn"),
+  dreamRunCancelBtn: document.getElementById("dream-run-cancel-btn"),
+  dreamRunCancelSecondaryBtn: document.getElementById("dream-run-cancel-secondary-btn"),
+  dreamQueueKicker: document.getElementById("dream-queue-kicker"),
+  dreamQueueTitle: document.getElementById("dream-queue-title"),
   dreamLogMeta: document.getElementById("dream-log-meta"),
-  dreamLogTitles: document.getElementById("dream-log-titles"),
+  dreamLogEntries: document.getElementById("dream-log-entries"),
   entityMeta: document.getElementById("entity-meta"),
   entityControls: document.getElementById("entity-controls"),
   entitySearch: document.getElementById("entity-search"),
@@ -217,7 +310,18 @@ els.fileInput.addEventListener("change", handleSourceSelection);
 els.sourceList?.addEventListener("click", handleSourceActionClick);
 els.recentActivityList?.addEventListener("click", handleRecentActivityClick);
 els.recentActivityList?.addEventListener("keydown", handleRecentActivityKeydown);
-els.bulkIngestBtn?.addEventListener("click", () => withBusyOperation("bulk ingest", bulkIngestPendingSources));
+els.dreamProposalList?.addEventListener("click", handleDreamActionClick);
+els.dreamRunBtn?.addEventListener("click", () => withBusyOperation("maintenance pass", runDreamMaintenance));
+els.dreamReviewBtn?.addEventListener("click", startDreamStepReview);
+els.dreamModeToggle?.addEventListener("change", handleDreamModeChange);
+els.dreamRunPreparedBtn?.addEventListener("click", () => withBusyOperation("dream helper", runPreparedDreamHelper));
+els.dreamRunCancelBtn?.addEventListener("click", clearDreamPreparedRun);
+els.dreamRunCancelSecondaryBtn?.addEventListener("click", clearDreamPreparedRun);
+els.dreamLimitItems?.addEventListener("input", handleDreamRunLimitChange);
+els.dreamLimitFiles?.addEventListener("input", handleDreamRunLimitChange);
+els.dreamLimitUsd?.addEventListener("input", handleDreamRunLimitChange);
+els.dreamRunScope?.addEventListener("click", handleDreamRunScopeClick);
+els.bulkIngestBtn?.addEventListener("click", () => withBusyOperation("bulk process", bulkIngestPendingSources));
 els.docBody?.addEventListener("input", handleVaultDocumentEdit);
 els.docBody?.addEventListener("scroll", syncDocHighlightScroll);
 els.docSaveBtn?.addEventListener("click", () => withBusyOperation("vault save", saveCurrentVault));
@@ -603,6 +707,10 @@ function defaultEndpointForProvider(provider) {
   }[provider] || "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent";
 }
 
+function apiProviderRequiresSecret(provider) {
+  return provider !== "local";
+}
+
 async function setSourceFiles(files) {
   const normalized = normalizeSelectedFiles(files);
   const incomingFiles = await Promise.all(normalized.map(async (file) => ({
@@ -648,7 +756,7 @@ async function persistImportedRawSources(files) {
 
   const vault = state.vaultHandle || await activeVaultForRawImport();
   if (!vault) {
-    els.stats.textContent = "Documents are loaded for this session. Choose or reconnect a vault to preserve them in raw.";
+    els.stats.textContent = "Documents are loaded for this session. Choose or reconnect a vault to preserve originals in raw/.";
     updateWorkflowState();
     return 0;
   }
@@ -662,11 +770,11 @@ async function persistImportedRawSources(files) {
     renderVaultTree(state.currentFileMap);
     updateWorkflowState();
     els.stats.textContent = written
-      ? `${written} raw source${written === 1 ? "" : "s"} saved to raw.`
-      : "Raw sources already exist in raw.";
+      ? `${written} source file${written === 1 ? "" : "s"} saved to raw/.`
+      : "Source files already exist in raw/.";
     return written;
   } catch (error) {
-    els.stats.textContent = `Raw source save failed: ${error.message || "unknown error"}`;
+    els.stats.textContent = `Source file save failed: ${error.message || "unknown error"}`;
     updateWorkflowState();
     return 0;
   }
@@ -865,7 +973,7 @@ async function loadExistingVault(handle) {
   renderChangePreview();
   renderVaultTree(fileMap);
   els.stats.textContent = rawFiles.length
-    ? `Opened ${state.vaultName}: ${rawFiles.length} raw source${rawFiles.length === 1 ? "" : "s"} loaded`
+    ? `Opened ${state.vaultName}: ${rawFiles.length} source file${rawFiles.length === 1 ? "" : "s"} loaded from raw/`
     : `Opened vault: ${state.vaultName}`;
 }
 
@@ -991,7 +1099,7 @@ async function removePendingSource(fileName) {
 
   const rawSaved = rawSourceAlreadySaved(file);
   const message = rawSaved
-    ? `Delete ${basename(fileName)} from raw?`
+    ? `Delete ${basename(fileName)} from raw/?`
     : `Remove ${basename(fileName)} from pending?`;
   if (!confirm(message)) return;
 
@@ -1001,7 +1109,7 @@ async function removePendingSource(fileName) {
     }
     removeSourceFromState(fileName);
     els.stats.textContent = rawSaved
-      ? `Deleted ${basename(fileName)} from raw.`
+      ? `Deleted ${basename(fileName)} from raw/.`
       : `Removed ${basename(fileName)} from pending.`;
   } catch (error) {
     els.stats.textContent = `Could not delete ${basename(fileName)}: ${error.message || "unknown error"}`;
@@ -1270,7 +1378,7 @@ async function saveCurrentVault(options = {}) {
       file_count: state.currentFileMap.size,
       write_mode: "direct-vault-save",
       warning: sourceCount === 0
-        ? "No raw source files were loaded in the browser when this folder was written."
+        ? "No original source files were loaded in the browser when this folder was written."
         : ""
     }, null, 2));
     state.vaultFiles = mergeSourceFiles(state.vaultFiles, pendingRaw.map((file) => ({ ...file, sourceScope: "vault", dirtyRaw: false })));
@@ -1291,7 +1399,7 @@ async function saveCurrentVault(options = {}) {
     els.reviewReply.value = "";
     els.stats.textContent = pendingRaw.length === 0
       ? `Saved ${writtenFiles} wiki/operating files to ${state.vaultName}`
-      : `Saved ${writtenFiles} wiki/operating file${writtenFiles === 1 ? "" : "s"} + ${writtenRaw} new raw source${writtenRaw === 1 ? "" : "s"} to ${state.vaultName}`;
+      : `Saved ${writtenFiles} wiki/operating file${writtenFiles === 1 ? "" : "s"} + ${writtenRaw} new source file${writtenRaw === 1 ? "" : "s"} to ${state.vaultName}`;
     els.saveVaultBtn.textContent = "Saved";
     if (els.docSaveBtn) els.docSaveBtn.textContent = "Saved";
     renderWikiFiles(state.currentFileMap);
@@ -1393,7 +1501,7 @@ async function copyLlmIngestPrompt() {
   await navigator.clipboard.writeText(buildLlmIngestPrompt(state.files, state.currentFileMap));
   state.llmPromptCopied = true;
   els.llmBtn.textContent = "Copied";
-  setTimeout(() => { els.llmBtn.textContent = "Copy LLM ingest prompt"; }, 1100);
+  setTimeout(() => { els.llmBtn.textContent = "Copy LLM process prompt"; }, 1100);
   activateTab("llm");
   els.llmInput.focus();
   updateWorkflowState();
@@ -1560,13 +1668,13 @@ function localIngestReview(file, fileMap, mode) {
 
 function ingestModelErrorMessage(error) {
   if (isModelOutputTruncatedError(error)) {
-    return "Margins review was cut off before complete JSON came back. The raw source is saved. Retry this file; Margins will ask for a larger response.";
+    return "Margins review was cut off before complete JSON came back. The source file is saved. Retry this file; Margins will ask for a larger response.";
   }
   if (isSpendGuardError(error)) {
-    return `${error.message} The raw source is saved. Raise the guard or reset usage, then retry.`;
+    return `${error.message} The source file is saved. Raise the guard or reset usage, then retry.`;
   }
   if (isRateLimitError(error)) {
-    return `Margins review is rate-limited right now. The raw source is saved. ${retryAfterText(error)}Retry this file when the limit resets.`;
+    return `Margins review is rate-limited right now. The source file is saved. ${retryAfterText(error)}Retry this file when the limit resets.`;
   }
   return `Model review did not finish: ${error.message || "unknown error"}`;
 }
@@ -1633,7 +1741,7 @@ function localSourceSummaryParts(file) {
   const clean = cleanDisplaySummary(localReadableSourceText(file.text || ""));
   if (!clean) {
     return {
-      overview: "Margins saved the raw source, but there is not enough readable text to summarize yet.",
+      overview: "Margins saved the source file, but there is not enough readable text to summarize yet.",
       bullets: [
         "Use model review with the original file attached if this document matters.",
         "Do not rely on local fallback for scanned, image-only, or complex documents."
@@ -2014,12 +2122,13 @@ async function generateApiReviewQuestions(fileMap, files) {
     outputTokenLimit: apiOutputTokenLimit()
   });
   await waitForApiThrottle(provider);
+  const headers = {
+    "Content-Type": "application/json"
+  };
+  if (state.apiSecret) headers.Authorization = `Bearer ${state.apiSecret}`;
   const response = await fetchWithTimeout(endpoint, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${state.apiSecret}`
-    },
+    headers,
     body: JSON.stringify({
       model,
       temperature: 0.2,
@@ -2134,12 +2243,13 @@ async function generateOpenAiCompatibleJsonContent(provider, model, prompt, trac
   timing.throttleMs = elapsedSince(timing.throttleStartedAt);
   timing.requestStartedAt = performance.now();
   try {
+    const headers = {
+      "Content-Type": "application/json"
+    };
+    if (state.apiSecret) headers.Authorization = `Bearer ${state.apiSecret}`;
     const response = await fetchWithTimeout(endpoint, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${state.apiSecret}`
-      },
+      headers,
       body: JSON.stringify({
         model,
         temperature: 0.2,
@@ -2178,9 +2288,238 @@ async function generateOpenAiCompatibleJsonContent(provider, model, prompt, trac
   }
 }
 
+async function generateApiTextContent(provider, model, prompt, tracking = {}, outputTokenFloor = 0) {
+  if (provider === "gemini") {
+    return generateGeminiTextContent(model, prompt, tracking, outputTokenFloor);
+  }
+  if (provider === "openai" || provider === "local") {
+    return generateOpenAiCompatibleTextContent(provider, model, prompt, tracking, outputTokenFloor);
+  }
+  if (provider === "anthropic") {
+    return generateAnthropicTextContent(model, prompt, tracking, outputTokenFloor);
+  }
+  throw new Error("Direct helper calls are wired for Gemini, OpenAI-compatible, local, and Anthropic endpoints right now.");
+}
+
+async function generateOpenAiCompatibleTextContent(provider, model, prompt, tracking = {}, outputTokenFloor = 0) {
+  const endpoint = defaultEndpointForProvider(provider);
+  const budget = reserveApiBudget({
+    provider,
+    model,
+    prompt,
+    extraParts: [],
+    outputTokenLimit: apiOutputTokenLimit(outputTokenFloor)
+  });
+  const timing = beginModelTiming({
+    ...tracking,
+    provider,
+    model,
+    endpoint,
+    promptChars: prompt.length,
+    attachmentCount: 0,
+    attachmentBytes: 0,
+    outputTokenLimit: budget.outputTokenLimit
+  });
+  tracking.record = timing;
+  await waitForApiThrottle(provider);
+  timing.throttleMs = elapsedSince(timing.throttleStartedAt);
+  timing.requestStartedAt = performance.now();
+  try {
+    const headers = {
+      "Content-Type": "application/json"
+    };
+    if (state.apiSecret) headers.Authorization = `Bearer ${state.apiSecret}`;
+    const response = await fetchWithTimeout(endpoint, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        model,
+        temperature: 0.2,
+        max_tokens: budget.outputTokenLimit,
+        messages: [
+          {
+            role: "system",
+            content: "You are a conservative cleanup helper for a local-first Margins vault. Return margins-file blocks for proposed file changes."
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ]
+      })
+    });
+    timing.httpStatus = response.status;
+    if (!response.ok) {
+      const error = await apiErrorFromResponse(response, "model helper");
+      finishModelTiming(timing, { ok: false, error });
+      throw error;
+    }
+    const json = await response.json();
+    const usage = {
+      inputTokens: json.usage?.prompt_tokens || budget.inputTokens,
+      outputTokens: json.usage?.completion_tokens || budget.outputTokenLimit,
+      estimated: !json.usage
+    };
+    recordApiUsage({ provider, model, ...usage });
+    const content = json.choices?.[0]?.message?.content || "";
+    finishModelTiming(timing, { ok: true, usage, contentChars: content.length });
+    return content;
+  } catch (error) {
+    if (!timing.finishedAt) finishModelTiming(timing, { ok: false, error });
+    throw error;
+  }
+}
+
+async function generateAnthropicTextContent(model, prompt, tracking = {}, outputTokenFloor = 0) {
+  const endpoint = defaultEndpointForProvider("anthropic");
+  const budget = reserveApiBudget({
+    provider: "anthropic",
+    model,
+    prompt,
+    extraParts: [],
+    outputTokenLimit: apiOutputTokenLimit(outputTokenFloor)
+  });
+  const timing = beginModelTiming({
+    ...tracking,
+    provider: "anthropic",
+    model,
+    endpoint,
+    promptChars: prompt.length,
+    attachmentCount: 0,
+    attachmentBytes: 0,
+    outputTokenLimit: budget.outputTokenLimit
+  });
+  tracking.record = timing;
+  await waitForApiThrottle("anthropic");
+  timing.throttleMs = elapsedSince(timing.throttleStartedAt);
+  timing.requestStartedAt = performance.now();
+  try {
+    const response = await fetchWithTimeout(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": state.apiSecret,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true"
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0.2,
+        max_tokens: budget.outputTokenLimit,
+        system: "You are a conservative cleanup helper for a local-first Margins vault. Return margins-file blocks for proposed file changes.",
+        messages: [
+          {
+            role: "user",
+            content: prompt
+          }
+        ]
+      })
+    });
+    timing.httpStatus = response.status;
+    if (!response.ok) {
+      const error = await apiErrorFromResponse(response, "Anthropic helper");
+      finishModelTiming(timing, { ok: false, error });
+      throw error;
+    }
+    const json = await response.json();
+    const content = (json.content || [])
+      .map((part) => part?.type === "text" ? part.text || "" : "")
+      .filter(Boolean)
+      .join("\n");
+    const usage = {
+      inputTokens: json.usage?.input_tokens || budget.inputTokens,
+      outputTokens: json.usage?.output_tokens || budget.outputTokenLimit,
+      estimated: !json.usage
+    };
+    recordApiUsage({ provider: "anthropic", model, ...usage });
+    if (json.stop_reason === "max_tokens") {
+      const error = modelOutputTruncatedError("anthropic", content, json.stop_reason);
+      finishModelTiming(timing, { ok: false, usage, contentChars: content.length, error });
+      throw error;
+    }
+    finishModelTiming(timing, { ok: true, usage, contentChars: content.length });
+    return content;
+  } catch (error) {
+    if (!timing.finishedAt) finishModelTiming(timing, { ok: false, error });
+    throw error;
+  }
+}
+
 async function generateGeminiReviewQuestions(model, prompt) {
   const content = await generateGeminiJsonContent(model, `You generate concise filing review questions for a local-first personal wiki. Return JSON only.\n\n${prompt}`);
   return parseApiQuestions(content).slice(0, 3);
+}
+
+async function generateGeminiTextContent(model, prompt, tracking = {}, outputTokenFloor = 0) {
+  const endpoint = defaultEndpointForProvider("gemini").replace("{model}", encodeURIComponent(normalizeGeminiModel(model)));
+  const outputTokenLimit = apiOutputTokenLimit(outputTokenFloor);
+  const budget = reserveApiBudget({
+    provider: "gemini",
+    model,
+    prompt,
+    extraParts: [],
+    outputTokenLimit
+  });
+  const timing = beginModelTiming({
+    ...tracking,
+    provider: "gemini",
+    model,
+    endpoint,
+    promptChars: prompt.length,
+    attachmentCount: 0,
+    attachmentBytes: 0,
+    outputTokenLimit: budget.outputTokenLimit
+  });
+  tracking.record = timing;
+  await waitForApiThrottle("gemini");
+  timing.throttleMs = elapsedSince(timing.throttleStartedAt);
+  timing.requestStartedAt = performance.now();
+  try {
+    const response = await fetchWithTimeout(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": state.apiSecret
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: prompt }]
+          }
+        ],
+        generationConfig: {
+          temperature: 0.2,
+          maxOutputTokens: budget.outputTokenLimit
+        }
+      })
+    });
+    timing.httpStatus = response.status;
+    if (!response.ok) {
+      const error = await apiErrorFromResponse(response, "Gemini helper");
+      finishModelTiming(timing, { ok: false, error });
+      throw error;
+    }
+    const json = await response.json();
+    const candidate = json.candidates?.[0] || {};
+    const content = candidate.content?.parts?.map((part) => part.text || "").join("\n") || "";
+    const usage = {
+      inputTokens: json.usageMetadata?.promptTokenCount || budget.inputTokens,
+      outputTokens: geminiOutputTokenCount(json.usageMetadata) || budget.outputTokenLimit,
+      estimated: !json.usageMetadata
+    };
+    recordApiUsage({ provider: "gemini", model, ...usage });
+    if (isGeminiOutputTruncated(candidate, content)) {
+      const error = modelOutputTruncatedError("gemini", content, candidate.finishReason || "", "margins-file blocks");
+      finishModelTiming(timing, { ok: false, usage, contentChars: content.length, error });
+      throw error;
+    }
+    finishModelTiming(timing, { ok: true, usage, contentChars: content.length });
+    return content;
+  } catch (error) {
+    if (!timing.finishedAt) finishModelTiming(timing, { ok: false, error });
+    throw error;
+  }
 }
 
 async function generateGeminiJsonContent(model, prompt, extraParts = [], tracking = {}, options = {}) {
@@ -3207,9 +3546,9 @@ function buildApiIngestReviewPrompt(file, fileMap, mode) {
   const askInstruction = mode === "auto"
     ? "Return no asks in auto mode."
     : `Return 0-${budget} specific asks. Ask when the answer changes bucket/path, type tag, promotion, propagation, sensitivity, priority, or follow-up.`;
-  return `Review this uploaded source for Margins, a local-first raw-source-to-wiki compiler. Return a filing judgment plus a compact pending-card review.
+  return `Review this uploaded source for Margins, a local-first source-to-wiki compiler. Return a filing judgment plus a compact pending-card review.
 
-The raw file is already saved in raw. Margins will show your JSON on the pending inbox card before writing the wiki.
+The original file is already saved in raw/. Margins will show your JSON on the pending inbox card before writing the wiki.
 
 Contract:
 - JSON only. No markdown, no prose outside JSON.
@@ -3235,7 +3574,7 @@ Contract:
 - asks: ${askInstruction}
 - Do not ask generic filing questions. Margins should recommend a path.
 - Exception: do ask a specific bucket/path/type/promotion question when two reasonable placements remain after reading current wiki context.
-- Do not include transcript dumps, raw YAML/frontmatter, embed syntax, or generic filing questions.
+- Do not include transcript dumps, unprocessed YAML/frontmatter, embed syntax, or generic filing questions.
 - Do not apply special handling for document classes. Infer durable patterns from current wiki context, and explain any structural gap before proposing new tags or pages.
 - Review mode is ${reviewModeLabel(mode)}. Question budget: ${budget}.
 
@@ -3411,7 +3750,7 @@ function contextSnippet(body) {
     .split("\n")
     .filter((line) => {
       const trimmed = line.trim();
-      return trimmed && !trimmed.startsWith("# ") && !/^Raw file:/i.test(trimmed);
+      return trimmed && !trimmed.startsWith("# ") && !/^(?:Raw|Original) file:/i.test(trimmed);
     })
     .slice(0, 18)
     .join(" ");
@@ -3689,12 +4028,16 @@ function modelJsonParseError(provider, content) {
   return error;
 }
 
-function modelOutputTruncatedError(provider, content, finishReason = "") {
+function modelOutputTruncatedError(provider, content, finishReason = "", outputKind = "") {
   const preview = clampSentence(String(content || "").replace(/\s+/g, " "), 240);
   const reason = finishReason ? ` (${finishReason})` : "";
-  const error = new Error(`Margins review was cut off before complete JSON came back${reason}${preview ? `: ${preview}` : "."}`);
+  const kind = outputKind || (String(content || "").includes("```margins-file") ? "margins-file blocks" : "JSON");
+  const subject = kind === "margins-file blocks" ? "helper output" : "review";
+  const error = new Error(`Margins ${subject} was cut off before complete ${kind} came back${reason}${preview ? `: ${preview}` : "."}`);
   error.code = "MARGINS_MODEL_OUTPUT_TRUNCATED";
   error.provider = provider;
+  error.finishReason = finishReason;
+  error.partialContent = String(content || "");
   return error;
 }
 
@@ -4699,7 +5042,7 @@ function renderChangePreview() {
     return;
   }
 
-  const title = parsedMode ? "Returned files" : "Ingestion preview";
+  const title = parsedMode ? "Returned files" : "Processing preview";
   const createCount = summaryChanges.filter((change) => change.status === "create").length;
   const overwriteCount = summaryChanges.filter((change) => change.status === "overwrite").length;
   const unchangedCount = summaryChanges.filter((change) => change.status === "unchanged").length;
@@ -4708,8 +5051,8 @@ function renderChangePreview() {
   const summaryParts = [
     createCount ? `${createCount} new` : "",
     overwriteCount ? `${overwriteCount} overwrite` : "",
-    rawCreateCount ? `${rawCreateCount} raw new` : "",
-    rawOverwriteCount ? `${rawOverwriteCount} raw overwrite` : "",
+    rawCreateCount ? `${rawCreateCount} source new` : "",
+    rawOverwriteCount ? `${rawOverwriteCount} source overwrite` : "",
     parsedMode && unchangedCount ? `${unchangedCount} unchanged` : ""
   ].filter(Boolean);
   const summaryText = summaryParts.join(" · ") || "No file changes detected";
@@ -4723,7 +5066,7 @@ function renderChangePreview() {
 
   const detailChanges = [
     ...summaryChanges.filter(isUserFacingChange).map((change) => ({ ...change, kind: changeKindLabel(change.path) })),
-    ...rawChanges.map((change) => ({ ...change, kind: "raw source" }))
+    ...rawChanges.map((change) => ({ ...change, kind: "source file" }))
   ];
 
   if (detailChanges.length === 0) {
@@ -4825,7 +5168,7 @@ function renderSources() {
   renderPendingCount(files.length);
   if (files.length === 0) {
     els.sourceList.className = "source-list empty";
-    els.sourceList.textContent = "No pending raw sources.";
+    els.sourceList.textContent = "No pending sources.";
     renderRecentActivity();
     return;
   }
@@ -4945,18 +5288,18 @@ function activeActivityFileMap() {
 function renderRecentActivity(fileMap = activeActivityFileMap()) {
   if (!els.recentActivityList) return;
   const activeFileMap = fileMap instanceof Map ? fileMap : new Map();
-  const records = recentActivityRecords(activeFileMap);
+  const records = activityTimelineRecords(activeFileMap);
   syncActivityRecentSource(records);
 
-  if (activeFileMap.size === 0) {
+  if (records.length === 0 && activeFileMap.size === 0) {
     els.recentActivityList.className = "activity-card-wall empty";
-    els.recentActivityList.textContent = "Open a vault to see recently ingested source notes.";
+    els.recentActivityList.textContent = "Open a vault to see recently processed source notes.";
     return;
   }
 
   if (records.length === 0) {
     els.recentActivityList.className = "activity-card-wall empty";
-    els.recentActivityList.textContent = "No ingested source notes found in this vault yet.";
+    els.recentActivityList.textContent = "No processed source notes found in this vault yet.";
     return;
   }
 
@@ -4970,84 +5313,1608 @@ function renderRecentActivity(fileMap = activeActivityFileMap()) {
 }
 
 function renderDream(fileMap = activeActivityFileMap()) {
-  if (!els.dreamOperationList || !els.dreamProposalList) return;
+  if (!els.dreamProposalList) return;
   const activeFileMap = fileMap instanceof Map ? fileMap : new Map();
   const report = dreamReport(activeFileMap);
+  const visibleQueue = state.dreamLastRun ? dreamVisibleQueueItems(report.queueItems) : [];
+  if (els.dreamStateCard) {
+    els.dreamStateCard.classList.toggle("is-dreaming", Boolean(state.dreamLastRun?.running));
+  }
 
   if (els.dreamMeta) els.dreamMeta.textContent = report.meta;
   if (els.dreamStateTitle) els.dreamStateTitle.textContent = report.title;
   if (els.dreamStateBody) els.dreamStateBody.textContent = report.body;
-  if (els.dreamStats) {
-    els.dreamStats.innerHTML = report.stats.map((stat) => `
-      <div class="dream-stat">
-        <strong>${escapeHtml(stat.value)}</strong>
-        <span>${escapeHtml(stat.label)}</span>
-      </div>
-    `).join("");
+  if (els.dreamPassStatus) {
+    els.dreamPassStatus.textContent = report.passStatus;
+    els.dreamPassStatus.hidden = !state.dreamLastRun;
   }
-  els.dreamOperationList.innerHTML = report.operations.map((operation) => `
-    <article class="dream-op-card ${escapeHtml(operation.state)}">
-      <div class="dream-op-top">
-        <span>${escapeHtml(operation.name)}</span>
-        <strong>${escapeHtml(operation.metric)}</strong>
-      </div>
-      <p>${escapeHtml(operation.description)}</p>
-    </article>
-  `).join("");
-  els.dreamProposalList.innerHTML = report.proposals.length
-    ? report.proposals.map((proposal) => `
-      <article class="dream-proposal-card">
-        <div>
-          <span class="dream-proposal-kind">${escapeHtml(proposal.kind)}</span>
-          <h4>${escapeHtml(proposal.title)}</h4>
-          <p>${escapeHtml(proposal.body)}</p>
+  if (els.dreamRunBtn) {
+    els.dreamRunBtn.disabled = !report.connected || Boolean(state.dreamLastRun?.running);
+    els.dreamRunBtn.textContent = state.dreamLastRun?.running ? "Cleaning..." : "Run cleanup";
+  }
+  if (els.dreamReviewBtn) els.dreamReviewBtn.disabled = !report.connected || report.reviewItemCount === 0;
+  if (els.dreamModeToggle) els.dreamModeToggle.value = state.dreamMode;
+  if (els.dreamModeHelp) els.dreamModeHelp.textContent = "Automatically cleans low-risk retrieval issues, then asks only about risky changes.";
+  if (els.dreamOperationList) {
+    els.dreamOperationList.innerHTML = report.operations.map((operation) => `
+      <article class="dream-op-card ${escapeHtml(operation.state)}">
+        <div class="dream-op-top">
+          <span>${escapeHtml(operation.name)}</span>
+          <strong>${escapeHtml(operation.metric)}</strong>
         </div>
-        <div class="dream-proposal-actions" aria-label="Dream proposal actions">
-          <button type="button" disabled>Accept</button>
-          <button type="button" disabled>Refine</button>
-          <button type="button" disabled>Reject</button>
+        <p>${escapeHtml(operation.description)}</p>
+        <div class="dream-stage-counts">
+          <span>${escapeHtml(String(operation.queued))} queued</span>
+          <span>${escapeHtml(String(operation.applied))} applied</span>
+          <span>${escapeHtml(String(operation.deferred))} review</span>
         </div>
       </article>
-    `).join("")
-    : `<div class="dream-empty">Open a vault and ingest sources. Margins will prepare dream proposals here.</div>`;
+    `).join("");
+  }
+  if (els.dreamQueueKicker) els.dreamQueueKicker.textContent = state.dreamLastRun ? "Needs your call" : "Cleanup";
+  if (els.dreamQueueTitle) {
+    els.dreamQueueTitle.textContent = !state.dreamLastRun
+      ? "Run cleanup to see what needs your call"
+      : visibleQueue.length
+        ? `${formatStatNumber(report.reviewItemCount)} risky item${report.reviewItemCount === 1 ? "" : "s"} to review`
+        : "No risky cleanup decisions";
+  }
+  els.dreamProposalList.innerHTML = visibleQueue.length
+    ? visibleQueue.map((proposal, index) => renderDreamQueueCard(proposal, index, report.reviewItemCount)).join("")
+    : `<div class="dream-empty">${escapeHtml(state.dreamLastRun ? report.emptyQueueText : "Run cleanup when you want Margins to improve retrieval and queue only the risky calls.")}</div>`;
+  renderDreamPreparedRunPanel(activeFileMap, report);
   if (els.dreamLogMeta) els.dreamLogMeta.textContent = report.log;
-  if (els.dreamLogTitles) {
-    els.dreamLogTitles.innerHTML = report.dreamTitles.length
-      ? report.dreamTitles.map((title) => `
-        <li>
-          <span>${escapeHtml(title.title)}</span>
-          <small>${escapeHtml(title.context)}</small>
-        </li>
-      `).join("")
+  if (els.dreamLogEntries) {
+    els.dreamLogEntries.innerHTML = report.logEntries.length
+      ? report.logEntries.map(renderDreamActivityEntry).join("")
       : "";
+  }
+}
+
+function renderDreamActivityEntry(entry) {
+  const kind = entry.kind ? ` ${escapeHtml(entry.kind)}` : "";
+  const details = [
+    entry.file ? `<small><strong>File</strong><span>${escapeHtml(entry.file)}</span></small>` : "",
+    entry.broken ? `<small><strong>Broken</strong><span>[[${escapeHtml(entry.broken)}]]</span></small>` : "",
+    entry.changedTo ? `<small><strong>Changed to</strong><span>[[${escapeHtml(entry.changedTo)}]]</span></small>` : "",
+    entry.context ? `<small>${escapeHtml(entry.context)}</small>` : ""
+  ].filter(Boolean).join("");
+  return `
+    <li class="dream-activity-item${kind}">
+      <span>${escapeHtml(entry.title)}</span>
+      ${details}
+    </li>
+  `;
+}
+
+function renderDreamQueueCard(proposal, index, reviewTotal) {
+  const stepLabel = state.dreamReviewActive && proposal.safety === "review"
+    ? `Step ${index + 1} of ${reviewTotal}`
+    : proposal.disabled
+      ? "Nothing to do"
+      : proposal.safety === "auto" ? "Safe" : "Review";
+  const stageLabel = dreamStageName(proposal.stage);
+  const runText = proposal.runBody || (proposal.safety === "auto"
+    ? "Cleanup can apply this automatically."
+    : "Runs the configured API and opens proposed file changes for review before anything is saved.");
+  return `
+    <article class="dream-proposal-card ${escapeHtml(proposal.safety)} ${proposal.disabled ? "disabled" : ""}">
+      <div>
+        <div class="dream-proposal-topline">
+          <span class="dream-proposal-kind">${escapeHtml(stepLabel)}</span>
+          <span class="dream-proposal-stage">${escapeHtml(stageLabel)}</span>
+        </div>
+        <h4>${escapeHtml(proposal.title)}</h4>
+        <div class="dream-proposal-details">
+          <div>
+            <span>Found</span>
+            <p>${escapeHtml(proposal.body)}</p>
+          </div>
+          <div>
+            <span>When clicked</span>
+            <p>${escapeHtml(runText)}</p>
+          </div>
+        </div>
+      </div>
+      <div class="dream-proposal-actions" aria-label="Dream proposal actions">
+        <button type="button" data-dream-action="${escapeHtml(proposal.action || "")}" data-dream-target="${escapeHtml(proposal.target || "")}" ${proposal.disabled ? "disabled" : ""}>
+          ${escapeHtml(proposal.actionLabel || "Open")}
+        </button>
+        ${state.dreamReviewActive && proposal.safety === "review" ? `
+          <button type="button" data-dream-action="skip-dream-item" data-dream-target="${escapeHtml(proposal.id)}">Skip</button>
+        ` : ""}
+      </div>
+    </article>
+  `;
+}
+
+function dreamVisibleQueueItems(items = []) {
+  const activeItems = items.filter((item) => !state.dreamSkippedItems.has(item.id));
+  if (!state.dreamLastRun) return [];
+  if (!state.dreamReviewActive) return activeItems.slice(0, 6);
+  const reviewItems = activeItems.filter((item) => item.safety === "review" && !item.disabled);
+  return reviewItems.length ? reviewItems.slice(0, 6) : activeItems.slice(0, 6);
+}
+
+function prepareDreamHelperRun(itemId) {
+  const fileMap = activeActivityFileMap();
+  if (!fileMap?.size) return;
+  const stats = dreamVaultStats(fileMap);
+  const item = dreamRepairItems(stats).find((entry) => entry.id === itemId);
+  if (!item || item.disabled) return;
+  const limits = dreamDefaultRunLimits(item.id, stats);
+  state.dreamPreparedRun = buildDreamPreparedRun(item, stats, fileMap, limits);
+  state.dreamReviewActive = false;
+  renderDream(fileMap);
+  els.dreamRunPanel?.scrollIntoView({ block: "center", behavior: "smooth" });
+}
+
+function buildDreamPreparedRun(item, stats, fileMap, limits, status = "") {
+  const normalizedLimits = normalizeDreamRunLimits(limits, item.id, stats);
+  const prompt = buildDreamCleanupPrompt(item, stats, fileMap, normalizedLimits);
+  const model = dreamGeminiModel();
+  const outputTokenLimit = apiOutputTokenLimit(DREAM_HELPER_OUTPUT_TOKEN_FLOOR);
+  const inputTokens = estimateRequestInputTokens(prompt, []);
+  const estimatedUsd = estimateModelCostUsd(model, inputTokens, outputTokenLimit);
+  const contextStats = dreamPreparedRunContextStats(item, stats, fileMap, normalizedLimits, prompt);
+  return {
+    itemId: item.id,
+    item,
+    limits: normalizedLimits,
+    prompt,
+    contextStats,
+    estimate: {
+      model,
+      inputTokens,
+      outputTokenLimit,
+      totalTokens: inputTokens + outputTokenLimit,
+      estimatedUsd,
+      priceSource: pricingForModel(model).source
+    },
+    status,
+    running: false
+  };
+}
+
+function renderDreamPreparedRunPanel(fileMap, report) {
+  if (!els.dreamRunPanel) return;
+  const prepared = state.dreamPreparedRun;
+  if (!prepared) {
+    els.dreamRunPanel.hidden = true;
+    return;
+  }
+  const stats = dreamVaultStats(fileMap);
+  const freshItem = dreamRepairItems(stats).find((item) => item.id === prepared.itemId);
+  if (!freshItem || freshItem.disabled) {
+    state.dreamPreparedRun = null;
+    els.dreamRunPanel.hidden = true;
+    return;
+  }
+
+  els.dreamRunPanel.hidden = false;
+  if (els.dreamRunTitle) els.dreamRunTitle.textContent = freshItem.title;
+  if (els.dreamRunSummary) {
+    els.dreamRunSummary.textContent = prepared.itemId === "clearance-broken-links"
+      ? "Review the affected page, missing link, and suggested target before saving."
+      : "Margins will send one bounded batch to Gemini. Review returned file changes before saving.";
+  }
+  if (els.dreamRunScope) {
+    els.dreamRunScope.innerHTML = `
+      ${dreamRunScopeRows(prepared, stats).map((row) => `
+      <div>
+        <span>${escapeHtml(row.label)}</span>
+        <strong>${escapeHtml(row.value)}</strong>
+      </div>
+      `).join("")}
+      ${dreamRunDetailHtml(prepared, fileMap)}
+    `;
+  }
+  if (els.dreamLimitItemsLabel) els.dreamLimitItemsLabel.textContent = dreamRunItemLimitLabel(prepared.itemId);
+  if (els.dreamLimitFilesLabel) els.dreamLimitFilesLabel.textContent = dreamRunFileLimitLabel(prepared.itemId);
+  if (els.dreamLimitItems) els.dreamLimitItems.value = String(prepared.limits.maxItems);
+  if (els.dreamLimitFiles) els.dreamLimitFiles.value = String(prepared.limits.maxFiles);
+  if (els.dreamLimitUsd) els.dreamLimitUsd.value = String(prepared.limits.maxUsd);
+  if (els.dreamRunEstimate) {
+    const overLimit = prepared.estimate.estimatedUsd > prepared.limits.maxUsd;
+    const message = [
+      `Gemini · ${prepared.estimate.model}`,
+      `${formatStatNumber(prepared.estimate.inputTokens)} input tokens`,
+      `${formatStatNumber(prepared.estimate.outputTokenLimit)} max output`,
+      `${formatUsd(prepared.estimate.estimatedUsd)} estimated`,
+      `${formatUsd(prepared.limits.maxUsd)} hard stop`
+    ].join(" · ");
+    els.dreamRunEstimate.textContent = prepared.status || (overLimit
+      ? `${message}. Reduce scope or raise the hard stop before running.`
+      : message);
+    els.dreamRunEstimate.classList.toggle("warn", overLimit || Boolean(prepared.status));
+  }
+  if (els.dreamRunPreparedBtn) {
+    const overLimit = prepared.estimate.estimatedUsd > prepared.limits.maxUsd;
+    els.dreamRunPreparedBtn.disabled = prepared.running || overLimit;
+    els.dreamRunPreparedBtn.textContent = prepared.running
+      ? "Running Gemini..."
+      : prepared.itemId === "clearance-broken-links"
+        ? "Ask AI"
+        : "Ask AI";
+  }
+  if (els.dreamRunCancelBtn) els.dreamRunCancelBtn.disabled = prepared.running;
+  if (els.dreamRunCancelSecondaryBtn) els.dreamRunCancelSecondaryBtn.disabled = prepared.running;
+}
+
+function dreamRunScopeRows(prepared, stats) {
+  const rows = [];
+  if (prepared.itemId === "clearance-broken-links") {
+    rows.push({ label: "Found", value: `${formatStatNumber(stats.brokenLinkCount)} broken links` });
+    rows.push({ label: "This batch", value: dreamRunBatchDescription(prepared.itemId, prepared.limits, stats) });
+    if (prepared.contextStats?.fileCount) {
+      rows.push({
+        label: "Files",
+        value: `${formatStatNumber(prepared.contextStats.fileCount)} files · ${formatByteSize(prepared.contextStats.totalBytes)} local size`
+      });
+    }
+    if (prepared.contextStats?.largestFilePath) {
+      rows.push({
+        label: "Largest",
+        value: `${basename(prepared.contextStats.largestFilePath)} · ${formatByteSize(prepared.contextStats.largestFileBytes)}`
+      });
+    }
+    if (prepared.contextStats?.snippetOnlyCount) {
+      rows.push({
+        label: "Context",
+        value: `${formatStatNumber(prepared.contextStats.snippetOnlyCount)} large file${prepared.contextStats.snippetOnlyCount === 1 ? "" : "s"} snippet-only`
+      });
+    }
+  } else if (prepared.itemId === "pruning-sparse-entities") {
+    rows.push({ label: "Found", value: `${formatStatNumber(stats.sparseEntityCount)} sparse entities` });
+    rows.push({ label: "This batch", value: dreamRunBatchDescription(prepared.itemId, prepared.limits, stats) });
+  } else if (prepared.itemId === "association-source-links") {
+    rows.push({ label: "Available", value: `${formatStatNumber(stats.sourceCount)} source notes` });
+    rows.push({ label: "This batch", value: dreamRunBatchDescription(prepared.itemId, prepared.limits, stats) });
+  } else if (prepared.itemId === "synthesis-cross-source") {
+    rows.push({ label: "Available", value: `${formatStatNumber(stats.sourceCount)} source notes` });
+    rows.push({ label: "This batch", value: dreamRunBatchDescription(prepared.itemId, prepared.limits, stats) });
+  }
+  rows.push({ label: "Result", value: "Proposed file edits only" });
+  return rows;
+}
+
+function dreamRunDetailHtml(prepared, fileMap) {
+  if (prepared.itemId !== "clearance-broken-links") return "";
+  const stats = dreamVaultStats(fileMap || new Map());
+  const items = dreamBrokenLinkReviewItems(stats, fileMap, prepared.limits);
+  if (!items.length) return "";
+  return `
+    <div class="dream-link-review">
+      <div class="dream-link-review-head">
+        <span>Broken link review</span>
+        <strong>${escapeHtml(`${formatStatNumber(items.length)} selected for this batch`)}</strong>
+      </div>
+      <div class="dream-link-review-list">
+        ${items.map((item) => renderDreamBrokenLinkReviewCard(item)).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function renderDreamBrokenLinkReviewCard(item) {
+  const suggestion = item.suggestion;
+  const suggestedLink = suggestion ? `[[${wikiLinkTargetForPath(suggestion.path)}]]` : "";
+  const targetText = suggestion
+    ? `Replace [[${item.to}]] with ${suggestedLink}.`
+    : "No existing page looks like the right target.";
+  return `
+    <article class="dream-link-card">
+      <div class="dream-link-card-title">
+        <span>Review this link</span>
+        <strong>${escapeHtml(`Fix [[${item.to}]] in ${item.fromTitle || item.from}`)}</strong>
+      </div>
+      <div class="dream-link-card-main">
+        <div class="dream-link-fact">
+          <span>File to edit</span>
+          <button class="dream-link-path" type="button" data-dream-run-open="${escapeHtml(item.from)}">${escapeHtml(item.fromTitle || item.from)}</button>
+          <small>${escapeHtml(item.from)}</small>
+        </div>
+        <div class="dream-link-fact">
+          <span>Broken link</span>
+          <strong>${escapeHtml(`[[${item.to}]]`)}</strong>
+          <small>${escapeHtml(`Flagged because no page in this vault matches this wikilink.`)}</small>
+        </div>
+        <div class="dream-link-fact">
+          <span>Proposed fix</span>
+          ${suggestion ? `
+            <button class="dream-link-path" type="button" data-dream-run-open="${escapeHtml(suggestion.path)}">${escapeHtml(suggestion.title)}</button>
+            <small>${escapeHtml(`${targetText} Target file: ${suggestion.path}. ${suggestion.confidence}.`)}</small>
+          ` : `
+            <strong>No confident existing page</strong>
+            <small>${escapeHtml(`${targetText} Open the file, create/rename a target, or decline this warning for now.`)}</small>
+          `}
+        </div>
+      </div>
+      <div class="dream-link-context">
+        <span>Where it appears</span>
+        <strong>${escapeHtml(item.context.heading ? `${item.context.heading} · line ${item.lineNumber}` : `Line ${item.lineNumber}`)}</strong>
+        <blockquote>${escapeHtml(item.context.excerpt || item.linePreview || `[[${item.to}]]`)}</blockquote>
+      </div>
+      <div class="dream-link-actions">
+        <button type="button" data-dream-run-open="${escapeHtml(item.from)}">Open file</button>
+        ${suggestion ? `<button type="button" data-dream-run-open="${escapeHtml(suggestion.path)}">Open target</button>` : ""}
+        <button type="button" data-dream-approve-broken-link data-dream-from="${escapeHtml(item.from)}" data-dream-broken="${escapeHtml(item.to)}" data-dream-target-path="${escapeHtml(suggestion?.path || "")}" ${suggestion ? "" : "disabled"}>
+          Approve
+        </button>
+        <button type="button" data-dream-dismiss-broken-link data-dream-from="${escapeHtml(item.from)}" data-dream-broken="${escapeHtml(item.to)}">
+          Decline
+        </button>
+      </div>
+    </article>
+  `;
+}
+
+function dreamBrokenLinkReviewItems(stats, fileMap, limits = {}) {
+  const batch = dreamBrokenLinkBatch(stats, fileMap, limits);
+  return batch.links.map((link) => {
+    const body = fileMap?.get(link.from) || "";
+    const lineNumber = lineNumberAtIndex(body, Math.max(0, dreamBrokenLinkIndex(body, link.to)));
+    return {
+      ...link,
+      fromTitle: dreamBrokenLinkSourceTitle(link.from, body),
+      lineNumber,
+      context: dreamBrokenLinkContext(body, link.to),
+      linePreview: dreamBrokenLinkLinePreview(body, link.to),
+      suggestion: dreamBrokenLinkSuggestion(link.to, fileMap, link.from)
+    };
+  });
+}
+
+function dreamBrokenLinkSourceTitle(path, body) {
+  return markdownTitle(body) || titleFromSlug(basename(path).replace(/\.md$/, ""));
+}
+
+function dreamBrokenLinkLinePreview(body, target) {
+  const index = dreamBrokenLinkIndex(body, target);
+  if (index < 0) return "";
+  const start = body.lastIndexOf("\n", index) + 1;
+  const nextLine = body.indexOf("\n", index);
+  const end = nextLine >= 0 ? nextLine : body.length;
+  return clampPreservedContext(cleanBrokenLinkContextText(body.slice(start, end)), 160);
+}
+
+function dreamBrokenLinkContext(body, target) {
+  const index = dreamBrokenLinkIndex(body, target);
+  if (index < 0) return { heading: "", excerpt: "" };
+  const heading = nearestMarkdownHeadingBefore(body, index);
+  const range = paragraphRangeAroundIndex(body, index);
+  const excerpt = clampPreservedContext(cleanBrokenLinkContextText(body.slice(range.start, range.end)), 360);
+  return {
+    heading,
+    excerpt
+  };
+}
+
+function nearestMarkdownHeadingBefore(body, index) {
+  const before = String(body || "").slice(0, Math.max(0, index)).split("\n").reverse();
+  const heading = before.find((line) => /^#{1,4}\s+\S/.test(line.trim()));
+  return heading ? heading.replace(/^#{1,4}\s+/, "").trim() : "";
+}
+
+function paragraphRangeAroundIndex(body, index) {
+  const text = String(body || "");
+  let start = text.lastIndexOf("\n\n", Math.max(0, index));
+  start = start >= 0 ? start + 2 : text.lastIndexOf("\n", Math.max(0, index)) + 1;
+  let end = text.indexOf("\n\n", Math.max(0, index));
+  if (end < 0) end = text.indexOf("\n", Math.max(0, index));
+  if (end < 0) end = text.length;
+  if (end - start > 520) {
+    const snippet = dreamSnippetRange(text, index, 240);
+    return { start: snippet.start, end: snippet.end };
+  }
+  return { start: Math.max(0, start), end: Math.min(text.length, end) };
+}
+
+function cleanBrokenLinkContextText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function clampPreservedContext(value, limit) {
+  const text = cleanBrokenLinkContextText(value);
+  if (text.length <= limit) return text;
+  return `${text.slice(0, limit - 3).trim()}...`;
+}
+
+function dreamBrokenLinkSuggestion(target, fileMap, fromPath) {
+  const query = cleanWikiLinkLabel(target);
+  if (!query || !fileMap?.size) return null;
+  const candidates = dreamWikiLinkTargetRecords(fileMap, fromPath)
+    .map((record) => ({
+      ...record,
+      score: dreamLinkMatchScore(query, record)
+    }))
+    .filter((record) => record.score >= 42)
+    .sort((left, right) => (
+      right.score - left.score ||
+      left.path.localeCompare(right.path)
+    ));
+  const best = candidates[0];
+  if (!best) return null;
+  return {
+    path: best.path,
+    title: best.title,
+    score: best.score,
+    confidence: dreamBrokenLinkConfidenceLabel(best.score)
+  };
+}
+
+function dreamWikiLinkTargetRecords(fileMap, fromPath) {
+  return [...(fileMap || new Map()).entries()]
+    .filter(([path]) => path.startsWith("wiki/") && path.endsWith(".md") && path !== fromPath && !path.startsWith("wiki/.margins/") && !path.startsWith("wiki/_templates/"))
+    .map(([path, body]) => {
+      const title = markdownTitle(body) || titleFromSlug(basename(path).replace(/\.md$/, ""));
+      const fields = frontmatterFields(body);
+      const labels = [
+        title,
+        basename(path).replace(/\.md$/, ""),
+        path.replace(/^wiki\//, "").replace(/\.md$/, ""),
+        ...frontmatterList(fields.aliases),
+        ...frontmatterList(fields.alias)
+      ].filter(Boolean);
+      return {
+        path,
+        title,
+        type: fields.type || graphTypeFromPath(path, body),
+        labels
+      };
+    });
+}
+
+function dreamLinkMatchScore(query, record) {
+  const querySlug = slugifyLoose(query);
+  const queryTokens = linkMatchTokens(querySlug);
+  if (!querySlug || !queryTokens.length) return 0;
+  let best = 0;
+  for (const label of record.labels || []) {
+    const labelSlug = slugifyLoose(label);
+    if (!labelSlug) continue;
+    if (labelSlug === querySlug) best = Math.max(best, 100);
+    if (labelSlug.startsWith(`${querySlug}-`)) best = Math.max(best, 88);
+    if (querySlug.startsWith(`${labelSlug}-`)) best = Math.max(best, 76);
+    best = Math.max(best, Math.round(tokenOverlapScore(queryTokens, linkMatchTokens(labelSlug)) * 76));
+    best = Math.max(best, Math.round(stringSimilarityScore(querySlug, labelSlug) * 62));
+  }
+  if (record.type === "source") best = Math.max(0, best - 8);
+  return best;
+}
+
+function linkMatchTokens(value) {
+  return slugifyLoose(value)
+    .split("-")
+    .filter((token) => token.length > 1 && !STOP_WORDS_FOR_CONTEXT.has(token));
+}
+
+function tokenOverlapScore(leftTokens, rightTokens) {
+  if (!leftTokens.length || !rightTokens.length) return 0;
+  const right = new Set(rightTokens);
+  const overlap = leftTokens.filter((token) => right.has(token)).length;
+  return overlap / Math.min(leftTokens.length, rightTokens.length);
+}
+
+function stringSimilarityScore(left, right) {
+  if (!left || !right) return 0;
+  if (left === right) return 1;
+  const leftBigrams = bigrams(left);
+  const rightBigrams = bigrams(right);
+  if (!leftBigrams.length || !rightBigrams.length) return 0;
+  const rightCounts = new Map();
+  for (const bigram of rightBigrams) rightCounts.set(bigram, (rightCounts.get(bigram) || 0) + 1);
+  let shared = 0;
+  for (const bigram of leftBigrams) {
+    const count = rightCounts.get(bigram) || 0;
+    if (!count) continue;
+    shared += 1;
+    rightCounts.set(bigram, count - 1);
+  }
+  return (2 * shared) / (leftBigrams.length + rightBigrams.length);
+}
+
+function bigrams(value) {
+  const text = String(value || "");
+  if (text.length < 2) return [];
+  const grams = [];
+  for (let index = 0; index < text.length - 1; index += 1) {
+    grams.push(text.slice(index, index + 2));
+  }
+  return grams;
+}
+
+function dreamBrokenLinkConfidenceLabel(score) {
+  if (score >= 82) return "High confidence";
+  if (score >= 62) return "Likely match";
+  return "Possible match";
+}
+
+function dreamRunBatchDescription(itemId, limits, stats) {
+  if (itemId === "clearance-broken-links") {
+    const batch = dreamBrokenLinkBatch(stats, null, limits);
+    const links = batch.links.length || Math.min(stats.brokenLinkCount || limits.maxItems, limits.maxItems);
+    const files = batch.affectedPaths.length || Math.min(limits.maxFiles, stats.brokenLinkCount || limits.maxFiles);
+    return `${formatStatNumber(links)} links across ${formatStatNumber(files)} files max`;
+  }
+  if (itemId === "pruning-sparse-entities") {
+    const entities = Math.min(stats.sparseEntityCount || limits.maxItems, limits.maxItems);
+    return `${formatStatNumber(entities)} entity pages, ${formatStatNumber(limits.maxFiles)} source files max`;
+  }
+  if (itemId === "association-source-links") {
+    return `${formatStatNumber(limits.maxItems)} sources, ${formatStatNumber(limits.maxFiles)} durable pages max`;
+  }
+  if (itemId === "synthesis-cross-source") {
+    return `${formatStatNumber(limits.maxItems)} sources, one draft max`;
+  }
+  return `${formatStatNumber(limits.maxItems)} items, ${formatStatNumber(limits.maxFiles)} files max`;
+}
+
+function dreamPreparedRunContextStats(item, stats, fileMap, limits, prompt = "") {
+  if (item.id !== "clearance-broken-links") {
+    return {
+      promptBytes: textSizeBytes(prompt)
+    };
+  }
+  const batch = dreamBrokenLinkBatch(stats, fileMap, limits);
+  const fileSizes = batch.affectedPaths
+    .map((path) => ({
+      path,
+      bytes: textSizeBytes(fileMap?.get(path) || "")
+    }))
+    .sort((left, right) => right.bytes - left.bytes);
+  const largest = fileSizes[0] || null;
+  return {
+    promptBytes: textSizeBytes(prompt),
+    fileCount: fileSizes.length,
+    totalBytes: fileSizes.reduce((sum, file) => sum + file.bytes, 0),
+    largestFilePath: largest?.path || "",
+    largestFileBytes: largest?.bytes || 0,
+    snippetOnlyCount: fileSizes.filter((file) => (fileMap?.get(file.path) || "").length > DREAM_BROKEN_LINK_FULL_FILE_CHAR_LIMIT).length,
+    selectedLinkCount: batch.links.length,
+    skippedLinkCount: Math.max(0, (stats.brokenLinkCount || 0) - batch.links.length)
+  };
+}
+
+function dreamBrokenLinkBatch(stats, fileMap, limits = {}) {
+  const maxLinks = positiveInteger(limits.maxItems, DREAM_BROKEN_LINK_DEFAULT_MAX_LINKS);
+  const maxFiles = positiveInteger(limits.maxFiles, DREAM_BROKEN_LINK_DEFAULT_MAX_FILES);
+  const links = [];
+  const affectedPaths = [];
+  const seenPaths = new Set();
+
+  for (const link of stats.brokenLinks || []) {
+    if (links.length >= maxLinks) break;
+    const path = link.from;
+    if (!path || (fileMap && !fileMap.has(path))) continue;
+    if (!seenPaths.has(path)) {
+      if (seenPaths.size >= maxFiles) continue;
+      seenPaths.add(path);
+      affectedPaths.push(path);
+    }
+    links.push(link);
+  }
+
+  return { links, affectedPaths };
+}
+
+function dreamDefaultRunLimits(itemId, stats = {}) {
+  if (itemId === "clearance-broken-links") return {
+    maxItems: Math.min(DREAM_BROKEN_LINK_DEFAULT_MAX_LINKS, Math.max(1, stats.brokenLinkCount || DREAM_BROKEN_LINK_DEFAULT_MAX_LINKS)),
+    maxFiles: DREAM_BROKEN_LINK_DEFAULT_MAX_FILES,
+    maxUsd: 0.25
+  };
+  if (itemId === "pruning-sparse-entities") return { maxItems: Math.min(10, Math.max(1, stats.sparseEntityCount || 10)), maxFiles: 10, maxUsd: 0.25 };
+  if (itemId === "association-source-links") return { maxItems: 10, maxFiles: 24, maxUsd: 0.25 };
+  if (itemId === "synthesis-cross-source") return { maxItems: 12, maxFiles: 8, maxUsd: 0.25 };
+  return { maxItems: 10, maxFiles: 10, maxUsd: 0.25 };
+}
+
+function normalizeDreamRunLimits(limits = {}, itemId = "", stats = {}) {
+  const defaults = dreamDefaultRunLimits(itemId, stats);
+  return {
+    maxItems: clampInteger(limits.maxItems, 1, 200, defaults.maxItems),
+    maxFiles: clampInteger(limits.maxFiles, 1, 80, defaults.maxFiles),
+    maxUsd: clampNumber(limits.maxUsd, 0.01, 10, defaults.maxUsd)
+  };
+}
+
+function clampInteger(value, min, max, fallback) {
+  const parsed = Math.round(Number(value));
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+}
+
+function clampNumber(value, min, max, fallback) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(parsed * 100) / 100));
+}
+
+function dreamRunItemLimitLabel(itemId) {
+  if (itemId === "clearance-broken-links") return "Max links";
+  if (itemId === "pruning-sparse-entities") return "Max entities";
+  return "Max sources";
+}
+
+function dreamRunFileLimitLabel(itemId) {
+  if (itemId === "association-source-links") return "Max pages";
+  if (itemId === "synthesis-cross-source") return "Existing summaries";
+  return "Max files";
+}
+
+function dreamGeminiModel() {
+  const selectedProvider = els.apiProvider?.value || providerValue(state.apiSettings.providerLabel);
+  return selectedProvider === "gemini" && els.apiModel?.value.trim()
+    ? els.apiModel.value.trim()
+    : defaultModelForProvider("gemini");
+}
+
+function handleDreamRunLimitChange() {
+  if (!state.dreamPreparedRun) return;
+  const fileMap = activeActivityFileMap();
+  const stats = dreamVaultStats(fileMap);
+  const item = dreamRepairItems(stats).find((entry) => entry.id === state.dreamPreparedRun.itemId);
+  if (!item) return;
+  state.dreamPreparedRun = buildDreamPreparedRun(item, stats, fileMap, {
+    maxItems: els.dreamLimitItems?.value,
+    maxFiles: els.dreamLimitFiles?.value,
+    maxUsd: els.dreamLimitUsd?.value
+  });
+  renderDreamPreparedRunPanel(fileMap, dreamReport(fileMap));
+}
+
+function clearDreamPreparedRun() {
+  state.dreamPreparedRun = null;
+  renderDream(activeActivityFileMap());
+}
+
+function handleDreamRunScopeClick(event) {
+  const approveButton = event.target.closest("[data-dream-approve-broken-link]");
+  if (approveButton && els.dreamRunScope?.contains(approveButton)) {
+    event.preventDefault();
+    const applied = approveDreamBrokenLink(
+      approveButton.dataset.dreamFrom,
+      approveButton.dataset.dreamBroken,
+      approveButton.dataset.dreamTargetPath
+    );
+    if (applied) {
+      approveButton.textContent = "Approved";
+      approveButton.disabled = true;
+    }
+    return;
+  }
+
+  const dismissButton = event.target.closest("[data-dream-dismiss-broken-link]");
+  if (dismissButton && els.dreamRunScope?.contains(dismissButton)) {
+    event.preventDefault();
+    dismissDreamBrokenLink(dismissButton.dataset.dreamFrom, dismissButton.dataset.dreamBroken);
+    return;
+  }
+
+  const openButton = event.target.closest("[data-dream-run-open]");
+  if (openButton && els.dreamRunScope?.contains(openButton)) {
+    event.preventDefault();
+    const path = openButton.dataset.dreamRunOpen;
+    if (!path) return;
+    activateTab("wiki");
+    selectVaultPath(path);
+  }
+}
+
+function dismissDreamBrokenLink(fromPath, brokenTarget) {
+  const key = dreamBrokenLinkKey(fromPath, brokenTarget);
+  if (!key) return false;
+  state.dreamDismissedBrokenLinks.add(key);
+  renderDream(activeActivityFileMap());
+  return true;
+}
+
+function autoRepairDreamBrokenLinks(fileMap, stats) {
+  if (!fileMap?.size || !stats?.brokenLinks?.length) return [];
+  const items = dreamBrokenLinkReviewItems(stats, fileMap, {
+    maxItems: 200,
+    maxFiles: 80
+  });
+  const repairs = [];
+  for (const item of items) {
+    if (!item.suggestion || item.suggestion.score < DREAM_AUTO_LINK_SCORE) continue;
+    const body = fileMap.get(item.from) || "";
+    const replacement = replaceWikiLinkTarget(body, item.to, wikiLinkTargetForPath(item.suggestion.path));
+    if (!replacement.count || replacement.body === body) continue;
+    fileMap.set(item.from, replacement.body);
+    state.dreamDismissedBrokenLinks.delete(dreamBrokenLinkKey(item.from, item.to));
+    repairs.push({
+      from: item.from,
+      fromTitle: item.fromTitle,
+      broken: item.to,
+      targetPath: item.suggestion.path,
+      targetTitle: item.suggestion.title
+    });
+  }
+  if (repairs.length) {
+    state.hasUnsavedEdits = true;
+    state.pendingSave = false;
+  }
+  return repairs;
+}
+
+function dreamBrokenLinkKey(fromPath, brokenTarget) {
+  const from = normalizeMarginsPath(fromPath || "");
+  const target = cleanWikiLinkLabel(brokenTarget || "");
+  return from && target ? `${from}::${slugifyLoose(target)}` : "";
+}
+
+function approveDreamBrokenLink(fromPath, brokenTarget, targetPath) {
+  const normalizedFrom = normalizeMarginsPath(fromPath || "");
+  const normalizedTarget = normalizeMarginsPath(targetPath || "");
+  if (!normalizedFrom || !brokenTarget || !normalizedTarget) return false;
+  const activeMap = activeActivityFileMap();
+  if (!activeMap?.has(normalizedFrom) || !activeMap?.has(normalizedTarget)) return false;
+  const fileMap = state.currentFileMap || new Map(activeMap);
+  state.currentFileMap = fileMap;
+  const currentBody = fileMap.get(normalizedFrom) || "";
+  const replacement = replaceWikiLinkTarget(currentBody, brokenTarget, wikiLinkTargetForPath(normalizedTarget));
+  if (!replacement.count || replacement.body === currentBody) return false;
+  fileMap.set(normalizedFrom, replacement.body);
+  state.dreamDismissedBrokenLinks.delete(dreamBrokenLinkKey(normalizedFrom, brokenTarget));
+  state.hasUnsavedEdits = true;
+  state.pendingSave = false;
+  if (state.selectedPath === normalizedFrom) selectVaultPath(normalizedFrom, { preserveFocus: true });
+  renderVaultTree(fileMap);
+  renderWikiFiles(fileMap);
+  renderOperatingLayer(fileMap);
+  drawGraph(graphFromFileMap(fileMap));
+  updateSaveButtonState();
+  return true;
+}
+
+function replaceWikiLinkTarget(body, brokenTarget, nextTarget) {
+  const oldTarget = cleanWikiLinkLabel(brokenTarget);
+  const cleanNext = cleanWikiLinkLabel(nextTarget);
+  if (!oldTarget || !cleanNext) return { body, count: 0 };
+  let count = 0;
+  const pattern = new RegExp(`\\[\\[\\s*${escapeRegExp(oldTarget)}(#[^\\]|]+)?(\\|[^\\]]+)?\\s*\\]\\]`, "gi");
+  const nextBody = String(body || "").replace(pattern, (_match, section = "", alias = "") => {
+    count += 1;
+    return `[[${cleanNext}${section || ""}${alias || ""}]]`;
+  });
+  return { body: nextBody, count };
+}
+
+function wikiLinkTargetForPath(path) {
+  return basename(normalizeMarginsPath(path).replace(/\.md$/, ""));
+}
+
+async function runPreparedDreamHelper() {
+  const prepared = state.dreamPreparedRun;
+  const fileMap = activeActivityFileMap();
+  if (!prepared || !fileMap?.size || prepared.running) return;
+  const stats = dreamVaultStats(fileMap);
+  const item = dreamRepairItems(stats).find((entry) => entry.id === prepared.itemId);
+  if (!item || item.disabled) return;
+  const run = buildDreamPreparedRun(item, stats, fileMap, prepared.limits);
+  if (!state.apiSecret) {
+    state.dreamPreparedRun = { ...run, status: "Gemini key required. Save a Gemini API key in Advanced settings before running this batch." };
+    renderDreamPreparedRunPanel(fileMap, dreamReport(fileMap));
+    return;
+  }
+  if (run.estimate.estimatedUsd > run.limits.maxUsd) {
+    state.dreamPreparedRun = { ...run, status: `Estimated cost ${formatUsd(run.estimate.estimatedUsd)} is above the ${formatUsd(run.limits.maxUsd)} hard stop.` };
+    renderDreamPreparedRunPanel(fileMap, dreamReport(fileMap));
+    return;
+  }
+
+  state.dreamPreparedRun = { ...run, running: true, status: "Calling Gemini with the bounded batch..." };
+  renderDreamPreparedRunPanel(fileMap, dreamReport(fileMap));
+  try {
+    const content = await generateDreamHelperContent(run, item, fileMap);
+    showDreamHelperOutput(content, item.title, "Gemini");
+    state.dreamPreparedRun = null;
+  } catch (error) {
+    state.dreamPreparedRun = { ...run, status: `Gemini run failed: ${error.message || "unknown error"}` };
+    renderDreamPreparedRunPanel(fileMap, dreamReport(fileMap));
+  }
+}
+
+async function generateDreamHelperContent(run, item, fileMap, addStatus = null) {
+  try {
+    return await generateGeminiTextContent(run.estimate.model, run.prompt, dreamHelperTracking(run, item, fileMap), DREAM_HELPER_OUTPUT_TOKEN_FLOOR);
+  } catch (error) {
+    if (!isModelOutputTruncatedError(error)) throw error;
+    const retryPrompt = buildDreamTruncationRetryPrompt(run, error);
+    const retryOutputLimit = apiOutputTokenLimit(DREAM_HELPER_RETRY_OUTPUT_TOKEN_FLOOR);
+    const retryInputTokens = estimateRequestInputTokens(retryPrompt, []);
+    const retryUsd = estimateModelCostUsd(run.estimate.model, retryInputTokens, retryOutputLimit);
+    if (run.estimate.estimatedUsd + retryUsd > run.limits.maxUsd) {
+      throw dreamHelperRetryWouldExceedLimitError(error, retryUsd, run);
+    }
+    if (typeof addStatus === "function") {
+      addStatus("Gemini output was cut off; retrying with a smaller proposal.");
+    } else {
+      state.dreamPreparedRun = {
+        ...run,
+        running: true,
+        status: `Gemini output was cut off, so Margins is retrying with a smaller proposal. Retry estimate ${formatUsd(retryUsd)}.`
+      };
+      renderDreamPreparedRunPanel(fileMap, dreamReport(fileMap));
+    }
+    return generateGeminiTextContent(run.estimate.model, retryPrompt, {
+      ...dreamHelperTracking(run, item, fileMap),
+      retryOf: "truncated_dream_helper"
+    }, DREAM_HELPER_RETRY_OUTPUT_TOKEN_FLOOR);
+  }
+}
+
+function dreamHelperTracking(run, item, fileMap) {
+  return {
+    purpose: "dream_helper",
+    fileName: item.id,
+    sourceType: "dream",
+    sourceScope: "vault",
+    sourceMimeType: "text/plain",
+    sourceSizeBytes: run.prompt.length,
+    sourceTextChars: run.prompt.length,
+    vaultContextFileCount: fileMap.size
+  };
+}
+
+function dreamHelperRetryWouldExceedLimitError(originalError, retryUsd, run) {
+  const error = new Error(`Gemini output was cut off. A smaller retry is estimated at ${formatUsd(retryUsd)}, which would exceed the ${formatUsd(run.limits.maxUsd)} hard stop. Reduce scope or raise the hard stop, then run again.`);
+  error.code = "MARGINS_DREAM_RETRY_OVER_LIMIT";
+  error.originalError = originalError;
+  return error;
+}
+
+function buildDreamTruncationRetryPrompt(run, error) {
+  const partial = truncateForPrompt(error.partialContent || "", 5000);
+  return `The previous Gemini response for this Margins Dream helper was cut off before complete margins-file blocks came back.
+
+Return a new complete, smaller response for the same task. Do not continue the cut-off text.
+
+Strict retry rules:
+- Return complete fenced \`\`\`margins-file blocks only.
+- Return at most two file blocks.
+- Prefer one ${DREAM_LOG_PATH} block that lists exact proposed repairs when a full file replacement would be long.
+- Do not return full replacements for wiki/**/source-*.md files unless the whole file block is short enough to finish comfortably.
+- Do not start any file block you cannot close.
+- Keep the total response under 3,000 words.
+
+Previous partial output excerpt:
+${partial || "_No partial output was captured._"}
+
+Original bounded task and vault context:
+${run.prompt}`;
+}
+
+function showDreamHelperOutput(content, title, providerName = "Gemini") {
+  activateTab("llm");
+  els.llmInput.value = content;
+  state.llmFiles = parseLlmFiles(content);
+  state.llmSelectedPath = null;
+  state.currentMaterialQuestions = [];
+  state.hasSavedCurrent = false;
+  state.pendingSave = false;
+  state.llmPromptCopied = false;
+  updateSaveButtonState();
+  els.exportBtn.disabled = true;
+  renderLlmReview();
+  renderChangePreview();
+  if (state.llmFiles.size > 0) {
+    els.llmStatus.textContent = `${title} returned ${state.llmFiles.size} proposed file${state.llmFiles.size === 1 ? "" : "s"} from ${providerName}. Review before accepting.`;
+  } else {
+    els.llmStatus.textContent = `${title} finished without margins-file blocks. Output is left here for review.`;
+    els.llmPreviewTitle.textContent = `${title} output`;
+    els.llmPreviewBody.textContent = content || "No output returned.";
+  }
+}
+
+function handleDreamModeChange(event) {
+  const mode = event.target?.value;
+  if (!Object.hasOwn(DREAM_MODES, mode)) return;
+  state.dreamMode = mode;
+  state.dreamReviewActive = false;
+  renderDream(activeActivityFileMap());
+}
+
+function startDreamStepReview() {
+  state.dreamReviewActive = true;
+  state.dreamSkippedItems = new Set();
+  state.dreamDismissedBrokenLinks = new Set();
+  renderDream(activeActivityFileMap());
+  els.dreamProposalList?.scrollIntoView({ block: "start", behavior: "smooth" });
+}
+
+function startDreamRunTicker() {
+  stopDreamRunTicker();
+  dreamRunTickerId = setInterval(() => {
+    if (!state.dreamLastRun?.running) {
+      stopDreamRunTicker();
+      return;
+    }
+    renderDream(activeActivityFileMap());
+  }, 1000);
+}
+
+function stopDreamRunTicker() {
+  if (!dreamRunTickerId) return;
+  clearInterval(dreamRunTickerId);
+  dreamRunTickerId = 0;
+}
+
+async function runDreamMaintenance() {
+  const fileMap = activeActivityFileMap();
+  if (!fileMap?.size) {
+    renderDream(fileMap || new Map());
+    return;
+  }
+
+  const startedAt = new Date();
+  const startedAtMs = Date.now();
+  const mode = "hybrid";
+  let workingMap = state.currentFileMap || new Map(fileMap);
+  const baselineMap = new Map(workingMap);
+  const steps = [];
+  state.currentFileMap = workingMap;
+  state.dreamSkippedItems = new Set();
+  state.dreamDismissedBrokenLinks = new Set();
+  const statsAtStart = dreamVaultStats(workingMap);
+  state.dreamLastRun = {
+    running: true,
+    startedAt,
+    startedAtMs,
+    estimatedMs: dreamCleanupEstimateMs(statsAtStart),
+    mode,
+    applied: [],
+    autoLinkFixCount: 0,
+    deferredCount: 0,
+    stageResults: {},
+    steps
+  };
+  const addStep = (title, context) => {
+    steps.push({ title, context });
+    if (state.dreamLastRun) state.dreamLastRun.steps = [...steps];
+    renderDream(workingMap);
+  };
+  startDreamRunTicker();
+
+  addStep("Started cleanup", "Scanning existing wiki pages, processed source notes, links, entity coverage, graph shape, and the maintenance log.");
+
+  for (const stage of DREAM_STAGES) {
+    state.dreamActiveStage = stage.id;
+    renderDream(workingMap);
+    await sleep(120);
+  }
+
+  let statsBefore = dreamVaultStats(workingMap);
+  addStep(
+    "Scanned existing vault",
+    `${formatStatNumber(statsBefore.graphNodeCount)} wiki page${statsBefore.graphNodeCount === 1 ? "" : "s"}, ${formatStatNumber(statsBefore.sourceCount)} processed source note${statsBefore.sourceCount === 1 ? "" : "s"}, and ${formatStatNumber(statsBefore.linkCount)} link${statsBefore.linkCount === 1 ? "" : "s"} checked.`
+  );
+
+  let autoLinkFixes = [];
+  if (dreamModeRunsSafeCleanup(mode)) {
+    state.dreamActiveStage = "association";
+    renderDream(workingMap);
+    autoLinkFixes = autoRepairDreamBrokenLinks(workingMap, statsBefore);
+    if (autoLinkFixes.length) {
+      statsBefore = dreamVaultStats(workingMap);
+      addStep(
+        "Updated obvious wikilinks",
+        `${formatStatNumber(autoLinkFixes.length)} wikilink${autoLinkFixes.length === 1 ? "" : "s"} pointed to one clear existing page and were updated automatically.`
+      );
+    }
+  }
+
+  addStep(
+    "Checked wikilinks",
+    statsBefore.brokenLinkCount
+      ? `${formatStatNumber(statsBefore.brokenLinkCount)} wikilink${statsBefore.brokenLinkCount === 1 ? "" : "s"} did not have one confident existing target, so Margins left them alone.`
+      : "All wikilinks resolve to existing pages or aliases."
+  );
+  addStep(
+    "Checked entity pages",
+    statsBefore.sparseEntityCount
+      ? `${formatStatNumber(statsBefore.sparseEntityCount)} sparse entity page${statsBefore.sparseEntityCount === 1 ? "" : "s"} need review.`
+      : "No sparse entity pages found."
+  );
+
+  let lintResult = { actions: [] };
+  if (dreamModeRunsSafeCleanup(mode)) {
+    state.dreamActiveStage = "clearance";
+    renderDream(workingMap);
+    lintResult = runDreamLintCleanup(workingMap, statsBefore, autoLinkFixes);
+    if (lintResult.actions.length) {
+      addStep(
+        "Ran /lint cleanup",
+        `${formatStatNumber(lintResult.actions.length)} vault health file${lintResult.actions.length === 1 ? "" : "s"} updated for future model retrieval.`
+      );
+    } else {
+      addStep("Ran /lint cleanup", "Vault health files were already current.");
+    }
+  }
+
+  const applied = [];
+  if (autoLinkFixes.length) {
+    applied.push({
+      id: "auto-link-repairs",
+      stage: "clearance",
+      title: "Updated obvious wikilinks",
+      body: `${formatStatNumber(autoLinkFixes.length)} obvious link${autoLinkFixes.length === 1 ? "" : "s"} repaired to improve retrieval.`
+    });
+  }
+  for (const action of lintResult.actions) {
+    applied.push({
+      id: action.id,
+      stage: "clearance",
+      title: action.title,
+      body: action.context
+    });
+  }
+  if (dreamModeRunsSafeCleanup(mode)) {
+    state.dreamActiveStage = "clearance";
+    renderDream(workingMap);
+    if (state.vaultHandle && state.hasUnsavedEdits) {
+      await saveCurrentVault({ afterSaveView: "dream" });
+      if (state.hasUnsavedEdits || state.pendingSave) {
+        addStep("Queued lint writes", "Prepared vault lint updates; use Write vault if the save did not finish.");
+      } else {
+        addStep("Saved lint cleanup", "Wrote lint cleanup updates to the vault.");
+      }
+    } else if (state.hasUnsavedEdits) {
+      addStep("Queued lint writes", "Prepared lint cleanup updates; open the vault to save them.");
+    }
+  }
+
+  const statsAfter = dreamVaultStats(workingMap);
+  const itemsAfter = dreamRepairItems(statsAfter);
+  let deferred = itemsAfter.filter((item) => item.safety === "review" && !item.disabled);
+  let deepReviewFileCount = 0;
+  let deepReviewOutput = "";
+  if (mode === "walk") {
+    const deepResult = await runDreamDeepReviewHelpers(workingMap, statsAfter, addStep);
+    deepReviewFileCount = deepResult.fileCount;
+    deepReviewOutput = deepResult.output;
+  }
+  state.dreamActiveStage = "";
+  stopDreamRunTicker();
+  const changedFiles = dreamChangedFilesFromRun(baselineMap, workingMap);
+  const finishedAt = new Date();
+  state.dreamReviewActive = mode !== "watch" && deferred.length > 0 && deepReviewFileCount === 0;
+  state.dreamLastRun = {
+    running: false,
+    startedAt,
+    startedAtMs,
+    finishedAt,
+    finishedAtMs: finishedAt.getTime(),
+    durationMs: Math.max(0, finishedAt.getTime() - startedAtMs),
+    mode,
+    applied,
+    changedFiles,
+    linkRepairs: autoLinkFixes,
+    lintActions: lintResult.actions,
+    autoLinkFixCount: autoLinkFixes.length,
+    deepReviewFileCount,
+    deferredCount: deferred.length,
+    stageResults: dreamStageResults(itemsAfter, applied),
+    steps
+  };
+
+  if (deepReviewFileCount > 0) {
+    showDreamDeepReviewOutput(deepReviewOutput, deepReviewFileCount);
+  } else {
+    activateTab("dream");
+  }
+  renderVaultTree(workingMap);
+  renderWikiFiles(workingMap);
+  renderOperatingLayer(workingMap);
+  drawGraph(graphFromFileMap(workingMap));
+  updateSaveButtonState();
+}
+
+function hasWritableVaultConnection() {
+  return Boolean(state.vaultHandle || state.rememberedVaultHandle);
+}
+
+function dreamModeRunsSafeCleanup(mode) {
+  return mode === "hybrid" || mode === "walk";
+}
+
+async function runDreamDeepReviewHelpers(fileMap, stats, addStep) {
+  const helperItems = dreamRepairItems(stats).filter((item) => item.action === "dream-agent" && !item.disabled);
+  if (helperItems.length === 0) {
+    addStep("Deep API review", "No API review tasks are available right now.");
+    return { output: "", fileCount: 0 };
+  }
+  if (!state.apiSecret) {
+    addStep("Deep API review needs setup", "Save a Gemini API key before running API review tasks.");
+    return { output: "", fileCount: 0 };
+  }
+
+  const outputs = [];
+  for (const item of helperItems) {
+    state.dreamActiveStage = item.stage;
+    const run = buildDreamPreparedRun(item, stats, fileMap, dreamDefaultRunLimits(item.id, stats));
+    if (run.estimate.estimatedUsd > run.limits.maxUsd) {
+      addStep(
+        item.title,
+        `Skipped Gemini helper: estimated ${formatUsd(run.estimate.estimatedUsd)} is above the ${formatUsd(run.limits.maxUsd)} hard stop.`
+      );
+      continue;
+    }
+    addStep(
+      item.title,
+      `Running Gemini on ${dreamRunBatchDescription(item.id, run.limits, stats)}. Estimated ${formatUsd(run.estimate.estimatedUsd)} with a ${formatUsd(run.limits.maxUsd)} hard stop; returned changes will open for review before saving.`
+    );
+    try {
+      const content = await generateDreamHelperContent(run, item, fileMap, (status) => addStep(item.title, status));
+      const parsed = parseLlmFiles(content);
+      outputs.push(`<!-- Dream helper: ${item.title} -->\n${content}`);
+      addStep(item.title, parsed.size
+        ? `Returned ${formatStatNumber(parsed.size)} proposed file${parsed.size === 1 ? "" : "s"} for review.`
+        : "Finished without reviewable file blocks.");
+    } catch (error) {
+      addStep(item.title, `Stopped: ${error.message || "unknown error"}`);
+    }
+  }
+
+  const output = outputs.join("\n\n").trim();
+  return {
+    output,
+    fileCount: parseLlmFiles(output).size
+  };
+}
+
+function showDreamDeepReviewOutput(output, fileCount) {
+  els.llmInput.value = output;
+  state.llmFiles = parseLlmFiles(output);
+  state.llmSelectedPath = null;
+  state.currentMaterialQuestions = [];
+  state.hasSavedCurrent = false;
+  state.pendingSave = false;
+  state.llmPromptCopied = false;
+  updateSaveButtonState();
+  els.exportBtn.disabled = true;
+  activateTab("llm");
+  renderLlmReview();
+  renderChangePreview();
+  els.llmPreviewTitle.textContent = "Deep API review output";
+  if (fileCount > 0) {
+    els.llmStatus.textContent = `Deep API review returned ${formatStatNumber(fileCount)} proposed file${fileCount === 1 ? "" : "s"}. Review before accepting.`;
+  }
+}
+
+function runDreamLintCleanup(fileMap, stats, linkRepairs = []) {
+  if (!fileMap?.size) return { actions: [] };
+  const today = localDateString();
+  const actions = [];
+  const statsBody = buildDreamLintStatsFile(fileMap, stats, today, linkRepairs);
+  if ((fileMap.get("wiki/wiki-stats.md") || "") !== statsBody) {
+    fileMap.set("wiki/wiki-stats.md", statsBody);
+    actions.push({
+      id: "lint-wiki-stats",
+      title: "Updated wiki stats",
+      file: "wiki/wiki-stats.md",
+      context: "Refreshed /lint health counts for graph shape, unmatched wikilinks, sparse pages, and large source notes."
+    });
+  }
+
+  const logBody = buildDreamLintLogFile(fileMap.get("wiki/log.md") || "", stats, actions, today);
+  if ((fileMap.get("wiki/log.md") || "") !== logBody) {
+    fileMap.set("wiki/log.md", logBody);
+    actions.push({
+      id: "lint-log",
+      title: "Recorded lint pass",
+      file: "wiki/log.md",
+      context: "Added a /lint operation entry so future model runs can see what cleanup changed."
+    });
+  }
+  const finalStats = dreamVaultStats(fileMap);
+  const finalStatsBody = buildDreamLintStatsFile(fileMap, finalStats, today, linkRepairs);
+  if ((fileMap.get("wiki/wiki-stats.md") || "") !== finalStatsBody) {
+    fileMap.set("wiki/wiki-stats.md", finalStatsBody);
+    if (!actions.some((action) => action.id === "lint-wiki-stats")) {
+      actions.unshift({
+        id: "lint-wiki-stats",
+        title: "Updated wiki stats",
+        file: "wiki/wiki-stats.md",
+        context: "Refreshed /lint health counts for graph shape, unmatched wikilinks, sparse pages, and large source notes."
+      });
+    }
+  }
+
+  if (actions.length) {
+    state.hasUnsavedEdits = true;
+    state.pendingSave = false;
+  }
+  return { actions };
+}
+
+function buildDreamLintStatsFile(fileMap, stats, today, linkRepairs = []) {
+  const existingFields = frontmatterFields(fileMap.get("wiki/wiki-stats.md") || "");
+  const created = existingFields.created || today;
+  const sourceRecords = recentActivityRecords(fileMap);
+  const sparsePages = (stats.sparseEntities || []).map((entry) => entry.path);
+  const missingSummaries = dreamLintMissingSummaryPages(fileMap);
+  const orphanPages = dreamLintOrphanPages(fileMap);
+  const largeSources = sourceRecords
+    .slice()
+    .sort((left, right) => right.wordTotal - left.wordTotal || left.path.localeCompare(right.path))
+    .slice(0, 8);
+  return `---
+type: dashboard
+bucket: system
+summary: Structural health dashboard for this Margins vault.
+tags: [stats, lint, drift, system]
+created: ${created}
+updated: ${today}
+voice: claude-draft
+---
+
+# Wiki Stats
+
+Generated: ${today}
+
+## Shape
+
+- Wiki pages: ${formatStatNumber(stats.graphNodeCount)}
+- Source notes: ${formatStatNumber(stats.sourceCount)}
+- Concept pages: ${formatStatNumber(stats.conceptCount)}
+- Entity/project pages: ${formatStatNumber(stats.entityCount)}
+- Synthesis pages: ${formatStatNumber(stats.synthesisCount)}
+- Graph links: ${formatStatNumber(stats.linkCount)}
+
+## Retrieval Health
+
+- Obvious wikilinks updated this run: ${formatStatNumber(linkRepairs.length)}
+- Unmatched wikilinks left alone: ${formatStatNumber(stats.brokenLinkCount)}
+- Sparse entity/project pages: ${formatStatNumber(stats.sparseEntityCount)}
+- Pages missing summaries: ${formatStatNumber(missingSummaries.length)}
+- Orphan pages: ${formatStatNumber(orphanPages.length)}
+
+## Unmatched Wikilinks
+
+${dreamLintBrokenLinkLines(stats.brokenLinks)}
+
+## Sparse Pages
+
+${sparsePages.slice(0, 12).map((path) => `- \`${path}\``).join("\n") || "- _(none)_"}
+
+## Missing Summaries
+
+${missingSummaries.slice(0, 12).map((path) => `- \`${path}\``).join("\n") || "- _(none)_"}
+
+## Largest Source Notes
+
+${largeSources.map((record) => `- \`${record.path}\` - ${formatStatNumber(record.wordTotal)} words`).join("\n") || "- _(none)_"}
+
+## /lint Notes
+
+- Dream cleanup scans existing vault notes only; pending uploads stay in Activity and Bulk upload.
+- Safe automatic writes update clear wikilinks, this stats dashboard, and the operation log.
+- Review-heavy fixes should stay as proposals until the user approves them.
+`;
+}
+
+function buildDreamLintLogFile(existingBody, stats, actions, today) {
+  const base = existingBody.trim() || `---
+type: log
+bucket: system
+summary: Human-readable operation log for this Margins vault.
+tags: [log, operations, system]
+created: ${today}
+updated: ${today}
+voice: claude-draft
+---
+
+# Log
+
+Allowed ops: ingest | query | compile | lint | update
+`;
+  const actionLines = actions.length
+    ? actions.map((action) => `- Updated \`${action.file}\`: ${action.context}`).join("\n")
+    : "- No health files needed updates before this log entry.";
+  const entry = `## [${today}] lint
+
+- Scanned ${formatStatNumber(stats.graphNodeCount)} wiki page${stats.graphNodeCount === 1 ? "" : "s"}, ${formatStatNumber(stats.sourceCount)} processed source note${stats.sourceCount === 1 ? "" : "s"}, and ${formatStatNumber(stats.linkCount)} wikilink${stats.linkCount === 1 ? "" : "s"}.
+- Left ${formatStatNumber(stats.brokenLinkCount)} unmatched wikilink${stats.brokenLinkCount === 1 ? "" : "s"} alone when no confident target existed.
+- Flagged ${formatStatNumber(stats.sparseEntityCount)} sparse entity/project page${stats.sparseEntityCount === 1 ? "" : "s"} for review.
+${actionLines}`;
+  return `${base}\n\n${entry}\n`;
+}
+
+function dreamLintMissingSummaryPages(fileMap) {
+  return [...fileMap.entries()]
+    .filter(([path, body]) => isDreamLintContentPage(path, body))
+    .filter(([, body]) => !cleanSummary(frontmatterFields(body).summary || ""))
+    .map(([path]) => path)
+    .sort((left, right) => left.localeCompare(right));
+}
+
+function dreamLintOrphanPages(fileMap) {
+  const incoming = new Map();
+  const outgoing = new Map();
+  const pagePaths = new Set([...fileMap.keys()].filter((path) => isDreamLintContentPage(path, fileMap.get(path))));
+  for (const path of pagePaths) {
+    incoming.set(path, 0);
+    outgoing.set(path, 0);
+  }
+  for (const path of pagePaths) {
+    const links = extractWikiLinks(fileMap.get(path) || "");
+    for (const link of links) {
+      const targetPath = pathForWikiLinkLabel(link, fileMap);
+      if (!targetPath || !pagePaths.has(targetPath)) continue;
+      outgoing.set(path, (outgoing.get(path) || 0) + 1);
+      incoming.set(targetPath, (incoming.get(targetPath) || 0) + 1);
+    }
+  }
+  return [...pagePaths]
+    .filter((path) => path !== "wiki/index.md" && !isActivitySourcePagePath(path, fileMap.get(path) || ""))
+    .filter((path) => (incoming.get(path) || 0) === 0 && (outgoing.get(path) || 0) === 0)
+    .sort((left, right) => left.localeCompare(right));
+}
+
+function isDreamLintContentPage(path, body = "") {
+  if (!path.startsWith("wiki/") || !path.endsWith(".md")) return false;
+  if (path.startsWith("wiki/.margins/") || path.startsWith("wiki/_templates/")) return false;
+  if (/^wiki\/(log|wiki-stats|ingest-tracker)\.md$/.test(path)) return false;
+  if (isBucketOverviewPath(path) || isFolderIndexPath(path)) return false;
+  const type = normalizeEntityTag(frontmatterFields(body).type || "");
+  return Boolean(type) || /^wiki\/(sources|concepts|entities|projects|synthesis|personal|career|ideas|school|coding|finance)\//.test(path);
+}
+
+function dreamLintBrokenLinkLines(links = []) {
+  const visible = links.slice(0, 12);
+  const lines = visible.map((link) => `- \`${link.from}\` has \`[[${link.to}]]\``);
+  const extraCount = Math.max(0, links.length - visible.length);
+  if (extraCount) lines.push(`- ...and ${formatStatNumber(extraCount)} more.`);
+  return lines.join("\n") || "- _(none)_";
+}
+
+function dreamStageResults(items = [], applied = []) {
+  const results = {};
+  for (const stage of DREAM_STAGES) {
+    const stageItems = items.filter((item) => item.stage === stage.id && !item.disabled);
+    const stageApplied = applied.filter((item) => item.stage === stage.id);
+    results[stage.id] = {
+      queued: stageItems.length,
+      applied: stageApplied.length,
+      deferred: stageItems.filter((item) => item.safety === "review").length
+    };
+  }
+  return results;
+}
+
+function handleDreamActionClick(event) {
+  const button = event.target.closest("[data-dream-action]");
+  if (!button || !els.dreamProposalList?.contains(button)) return;
+  event.preventDefault();
+  void openDreamAction(button.dataset.dreamAction, button.dataset.dreamTarget);
+}
+
+async function openDreamAction(action, target = "") {
+  if (action === "run-maintenance") {
+    withBusyOperation("maintenance pass", runDreamMaintenance);
+    return;
+  }
+  if (action === "dream-agent") {
+    prepareDreamHelperRun(target);
+    return;
+  }
+  if (action === "skip-dream-item") {
+    if (target) state.dreamSkippedItems.add(target);
+    renderDream(activeActivityFileMap());
+    return;
+  }
+  if (action === "open-file") {
+    activateTab("wiki");
+    if (target) selectVaultPath(target);
+    return;
+  }
+  if (action === "review-entities") {
+    activateTab("entities");
+    els.entitySearch?.focus({ preventScroll: true });
+    return;
+  }
+  if (action === "open-graph") {
+    activateTab("graph");
+    return;
+  }
+  if (action === "open-activity") {
+    activateTab("inbox");
+    els.recentActivityPanel?.scrollIntoView({ block: "start", behavior: "smooth" });
+    return;
+  }
+  activateTab("wiki");
+}
+
+async function runDreamCleanupHelper(itemId) {
+  const fileMap = activeActivityFileMap();
+  if (!fileMap?.size) return;
+  const stats = dreamVaultStats(fileMap);
+  const item = dreamRepairItems(stats).find((entry) => entry.id === itemId);
+  if (!item) return;
+  const prompt = buildDreamCleanupPrompt(item, stats, fileMap);
+  const provider = els.apiProvider?.value || providerValue(state.apiSettings.providerLabel) || "gemini";
+  const model = els.apiModel?.value.trim() || defaultModelForProvider(provider);
+  activateTab("llm");
+  els.llmInput.value = "";
+  state.llmFiles = new Map();
+  state.llmSelectedPath = null;
+  state.currentMaterialQuestions = [];
+  els.llmFileList.className = "tree-list empty";
+  els.llmFileList.textContent = "Waiting for Dream helper output.";
+  els.acceptLlmBtn.disabled = true;
+  els.repairLlmBtn.disabled = true;
+  els.llmInput.placeholder = "Dream helper output will appear here as margins-file blocks.";
+  els.llmStatus.textContent = `Running ${item.title} helper with ${providerLabel(provider)}...`;
+  els.llmPreviewTitle.textContent = `${item.title} helper`;
+  els.llmPreviewBody.textContent = "Dream helpers return margins-file blocks here. Review parsed files before accepting them into the vault.";
+  els.llmInput.focus();
+  if (apiProviderRequiresSecret(provider) && !state.apiSecret) {
+    els.llmStatus.textContent = `API key required. Save a ${providerLabel(provider)} key before running ${item.title}.`;
+    els.llmPreviewTitle.textContent = `${item.title} helper not started`;
+    els.llmPreviewBody.textContent = "Dream helpers now run through the configured API. Add an API key in Advanced settings, or switch Provider to Local model if you are using a local OpenAI-compatible endpoint.";
+    els.llmFileList.textContent = "No helper output yet.";
+    updateWorkflowState();
+    return;
+  }
+  try {
+    const content = await generateApiTextContent(provider, model, prompt, {
+      purpose: "dream_helper",
+      fileName: item.id,
+      sourceType: "dream",
+      sourceScope: "vault",
+      sourceMimeType: "text/plain",
+      sourceSizeBytes: prompt.length,
+      sourceTextChars: prompt.length,
+      vaultContextFileCount: fileMap.size
+    }, DREAM_HELPER_OUTPUT_TOKEN_FLOOR);
+    els.llmInput.value = content;
+    state.llmFiles = parseLlmFiles(content);
+    state.hasSavedCurrent = false;
+    state.pendingSave = false;
+    state.llmPromptCopied = false;
+    updateSaveButtonState();
+    els.exportBtn.disabled = true;
+    renderLlmReview();
+    renderChangePreview();
+    if (state.llmFiles.size > 0) {
+      els.llmStatus.textContent = `${item.title} helper returned ${state.llmFiles.size} file${state.llmFiles.size === 1 ? "" : "s"}. Review before accepting.`;
+    } else {
+      els.llmStatus.textContent = `${item.title} helper finished without margins-file blocks. Output is left here for review.`;
+      els.llmPreviewTitle.textContent = `${item.title} helper output`;
+      els.llmPreviewBody.textContent = content || "No output returned.";
+      updateWorkflowState();
+    }
+  } catch (error) {
+    els.llmStatus.textContent = `${item.title} helper failed: ${error.message || "unknown error"}`;
+    els.llmPreviewTitle.textContent = `${item.title} helper failed`;
+    els.llmPreviewBody.textContent = "The prompt is still available from Dream. Check API key, provider, model, and spend guard settings before retrying.";
+    updateWorkflowState();
   }
 }
 
 function dreamReport(fileMap) {
   const stats = dreamVaultStats(fileMap);
   const connected = fileMap.size > 0;
-  const sourceLabel = `${formatStatNumber(stats.sourceCount)} source${stats.sourceCount === 1 ? "" : "s"}`;
+  const sourceLabel = `${formatStatNumber(stats.sourceCount)} source note${stats.sourceCount === 1 ? "" : "s"}`;
+  const queueItems = connected ? dreamRepairItems(stats) : [];
+  const reviewItemCount = queueItems.filter((item) => item.safety === "review" && !item.disabled && !state.dreamSkippedItems.has(item.id)).length;
+  const safeFixCount = queueItems.filter((item) => item.safety === "auto" && !item.disabled).length;
+  const operations = dreamOperations(stats, connected, queueItems);
+  const lastRun = state.dreamLastRun;
   return {
+    connected,
     meta: connected
-      ? `${sourceLabel} · ${formatStatNumber(stats.linkCount)} links · ${formatStatNumber(stats.pendingRawCount)} pending raw`
-      : "Open a vault to let Margins consolidate overnight.",
-    title: connected ? "Margins is dreaming" : "Open a vault to let Margins dream",
+      ? `${sourceLabel} · ${formatStatNumber(stats.linkCount)} links · ${formatStatNumber(stats.graphNodeCount)} pages scanned`
+      : "Open a vault to see what needs attention.",
+    title: connected
+      ? lastRun?.running
+        ? "Cleaning vault"
+        : state.dreamReviewActive
+          ? "Review important changes"
+          : "Ready to clean"
+      : "Open a vault to see suggested next actions",
     body: connected
-      ? "Dreams prepare proposals only. Margins consolidates, prunes, syncs, enriches, and looks for useful cross-links without applying changes."
-      : "Dreams consolidate concepts, prune weak links, sync operating memory, and prepare reviewable proposals.",
-    stats: [
-      { label: "sources", value: formatStatNumber(stats.sourceCount) },
-      { label: "entities", value: formatStatNumber(stats.entityCount) },
-      { label: "concepts", value: formatStatNumber(stats.conceptCount) },
-      { label: "broken links", value: formatStatNumber(stats.brokenLinkCount) }
-    ],
-    operations: dreamOperations(stats, connected),
-    proposals: connected ? dreamProposals(stats) : [],
-    dreamTitles: connected ? dreamLogTitles(fileMap, stats) : [],
-    log: stats.hasDreamLog
-      ? "Dream log loaded from wiki/.margins/dream-log.md."
-      : "No dream log yet. Nightly passes will append proposal-only entries before anything is applied."
+      ? "Margins scans existing vault notes for link, entity, and structure issues that make model retrieval weaker."
+      : "Open a vault to surface maintenance items.",
+    passStatus: dreamPassStatus(connected, reviewItemCount, safeFixCount),
+    operations,
+    queueItems,
+    reviewItemCount,
+    emptyQueueText: connected
+      ? "Everything Margins found was safe to handle automatically, or low-value enough to leave alone."
+      : "Open a vault. Retrieval cleanup will turn into concrete next actions here.",
+    logEntries: connected ? dreamLogEntries(stats, lastRun) : [],
+    log: lastRun?.running
+      ? "Cleanup activity is updating as Margins scans existing vault notes."
+      : lastRun
+        ? "Cleanup activity: each row shows one check or change."
+        : stats.hasDreamLog
+          ? "Loaded wiki/.margins/dream-log.md."
+          : "Run cleanup to see a plain activity log of checks and changes."
   };
+}
+
+function dreamPassStatus(connected, reviewItemCount, safeFixCount) {
+  if (!connected) return "Open a vault before running maintenance.";
+  if (state.dreamLastRun?.running) {
+    return dreamRunningStatus();
+  }
+  if (state.dreamLastRun) {
+    const appliedCount = state.dreamLastRun.applied?.length || 0;
+    const changedFileCount = state.dreamLastRun.changedFiles?.length || 0;
+    const deepCount = state.dreamLastRun.deepReviewFileCount || 0;
+    const autoLinkCount = state.dreamLastRun.autoLinkFixCount || 0;
+    const durationText = state.dreamLastRun.durationMs
+      ? ` in ${formatDreamRunDuration(state.dreamLastRun.durationMs)}`
+      : "";
+    const changedText = `${formatStatNumber(changedFileCount)} file${changedFileCount === 1 ? "" : "s"} changed, `;
+    const deepText = deepCount
+      ? `${formatStatNumber(deepCount)} proposed file${deepCount === 1 ? "" : "s"} opened for review, `
+      : "";
+    const linkText = autoLinkCount
+      ? `${formatStatNumber(autoLinkCount)} obvious wikilink${autoLinkCount === 1 ? "" : "s"} updated, `
+      : "";
+    return `Cleanup finished${durationText}: ${changedText}${linkText}${deepText}${formatStatNumber(appliedCount)} safe update${appliedCount === 1 ? "" : "s"} handled, ${formatStatNumber(state.dreamLastRun.deferredCount)} risky item${state.dreamLastRun.deferredCount === 1 ? "" : "s"} left for review.`;
+  }
+  return `Ready to clean: ${formatStatNumber(safeFixCount)} automatic check${safeFixCount === 1 ? "" : "s"} available, ${formatStatNumber(reviewItemCount)} risky call${reviewItemCount === 1 ? "" : "s"} may need review.`;
+}
+
+function dreamRunningStatus() {
+  const lastRun = state.dreamLastRun || {};
+  const parsedStartedAtMs = Number(lastRun.startedAtMs) || (lastRun.startedAt ? new Date(lastRun.startedAt).getTime() : Date.now());
+  const startedAtMs = Number.isFinite(parsedStartedAtMs) ? parsedStartedAtMs : Date.now();
+  const elapsedMs = Math.max(0, Date.now() - startedAtMs);
+  const estimateMs = Math.max(1000, Number(lastRun.estimatedMs) || 8000);
+  const remainingMs = Math.max(0, estimateMs - elapsedMs);
+  const stageIndex = DREAM_STAGES.findIndex((stage) => stage.id === state.dreamActiveStage);
+  const stepText = stageIndex >= 0
+    ? `Step ${stageIndex + 1} of ${DREAM_STAGES.length}`
+    : "Finalizing";
+  const timingText = elapsedMs >= estimateMs
+    ? `${formatDreamRunDuration(elapsedMs)} elapsed, wrapping up`
+    : `${formatDreamRunDuration(elapsedMs)} elapsed, about ${formatDreamRunDuration(remainingMs)} left`;
+  return `Cleaning ${dreamStageName(state.dreamActiveStage)}. ${stepText}. ${timingText}. Scanning existing wiki notes only.`;
+}
+
+function dreamCleanupEstimateMs(stats = {}) {
+  const brokenLinkCount = Math.max(0, Number(stats.brokenLinkCount) || 0);
+  const sparseEntityCount = Math.max(0, Number(stats.sparseEntityCount) || 0);
+  const graphNodeCount = Math.max(0, Number(stats.graphNodeCount) || 0);
+  const baseMs = 4200 + (graphNodeCount * 28) + (brokenLinkCount * 450) + (sparseEntityCount * 260);
+  return clamp(baseMs, 5000, 36000);
+}
+
+function formatDreamRunDuration(milliseconds) {
+  const seconds = Math.max(0, Math.round((Number(milliseconds) || 0) / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return remainingSeconds
+    ? `${minutes}m ${String(remainingSeconds).padStart(2, "0")}s`
+    : `${minutes}m`;
+}
+
+function dreamChangedFilesFromRun(beforeMap, afterMap) {
+  const before = beforeMap instanceof Map ? beforeMap : new Map();
+  const after = afterMap instanceof Map ? afterMap : new Map();
+  const paths = new Set([...before.keys(), ...after.keys()].map(normalizeMarginsPath));
+  return [...paths].sort().reduce((changes, path) => {
+    const beforeHas = before.has(path);
+    const afterHas = after.has(path);
+    const beforeBody = beforeHas ? before.get(path) : "";
+    const afterBody = afterHas ? after.get(path) : "";
+    if (beforeHas === afterHas && beforeBody === afterBody) return changes;
+    changes.push({
+      path,
+      kind: beforeHas ? afterHas ? "updated" : "removed" : "added",
+      beforeWords: beforeBody ? wordCount(beforeBody) : 0,
+      afterWords: afterBody ? wordCount(afterBody) : 0
+    });
+    return changes;
+  }, []);
 }
 
 function dreamVaultStats(fileMap) {
@@ -5057,12 +6924,12 @@ function dreamVaultStats(fileMap) {
   const entityPages = entries.filter(([path, body]) => dreamPageType(path, body) === "entity");
   const synthesisPages = entries.filter(([path, body]) => dreamPageType(path, body) === "synthesis");
   const graph = dreamGraphStats(fileMap || new Map());
-  const brokenLinks = dreamBrokenLinks(fileMap || new Map());
+  const brokenLinks = dreamBrokenLinks(fileMap || new Map())
+    .filter((link) => !state.dreamDismissedBrokenLinks.has(dreamBrokenLinkKey(link.from, link.to)));
   const sparseEntities = entityPages.filter(([, body]) => {
     const fields = frontmatterFields(body);
     return !cleanSummary(fields.summary || "") || bodyWithoutFrontmatter(body).length < 220;
   });
-  const pendingRawCount = pendingRawSourcesFromVault(fileMap || new Map(), state.vaultFiles).length;
   const operatingFileCount = entries.filter(([path]) => isOperatingBrowserPath(path)).length;
   return {
     sourceCount: sourcePages.length,
@@ -5074,9 +6941,9 @@ function dreamVaultStats(fileMap) {
     brokenLinkCount: brokenLinks.length,
     brokenLinks,
     sparseEntityCount: sparseEntities.length,
-    pendingRawCount,
+    sparseEntities: sparseEntities.map(([path, body]) => ({ path, body })),
     operatingFileCount,
-    hasDreamLog: fileMap?.has("wiki/.margins/dream-log.md") || false
+    hasDreamLog: fileMap?.has(DREAM_LOG_PATH) || false
   };
 }
 
@@ -5108,8 +6975,9 @@ function dreamBrokenLinks(fileMap) {
 
   const missing = [];
   for (const [path, body] of fileMap.entries()) {
-    if (!path.startsWith("wiki/") || !path.endsWith(".md")) continue;
+    if (!isDreamBrokenLinkScanPath(path)) continue;
     for (const target of extractWikiLinks(body)) {
+      if (isDreamPlaceholderLink(target)) continue;
       const trimmed = normalizeMarginsPath(target.replace(/^\//, "").replace(/\.md$/, ""));
       const candidates = [
         trimmed,
@@ -5129,6 +6997,22 @@ function dreamBrokenLinks(fileMap) {
   return missing;
 }
 
+function isDreamBrokenLinkScanPath(path) {
+  return path.startsWith("wiki/") &&
+    path.endsWith(".md") &&
+    !path.startsWith("wiki/.margins/") &&
+    !path.startsWith("wiki/_templates/");
+}
+
+function isDreamPlaceholderLink(target) {
+  const slug = slugifyLoose(cleanWikiLinkLabel(target));
+  if (!slug) return true;
+  if (DREAM_PLACEHOLDER_LINKS.has(slug)) return true;
+  if (/^(?:example|sample|template|placeholder)(?:-|$)/.test(slug)) return true;
+  if (/^(?:source|page|entity|concept|target)-slug$/.test(slug)) return true;
+  return false;
+}
+
 function dreamGraphStats(fileMap) {
   const wikiPages = [...fileMap.entries()].filter(([path]) => path.startsWith("wiki/") && path.endsWith(".md"));
   const linkCount = wikiPages.reduce((sum, [, body]) => sum + extractWikiLinks(body).length, 0);
@@ -5138,201 +7022,478 @@ function dreamGraphStats(fileMap) {
   };
 }
 
-function dreamOperations(stats, connected) {
-  const unavailable = connected ? "" : "idle";
+function dreamOperations(stats, connected, items = []) {
+  const lastResults = state.dreamLastRun?.stageResults || {};
+  return DREAM_STAGES.map((stage) => {
+    const stageItems = items.filter((item) => item.stage === stage.id && !item.disabled);
+    const applied = lastResults[stage.id]?.applied || 0;
+    const deferred = stageItems.filter((item) => item.safety === "review").length;
+    const queued = connected ? stageItems.length : 0;
+    const active = state.dreamActiveStage === stage.id;
+    const stateName = !connected
+      ? "idle"
+      : active
+        ? "active"
+        : applied
+          ? "done"
+          : deferred
+            ? "warn"
+            : queued
+              ? ""
+              : "idle";
+    return {
+      ...stage,
+      active,
+      queued,
+      applied,
+      deferred,
+      state: stateName,
+      metric: connected ? dreamStageMetric(queued, applied, deferred) : "idle"
+    };
+  });
+}
+
+function dreamStageMetric(queued, applied, deferred) {
+  if (applied) return `${formatStatNumber(applied)} applied`;
+  if (deferred) return `${formatStatNumber(deferred)} review`;
+  if (queued) return `${formatStatNumber(queued)} queued`;
+  return "clear";
+}
+
+function dreamRepairItems(stats) {
+  const items = [];
+  items.push({
+    id: "pruning-sparse-entities",
+    stage: "pruning",
+    safety: "review",
+    title: stats.sparseEntityCount
+      ? `${formatStatNumber(stats.sparseEntityCount)} sparse entity page${stats.sparseEntityCount === 1 ? "" : "s"}`
+      : "Improve entity pages",
+    body: stats.sparseEntityCount
+      ? `${formatStatNumber(stats.sparseEntityCount)} entity page${stats.sparseEntityCount === 1 ? " is" : "s are"} missing a summary or useful supporting context.`
+      : "No sparse entity pages found.",
+    runBody: "Reviews thin entity pages that may be hurting retrieval.",
+    action: "dream-agent",
+    actionLabel: "Improve entities",
+    target: "pruning-sparse-entities",
+    disabled: stats.sparseEntityCount === 0
+  });
+  items.push({
+    id: "association-source-links",
+    stage: "association",
+    safety: "review",
+    title: "Find source-backed backlinks",
+    body: stats.sourceCount >= 2
+      ? "Recent source notes may support better links to durable pages."
+      : "Needs at least two processed source notes.",
+    runBody: "Looks for high-value backlinks that need judgment before adding.",
+    action: "dream-agent",
+    actionLabel: "Propose backlinks",
+    target: "association-source-links",
+    disabled: stats.sourceCount < 2
+  });
+  items.push({
+    id: "synthesis-cross-source",
+    stage: "synthesis",
+    safety: "review",
+    title: "Look for one cross-source summary",
+    body: stats.sourceCount >= 2
+      ? "Recent source notes may share a pattern worth summarizing."
+      : "Needs at least two processed source notes.",
+    runBody: "Looks for one cross-source summary worth creating.",
+    action: "dream-agent",
+    actionLabel: "Check for summary",
+    target: "synthesis-cross-source",
+    disabled: stats.sourceCount < 2
+  });
+  return items;
+}
+
+function dreamLogEntries(stats, lastRun = null) {
+  if (lastRun?.running) {
+    const runSteps = Array.isArray(lastRun.steps) ? lastRun.steps : [];
+    return runSteps.slice(-6).map((step) => ({
+      kind: "working",
+      title: step.title || "Working",
+      context: step.context || ""
+    }));
+  }
+  if (lastRun) return dreamCompletedActivityEntries(stats, lastRun);
   return [
     {
-      name: "Compile",
-      metric: connected ? formatStatNumber(stats.sourceCount) : "idle",
-      state: unavailable,
-      description: "Consolidate recurring concepts and entities from recent source notes."
+      kind: "scan",
+      title: "Ready to scan existing vault",
+      context: `${formatStatNumber(stats.graphNodeCount)} wiki page${stats.graphNodeCount === 1 ? "" : "s"}, ${formatStatNumber(stats.sourceCount)} processed source note${stats.sourceCount === 1 ? "" : "s"}, and ${formatStatNumber(stats.linkCount)} link${stats.linkCount === 1 ? "" : "s"} visible. Pending uploads stay in Activity.`
     },
     {
-      name: "Lint",
-      metric: connected ? formatStatNumber(stats.brokenLinkCount) : "idle",
-      state: stats.brokenLinkCount ? "warn" : unavailable,
-      description: "Prune broken links, weak connections, and stale structural drift."
-    },
-    {
-      name: "Sync",
-      metric: connected ? formatStatNumber(stats.operatingFileCount) : "idle",
-      state: unavailable,
-      description: "Check CLAUDE.md, the operator manual, tracker, log, and cookbook against the vault."
-    },
-    {
-      name: "Enrich",
-      metric: connected ? formatStatNumber(stats.sparseEntityCount) : "idle",
-      state: stats.sparseEntityCount ? "warn" : unavailable,
-      description: "Find sparse entity pages that need fields, summaries, or stronger source support."
-    },
-    {
-      name: "Regions",
-      metric: connected ? formatStatNumber(stats.graphNodeCount) : "idle",
-      state: unavailable,
-      description: "Refresh graph regions, vibrance signals, and retrieval shape."
-    },
-    {
-      name: "Synthesis",
-      metric: connected ? formatStatNumber(Math.max(0, stats.conceptCount + stats.synthesisCount)) : "idle",
-      state: unavailable,
-      description: "Propose cross-domain links the daytime workflow did not make explicit."
+      kind: "scan",
+      title: "Retrieval checks prepared",
+      context: "Margins will look for obvious wikilink repairs, thin entity pages, source-backed backlinks, and synthesis opportunities."
     }
   ];
 }
 
-function dreamProposals(stats) {
-  const proposals = [];
-  if (stats.pendingRawCount) {
-    proposals.push({
-      kind: "Ingest",
-      title: `${formatStatNumber(stats.pendingRawCount)} raw source${stats.pendingRawCount === 1 ? "" : "s"} waiting`,
-      body: "Review pending raw files before the next dream so consolidation starts from filed source notes."
+function dreamCompletedActivityEntries(stats, lastRun = null) {
+  const linkRepairs = Array.isArray(lastRun.linkRepairs) ? lastRun.linkRepairs : [];
+  const lintActions = Array.isArray(lastRun.lintActions) ? lastRun.lintActions : [];
+  const changedFiles = Array.isArray(lastRun.changedFiles) ? lastRun.changedFiles : [];
+  const linkFiles = new Set(linkRepairs.map((repair) => normalizeMarginsPath(repair.from)));
+  const entries = linkRepairs.map((repair) => ({
+    kind: "changed",
+    title: "Updated wikilink",
+    file: repair.from,
+    broken: repair.broken,
+    changedTo: wikiLinkTargetForPath(repair.targetPath)
+  }));
+  for (const action of lintActions) {
+    entries.push({
+      kind: "changed",
+      title: action.title,
+      file: action.file,
+      context: action.context
     });
   }
-  proposals.push(stats.brokenLinkCount ? {
-    kind: "Prune",
-    title: `${formatStatNumber(stats.brokenLinkCount)} broken connection${stats.brokenLinkCount === 1 ? "" : "s"} found`,
-    body: "Dreaming would propose link repairs or removals, then wait for approval before changing pages."
-  } : {
-    kind: "Prune",
-    title: "No broken wiki links detected",
-    body: "The current link graph is clean enough for the next consolidation pass."
+  const lintFiles = new Set(lintActions.map((action) => normalizeMarginsPath(action.file)));
+  const otherChangedFiles = changedFiles.filter((file) => (
+    file.path !== DREAM_LOG_PATH &&
+    !linkFiles.has(normalizeMarginsPath(file.path)) &&
+    !lintFiles.has(normalizeMarginsPath(file.path))
+  ));
+  for (const file of otherChangedFiles.slice(0, 4)) {
+    entries.push({
+      kind: "changed",
+      title: file.kind === "added" ? "Created file" : file.kind === "removed" ? "Removed file" : "Updated file",
+      context: `${file.path} (${file.kind})`
+    });
+  }
+  if (changedFiles.some((file) => file.path === DREAM_LOG_PATH)) {
+    entries.push({
+      kind: "changed",
+      title: "Recorded cleanup note",
+      context: DREAM_LOG_PATH
+    });
+  }
+  if (stats.brokenLinkCount) {
+    entries.push(...dreamUnmatchedLinkEntries(stats.brokenLinks));
+  }
+  if (!entries.length) {
+    entries.push({
+      kind: "scan",
+      title: "No automatic changes",
+      context: `${formatStatNumber(stats.graphNodeCount)} wiki page${stats.graphNodeCount === 1 ? "" : "s"} scanned. Nothing had one clear low-risk fix.`
+    });
+  }
+  entries.push({
+    kind: "scan",
+    title: "Scanned existing vault",
+    context: `${formatStatNumber(stats.graphNodeCount)} wiki page${stats.graphNodeCount === 1 ? "" : "s"}, ${formatStatNumber(stats.sourceCount)} processed source note${stats.sourceCount === 1 ? "" : "s"}, and ${formatStatNumber(stats.linkCount)} link${stats.linkCount === 1 ? "" : "s"} checked. Pending uploads were not processed.`
   });
-  if (stats.sparseEntityCount) {
-    proposals.push({
-      kind: "Enrich",
-      title: `${formatStatNumber(stats.sparseEntityCount)} sparse entity page${stats.sparseEntityCount === 1 ? "" : "s"}`,
-      body: "Dreaming would propose summaries or missing fields only where source evidence exists."
+  const deferredCount = lastRun.deferredCount || 0;
+  if (deferredCount) {
+    entries.push({
+      kind: "review",
+      title: "Needs your call",
+      context: `${formatStatNumber(deferredCount)} retrieval cleanup item${deferredCount === 1 ? "" : "s"} need review before Margins changes files.`
     });
   }
-  if (stats.sourceCount >= 2) {
-    proposals.push({
-      kind: "Synthesis",
-      title: "Look for one cross-source connection",
-      body: "Dreaming would compare recent sources with existing concepts and suggest one useful link for review."
-    });
-  }
-  proposals.push({
-    kind: "Log",
-    title: "Append tonight's Dream Log",
-    body: "A nightly pass should write a proposal-only record to wiki/.margins/dream-log.md before any accepted edits land."
-  });
-  return proposals.slice(0, 5);
+  return entries.slice(0, 14);
 }
 
-function dreamLogTitles(fileMap, stats) {
-  const { names, events } = dreamTitleContext(fileMap);
-  const firstName = names[0]?.label || "";
-  const secondName = names.find((name) => name.label !== firstName)?.label || "";
-  const firstEvent = events[0]?.label || "";
-  const secondEvent = events.find((event) => event.label !== firstEvent)?.label || "";
-  const titles = [];
-  const add = (title, context) => {
-    const cleanedTitle = dreamCleanTitle(title);
-    if (!cleanedTitle || titles.some((item) => item.title.toLowerCase() === cleanedTitle.toLowerCase())) return;
-    titles.push({
-      title: cleanedTitle,
-      context: context || "Generated from current wiki pages."
-    });
-  };
-
-  if (firstName && firstEvent) {
-    add(`${firstName} got stuck in the margins of ${firstEvent}`, `From ${dreamDisplayPath(events[0]?.path || names[0]?.path)}`);
-  }
-  if (firstName && secondName) {
-    add(`${firstName} brought ${secondName} to the wrong bucket meeting`, "From linked wiki pages.");
-  }
-  if (firstEvent) {
-    add(`${firstEvent} tried to file itself before breakfast`, `From ${dreamDisplayPath(events[0]?.path)}`);
-  }
-  if (secondEvent && firstName) {
-    add(`${firstName} wandered through ${secondEvent} looking for loose links`, `From ${dreamDisplayPath(events[1]?.path || names[0]?.path)}`);
-  }
-  if (firstName && (stats?.brokenLinkCount || stats?.linkCount)) {
-    const count = stats.brokenLinkCount || stats.linkCount;
-    add(`${firstName} and the case of the ${formatStatNumber(count)} loose synapses`, "From the current link graph.");
-  }
-
-  return titles.slice(0, 3);
+function dreamUnmatchedLinkEntries(links = []) {
+  return links.slice(0, 4).map((link) => ({
+    kind: "scan",
+    title: "Left wikilink alone",
+    file: link.from,
+    broken: link.to,
+    context: "No confident existing target."
+  }));
 }
 
-function dreamTitleContext(fileMap) {
-  const records = recentActivityRecords(fileMap).slice(0, 8);
-  const names = new Map();
-  const events = new Map();
-  const addCandidate = (map, label, path, score) => {
-    const cleaned = dreamCleanLabel(label);
-    if (!cleaned || !path) return;
-    const key = slugifyLoose(cleaned);
-    if (!key) return;
-    const existing = map.get(key);
-    if (!existing || score > existing.score) {
-      map.set(key, { label: cleaned, path, score });
-    }
-  };
+function dreamStageName(stageId) {
+  return DREAM_STAGES.find((stage) => stage.id === stageId)?.name || "maintenance";
+}
 
-  records.forEach((record, index) => {
-    addCandidate(events, record.title, record.path, 40 - index);
-    for (const [linkIndex, link] of record.links.entries()) {
-      addCandidate(names, link.label, link.path, 32 - index - linkIndex);
-    }
-  });
+function formatDreamModeLabel(mode) {
+  return DREAM_MODES[mode]?.label || DREAM_MODES.hybrid.label;
+}
 
-  for (const [path, body] of fileMap.entries()) {
-    if (!path.startsWith("wiki/") || !path.endsWith(".md")) continue;
-    if (isActivitySourcePagePath(path, body)) continue;
-    if (isBucketOverviewPath(path) || isFolderIndexPath(path)) continue;
-    const type = dreamPageType(path, body);
-    if (!["entity", "concept"].includes(type)) continue;
-    const title = markdownTitle(body) || titleFromSlug(basename(path).replace(/\.md$/, ""));
-    addCandidate(names, title, path, type === "entity" ? 20 : 14);
+function dreamModeHelpText(mode) {
+  return DREAM_MODES[mode]?.help || DREAM_MODES.hybrid.help;
+}
+
+function buildDreamCleanupPrompt(item, stats, fileMap, limits = {}) {
+  const stage = DREAM_STAGES.find((entry) => entry.id === item.stage);
+  const task = dreamCleanupTask(item, stats);
+  const context = dreamCleanupContext(item, stats, fileMap, limits);
+  const guardrails = operatingContextForPrompt(fileMap);
+  const agentContext = dreamAgentContext(item, fileMap);
+  return `You are running a Margins cleanup helper.
+
+Helper: ${item.title}
+Stage: ${stage?.name || item.stage} - ${stage?.label || ""}
+
+Goal:
+Clean up this bounded batch from a local-first Margins vault with conservative, source-grounded edits. Return only files that should be created or replaced. Do not return unchanged files.
+
+Hard rules:
+- Read the provided context before proposing changes.
+- Do not delete notes.
+- Do not rename important pages unless the task explicitly asks for a rename proposal.
+- Do not invent facts, relationships, dates, roles, or summaries.
+- If a change requires judgment, write it as a proposal in the relevant file or in ${DREAM_LOG_PATH}; do not silently apply it.
+- Keep citations durable: wiki links, source page links, filenames in raw/, and plain section names only.
+- No ChatGPT-only citation artifacts, hidden attachment ids, turn ids, or contentReference tokens.
+- Every returned wiki markdown page must keep valid YAML frontmatter if it already has it.
+- Preserve the user's wording unless a structural cleanup requires a small edit.
+- Keep output compact and complete. A small review note is better than a large truncated rewrite.
+- Return at most four changed files.
+- Do not return full replacements for long source notes such as wiki/**/source-*.md. If fixing that file would require a large replacement, return ${DREAM_LOG_PATH} with exact proposed link repairs instead.
+
+Operating guardrails:
+${guardrails}
+
+Relevant local agent guidance:
+${agentContext}
+
+Task:
+${task}
+
+Batch limits:
+- Max items: ${formatStatNumber(limits.maxItems || 0)}
+- Max files/pages: ${formatStatNumber(limits.maxFiles || 0)}
+- Only use the vault context below. Do not ask for or assume access to the rest of the vault.
+
+Output format:
+Return Markdown files in this exact fenced-block format so Margins can parse and review them:
+
+\`\`\`margins-file path="wiki/example.md"
+Full replacement file body here.
+\`\`\`
+
+Return one fenced block per changed file. If nothing is safe to change, return one ${DREAM_LOG_PATH} block explaining what you checked and what needs Connor's judgment.
+Do not start a margins-file block unless you can close it completely. Keep each returned file block under 5,000 words.
+
+Vault context:
+${context}`;
+}
+
+function dreamAgentContext(item, fileMap) {
+  const paths = dreamAgentPathsForItem(item?.id || "");
+  if (!paths.length) return "- No specialized local agent guidance found for this helper.";
+  return paths.map((path) => {
+    const body = fileMap.get(path);
+    return body ? `- ${path}\n${excerptForQuestion(body, 700)}` : "";
+  }).filter(Boolean).join("\n\n") || "- No specialized local agent guidance found for this helper.";
+}
+
+function dreamAgentPathsForItem(itemId) {
+  if (itemId === "clearance-broken-links") return ["agents/wiki-editor.md", "agents/source-auditor.md"];
+  if (itemId === "pruning-sparse-entities") return ["agents/wiki-editor.md", "agents/source-auditor.md"];
+  if (itemId === "association-source-links") return ["agents/wiki-compiler.md", "agents/wiki-editor.md", "agents/source-auditor.md"];
+  if (itemId === "synthesis-cross-source") return ["agents/wiki-compiler.md", "agents/source-auditor.md"];
+  return [];
+}
+
+function dreamCleanupTask(item, stats) {
+  if (item.id === "clearance-broken-links") {
+    return `Repair broken wiki links.
+- For each broken link, inspect the affected file and the vault path catalog.
+- If there is one obvious existing target, replace the link with that exact wiki link.
+- If multiple targets are plausible, leave the original link and add a short "Needs review" note instead.
+- Do not create stub pages just to silence a broken link.
+- When Margins provides snippets instead of a complete file, do not return that file as a replacement. Return ${DREAM_LOG_PATH} with exact proposed repairs instead.
+- Return only affected files and, if useful, ${DREAM_LOG_PATH}.`;
+  }
+  if (item.id === "pruning-sparse-entities") {
+    return `Improve sparse entity pages.
+- Add or tighten summaries only when the provided source/entity context directly supports them.
+- Add source backlinks where support is visible.
+- If an entity looks like a duplicate or weak stub, add a review note rather than merging or deleting it.
+- Return only sparse entity files that can be improved and, if useful, ${DREAM_LOG_PATH}.`;
+  }
+  if (item.id === "association-source-links") {
+    return `Strengthen source-supported associations.
+- Compare the provided source notes and existing entity/concept pages.
+- Add backlinks only when two pages explicitly refer to the same durable person, company, project, concept, or source-supported event.
+- Prefer a short "Related pages" section over broad keyword linking.
+- Return only files that gain useful source-supported links.`;
+  }
+  if (item.id === "synthesis-cross-source") {
+    return `Propose one cross-source synthesis if the sources support it.
+- Look for a recurring pattern across at least two source notes.
+- If the pattern is strong, return a concise wiki/synthesis/*.md draft with frontmatter, supporting source links, and explicit caveats.
+- If the pattern is weak, return ${DREAM_LOG_PATH} with "No synthesis created" and the reason.
+- Do not turn speculation into fact.`;
+  }
+  return `Review this maintenance item: ${item.title}. Return only safe, source-grounded file changes.`;
+}
+
+function dreamCleanupContext(item, stats, fileMap, limits = {}) {
+  if (item.id === "clearance-broken-links") {
+    const batch = dreamBrokenLinkBatch(stats, fileMap, limits);
+    const linkList = batch.links.map((link) => `- ${link.from} -> [[${link.to}]]`).join("\n") || "- none";
+    const skippedCount = Math.max(0, (stats.brokenLinkCount || 0) - batch.links.length);
+    return [
+      `Broken links in this batch:\n${linkList}`,
+      `Not included in this batch: ${formatStatNumber(skippedCount)} broken link${skippedCount === 1 ? "" : "s"}. Use another run for the next batch.`,
+      `Affected file sizes:\n${dreamBrokenLinkFileSizeList(batch, fileMap)}`,
+      `Existing wiki path catalog:\n${dreamWikiPathCatalog(fileMap)}`,
+      `Affected file context:\n${dreamBrokenLinkContextBlocks(batch, fileMap)}`
+    ].join("\n\n");
   }
 
+  if (item.id === "pruning-sparse-entities") {
+    const maxEntities = positiveInteger(limits.maxItems, 12);
+    const maxSources = positiveInteger(limits.maxFiles, 8);
+    const entityPaths = (stats.sparseEntities || []).map((entry) => entry.path).slice(0, maxEntities);
+    const sourcePaths = recentActivityRecords(fileMap).slice(0, maxSources).map((record) => record.path);
+    return [
+      `Sparse entity files:\n${entityPaths.map((path) => `- ${path}`).join("\n") || "- none"}`,
+      `Entity files:\n${dreamFileBlocksForPaths(entityPaths, fileMap, 2400)}`,
+      `Recent source context:\n${dreamFileBlocksForPaths(sourcePaths, fileMap, 1500)}`
+    ].join("\n\n");
+  }
+
+  if (item.id === "association-source-links") {
+    const maxSources = positiveInteger(limits.maxItems, 10);
+    const maxPages = positiveInteger(limits.maxFiles, 24);
+    const sourcePaths = recentActivityRecords(fileMap).slice(0, maxSources).map((record) => record.path);
+    const durablePaths = wikiContextRecords(fileMap)
+      .filter((record) => ["entity", "concept", "project", "synthesis"].includes(String(record.type || "").toLowerCase()) || /wiki\/(entities|concepts|projects|synthesis)\//.test(record.path))
+      .slice(0, maxPages)
+      .map((record) => record.path);
+    return [
+      `Source notes to compare:\n${dreamFileBlocksForPaths(sourcePaths, fileMap, 1600)}`,
+      `Durable pages available for links:\n${dreamFileBlocksForPaths(durablePaths, fileMap, 1000)}`
+    ].join("\n\n");
+  }
+
+  if (item.id === "synthesis-cross-source") {
+    const maxSources = positiveInteger(limits.maxItems, 12);
+    const maxExisting = positiveInteger(limits.maxFiles, 8);
+    const sourcePaths = recentActivityRecords(fileMap).slice(0, maxSources).map((record) => record.path);
+    const synthesisPaths = [...fileMap.keys()].filter((path) => path.startsWith("wiki/synthesis/") && path.endsWith(".md")).slice(0, maxExisting);
+    return [
+      `Processed source notes:\n${dreamFileBlocksForPaths(sourcePaths, fileMap, 1800)}`,
+      `Existing synthesis pages:\n${dreamFileBlocksForPaths(synthesisPaths, fileMap, 1400)}`,
+      `Existing wiki path catalog:\n${dreamWikiPathCatalog(fileMap)}`
+    ].join("\n\n");
+  }
+
+  return serializeVaultContext(fileMap);
+}
+
+function dreamBrokenLinkFileSizeList(batch, fileMap) {
+  const rows = batch.affectedPaths.map((path) => {
+    const body = fileMap.get(path) || "";
+    const linkCount = batch.links.filter((link) => link.from === path).length;
+    const mode = body.length > DREAM_BROKEN_LINK_FULL_FILE_CHAR_LIMIT
+      ? "snippets only"
+      : "complete file included";
+    return `- ${path} - ${formatByteSize(textSizeBytes(body))}; ${formatStatNumber(linkCount)} broken link${linkCount === 1 ? "" : "s"}; ${mode}`;
+  });
+  return rows.join("\n") || "- No affected files selected.";
+}
+
+function dreamBrokenLinkContextBlocks(batch, fileMap) {
+  if (!batch.affectedPaths.length) return "_No affected files selected for this batch._";
+  return batch.affectedPaths.map((path) => {
+    const body = fileMap.get(path) || "";
+    const links = batch.links.filter((link) => link.from === path);
+    const linkLines = links.map((link) => `- [[${link.to}]]`).join("\n") || "- none";
+    if (body.length <= DREAM_BROKEN_LINK_FULL_FILE_CHAR_LIMIT) {
+      return [
+        `Complete affected file: ${path} (${formatByteSize(textSizeBytes(body))})`,
+        `Broken links in this file:\n${linkLines}`,
+        `\`\`\`margins-file path="${path}"`,
+        body,
+        "```"
+      ].join("\n");
+    }
+    return [
+      `Large affected file: ${path} (${formatByteSize(textSizeBytes(body))})`,
+      "Only snippets are included for this file. Do not return this file as a full replacement.",
+      `Broken links in this file:\n${linkLines}`,
+      `Snippets:\n${dreamBrokenLinkSnippetsForPath(body, links)}`
+    ].join("\n");
+  }).join("\n\n");
+}
+
+function dreamBrokenLinkSnippetsForPath(body, links) {
+  const snippets = [];
+  const ranges = [];
+  for (const link of links.slice(0, DREAM_BROKEN_LINK_SNIPPETS_PER_FILE)) {
+    const index = dreamBrokenLinkIndex(body, link.to);
+    const range = dreamSnippetRange(body, index >= 0 ? index : 0, DREAM_BROKEN_LINK_SNIPPET_RADIUS);
+    if (ranges.some((existing) => rangesOverlap(existing, range))) continue;
+    ranges.push(range);
+    snippets.push([
+      `--- snippet around [[${link.to}]]; lines ${range.startLine}-${range.endLine} ---`,
+      body.slice(range.start, range.end).trim()
+    ].join("\n"));
+  }
+  if (!snippets.length) {
+    const range = dreamSnippetRange(body, 0, DREAM_BROKEN_LINK_SNIPPET_RADIUS);
+    snippets.push([
+      `--- opening snippet; lines ${range.startLine}-${range.endLine} ---`,
+      body.slice(range.start, range.end).trim()
+    ].join("\n"));
+  }
+  return snippets.join("\n\n");
+}
+
+function dreamBrokenLinkIndex(body, target) {
+  const pattern = new RegExp(`\\[\\[\\s*${escapeRegExp(target)}(?:#[^\\]|]+)?(?:\\|[^\\]]+)?\\s*\\]\\]`, "i");
+  const match = pattern.exec(body);
+  if (match) return match.index;
+  return body.indexOf(`[[${target}]]`);
+}
+
+function dreamSnippetRange(body, index, radius) {
+  const center = Math.max(0, Math.min(body.length, index));
+  let start = Math.max(0, center - radius);
+  let end = Math.min(body.length, center + radius);
+  if (start > 0) start = body.lastIndexOf("\n", start) + 1 || start;
+  if (end < body.length) {
+    const lineEnd = body.indexOf("\n", end);
+    if (lineEnd >= 0) end = lineEnd;
+  }
   return {
-    names: [...names.values()].sort((left, right) => right.score - left.score || left.label.localeCompare(right.label)).slice(0, 8),
-    events: [...events.values()].sort((left, right) => right.score - left.score || left.label.localeCompare(right.label)).slice(0, 8)
+    start,
+    end,
+    startLine: lineNumberAtIndex(body, start),
+    endLine: lineNumberAtIndex(body, end)
   };
 }
 
-function dreamCleanTitle(value) {
-  return clampSentence(cleanSummary(value), 96);
+function lineNumberAtIndex(body, index) {
+  return String(body || "").slice(0, Math.max(0, index)).split("\n").length;
 }
 
-function dreamCleanLabel(value) {
-  const label = cleanSummary(value).replace(/^Source:\s*/i, "");
-  if (!label || label.length < 3) return "";
-  const slug = slugifyLoose(label);
-  if (DREAM_TITLE_STOP_LABELS.has(slug)) return "";
-  if (/^[a-z]+$/.test(label) && label.length < 6) return "";
-  if (label.split(/\s+/).length > 12) return clampSentence(label, 74);
-  return label;
+function rangesOverlap(left, right) {
+  return left.start <= right.end && right.start <= left.end;
 }
 
-function dreamDisplayPath(path) {
-  const normalized = normalizeMarginsPath(path || "");
-  if (!normalized) return "current wiki pages";
-  return normalized.replace(/^wiki\//, "");
+function dreamFileBlocksForPaths(paths, fileMap, maxChars = 1800) {
+  const uniquePaths = [...new Set(paths)].filter((path) => fileMap.has(path));
+  if (!uniquePaths.length) return "_No matching files found in the loaded vault context._";
+  return uniquePaths.map((path) => (
+    `\`\`\`margins-file path="${path}"\n${truncateForPrompt(fileMap.get(path) || "", maxChars)}\n\`\`\``
+  )).join("\n\n");
 }
 
-const DREAM_TITLE_STOP_LABELS = new Set([
-  "about",
-  "and",
-  "brain",
-  "file",
-  "going",
-  "know",
-  "link",
-  "links",
-  "note",
-  "page",
-  "source",
-  "that",
-  "thats",
-  "thing",
-  "things",
-  "think",
-  "wiki"
-]);
+function dreamWikiPathCatalog(fileMap) {
+  const entries = [...fileMap.entries()]
+    .filter(([path]) => path.startsWith("wiki/") && path.endsWith(".md") && !path.startsWith("wiki/.margins/"))
+    .map(([path, body]) => {
+      const title = markdownTitle(body) || titleFromSlug(basename(path).replace(/\.md$/, ""));
+      const type = frontmatterFields(body).type || graphTypeFromPath(path, body);
+      return `- ${path} - ${title}${type ? ` (${type})` : ""}`;
+    })
+    .sort((left, right) => left.localeCompare(right))
+    .slice(0, 180);
+  return entries.join("\n") || "- No wiki markdown files loaded.";
+}
 
 function recentActivityRecords(fileMap) {
   return [...fileMap.entries()]
@@ -5343,6 +7504,16 @@ function recentActivityRecords(fileMap) {
       right.sortTimestamp - left.sortTimestamp ||
       left.title.localeCompare(right.title)
     ));
+}
+
+function activityTimelineRecords(fileMap) {
+  return [
+    ...recentActivityRecords(fileMap),
+    ...pendingActivityRecords()
+  ].sort((left, right) => (
+    right.sortTimestamp - left.sortTimestamp ||
+    left.title.localeCompare(right.title)
+  ));
 }
 
 function isActivitySourcePagePath(path, body) {
@@ -5365,6 +7536,8 @@ function activitySourceRecord(path, body, fileMap) {
   const wordTotal = wordCount(bodyWithoutFrontmatter(body));
   const connectionCount = extractWikiLinks(sourceChecklistLinkBody(body)).length;
   return {
+    kind: "processed",
+    activityKey: `processed:${path}`,
     path,
     title,
     summary: clampSentence(summary || "Source note filed in the vault.", 260),
@@ -5380,6 +7553,62 @@ function activitySourceRecord(path, body, fileMap) {
   };
 }
 
+function pendingActivityRecords(files = state.files) {
+  return files.map((file) => {
+    const dateValue = pendingSourceActivityDateValue(file);
+    const typeClass = sourceBadgeClass(file);
+    return {
+      kind: "pending",
+      activityKey: `pending:${file.name}`,
+      file,
+      path: rawSourceOutputPath(file.name),
+      title: basename(file.name),
+      summary: pendingSourceActivitySummary(file),
+      dateValue,
+      sortTimestamp: pendingSourceActivitySortTimestamp(file, dateValue),
+      typeLabel: sourceTypeLabel(file),
+      typeClass,
+      links: [],
+      tags: [],
+      wordTotal: wordCount(file.text || ""),
+      connectionCount: 0
+    };
+  });
+}
+
+function pendingSourceActivityDateValue(file) {
+  const date = sourceTimestampDate(file);
+  if (date) return date.toISOString();
+  return pendingSourceDateFromName(file?.name || "");
+}
+
+function pendingSourceDateFromName(name) {
+  const dateText = String(name || "").match(/(\d{4})[-_](\d{2})[-_](\d{2})/)?.slice(1, 4).join("-");
+  return dateText || "";
+}
+
+function pendingSourceActivitySortTimestamp(file, dateValue = pendingSourceActivityDateValue(file)) {
+  const lastModified = Number(file?.lastModified || 0);
+  if (Number.isFinite(lastModified) && lastModified > 0) return lastModified;
+  return sourceActivitySortTimestamp(dateValue);
+}
+
+function pendingSourceActivitySummary(file) {
+  if (state.ingestErrors.has(file?.name)) {
+    return "Review did not finish. This pending source is still waiting to become a filed source card.";
+  }
+  if (isSourceReviewReady(file)) {
+    return clampSentence(sourceIngestSummary(file) || "Review complete. Approve to turn this placeholder into a filed source card.", 260);
+  }
+  const details = [
+    formatFileSize(Number(file?.size || 0)),
+    file?.text ? `${formatStatNumber(wordCount(file.text))} words` : "",
+    needsTextExtraction(file) ? "needs text extraction" : ""
+  ].filter(Boolean).join(" · ");
+  const prefix = details ? `${details}. ` : "";
+  return `Not yet processed. ${prefix}Margins will read, link, and file it as a source card.`;
+}
+
 function sourceActivityTitle(path, body) {
   const title = cleanSummary(markdownTitle(body) || titleFromSlug(basename(path).replace(/\.md$/, "")));
   return title.replace(/^Source:\s*/i, "") || "Source note";
@@ -5388,7 +7617,7 @@ function sourceActivityTitle(path, body) {
 function sourceActivityRawPath(fields, body) {
   const frontmatterRaw = frontmatterList(fields.raw_file)[0] || "";
   if (frontmatterRaw) return normalizeMarginsPath(frontmatterRaw);
-  const match = String(body || "").match(/Raw file:\s*`([^`]+)`/i);
+  const match = String(body || "").match(/(?:Raw|Original) file:\s*`([^`]+)`/i);
   return match?.[1] ? normalizeMarginsPath(match[1]) : "";
 }
 
@@ -5478,6 +7707,7 @@ function sourceActivityTypeClass(path) {
   if (ext === "pdf") return "pdf";
   if (["eml", "msg"].includes(ext)) return "eml";
   if (["mp3", "m4a", "wav", "aac", "aiff"].includes(ext)) return "aud";
+  if (["png", "jpg", "jpeg", "gif", "webp", "heic", "heif", "tif", "tiff"].includes(ext)) return "img";
   if (["doc", "docx"].includes(ext)) return "doc";
   return "txt";
 }
@@ -5513,7 +7743,7 @@ function activityDateValue(value) {
 }
 
 function syncActivityRecentSource(records) {
-  const sourceKey = records.map((record) => record.path).join("\n");
+  const sourceKey = records.map((record) => record.activityKey || record.path).join("\n");
   if (sourceKey === state.activityRecentSourceKey) return;
   state.activityRecentSourceKey = sourceKey;
   resetActivityRecentLimit();
@@ -5551,6 +7781,7 @@ function renderActivityRecentActions(visibleCount, totalCount) {
 }
 
 function renderRecentActivityCard(record) {
+  if (record.kind === "pending") return renderPendingActivityCard(record);
   const dateLabel = formatActivityDate(record.dateValue);
   return `
     <article class="activity-card type-${escapeHtml(record.typeClass)}" role="button" tabindex="0" data-activity-path="${escapeHtml(record.path)}">
@@ -5564,6 +7795,26 @@ function renderRecentActivityCard(record) {
       <div class="activity-card-foot">
         <span class="stat"><strong>${escapeHtml(formatStatNumber(record.wordTotal))}</strong> words</span>
         <span class="stat">Connected to <strong>${escapeHtml(String(record.connectionCount))}</strong> page${record.connectionCount === 1 ? "" : "s"}</span>
+      </div>
+    </article>
+  `;
+}
+
+function renderPendingActivityCard(record) {
+  const file = record.file;
+  const dateLabel = formatActivityDate(record.dateValue);
+  return `
+    <article class="activity-card ghost type-${escapeHtml(record.typeClass)}" data-pending-source="${escapeHtml(file.name)}">
+      <div class="activity-card-top">
+        <span class="source-icon ${escapeHtml(record.typeClass)}">${escapeHtml(record.typeLabel)}</span>
+        <div class="activity-card-title">${escapeHtml(record.title)}</div>
+        ${dateLabel ? `<time class="activity-card-date" datetime="${escapeHtml(record.dateValue)}">${escapeHtml(dateLabel)}</time>` : ""}
+      </div>
+      <p class="activity-card-summary">${escapeHtml(record.summary)}</p>
+      <div class="ghost-actions" aria-label="Pending source actions">
+        ${renderSourceActionButton(file, "primary ghost-action-primary")}
+        <button type="button" data-source-open-path="${escapeHtml(rawSourceOutputPath(file.name))}">Preview source</button>
+        <button type="button" data-source-delete="${escapeHtml(file.name)}">Skip</button>
       </div>
     </article>
   `;
@@ -5595,7 +7846,7 @@ function renderActivityPills(record) {
   return pills.length ? `<div class="activity-card-pills">${pills.join("")}</div>` : "";
 }
 
-function handleRecentActivityClick(event) {
+async function handleRecentActivityClick(event) {
   const actionButton = event.target.closest("[data-activity-list-action]");
   if (actionButton && els.recentActivityList?.contains(actionButton)) {
     event.preventDefault();
@@ -5610,6 +7861,32 @@ function handleRecentActivityClick(event) {
       state.activityRecentVisibleCount = totalCount;
     }
     renderRecentActivity(activeActivityFileMap());
+    return;
+  }
+
+  const sourceAction = event.target.closest("[data-source-action]");
+  if (sourceAction && els.recentActivityList?.contains(sourceAction)) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!state.processingInbox) {
+      await withBusyOperation("source processing", () => processPendingSource(sourceAction.dataset.sourceFile));
+    }
+    return;
+  }
+
+  const rawPreview = event.target.closest("[data-source-open-path]");
+  if (rawPreview && els.recentActivityList?.contains(rawPreview)) {
+    event.preventDefault();
+    event.stopPropagation();
+    openActivityPath(rawPreview.dataset.sourceOpenPath);
+    return;
+  }
+
+  const deleteButton = event.target.closest("[data-source-delete]");
+  if (deleteButton && els.recentActivityList?.contains(deleteButton)) {
+    event.preventDefault();
+    event.stopPropagation();
+    await withBusyOperation("source removal", () => removePendingSource(deleteButton.dataset.sourceDelete));
     return;
   }
 
@@ -5987,7 +8264,7 @@ function processingFilingLines(file) {
   const stage = ingestProgressStage(file);
   const lines = [
     {
-      html: escapeHtml(`Saving ${sourceTypeLabel(file)} to raw`),
+      html: escapeHtml(`Saving ${sourceTypeLabel(file)} source file`),
       done: rawSaved || stage > 0,
       active: stage === 0,
       pending: stage < 0
@@ -6817,7 +9094,7 @@ function sourceIngestFullSummary(file) {
   const review = state.ingestReviews.get(file.name);
   if (review?.summary) return stripTrailingEllipsis(cleanDisplaySummary(review.summary));
   const sourceNote = sourceNoteForFile(file);
-  return stripTrailingEllipsis(cleanDisplaySummary(extractSourceSummary(sourceNote) || localSourceSummary(file) || "Margins preserved the raw source and prepared it for filing."));
+  return stripTrailingEllipsis(cleanDisplaySummary(extractSourceSummary(sourceNote) || localSourceSummary(file) || "Margins preserved the source file and prepared it for filing."));
 }
 
 function sourceIngestSummaryBullets(file) {
@@ -6896,7 +9173,7 @@ raw_file: ${rawPath}
 
 # Source: Browser Smoke Source
 
-Raw file: \`${rawPath}\`
+Original file: \`${rawPath}\`
 
 ## Summary
 
@@ -6950,7 +9227,7 @@ raw_file: ${rawPath}
 
 # Source: Workspace Map Notes
 
-Raw file: \`${rawPath}\`
+Original file: \`${rawPath}\`
 
 ## Summary
 
@@ -7568,7 +9845,7 @@ raw_file: raw/existing.md
       state.ingestErrors = new Map();
 
       await setSourceFiles([
-        new File(["Persisted raw body\n"], "incoming-note.md", {
+        new File(["Persisted source body\n"], "incoming-note.md", {
           type: "text/markdown",
           lastModified: new Date(2026, 4, 5, 15, 30).getTime()
         })
@@ -7599,6 +9876,50 @@ raw_file: raw/existing.md
         pendingAfterReload: state.files.map((file) => file.name),
         sourceScopeAfterReload: state.files[0]?.sourceScope || "",
         sourceListText: document.querySelector("#source-list")?.innerText || ""
+      };
+    },
+    async importCalendarInviteSource() {
+      const handle = createMemoryVaultHandle();
+      await scaffoldVault(handle);
+      setActiveVault(handle, "Browser Test Vault");
+      state.currentFileMap = await readVaultFileMap(handle);
+      state.loadedFileMap = new Map(state.currentFileMap);
+      state.vaultFiles = await readRawSourcesFromVault(handle);
+      state.files = [];
+      state.pendingSave = false;
+      state.processingInbox = false;
+      state.apiSecret = "test-gemini-key";
+      state.ingestReviews = new Map();
+      state.ingestAnswers = new Map();
+      state.ingestErrors = new Map();
+
+      const calendarText = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//Margins Browser Test//EN",
+        "BEGIN:VEVENT",
+        "UID:margins-calendar-test",
+        "DTSTART:20260413T170000Z",
+        "DTEND:20260413T180000Z",
+        "SUMMARY:Discussion with Connor",
+        "DESCRIPTION:Webex calendar invite for the Fabrizio thread.",
+        "END:VEVENT",
+        "END:VCALENDAR"
+      ].join("\r\n");
+
+      await setSourceFiles([
+        new File([calendarText], "invite.ics", {
+          type: "text/calendar",
+          lastModified: new Date(2026, 3, 12, 21, 42).getTime()
+        })
+      ]);
+
+      const imported = state.files[0] || {};
+      return {
+        fileType: imported.type || "",
+        fileText: imported.text || "",
+        sourceListText: document.querySelector("#source-list")?.innerText || "",
+        rawBody: await testReadTextFile(handle, "raw/invite.ics")
       };
     },
     seedTextModelSources(count = 3) {
@@ -7768,9 +10089,10 @@ tags: [person]
         },
         {
           name: "unfiled-note.md",
-          text: "Unfiled note exists in raw but has not been ingested into wiki sources yet.",
+          text: "Unfiled source file exists in raw/ but has not been processed into wiki sources yet.",
           type: "text",
           size: 82,
+          lastModified: new Date(2026, 4, 5, 18, 0).getTime(),
           sourceScope: "vault",
           extractionStatus: "ready",
           extractionError: ""
@@ -7811,16 +10133,25 @@ raw_file: raw/filed-note.md
         },
         {
           name: "unfiled-note.md",
-          text: "Unfiled note exists in raw but has not been ingested into wiki sources yet.",
+          text: "Unfiled source file exists in raw/ but has not been processed into wiki sources yet.",
           type: "text",
           size: 82,
+          lastModified: new Date(2026, 4, 5, 18, 0).getTime(),
           sourceScope: "vault",
           extractionStatus: "ready",
           extractionError: ""
         }
       ];
+      const longClaudeBody = Array.from({ length: 90 }, (_, index) => (
+        `Scroll check line ${index + 1}: Files view content should remain readable while the document pane scrolls.`
+      )).join("\n");
       const fileMap = new Map([
-        ["CLAUDE.md", "# CLAUDE.md\n\nRead this before operating the vault.\n"],
+        ["CLAUDE.md", `# CLAUDE.md
+
+Read this before operating the vault.
+
+${longClaudeBody}
+`],
         ["operator-manual.md", "# Operator Manual\n\nUse this to operate the vault.\n"],
         ["query-cookbook.md", "# Query Cookbook\n\nUse this to query the vault.\n"],
         ["commands/query.md", "# Query\n\nAnswer questions against the vault.\n"],
@@ -7838,7 +10169,7 @@ raw_file: raw/filed-note.md
 
 # Source: Filed Activity Note
 
-Raw file: \`raw/filed-note.md\`
+Original file: \`raw/filed-note.md\`
 
 ## Summary
 
@@ -7890,6 +10221,77 @@ Briefly is a project page used by the Activity test.
         pendingText: document.querySelector("#source-list")?.innerText || "",
         recentText: document.querySelector("#recent-activity-list")?.innerText || ""
       };
+    },
+    seedDreamBrokenLinks(options = {}) {
+      const fileMap = new Map([
+        ["CLAUDE.md", "# CLAUDE.md\n\nLocal-first. Proposal-first. No silent write-back.\n"],
+        ["operator-manual.md", "# Operator Manual\n\nPrefer source-cited facts and conservative edits.\n"],
+        ["query-cookbook.md", "# Query Cookbook\n\nUse exact paths and durable wiki links.\n"],
+        ["agents/wiki-editor.md", "# Wiki Editor Agent\n\nPropose structured edits without silent mutation.\n"],
+        ["agents/source-auditor.md", "# Source Auditor\n\nCheck whether claims are supported by source citations.\n"],
+        ["wiki/index.md", "# Index\n\n[[project-home]]\n"],
+        ["wiki/_templates/entity.md", "# Entity Name\n\n- [[source-slug]] - one-line note about what this source established.\n"],
+        ["wiki/projects/project-home.md", `---
+type: project
+summary: Project home page with a broken advisor link.
+---
+
+# Project Home
+
+This project references [[Missing Advisor]] and [[Known Company]].
+`],
+        ["wiki/entities/known-company.md", `---
+type: company
+summary: Known company entity.
+---
+
+# Known Company
+`]
+      ]);
+      if (options.suggestedTarget) {
+        fileMap.set("wiki/entities/missing-advisor-profile.md", `---
+type: person
+summary: Existing advisor page that should receive the missing advisor link.
+---
+
+# Missing Advisor Profile
+`);
+      }
+      if (options.largeBrokenSource) {
+        fileMap.set("wiki/personal/source-2026-04-26-friends-catchup.md", `---
+type: source
+bucket: personal
+summary: Long friends catchup note with one broken advisor link.
+---
+
+# Source: Friends Catchup
+
+${Array.from({ length: 180 }, (_, index) => `Context paragraph ${index + 1}: Matt and Ben discussed the project history, introductions, and follow-up notes without creating a durable entity.`).join("\n\n")}
+
+The long note eventually references [[Missing Advisor]] during a sidebar.
+
+${Array.from({ length: 120 }, (_, index) => `Later context ${index + 1}: More source detail that should not be rewritten just to repair one link.`).join("\n\n")}
+`);
+      }
+      state.vaultFiles = [];
+      state.files = [];
+      state.currentFileMap = fileMap;
+      state.loadedFileMap = new Map(fileMap);
+      state.selectedPath = null;
+      state.selectedKind = "";
+      state.pendingSave = false;
+      state.processingInbox = false;
+      state.apiSecret = Object.prototype.hasOwnProperty.call(options, "apiSecret") ? options.apiSecret : "test-gemini-key";
+      state.ingestReviews = new Map();
+      state.ingestAnswers = new Map();
+      state.dreamLastRun = null;
+      state.dreamReviewActive = false;
+      state.dreamSkippedItems = new Set();
+      state.dreamDismissedBrokenLinks = new Set();
+      renderSources();
+      renderVaultTree(fileMap);
+      renderWikiFiles(fileMap);
+      return dreamBrokenLinks(fileMap).length;
     },
     seedManyRecentActivitySources(count = 30) {
       const yesterdayDate = new Date();
@@ -8343,10 +10745,10 @@ function renderVaultTree(fileMap = state.currentFileMap) {
   const stats = ingestionStats(fileMap || new Map());
   els.vaultTree.innerHTML = `
     <div class="upload-stats">
-      <div class="section-kicker">Ingestion</div>
+      <div class="section-kicker">Processing</div>
       <div class="upload-stat-grid">
         ${uploadStat("Parsed", stats.parsedFiles)}
-        ${uploadStat("Ingested", stats.ingestedFiles)}
+        ${uploadStat("Processed", stats.ingestedFiles)}
         ${uploadStat("Pending", stats.pendingFiles)}
         ${uploadStat("Words", formatStatNumber(stats.totalWords))}
       </div>
@@ -8380,7 +10782,7 @@ function renderEntities(fileMap = state.currentFileMap) {
     els.entityBrowser.innerHTML = `
       <div class="empty-icon" aria-hidden="true"></div>
       <h3>No entities loaded</h3>
-      <p>Open a local vault or ingest a source. Margins will only show entities backed by real vault files.</p>
+      <p>Open a local vault or process a source. Margins will only show entities backed by real vault files.</p>
     `;
     return;
   }
@@ -9317,6 +11719,22 @@ function formatStatNumber(value) {
   return Number(value || 0).toLocaleString("en-US");
 }
 
+function textSizeBytes(value) {
+  const text = String(value || "");
+  try {
+    return new TextEncoder().encode(text).length;
+  } catch {
+    return text.length;
+  }
+}
+
+function formatByteSize(bytes) {
+  const value = Math.max(0, Number(bytes) || 0);
+  if (value < 1024) return `${formatStatNumber(value)} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(value < 10 * 1024 ? 1 : 0)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(value < 10 * 1024 * 1024 ? 1 : 0)} MB`;
+}
+
 function formatProcessDuration(milliseconds) {
   const seconds = Math.max(0, Number(milliseconds) || 0) / 1000;
   if (seconds < 10) return `${seconds.toFixed(1)}s`;
@@ -9527,8 +11945,8 @@ function workflowStep() {
     guidance: failedPdfCount
       ? `${failedPdfCount} PDF${failedPdfCount === 1 ? "" : "s"} need to be attached in the LLM chat. The copied prompt will list them.`
       : state.currentFileMap
-        ? "Review the new source against the existing vault, then ingest the proposed changes."
-        : "Review the uploaded files, ask a few filing questions, then ingest them locally."
+        ? "Review the new source against the existing vault, then process the proposed changes."
+        : "Review the uploaded files, ask a few filing questions, then process them locally."
   };
 }
 
@@ -9629,9 +12047,9 @@ function renderWikiFiles(fileMap) {
 
   if (entries.length === 0) {
     els.wikiTree.className = "tree-list empty";
-    els.wikiTree.textContent = "Open a vault or add documents to browse raw and wiki.";
+    els.wikiTree.textContent = "Open a vault or add documents to browse source files and wiki notes.";
     setDocumentHeader(null, "", { title: "No file selected", meta: "No file selected" });
-    setDocBody("Open raw or wiki, then choose a file.", { readOnly: true });
+    setDocBody("Open a source file or wiki note, then choose a file.", { readOnly: true });
     if (els.docSaveBtn) els.docSaveBtn.disabled = true;
     return;
   }
@@ -9659,13 +12077,14 @@ function renderWikiFiles(fileMap) {
   state.selectedPath = null;
   state.selectedKind = "";
   setDocumentHeader(null, "", { title: "No file selected", meta: "No file selected" });
-  setDocBody("Choose a file from raw or wiki.", { readOnly: true });
+  setDocBody("Choose a source file or wiki note.", { readOnly: true });
   if (els.docSaveBtn) els.docSaveBtn.disabled = true;
 }
 
 function defaultVaultBrowserPath(entries = []) {
   const paths = entries.map((entry) => entry.path);
-  return paths.find((path) => path === "wiki/index.md")
+  return paths.find((path) => path === "CLAUDE.md")
+    || paths.find((path) => path === "wiki/index.md")
     || paths.find((path) => /^wiki\/[^/]+\/index\.md$/i.test(path))
     || paths.find((path) => path.startsWith("wiki/") && path.endsWith(".md"))
     || paths[0]
@@ -9675,7 +12094,7 @@ function defaultVaultBrowserPath(entries = []) {
 function vaultBrowserEntries(fileMap) {
   const rawEntries = allSourceFiles().map((file) => ({
     path: rawSourceOutputPath(file.name),
-    body: file.text || (file.type === "pdf" ? "PDF source preserved in raw." : "Original file preserved in raw."),
+    body: file.text || (file.type === "pdf" ? "PDF source preserved in raw/." : "Original file preserved in raw/."),
     kind: "raw",
     editable: (file.type !== "pdf" && file.type !== "attachment") || !!file.text
   }));
@@ -9773,7 +12192,7 @@ function selectVaultPath(path, options = {}) {
   if (rawFile) {
     state.selectedPath = rawSourceOutputPath(rawFile.name);
     state.selectedKind = "raw";
-    const body = rawFile.text || (rawFile.type === "pdf" ? "PDF source preserved in raw." : "Original file preserved in raw.");
+    const body = rawFile.text || (rawFile.type === "pdf" ? "PDF source preserved in raw/." : "Original file preserved in raw/.");
     const readOnly = (rawFile.type === "pdf" || rawFile.type === "attachment") && !rawFile.text;
     setDocumentHeader(state.selectedPath, body, { kind: "raw", readOnly });
     setDocBody(body, { readOnly });
@@ -9834,7 +12253,7 @@ function pathKind(path) {
 
 function documentKindLabel(kind) {
   return {
-    raw: "Raw source",
+    raw: "Source file",
     wiki: "Wiki note",
     system: "Operating file"
   }[kind] || "Vault file";
@@ -9858,6 +12277,7 @@ function docBodyValue() {
 function renderDocHighlight() {
   if (!els.docHighlight || !els.docBody) return;
   els.docHighlight.innerHTML = highlightMarkdown(docBodyValue());
+  resizeDocEditor();
   syncDocHighlightScroll();
 }
 
@@ -9865,6 +12285,16 @@ function syncDocHighlightScroll() {
   if (!els.docHighlight || !els.docBody) return;
   els.docHighlight.scrollTop = els.docBody.scrollTop;
   els.docHighlight.scrollLeft = els.docBody.scrollLeft;
+}
+
+function resizeDocEditor() {
+  if (!els.docBody) return;
+  els.docBody.style.height = "auto";
+  const style = typeof getComputedStyle === "function" ? getComputedStyle(els.docBody) : null;
+  const minHeight = parseFloat(style?.minHeight) || 0;
+  const nextHeight = Math.max(els.docBody.scrollHeight, minHeight);
+  els.docBody.style.height = `${nextHeight}px`;
+  if (els.docHighlight) els.docHighlight.style.height = `${nextHeight}px`;
 }
 
 function highlightMarkdown(body) {
@@ -10136,7 +12566,7 @@ function buildAutoFileQuestions(fileMap, warningsByPath) {
   const warningQuestions = [];
   for (const [path, warnings] of warningsByPath.entries()) {
     for (const warning of warnings) {
-      if (/contentReference|Missing YAML|not valid JSON|raw source/i.test(warning)) {
+      if (/contentReference|Missing YAML|not valid JSON|raw source|source file/i.test(warning)) {
         warningQuestions.push(reviewQuestion(
           "blocker",
           "I need to fix this first",
@@ -11146,7 +13576,7 @@ function updateSaveButtonState() {
   }
   if (els.bulkIngestBtn) {
     els.bulkIngestBtn.disabled = busy || state.processingInbox || state.files.length === 0;
-    els.bulkIngestBtn.textContent = busy || state.processingInbox && !state.processingFileName ? "Ingesting..." : "Bulk ingest";
+    els.bulkIngestBtn.textContent = busy || state.processingInbox && !state.processingFileName ? "Processing..." : "Bulk process";
   }
   if (els.docSaveBtn) {
     els.docSaveBtn.disabled = busy || !canSave;
@@ -11160,6 +13590,7 @@ function sourceClass(file) {
   const classes = [`type-${sourceBadgeClass(file)}`];
   if (state.processingInbox && (!state.processingFileName || state.processingFileName === file.name)) classes.push("processing");
   else if (isSourceReviewReady(file)) classes.push("ready-to-write");
+  else if (!state.ingestErrors.has(file?.name)) classes.push("pending-ghost");
   return classes.join(" ");
 }
 
@@ -11188,6 +13619,7 @@ function sourceBadgeClass(file) {
   if (file?.type === "pdf" || ext === "pdf") return "pdf";
   if (["eml", "msg"].includes(ext)) return "eml";
   if (["mp3", "m4a", "wav", "aac", "aiff"].includes(ext)) return "aud";
+  if (["png", "jpg", "jpeg", "gif", "webp", "heic", "heif", "tif", "tiff"].includes(ext)) return "img";
   if (file?.type === "docx" || ["doc", "docx"].includes(ext)) return "doc";
   if (["md", "markdown", "txt"].includes(ext)) return "txt";
   return "txt";
@@ -11232,7 +13664,7 @@ function buildLlmIngestPrompt(files, existingFileMap = null) {
   return `You are operating Margins, a local-first personal wiki compiler.
 
 Goal:
-Turn raw sources into a useful wiki, not a chat transcript and not a generic file organizer. Preserve raw sources as evidence. Create source pages first, then only create durable concept/entity/synthesis pages when the source material actually supports them.
+Turn source files into a useful wiki, not a chat transcript and not a generic file organizer. Preserve originals in raw/ as evidence. Create source pages first, then only create durable concept/entity/synthesis pages when the source material actually supports them.
 
 Mode:
 ${outputMode}
@@ -11393,7 +13825,7 @@ function wikiSchemaPack() {
   return `## Margins Wiki Schema Pack
 
 Architecture:
-- raw/ stores immutable evidence.
+- raw/ stores immutable original files.
 - wiki/ stores LLM-operable Markdown: source pages, concept pages, entity pages, synthesis pages, index pages, an ingest tracker, an operation log, stats, bucket overviews, and templates.
 - CLAUDE.md, operator-manual.md, query-cookbook.md, commands/, agents/, and wiki/.margins/ tell future models how to operate the wiki.
 
@@ -11410,7 +13842,7 @@ voice: claude-draft
 
 Structural files every generated vault should include:
 - CLAUDE.md: first-read agent operating skeleton.
-- wiki/ingest-tracker.md: table mapping raw files to generated pages.
+- wiki/ingest-tracker.md: table mapping source files in raw/ to generated pages.
 - wiki/log.md: human-readable log with ops limited to ingest | query | compile | lint | update.
 - wiki/wiki-stats.md: drift, compression, extraction, and size dashboard.
 - wiki/{sources,concepts,entities,synthesis}/{bucket}.md: bucket overview pages.
@@ -11436,16 +13868,16 @@ voice: claude-draft
 
 # Source: Coleman Brokerage Statement, March 2026
 
-Raw file: coleman-brokerage-2026-03.pdf
+Original file: coleman-brokerage-2026-03.pdf
 
 ## Summary
-Direct-read summary with durable citations to the raw file or source page.
+Direct-read summary with durable citations to the original file or source page.
 
 ## Context
 - Link durable promoted pages when supported: [[demo-financial-statements]]
 
 ## Concrete Facts
-- Fact with raw file / section citation.
+- Fact with original file / section citation.
 
 ## Related Pages
 - [[demo-financial-statements]] -- why this page connects
@@ -11497,7 +13929,7 @@ Your task:
 3. Fix every warning listed below.
 4. Remove all :contentReference, oaicite, hidden attachment ids, and turn references.
 5. Add YAML frontmatter to every wiki source, concept, entity, synthesis, and index page.
-6. Use durable citations only: source page links, raw filenames, and plain section names.
+6. Use durable citations only: source page links, filenames in raw/, and plain section names.
 7. Add source-page backlinks to promoted pages where supported.
 8. Demote fictional/demo-only entity pages into Mentioned but missing or Needs Review unless they are useful durable entities.
 9. Preserve good source facts and refused inferences.
@@ -11600,6 +14032,9 @@ function activateTab(view) {
   } else if (view !== "graph" && graphView.raf) {
     stopGraphSimulation();
   }
+  if (view === "wiki") {
+    requestAnimationFrame(renderDocHighlight);
+  }
 }
 
 function shouldIgnorePath(path) {
@@ -11634,7 +14069,7 @@ async function scaffoldVault(rootHandle) {
   await ensureDirectory(rootHandle, "commands");
   await ensureDirectory(rootHandle, "agents");
   await ensureDirectory(rootHandle, "wiki/.margins");
-  await writeTextFileIfMissing(rootHandle, `${RAW_SOURCE_DIR}/README.md`, `# Raw
+  await writeTextFileIfMissing(rootHandle, `${RAW_SOURCE_DIR}/README.md`, `# Original Sources
 
 Drop original source files here. Margins treats this folder as evidence and writes generated knowledge into wiki/.
 `);
@@ -11798,16 +14233,16 @@ function isVaultTextPath(path) {
 }
 
 function isReadableSourceTextPath(path) {
-  return /\.(md|markdown|txt|json|jsonl|csv|tsv|py|js|jsx|ts|tsx|html|css|xml|yaml|yml|log|eml|vtt|srt)$/i.test(path);
+  return /\.(md|markdown|txt|json|jsonl|csv|tsv|py|js|jsx|ts|tsx|html|css|xml|yaml|yml|log|eml|ics|ical|vtt|srt)$/i.test(path);
 }
 
 async function writeRawSources(rootHandle, files) {
   if (files.length === 0) {
-    await writeTextFile(rootHandle, `${RAW_SOURCE_DIR}/README.md`, `# Raw
+    await writeTextFile(rootHandle, `${RAW_SOURCE_DIR}/README.md`, `# Original Sources
 
-No raw source files were loaded in the browser when this Margins folder was written.
+No original source files were loaded in the browser when this Margins folder was written.
 
-To preserve raw evidence, reload the original files in Margins before clicking "Save." Browsers clear selected file handles after refresh for security.
+To preserve original evidence, reload the original files in Margins before clicking "Save." Browsers clear selected file handles after refresh for security.
 `);
     return 0;
   }
@@ -11871,7 +14306,7 @@ async function deleteRawSourceFromVault(rootHandle, fileName) {
       // The active raw/ path and the legacy raw_sources/ path are both allowed.
     }
   }
-  if (!deleted) throw new Error(`${basename(fileName)} was not found in raw.`);
+  if (!deleted) throw new Error(`${basename(fileName)} was not found in raw/.`);
 }
 
 const ROOT_GENERATED_TEXT_FILES = new Set(["CLAUDE.md", "operator-manual.md", "query-cookbook.md"]);

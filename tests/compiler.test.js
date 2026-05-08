@@ -13,7 +13,7 @@ test("vaultToFiles emits V1 metadata only under wiki/.margins", () => {
   const vault = compileVault([
     {
       name: "note.md",
-      text: "Margins compiles raw sources into a wiki. The language model reads source nodes and edit proposals."
+      text: "Margins compiles source files into a wiki. The language model reads source nodes and edit proposals."
     }
   ], { today: "2026-05-05", name: "Test Vault" });
   const files = vaultToFiles(vault);
@@ -59,7 +59,7 @@ test("local heuristic candidates stay in the ingest report until promoted", () =
       name: "candidate-note.md",
       text: [
         "Alice Morgan discussed how a language model should support a local first wiki.",
-        "The language model should help with raw sources, operator manual upkeep, and query cookbook maintenance."
+        "The language model should help with source files, operator manual upkeep, and query cookbook maintenance."
       ].join(" ")
     }
   ], { today: "2026-05-05", name: "Candidate Vault" });

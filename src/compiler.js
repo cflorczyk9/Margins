@@ -36,7 +36,7 @@ const CONCEPT_PHRASES = [
   "operator manual",
   "personal context",
   "query cookbook",
-  "raw sources",
+  "source files",
   "source nodes",
   "synthesis nodes",
   "write back"
@@ -51,7 +51,7 @@ const PERSON_STOP = new Set([
 const ENTITY_STOP_LOWER = new Set([
   "briefly branch map",
   "karpathy original template notes",
-  "raw sources",
+  "source files",
   "source nodes",
   "concept nodes",
   "entity nodes",
@@ -241,7 +241,7 @@ function buildSourceNode(file, today) {
 type: source
 bucket: sources
 summary: ${yamlString(summary)}
-tags: [source, raw-source]
+tags: [source]
 created: ${today}
 updated: ${today}
 event_date: ${today}
@@ -251,7 +251,7 @@ raw_file: raw/${file.name}
 
 # Source: ${title}
 
-Raw file: \`raw/${file.name}\`
+Original file: \`raw/${file.name}\`
 
 ## Summary
 
@@ -320,7 +320,7 @@ key_links: [${sources.map((s) => `"[[${s}]]"`).join(", ")}]
 # ${title}
 
 ## Snapshot
-- **What it is:** Concept candidate generated from raw sources.
+- **What it is:** Concept candidate generated from source files.
 - **Why it matters:** It recurs enough to deserve a first-class page if the user confirms it is load-bearing.
 - **Related sources:** ${sources.map((s) => `[[${s}]]`).join(", ")}
 
@@ -551,7 +551,7 @@ function buildIngestTracker({ today, files, sourceNodes, conceptNodes, entityNod
   return `---
 type: tracker
 bucket: system
-summary: Raw-source ingestion tracker for this Margins vault.
+summary: Source-file processing tracker for this Margins vault.
 tags: [tracker, ingest, system]
 created: ${today}
 updated: ${today}
@@ -560,16 +560,16 @@ voice: claude-draft
 
 # Ingest Tracker
 
-This is the single source of truth for which raw files have been converted into wiki pages. Update it whenever ingest creates, rewrites, or skips a source.
+This is the single source of truth for which source files in raw/ have been converted into wiki pages. Update it whenever ingest creates, rewrites, or skips a source.
 
-| Raw source | Status | Source page | Connected pages | Words | Notes |
+| Source file | Status | Source page | Connected pages | Words | Notes |
 |---|---|---|---|---:|---|
-${rows || "| - | - | - | - | 0 | No raw sources registered yet. |"}
+${rows || "| - | - | - | - | 0 | No source files registered yet. |"}
 
 ## Status Vocabulary
 
 - ingested: source text was available and a wiki source page exists.
-- needs-extraction: the raw file is preserved, but readable text was not available to the compiler.
+- needs-extraction: the original file is preserved in raw/, but readable text was not available to the compiler.
 - skipped: the user intentionally chose not to file this source.
 - superseded: a newer source replaced this one as the preferred reference.
 `;
@@ -594,14 +594,14 @@ Use headings shaped like \`## [YYYY-MM-DD] ingest\` so agents can grep the log w
 
 ## [${today}] ingest
 
-- Registered ${files.length} raw source${files.length === 1 ? "" : "s"}.
+- Registered ${files.length} source file${files.length === 1 ? "" : "s"}.
 - Created ${sourceNodes.length} source page${sourceNodes.length === 1 ? "" : "s"}, ${conceptNodes.length} concept page${conceptNodes.length === 1 ? "" : "s"}, ${entityNodes.length} entity page${entityNodes.length === 1 ? "" : "s"}, and ${synthesisNodes.length} synthesis page${synthesisNodes.length === 1 ? "" : "s"}.
 - Queued ${editProposals.length} proposal${editProposals.length === 1 ? "" : "s"} in \`wiki/.margins/edit-log.jsonl\`.
 - Updated \`wiki/ingest-tracker.md\`, bucket overviews, and \`wiki/wiki-stats.md\`.
 
 ## Operation Vocabulary
 
-- ingest: raw source preservation, source-page creation, propagation, and tracker updates.
+- ingest: source file preservation, source-page creation, propagation, and tracker updates.
 - query: user-facing answer from current wiki state.
 - compile: backlink, concept, entity, synthesis, and index refresh.
 - lint: drift, stale summary, missing citation, and structure health checks.
@@ -634,7 +634,7 @@ Generated: ${today}
 
 ## Shape
 
-- Raw sources: ${files.length}
+- Source files: ${files.length}
 - Source pages: ${sourceNodes.length}
 - Concept pages: ${conceptNodes.length}
 - Entity pages: ${entityNodes.length}
@@ -643,7 +643,7 @@ Generated: ${today}
 
 ## Compression
 
-- Raw words available: ${rawWords}
+- Source words available: ${rawWords}
 - Source-summary words: ${summaryWords}
 - Approximate compression: ${compression ? `${compression}:1` : "n/a"}
 
@@ -653,7 +653,7 @@ Generated: ${today}
 - Extraction gaps: ${unsupported.length}
 - Review rule: if a summary is older than the sources it represents, refresh it before answering from memory.
 
-## Fattest Raw Sources
+## Largest Source Files
 
 ${fattest.map((file) => `- \`raw/${file.name}\` — ${file.wordCount} words${file.unsupported ? " (needs extraction)" : ""}`).join("\n") || "- _(none)_"}
 
@@ -671,8 +671,8 @@ function buildBucketOverviews({ today, sourceNodes, conceptNodes, entityNodes, s
       today,
       title: "Sources",
       bucket: "sources",
-      summary: "Entry point for raw-source-derived pages.",
-      description: "Source pages are faithful reads of one preserved raw file. They should cite the raw source and avoid unsupported synthesis.",
+      summary: "Entry point for source-file-derived pages.",
+      description: "Source pages are faithful reads of one preserved original file. They should cite the source file and avoid unsupported synthesis.",
       nodes: sourceNodes
     }),
     "wiki/concepts/concepts.md": bucketOverview({
@@ -745,7 +745,7 @@ raw_file:
 
 # Source: Title
 
-Raw file: \`raw/example.md\`
+Original file: \`raw/example.md\`
 
 ## Summary
 
@@ -911,12 +911,12 @@ This file is the agent operating skeleton for a Margins vault. Treat it as the f
 
 ## Mission
 
-Maintain a local-first, source-grounded wiki that compounds over time. Raw sources are evidence. Wiki pages are the navigable memory layer. Generated drafts must stay labeled until a user confirms them.
+Maintain a local-first, source-grounded wiki that compounds over time. Original files in raw/ are evidence. Wiki pages are the navigable memory layer. Generated drafts must stay labeled until a user confirms them.
 
 ## First Files To Read
 
 1. \`wiki/index.md\` for the map.
-2. \`wiki/ingest-tracker.md\` to see what raw files have been filed.
+2. \`wiki/ingest-tracker.md\` to see what source files have been filed.
 3. \`wiki/log.md\` for recent operations.
 4. \`wiki/wiki-stats.md\` for drift, extraction gaps, and oversized sources.
 5. \`operator-manual.md\` and \`query-cookbook.md\` for detailed operating rules.
@@ -930,11 +930,11 @@ Use these words in \`wiki/log.md\` headings: ingest | query | compile | lint | u
 - \`voice: claude-draft\` means model-written or model-shaped content that may need review.
 - Ask before inferring roles, relationships, motives, priorities, dates, money, or next moves.
 - Put uncertain model reasoning in synthesis sections or clearly labeled notes.
-- Preserve raw source paths and cite durable wiki links, not chat-only references.
+- Preserve source paths in raw/ and cite durable wiki links, not chat-only references.
 
 ## Buckets
 
-- \`wiki/sources/\`: faithful source pages tied to one raw file.
+- \`wiki/sources/\`: faithful source pages tied to one original file.
 - \`wiki/concepts/\`: durable ideas that should help future retrieval.
 - \`wiki/entities/\`: people, organizations, places, tools, accounts, and projects.
 - \`wiki/synthesis/\`: connection-point summaries across multiple pages.
@@ -942,7 +942,7 @@ Use these words in \`wiki/log.md\` headings: ingest | query | compile | lint | u
 
 ## Query Patterns
 
-- Have we ingested a file? Search \`wiki/ingest-tracker.md\` for its raw filename.
+- Have we processed a file? Search \`wiki/ingest-tracker.md\` for its filename in raw/.
 - What changed? Read the latest \`## [date] op\` section in \`wiki/log.md\`.
 - Is a summary stale? Check \`wiki/wiki-stats.md\`, then compare source pages with overview pages.
 - What supports this claim? Follow source links from the relevant concept/entity/synthesis page.
@@ -956,11 +956,11 @@ Generated ${today}.`,
 
 ## Mission
 
-Maintain an LLM-operable wiki from raw sources. Preserve evidence, create useful knowledge nodes, and make Claude/ChatGPT better without pretending to be the chat surface.
+Maintain an LLM-operable wiki from source files. Preserve evidence, create useful knowledge nodes, and make Claude/ChatGPT better without pretending to be the chat surface.
 
 ## Rules
 
-1. Raw sources are evidence. Never mutate \`raw/\`.
+1. Original source files are evidence. Never mutate \`raw/\`.
 2. The wiki is the compounding layer. Source, concept, entity, synthesis, tracker, log, stats, and bucket overview pages can evolve.
 3. Cite or label. Every factual claim must cite a source node or be marked as synthesis.
 4. Ask before inferring roles, motives, relationships, numbers, dates, or next moves.
@@ -970,11 +970,11 @@ Maintain an LLM-operable wiki from raw sources. Preserve evidence, create useful
 
 ## Page Types
 
-- source: faithful summary of one raw file
+- source: faithful summary of one original file
 - concept: durable theme or idea
 - entity: person, organization, place, project, tool
 - synthesis: connection-point summary across nodes
-- tracker: raw file ingest state
+- tracker: source-file processing state
 - log: human-readable operation history
 - dashboard: structural health and drift view
 
@@ -994,7 +994,7 @@ Read \`CLAUDE.md\`, \`wiki/index.md\`, \`wiki/ingest-tracker.md\`, and \`wiki/wi
 
 ## Check whether a file was ingested
 
-Search \`wiki/ingest-tracker.md\` for the raw filename. If the tracker is missing or stale, scan \`wiki/sources/\` for matching \`raw_file:\` frontmatter and then update the tracker.
+Search \`wiki/ingest-tracker.md\` for the filename in raw/. If the tracker is missing or stale, scan \`wiki/sources/\` for matching \`raw_file:\` frontmatter and then update the tracker.
 
 ## Find what changed
 
@@ -1012,20 +1012,20 @@ Return a structured edit proposal with: operation, target, rationale, citations,
 
 Find supporting source nodes. If none exist, say "not supported by the current wiki."`,
     commands: {
-      "ingest": command("ingest", "Turn raw sources into source notes, candidates, links, and citations."),
+      "ingest": command("ingest", "Turn source files into source notes, candidates, links, and citations."),
       "compile": command("compile", "Find backlink gaps, concept candidates, entity candidates, and synthesis opportunities."),
       "query": command("query", "Answer from wiki nodes with citations and optional synthesis filing."),
       "lint": command("lint", "Check stale pages, orphan nodes, missing citations, and operator-manual violations."),
       "propose-edit": command("propose-edit", "Return a structured wiki edit proposal. Never apply silently."),
       "apply-edit": command("apply-edit", "Apply a user-approved edit and append the result to wiki/.margins/edit-log.jsonl."),
-      "export": command("export", "Package raw sources, wiki, operating layer, graph, and manifest for migration.")
+      "export": command("export", "Package source files, wiki, operating layer, graph, and manifest for migration.")
     },
     agents: {
-      "wiki-ingest": agent("wiki-ingest", "Conservatively ingest raw sources into source notes and candidates."),
+      "wiki-ingest": agent("wiki-ingest", "Conservatively process source files into source notes and candidates."),
       "wiki-compiler": agent("wiki-compiler", "Derive candidate links, concepts, entities, and synthesis nodes."),
       "wiki-query": agent("wiki-query", "Answer questions from the wiki using source-grounded citations."),
       "wiki-editor": agent("wiki-editor", "Propose structured edits and diffs without silent mutation."),
-      "source-auditor": agent("source-auditor", "Check whether a claim is supported by raw source citations.")
+      "source-auditor": agent("source-auditor", "Check whether a claim is supported by source-file citations.")
     }
   };
 }
@@ -1120,7 +1120,7 @@ Compiler: local heuristic
 
 ## Summary
 
-- Raw sources registered: ${files.length}
+- Source files registered: ${files.length}
 - Source pages created: ${sourceNodes.length}
 - Concept pages created: ${conceptNodes.length}
 - Entity pages created: ${entityNodes.length}
@@ -1190,7 +1190,7 @@ Generated by Margins.
 
 ## Operating Map
 
-- [[ingest-tracker]] — raw source filing status
+- [[ingest-tracker]] — source-file processing status
 - [[log]] — human-readable operation history
 - [[wiki-stats]] — drift, extraction, and size dashboard
 - [[sources]] — source bucket overview
@@ -1226,7 +1226,7 @@ function toGraphNode(node) {
 }
 
 function summarize(text, unsupported) {
-  if (unsupported) return "Raw source registered, but text extraction is needed before high-quality summarization.";
+  if (unsupported) return "Source file registered, but text extraction is needed before high-quality summarization.";
   const clean = stripMarkdownNoise(text).replace(/\s+/g, " ").trim();
   if (!clean) return "Empty source. Add text before ingesting.";
   const sentences = clean.match(/[^.!?]+[.!?]+/g) || [clean];
