@@ -1,8 +1,60 @@
 import { compileVault, localDateString, vaultToFiles } from "./compiler.js";
 import { clearApiSettings, loadApiSettings, maskSecret, saveApiSettings } from "./apiSettingsStore.js";
-import { hasFileSystemAccess, loadVaultHandle, saveVaultHandle } from "./vaultHandleStore.js";
 import { STORAGE_KEYS } from "./storageKeys.js";
 import { state } from "./core/state.js";
+import {
+  RAW_SOURCE_DIR,
+  LEGACY_RAW_SOURCE_DIR,
+  bodyReferencesRawSource,
+  createVault,
+  deleteGeneratedTextFile,
+  deleteRawSourceFromVault,
+  directoryHandleForPath,
+  ensureDirectory,
+  fileHandleForPath,
+  hasVaultWikiContent,
+  initVaultModule,
+  isDeletableGeneratedTextPath,
+  isMissingEntryError,
+  isRawSourceIngested,
+  isRawSourcePath,
+  isSourceOnlyWikiPage,
+  isVaultTextPath,
+  legacyRawSourceOutputPath,
+  loadExistingVault,
+  normalizeVaultOutputPath,
+  openVault,
+  pendingRawSourcesFromVault,
+  prepareSourcesForProcessing,
+  queryVaultPermission,
+  rawSourceCandidatePaths,
+  rawSourceFromFileHandle,
+  rawSourceOutputPath,
+  rawSourceRelativeName,
+  readDirectoryTextFiles,
+  readRawSourceDirectory,
+  readRawSourcesFromVault,
+  readRootTextFile,
+  readTextHandle,
+  readVaultFileMap,
+  reconnectRememberedVault,
+  refreshRawSourceBlobFromVault,
+  requestVaultPermission,
+  restoreRememberedVault,
+  safeRelativePath,
+  saveCurrentVault,
+  savePendingRawSourcesImmediately,
+  scaffoldVault,
+  setActiveVault,
+  sourceNoteEntryForFile,
+  sourceNoteEntryForFileMap,
+  updateVaultStatus,
+  writeBlobFile,
+  writeFileMap,
+  writeRawSources,
+  writeTextFile,
+  writeTextFileIfMissing
+} from "./core/vault.js";
 import {
   apiProviderRequiresSecret,
   balancedJsonSubstring,
@@ -164,7 +216,6 @@ import {
 } from "./views/wiki.js";
 import {
   applyFilingPlanToSourceBody,
-  bodyReferencesRawSource,
   formatSourceTimestamp,
   ingestAnswerKey,
   needsTextExtraction,
@@ -181,7 +232,6 @@ import {
   copyLlmIngestPrompt,
   copyLlmRepairPrompt,
   copyReviewResponsePrompt,
-  hasVaultWikiContent,
   initLlmView,
   serializeLlmFiles,
   serializeReviewQuestions,
@@ -272,8 +322,6 @@ let apiSecretHydrationPromise = null;
 const API_REQUEST_TIMEOUT_MS = 60_000;
 const ACTIVITY_RECENT_PAGE_SIZE = 12;
 const PENDING_SOURCE_PAGE_SIZE = 6;
-const RAW_SOURCE_DIR = "raw";
-const LEGACY_RAW_SOURCE_DIR = "raw_sources";
 const DREAM_LOG_PATH = "wiki/.margins/dream-log.md";
 const DREAM_MODES = {
   watch: {
@@ -614,6 +662,40 @@ initEntitiesView({
   }
 });
 
+// Wire the vault module (file-system access + lifecycle). Picker and
+// permission round-trips MUST run synchronously inside click handlers,
+// so createVault/openVault are bound directly without busy-op wrappers
+// before the picker fires.
+initVaultModule({
+  els,
+  callbacks: {
+    renderSources,
+    renderVaultTree,
+    renderChangePreview,
+    renderWikiFiles,
+    renderOperatingLayer,
+    renderAcceptedLlmEditState,
+    drawGraph,
+    graphFromFileMap,
+    updateActionState,
+    updateSaveButtonState,
+    updateWorkflowState,
+    activateTab,
+    runVaultOperation
+  },
+  helpers: {
+    allSourceFiles,
+    mergeSourceFiles,
+    rawSourceAlreadySaved,
+    rawSourcesNeedingWrite,
+    buildReviewDecisionLog,
+    extractDocxText,
+    extractDocxTextForSource,
+    extractPdfTextForSource,
+    isActivitySourcePagePath
+  }
+});
+
 els.themeToggle.checked = state.theme === "dark";
 updateThemeToggleLabel();
 hydrateApiControls();
@@ -746,34 +828,6 @@ async function withBusyOperation(label, run) {
 
 function isBusyOperation() {
   return Boolean(activeOperation);
-}
-
-async function restoreRememberedVault() {
-  if (!hasFileSystemAccess()) {
-    updateVaultStatus("Local vault persistence needs Chrome or Edge on localhost.");
-    return;
-  }
-
-  try {
-    const handle = await loadVaultHandle();
-    if (!handle) {
-      updateVaultStatus("No local vault connected.");
-      return;
-    }
-
-    state.rememberedVaultHandle = handle;
-    updateVaultStatus(`Last vault: ${handle.name}. Click Reconnect to open it.`);
-    const permission = await queryVaultPermission(handle);
-    if (permission === "granted") {
-      setActiveVault(handle, handle.name);
-      await scaffoldVault(handle);
-      await loadExistingVault(handle);
-    } else {
-      updateWorkflowState();
-    }
-  } catch (error) {
-    updateVaultStatus(`Could not restore last vault: ${error.message || "unknown error"}`);
-  }
 }
 
 function hydrateApiControls() {
@@ -1034,187 +1088,9 @@ els.copyBtn.addEventListener("click", async () => {
   setTimeout(() => { els.copyBtn.textContent = "Copy operator manual"; }, 1100);
 });
 
-async function createVault() {
-  const handle = await pickVaultDirectory("Vault creation");
-  if (!handle) return null;
-  return runVaultOperation("vault creation", async () => {
-    await scaffoldVault(handle);
-    setActiveVault(handle, handle.name);
-    state.loadedFileMap = await readVaultFileMap(handle);
-    renderChangePreview();
-    renderVaultTree();
-    els.stats.textContent = `Created vault structure in: ${handle.name}`;
-    return handle;
-  });
-}
-
-async function openVault() {
-  if (!("showDirectoryPicker" in window)) {
-    els.stats.textContent = "Local vaults need Chrome or Edge on localhost. Use Download vault JSON for now.";
-    return null;
-  }
-
-  const handle = await pickVaultDirectory("Vault open");
-  if (!handle) return null;
-  return runVaultOperation("vault open", async () => {
-    await scaffoldVault(handle);
-    setActiveVault(handle, handle.name);
-    await loadExistingVault(handle);
-    return handle;
-  });
-}
-
-async function pickVaultDirectory(actionLabel) {
-  if (!("showDirectoryPicker" in window)) {
-    els.stats.textContent = "Local vaults need Chrome or Edge on localhost. Use Download vault JSON for now.";
-    updateVaultStatus("Local vault persistence needs Chrome or Edge on localhost.");
-    return null;
-  }
-
-  els.stats.textContent = "Select a vault folder in the system picker.";
-  updateVaultStatus("Waiting for folder selection...");
-  try {
-    return await window.showDirectoryPicker({ mode: "readwrite" });
-  } catch (error) {
-    if (error.name === "AbortError") {
-      els.stats.textContent = "Folder selection canceled.";
-      restoreVaultStatusAfterPickerCancel();
-      updateWorkflowState();
-      return null;
-    }
-    els.stats.textContent = `${actionLabel} failed: ${error.message || "unknown error"}`;
-    updateVaultStatus("No local vault connected.");
-    updateWorkflowState();
-    return null;
-  }
-}
-
-function restoreVaultStatusAfterPickerCancel() {
-  if (state.vaultHandle) {
-    updateVaultStatus(state.vaultName || "Vault connected.");
-  } else if (state.rememberedVaultHandle) {
-    updateVaultStatus(`Last vault: ${state.rememberedVaultHandle.name}. Click Reconnect to open it.`);
-  } else {
-    updateVaultStatus("No local vault connected.");
-  }
-}
-
 async function runVaultOperation(label, run) {
   if (activeOperation) return run();
   return withBusyOperation(label, run);
-}
-
-function setActiveVault(handle, name) {
-  state.vaultHandle = handle;
-  state.rememberedVaultHandle = handle;
-  state.vaultName = name;
-  els.createVaultBtn.textContent = "Create vault";
-  els.openVaultBtn.textContent = "Change vault";
-  updateSaveButtonState();
-  updateVaultStatus(name);
-  saveVaultHandle(handle).catch(() => {});
-  updateWorkflowState();
-}
-
-function updateVaultStatus(message) {
-  if (els.vaultStatus) els.vaultStatus.textContent = message;
-}
-
-async function queryVaultPermission(handle) {
-  if (!handle || typeof handle.queryPermission !== "function") return "prompt";
-  try {
-    return await handle.queryPermission({ mode: "readwrite" });
-  } catch {
-    return "prompt";
-  }
-}
-
-async function requestVaultPermission(handle) {
-  if (!handle) return false;
-  const current = await queryVaultPermission(handle);
-  if (current === "granted") return true;
-  if (typeof handle.requestPermission !== "function") return false;
-  try {
-    return await handle.requestPermission({ mode: "readwrite" }) === "granted";
-  } catch {
-    return false;
-  }
-}
-
-async function reconnectRememberedVault() {
-  const handle = state.rememberedVaultHandle;
-  if (!handle) return false;
-  const granted = await requestVaultPermission(handle);
-  if (!granted) {
-    updateVaultStatus("Reconnect was not granted. Open a vault folder to continue.");
-    return false;
-  }
-  await runVaultOperation("vault reconnect", async () => {
-    await scaffoldVault(handle);
-    setActiveVault(handle, handle.name);
-    await loadExistingVault(handle);
-  });
-  return true;
-}
-
-async function loadExistingVault(handle) {
-  const fileMap = await readVaultFileMap(handle);
-
-  state.vaultFiles = [];
-  state.editedRawFiles = new Map();
-  state.loadedFileMap = new Map(fileMap);
-  state.files = [];
-  applyLoadedVaultFileMap(fileMap);
-  els.stats.textContent = fileMap.size
-    ? `Opened ${state.vaultName}: ${fileMap.size} vault file${fileMap.size === 1 ? "" : "s"} loaded. Scanning raw/ sources...`
-    : `Opened ${state.vaultName}. No wiki files found yet. Scanning raw/ sources...`;
-
-  let rawFiles = [];
-  try {
-    rawFiles = await readRawSourcesFromVault(handle);
-  } catch (error) {
-    els.stats.textContent = fileMap.size
-      ? `Opened ${state.vaultName}: ${fileMap.size} vault file${fileMap.size === 1 ? "" : "s"} loaded. Raw scan failed: ${error.message || "unknown error"}`
-      : `Opened ${state.vaultName}, but raw scan failed: ${error.message || "unknown error"}`;
-    updateWorkflowState();
-    return;
-  }
-
-  state.vaultFiles = rawFiles;
-  state.files = pendingRawSourcesFromVault(fileMap, rawFiles);
-  state.hasSavedCurrent = fileMap.size > 0 || rawFiles.length > 0;
-  renderSources();
-  renderVaultTree(fileMap);
-  updateSaveButtonState();
-  updateActionState();
-  els.stats.textContent = rawFiles.length
-    ? `Opened ${state.vaultName}: ${rawFiles.length} source file${rawFiles.length === 1 ? "" : "s"} loaded from raw/ and ${fileMap.size} vault file${fileMap.size === 1 ? "" : "s"} loaded`
-    : `Opened ${state.vaultName}: ${fileMap.size} vault file${fileMap.size === 1 ? "" : "s"} loaded`;
-}
-
-function applyLoadedVaultFileMap(fileMap) {
-  state.vault = null;
-  state.currentFileMap = fileMap;
-  state.selectedPath = null;
-  state.selectedKind = "";
-  state.llmFiles = new Map();
-  state.llmSelectedPath = null;
-  state.currentMaterialQuestions = [];
-  state.llmPromptCopied = false;
-  state.hasSavedCurrent = fileMap.size > 0;
-  state.hasUnsavedEdits = false;
-  state.pendingSave = false;
-  renderSources();
-  renderVaultTree(fileMap);
-  renderWikiFiles(fileMap);
-  renderOperatingLayer(fileMap);
-  renderAcceptedLlmEditState();
-  drawGraph(graphFromFileMap(fileMap));
-  renderChangePreview();
-  els.exportBtn.disabled = fileMap.size === 0;
-  updateSaveButtonState();
-  els.copyBtn.disabled = true;
-  updateWorkflowState();
 }
 
 function clearLoadedWiki() {
@@ -1242,7 +1118,6 @@ function clearLoadedWiki() {
   renderChangePreview();
   updateWorkflowState();
 }
-
 
 async function handleSaveAndOrganize() {
   if (state.pendingSave && state.currentFileMap) {
@@ -1539,109 +1414,6 @@ function clearIngestProgress(fileNames = null) {
     for (const timer of ingestProgressTimers.get(name) || []) clearTimeout(timer);
     ingestProgressTimers.delete(name);
     state.ingestProgress.delete(name);
-  }
-}
-
-async function savePendingRawSourcesImmediately(files = state.files) {
-  if (!state.vaultHandle || files.length === 0) return 0;
-  const toWrite = files
-    .filter((file) => !rawSourceAlreadySaved(file))
-    .map((file) => ({ ...file, sourceScope: "vault" }));
-  const written = toWrite.length ? await writeRawSources(state.vaultHandle, toWrite) : 0;
-  for (const file of files) {
-    file.sourceScope = "vault";
-    await refreshRawSourceBlobFromVault(file);
-  }
-  state.vaultFiles = mergeSourceFiles(state.vaultFiles, files.map((file) => ({ ...file, sourceScope: "vault", dirtyRaw: false })));
-  renderVaultTree(state.currentFileMap);
-  return written;
-}
-
-async function prepareSourcesForProcessing(files) {
-  for (const file of files) {
-    if (file.text) continue;
-
-    if (file.type === "pdf") {
-      await extractPdfTextForSource(file);
-    } else if (file.type === "docx") {
-      await extractDocxTextForSource(file);
-    }
-  }
-}
-
-async function saveCurrentVault(options = {}) {
-  if (!state.currentFileMap) return;
-  const vault = state.vaultHandle || await createVault();
-  if (!vault) return;
-
-  els.saveVaultBtn.disabled = true;
-  if (els.docSaveBtn) els.docSaveBtn.disabled = true;
-  const originalText = els.saveVaultBtn.textContent;
-  els.saveVaultBtn.textContent = "Saving...";
-  if (els.docSaveBtn) els.docSaveBtn.textContent = "Saving...";
-
-  try {
-    const pendingRaw = mergeSourceFiles(state.files, [...state.editedRawFiles.values()]);
-    const sourceCount = allSourceFiles().length;
-    const rawToWrite = rawSourcesNeedingWrite(pendingRaw);
-    const writtenRaw = rawToWrite.length ? await writeRawSources(vault, rawToWrite) : 0;
-    const reviewNotes = els.reviewReply.value.trim();
-    if (reviewNotes) {
-      state.currentFileMap.set("wiki/.margins/review-decisions.md", buildReviewDecisionLog(reviewNotes));
-    }
-    const writtenFiles = await writeFileMap(vault, state.currentFileMap, state.loadedFileMap || new Map());
-    await writeTextFile(vault, "wiki/.margins/export-summary.json", JSON.stringify({
-      saved_at: new Date().toISOString(),
-      vault: state.vaultName,
-      raw_sources: writtenRaw,
-      generated_files: writtenFiles,
-      new_source_count: pendingRaw.length,
-      source_count: sourceCount,
-      file_count: state.currentFileMap.size,
-      write_mode: "direct-vault-save",
-      warning: sourceCount === 0
-        ? "No original source files were loaded in the browser when this folder was written."
-        : ""
-    }, null, 2));
-    state.vaultFiles = mergeSourceFiles(state.vaultFiles, pendingRaw.map((file) => ({ ...file, sourceScope: "vault", dirtyRaw: false })));
-    state.files = pendingRawSourcesFromVault(state.currentFileMap, state.vaultFiles);
-    state.editedRawFiles = new Map();
-    state.ingestReviews = new Map();
-    state.ingestAnswers = new Map();
-    state.ingestErrors = new Map();
-    state.expandedSummaries = new Set();
-    state.expandedReceiptLinks = new Set();
-    state.revealedReceipts = new Set();
-    state.loadedFileMap = new Map(state.currentFileMap);
-    renderSources();
-    renderVaultTree(state.currentFileMap);
-    state.hasSavedCurrent = true;
-    state.hasUnsavedEdits = false;
-    state.pendingSave = false;
-    state.llmPromptCopied = false;
-    els.reviewReply.value = "";
-    els.stats.textContent = pendingRaw.length === 0
-      ? `Saved ${writtenFiles} wiki/operating files to ${state.vaultName}`
-      : `Saved ${writtenFiles} wiki/operating file${writtenFiles === 1 ? "" : "s"} + ${writtenRaw} new source file${writtenRaw === 1 ? "" : "s"} to ${state.vaultName}`;
-    els.saveVaultBtn.textContent = "Saved";
-    if (els.docSaveBtn) els.docSaveBtn.textContent = "Saved";
-    renderWikiFiles(state.currentFileMap);
-    activateTab(options.afterSaveView || "wiki");
-    renderChangePreview();
-    setTimeout(() => {
-      els.saveVaultBtn.textContent = originalText;
-      if (els.docSaveBtn) els.docSaveBtn.textContent = "Save";
-      updateSaveButtonState();
-    }, 1500);
-  } catch (error) {
-    if (error.name !== "AbortError") {
-      els.stats.textContent = `Vault save failed: ${error.message || "unknown error"}`;
-    }
-    els.saveVaultBtn.textContent = originalText;
-    if (els.docSaveBtn) els.docSaveBtn.textContent = "Save";
-  } finally {
-    updateSaveButtonState();
-    updateWorkflowState();
   }
 }
 
@@ -2013,28 +1785,6 @@ function sourceTargetPathFromReview(currentPath, review) {
   return target;
 }
 
-function sourceNoteEntryForFile(file) {
-  return sourceNoteEntryForFileMap(file, state.currentFileMap);
-}
-
-function sourceNoteEntryForFileMap(file, fileMap) {
-  if (!fileMap || !file?.name) return null;
-  const rawPaths = rawSourceCandidatePaths(file.name);
-  for (const [path, body] of fileMap.entries()) {
-    if (isActivitySourcePagePath(path, body) && bodyReferencesRawSource(body, rawPaths)) return { path, body };
-  }
-  return null;
-}
-
-function isRawSourceIngested(file, fileMap = state.currentFileMap) {
-  return Boolean(sourceNoteEntryForFileMap(file, fileMap));
-}
-
-function pendingRawSourcesFromVault(fileMap = state.currentFileMap, rawFiles = state.vaultFiles) {
-  return rawFiles
-    .filter((file) => !isRawSourceIngested(file, fileMap))
-    .map((file) => ({ ...file, sourceScope: "vault" }));
-}
 
 async function generateApiReviewQuestions(fileMap, files) {
   const provider = els.apiProvider?.value || providerValue(state.apiSettings.providerLabel) || "gemini";
@@ -3388,29 +3138,6 @@ async function sourceAttachmentForModel(file) {
   if (!blob) return null;
   const mimeType = sourceAttachmentMimeType(file, blob);
   return mimeType ? { blob, mimeType } : null;
-}
-
-async function refreshRawSourceBlobFromVault(file) {
-  if (!file?.name) return null;
-  let handle = file.rawSourceHandle || null;
-  if (!handle && state.vaultHandle) {
-    for (const path of [file.rawPath, ...rawSourceCandidatePaths(file.name)].filter(Boolean)) {
-      try {
-        handle = await fileHandleForPath(state.vaultHandle, path, false);
-        file.rawSourceHandle = handle;
-        file.rawPath = path;
-        break;
-      } catch {
-        handle = null;
-      }
-    }
-  }
-  if (!handle?.getFile) return null;
-  const freshFile = await handle.getFile();
-  file.browserFile = freshFile;
-  file.size = freshFile.size;
-  file.lastModified = freshFile.lastModified;
-  return freshFile;
 }
 
 async function blobToBase64WithRefresh(file, blob) {
@@ -10554,357 +10281,6 @@ function download(name, body) {
   URL.revokeObjectURL(url);
 }
 
-async function scaffoldVault(rootHandle) {
-  await ensureDirectory(rootHandle, RAW_SOURCE_DIR);
-  await ensureDirectory(rootHandle, "wiki/sources");
-  await ensureDirectory(rootHandle, "wiki/concepts");
-  await ensureDirectory(rootHandle, "wiki/entities");
-  await ensureDirectory(rootHandle, "wiki/synthesis");
-  await ensureDirectory(rootHandle, "wiki/_templates");
-  await ensureDirectory(rootHandle, "commands");
-  await ensureDirectory(rootHandle, "agents");
-  await ensureDirectory(rootHandle, "wiki/.margins");
-  await writeTextFileIfMissing(rootHandle, `${RAW_SOURCE_DIR}/README.md`, `# Original Sources
-
-Drop original source files here. Margins treats this folder as evidence and writes generated knowledge into wiki/.
-`);
-  await writeTextFileIfMissing(rootHandle, "CLAUDE.md", "# CLAUDE.md\n\nMargins will write the agent operating skeleton here.\n");
-  await writeTextFileIfMissing(rootHandle, "operator-manual.md", "# Operator Manual\n\nMargins will write model operating instructions here.\n");
-  await writeTextFileIfMissing(rootHandle, "query-cookbook.md", "# Query Cookbook\n\nMargins will write query recipes here.\n");
-  await writeTextFileIfMissing(rootHandle, "wiki/.margins/manifest.json", JSON.stringify({
-    name: "Margins Vault",
-    template: "karpathy-original",
-    version: "0.1.0",
-    created_at: new Date().toISOString(),
-    storage: "local-folder"
-  }, null, 2));
-}
-
-async function ensureDirectory(rootHandle, path) {
-  const parts = safeRelativePath(path).split("/").filter(Boolean);
-  let dir = rootHandle;
-  for (const part of parts) {
-    dir = await dir.getDirectoryHandle(part, { create: true });
-  }
-  return dir;
-}
-
-async function directoryHandleForPath(rootHandle, path, create = true) {
-  const parts = safeRelativePath(path).split("/").filter(Boolean);
-  let dir = rootHandle;
-  for (const part of parts) {
-    dir = await dir.getDirectoryHandle(part, { create });
-  }
-  return dir;
-}
-
-async function readVaultFileMap(rootHandle) {
-  const fileMap = new Map();
-  await readDirectoryTextFiles(rootHandle, ".margins", fileMap);
-  await readDirectoryTextFiles(rootHandle, "wiki", fileMap);
-  await readDirectoryTextFiles(rootHandle, "commands", fileMap);
-  await readDirectoryTextFiles(rootHandle, "agents", fileMap);
-  await readRootTextFile(rootHandle, "CLAUDE.md", fileMap);
-  await readRootTextFile(rootHandle, "operator-manual.md", fileMap);
-  await readRootTextFile(rootHandle, "query-cookbook.md", fileMap);
-  if (fileMap.size === 0 && rootHandle?.name?.toLowerCase() === "wiki") {
-    await readDirectoryTextFilesFromHandle(rootHandle, "wiki", fileMap);
-  }
-  return fileMap;
-}
-
-async function readRawSourcesFromVault(rootHandle) {
-  const files = [];
-  await readRawSourceDirectory(rootHandle, RAW_SOURCE_DIR, files);
-  if (files.length > 0) return files.sort((left, right) => left.name.localeCompare(right.name));
-
-  const legacyFiles = [];
-  await readRawSourceDirectory(rootHandle, LEGACY_RAW_SOURCE_DIR, legacyFiles);
-  return legacyFiles.sort((left, right) => left.name.localeCompare(right.name));
-}
-
-async function readDirectoryTextFiles(rootHandle, path, fileMap) {
-  let dir;
-  try {
-    dir = await directoryHandleForPath(rootHandle, path, false);
-  } catch {
-    return;
-  }
-
-  await readDirectoryTextFilesFromHandle(dir, path, fileMap);
-}
-
-async function readDirectoryTextFilesFromHandle(dir, path, fileMap) {
-  for await (const [name, handle] of dir.entries()) {
-    const childPath = `${path}/${name}`;
-    if (handle.kind === "directory") {
-      await readDirectoryTextFilesFromHandle(handle, childPath, fileMap);
-    } else if (isVaultTextPath(childPath)) {
-      const normalizedPath = normalizeMarginsPath(childPath);
-      fileMap.set(normalizedPath, await readTextHandle(handle));
-    }
-  }
-}
-
-async function readRootTextFile(rootHandle, path, fileMap) {
-  try {
-    const fileHandle = await fileHandleForPath(rootHandle, path, false);
-    fileMap.set(path, await readTextHandle(fileHandle));
-  } catch {
-    // Missing operating files are allowed for partially created vaults.
-  }
-}
-
-async function readRawSourceDirectory(rootHandle, path, files) {
-  let dir;
-  try {
-    dir = await directoryHandleForPath(rootHandle, path, false);
-  } catch {
-    return;
-  }
-
-  for await (const [name, handle] of dir.entries()) {
-    const childPath = `${path}/${name}`;
-    if (name.startsWith(".")) continue;
-    if (handle.kind === "directory") {
-      await readRawSourceDirectory(rootHandle, childPath, files);
-    } else if (name !== "README.md") {
-      files.push(await rawSourceFromFileHandle(handle, rawSourceRelativeName(childPath), normalizeMarginsPath(childPath)));
-    }
-  }
-}
-
-async function rawSourceFromFileHandle(fileHandle, name, rawPath = rawSourceOutputPath(name)) {
-  const file = await fileHandle.getFile();
-  const isPdf = /\.pdf$/i.test(name);
-  const isDocx = /\.docx$/i.test(name);
-  const isReadableText = isReadableSourceTextPath(name);
-  let text = "";
-  let extractionStatus = "ready";
-  let extractionError = "";
-  let type = "text";
-  if (isPdf) {
-    extractionStatus = "needed";
-    type = "pdf";
-  } else if (isDocx) {
-    type = "docx";
-    try {
-      text = await extractDocxText(file);
-      extractionStatus = text ? "extracted" : "failed";
-      extractionError = text ? "" : "No readable text found in DOCX.";
-    } catch (error) {
-      text = "";
-      extractionStatus = "failed";
-      extractionError = error.message || "DOCX extraction failed.";
-    }
-  } else if (isReadableText) {
-    try {
-      text = await file.text();
-    } catch {
-      text = "";
-      extractionStatus = "failed";
-      extractionError = "Text could not be read.";
-    }
-  } else {
-    type = "attachment";
-    extractionStatus = "needed";
-    extractionError = "Needs model review from the original file.";
-  }
-  return {
-    name,
-    text,
-    browserFile: file,
-    rawSourceHandle: fileHandle,
-    rawPath,
-    size: file.size,
-    lastModified: file.lastModified,
-    type,
-    extractionStatus,
-    extractionError,
-    sourceScope: "vault"
-  };
-}
-
-async function readTextHandle(fileHandle) {
-  const file = await fileHandle.getFile();
-  return file.text();
-}
-
-function isVaultTextPath(path) {
-  return /\.(md|txt|json|jsonl)$/i.test(path);
-}
-
-
-async function writeRawSources(rootHandle, files) {
-  if (files.length === 0) {
-    await writeTextFile(rootHandle, `${RAW_SOURCE_DIR}/README.md`, `# Original Sources
-
-No original source files were loaded in the browser when this Margins folder was written.
-
-To preserve original evidence, reload the original files in Margins before clicking "Save." Browsers clear selected file handles after refresh for security.
-`);
-    return 0;
-  }
-
-  let count = 0;
-  for (const file of files) {
-    const path = rawSourceOutputPath(file.name || `source-${count + 1}.txt`);
-    if (file.browserFile) {
-      await writeBlobFile(rootHandle, path, file.browserFile);
-    } else {
-      await writeTextFile(rootHandle, path, file.text || "");
-    }
-    count += 1;
-  }
-  return count;
-}
-
-function rawSourceOutputPath(path) {
-  const safePath = rawSourceRelativeName(path);
-  return `${RAW_SOURCE_DIR}/${safePath}`;
-}
-
-function legacyRawSourceOutputPath(path) {
-  const safePath = rawSourceRelativeName(path);
-  return `${LEGACY_RAW_SOURCE_DIR}/${safePath}`;
-}
-
-function rawSourceCandidatePaths(path) {
-  return [
-    rawSourceOutputPath(path),
-    legacyRawSourceOutputPath(path)
-  ];
-}
-
-function rawSourceRelativeName(path) {
-  return safeRelativePath(path)
-    .replace(new RegExp(`^${RAW_SOURCE_DIR}/`), "")
-    .replace(new RegExp(`^${LEGACY_RAW_SOURCE_DIR}/`), "");
-}
-
-function isRawSourcePath(path) {
-  const normalized = normalizeMarginsPath(path);
-  return normalized.startsWith(`${RAW_SOURCE_DIR}/`) || normalized.startsWith(`${LEGACY_RAW_SOURCE_DIR}/`);
-}
-
-async function deleteRawSourceFromVault(rootHandle, fileName) {
-  let deleted = false;
-  for (const path of rawSourceCandidatePaths(fileName)) {
-    const parts = safeRelativePath(path).split("/").filter(Boolean);
-    const entryName = parts.pop();
-    if (!entryName) continue;
-
-    try {
-      let dir = rootHandle;
-      for (const part of parts) {
-        dir = await dir.getDirectoryHandle(part, { create: false });
-      }
-      await dir.removeEntry(entryName);
-      deleted = true;
-    } catch {
-      // The active raw/ path and the legacy raw_sources/ path are both allowed.
-    }
-  }
-  if (!deleted) throw new Error(`${basename(fileName)} was not found in raw/.`);
-}
-
-const ROOT_GENERATED_TEXT_FILES = new Set(["CLAUDE.md", "operator-manual.md", "query-cookbook.md"]);
-const PRESERVED_GENERATED_TEXT_FILES = new Set(["wiki/.margins/export-summary.json"]);
-
-async function writeFileMap(rootHandle, fileMap, previousFileMap = new Map()) {
-  const nextPaths = new Set([...fileMap.keys()].map(normalizeVaultOutputPath));
-  for (const path of previousFileMap.keys()) {
-    const normalizedPath = normalizeVaultOutputPath(path);
-    if (nextPaths.has(normalizedPath) || !isDeletableGeneratedTextPath(normalizedPath)) continue;
-    await deleteGeneratedTextFile(rootHandle, normalizedPath);
-  }
-
-  let count = 0;
-  for (const [path, body] of fileMap.entries()) {
-    await writeTextFile(rootHandle, normalizeVaultOutputPath(path), body);
-    count += 1;
-  }
-  return count;
-}
-
-function normalizeVaultOutputPath(path) {
-  return safeRelativePath(normalizeMarginsPath(path));
-}
-
-function isDeletableGeneratedTextPath(path) {
-  const normalizedPath = normalizeVaultOutputPath(path);
-  if (!normalizedPath || PRESERVED_GENERATED_TEXT_FILES.has(normalizedPath)) return false;
-  return (
-    normalizedPath.startsWith("wiki/") ||
-    normalizedPath.startsWith("commands/") ||
-    normalizedPath.startsWith("agents/") ||
-    ROOT_GENERATED_TEXT_FILES.has(normalizedPath)
-  );
-}
-
-async function deleteGeneratedTextFile(rootHandle, path) {
-  const parts = normalizeVaultOutputPath(path).split("/").filter(Boolean);
-  const entryName = parts.pop();
-  if (!entryName) return false;
-
-  let dir = rootHandle;
-  try {
-    for (const part of parts) {
-      dir = await dir.getDirectoryHandle(part, { create: false });
-    }
-    await dir.removeEntry(entryName);
-    return true;
-  } catch (error) {
-    if (isMissingEntryError(error)) return false;
-    throw error;
-  }
-}
-
-function isMissingEntryError(error) {
-  return error?.name === "NotFoundError" || /missing|not found/i.test(error?.message || "");
-}
-
-async function writeTextFile(rootHandle, path, body) {
-  const fileHandle = await fileHandleForPath(rootHandle, path);
-  const writable = await fileHandle.createWritable();
-  await writable.write(body);
-  await writable.close();
-}
-
-async function writeTextFileIfMissing(rootHandle, path, body) {
-  try {
-    await fileHandleForPath(rootHandle, path, false);
-  } catch {
-    await writeTextFile(rootHandle, path, body);
-  }
-}
-
-async function writeBlobFile(rootHandle, path, blob) {
-  const fileHandle = await fileHandleForPath(rootHandle, path);
-  const writable = await fileHandle.createWritable();
-  await writable.write(blob);
-  await writable.close();
-}
-
-async function fileHandleForPath(rootHandle, path, create = true) {
-  const parts = safeRelativePath(path).split("/").filter(Boolean);
-  const fileName = parts.pop();
-  let dir = rootHandle;
-  for (const part of parts) {
-    dir = await dir.getDirectoryHandle(part, { create });
-  }
-  return dir.getFileHandle(fileName || "untitled.md", { create });
-}
-
-function safeRelativePath(path) {
-  return String(path)
-    .replace(/\\/g, "/")
-    .split("/")
-    .map((part) => part.trim())
-    .filter((part) => part && part !== "." && part !== "..")
-    .map((part) => part.replace(/[<>:"|?*\u0000-\u001F]/g, "-"))
-    .join("/");
-}
 
 function todayString() {
   return localDateString();

@@ -68,14 +68,7 @@ export function applyFilingPlanToSourceBody(body, plan) {
 // raw/ path either inline or via the `raw_file` frontmatter list.
 // ---------------------------------------------------------------------
 
-export function bodyReferencesRawSource(body, rawPaths) {
-  const text = String(body || "");
-  const candidates = Array.isArray(rawPaths) ? rawPaths : [rawPaths];
-  if (candidates.some((rawPath) => text.includes(rawPath))) return true;
-  const fields = frontmatterFields(text);
-  const frontmatterPaths = frontmatterList(fields.raw_file).map((path) => normalizeMarginsPath(path));
-  return candidates.some((rawPath) => frontmatterPaths.includes(rawPath));
-}
+// bodyReferencesRawSource lives in core/vault.js (vault-domain helper).
 
 // ---------------------------------------------------------------------
 // Source timestamp helpers — derive a Date from a File-shaped record's

@@ -38,6 +38,7 @@
 
 import { state } from "../core/state.js";
 import { reviewModeLabel } from "../core/api.js";
+import { hasVaultWikiContent } from "../core/vault.js";
 import {
   frontmatterFields,
   isBucketOverviewPath,
@@ -466,13 +467,7 @@ export function truncateForPrompt(body, maxChars) {
   return `${body.slice(0, maxChars).trim()}\n\n[Truncated for prompt. Preserve this file unless the new source clearly requires an update.]`;
 }
 
-export function hasVaultWikiContent(fileMap) {
-  return [...fileMap.entries()].some(([path, body]) => (
-    isContextWikiPagePath(path) &&
-    !isFolderIndexPath(path) &&
-    !isSourceOnlyWikiPage(path, body)
-  ));
-}
+// hasVaultWikiContent lives in core/vault.js (vault-domain helper).
 
 export function shouldIncludeInVaultContext(path) {
   return isWikiPagePath(path) ||
