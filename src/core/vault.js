@@ -457,7 +457,10 @@ export function sourceNoteEntryForFileMap(file, fileMap) {
   if (typeof isActivitySourcePagePath !== "function") return null;
   const rawPaths = rawSourceCandidatePaths(file.name);
   for (const [path, body] of fileMap.entries()) {
-    if (isActivitySourcePagePath(path, body) && bodyReferencesRawSource(body, rawPaths)) return { path, body };
+    if (
+      isActivitySourcePagePath(path, body) &&
+      bodyReferencesRawSource(body, rawPaths)
+    ) return { path, body };
   }
   return null;
 }
