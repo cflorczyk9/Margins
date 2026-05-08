@@ -19,13 +19,27 @@
 
 import {
   arrayFromUnknown,
+  basename,
   clampSentence,
+  cleanBucket,
   cleanSummary,
+  cleanTag,
+  confidenceValue,
   firstMatch,
   hasFinancialDetails,
-  summaryTextValue
+  isContextWikiPagePath,
+  isGenericChecklistLink,
+  normalizeFilingPath,
+  normalizeMarginsPath,
+  relevanceValue,
+  sourcePathForBucket,
+  stringListFromUnknown,
+  summaryFallbackParts,
+  summaryTextValue,
+  tagListFromUnknown,
+  titleFromSlug
 } from "./wiki.js";
-import { field } from "./utils.js";
+import { field, firstDefined } from "./utils.js";
 
 // ---------------------------------------------------------------------
 // Constants
@@ -391,4 +405,329 @@ export function parseFinancialDetails(value) {
     details.figures = parseFinancialFigures(value);
   }
   return details;
+}
+
+// ---------------------------------------------------------------------
+// Payload-shape helpers (peel nesting + detect review signal)
+// ---------------------------------------------------------------------
+
+export function hasReviewPayloadSignal(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  return [
+    "missionFrame", "mission_frame", "summary", "overview", "takeaways", "keyTakeaways",
+    "key_takeaways", "lightTouch", "light_touch", "connections", "propagation",
+    "sourceSummary", "source_summary", "summaryBullets", "summary_bullets",
+    "relatedPages", "related_pages", "proposedUpdates", "proposed_updates",
+    "followUps", "follow_ups", "filingPlan", "filing_plan", "placement",
+    "filingSteps", "filing_steps", "discoveries", "discovery", "contradictions",
+    "financialDetails", "financial_details", "figures", "transactions", "accountDetails",
+    "account_details", "asks", "questions", "followupQuestions", "follow_up_questions"
+  ].some((key) => field(value, key) !== undefined);
+}
+
+export function normalizeReviewPayload(parsed) {
+  if (!parsed || typeof parsed !== "object") return null;
+  if (Array.isArray(parsed)) return { takeaways: parsed };
+  let current = parsed;
+  for (let depth = 0; depth < 3; depth += 1) {
+    const nested = firstDefined(
+      field(current, "review", "ingestReview", "ingest_review", "sourceReview", "source_review"),
+      field(current, "result", "data", "response", "payload")
+    );
+    if (!nested || typeof nested !== "object" || Array.isArray(nested) || !hasReviewPayloadSignal(nested)) break;
+    current = nested;
+  }
+  return current;
+}
+
+export function financialDetailsPayload(parsed) {
+  const explicit = field(parsed, "financialDetails", "financial_details", "finance");
+  if (explicit) return explicit;
+  const payload = {};
+  const accounts = field(parsed, "accounts", "accountDetails", "account_details");
+  const figures = field(parsed, "figures", "importantFigures", "important_figures", "balances", "values", "amounts");
+  const holdings = field(parsed, "holdings", "positions", "securities");
+  const transactions = field(parsed, "transactions", "activity", "cashActivity", "cash_activity");
+  const caveats = field(parsed, "financialCaveats", "financial_caveats", "caveats");
+  if (accounts !== undefined) payload.accounts = accounts;
+  if (figures !== undefined) payload.figures = figures;
+  if (holdings !== undefined) payload.holdings = holdings;
+  if (transactions !== undefined) payload.transactions = transactions;
+  if (caveats !== undefined) payload.caveats = caveats;
+  return Object.keys(payload).length ? payload : null;
+}
+
+// ---------------------------------------------------------------------
+// API summary parts (overview + bullets coercion)
+// ---------------------------------------------------------------------
+
+export function apiSummaryBullets(summary, extraBullets = []) {
+  const values = [];
+  if (summary && typeof summary === "object" && !Array.isArray(summary)) {
+    values.push(...arrayFromUnknown(field(summary, "bullets")));
+    values.push(...arrayFromUnknown(field(summary, "points")));
+    values.push(...arrayFromUnknown(field(summary, "keyPoints", "key_points")));
+    values.push(...arrayFromUnknown(field(summary, "takeaways")));
+  }
+  values.push(...arrayFromUnknown(extraBullets));
+  return values
+    .map(summaryTextValue)
+    .filter(Boolean)
+    .slice(0, 5);
+}
+
+export function apiSummaryParts(summary, extraBullets = []) {
+  if (Array.isArray(summary)) {
+    const parts = summary.map(summaryTextValue).filter(Boolean);
+    const fallback = summaryFallbackParts(parts.join(" "));
+    return {
+      overview: parts[0] ? clampSentence(parts[0], 220) : fallback.overview,
+      bullets: parts.length > 1 ? parts.slice(1, 6).map((item) => clampSentence(item, 220)) : fallback.bullets
+    };
+  }
+  if (summary && typeof summary === "object" && !Array.isArray(summary)) {
+    const overview = summaryTextValue(firstDefined(
+      field(summary, "overview", "oneLine", "one_line", "title", "text", "summary", "description"),
+      summary
+    ));
+    const bullets = apiSummaryBullets(summary, extraBullets);
+    const fallback = summaryFallbackParts(cleanSummary([overview, ...bullets].filter(Boolean).join(" ")));
+    return {
+      overview: overview || fallback.overview,
+      bullets: bullets.length ? bullets : fallback.bullets
+    };
+  }
+  return summaryFallbackParts(summary);
+}
+
+// ---------------------------------------------------------------------
+// Structural parsers (one per review section)
+// ---------------------------------------------------------------------
+
+export function parseMissionFrame(value) {
+  if (typeof value === "string") {
+    const oneLine = clampSentence(value, 180);
+    return oneLine ? { oneLine, sourceRole: "reference", confidence: "medium" } : null;
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const oneLine = clampSentence(field(value, "oneLine", "one_line", "overview", "summary", "mission", "job", "role", "description") || "", 180);
+  if (!oneLine) return null;
+  return {
+    oneLine,
+    sourceRole: String(field(value, "sourceRole", "source_role", "role", "type") || "reference").trim() || "reference",
+    confidence: confidenceValue(field(value, "confidence"))
+  };
+}
+
+export function parseTakeaways(value) {
+  return takeawayItemsFromUnknown(value)
+    .map((item) => {
+      if (typeof item === "string") {
+        return { relevance: "primary", label: "", point: clampSentence(item, 180), whyItMatters: "" };
+      }
+      if (!item || typeof item !== "object") return null;
+      const point = clampSentence(summaryTextValue(firstDefined(
+        field(item, "point", "takeaway", "text", "summary", "insight", "detail", "value"),
+        typeof item === "string" ? item : ""
+      )), 180);
+      if (!point) return null;
+      return {
+        relevance: relevanceValue(field(item, "relevance", "priority", "group")),
+        label: clampSentence(field(item, "label", "title", "kind", "category") || "", 42),
+        point,
+        whyItMatters: clampSentence(field(item, "whyItMatters", "why_it_matters", "reason", "rationale", "why") || "", 180)
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 4);
+}
+
+export function parseLightTouch(value) {
+  return reviewItemsFromUnknown(value, isLightTouchObject)
+    .map((item) => {
+      if (typeof item === "string") return { note: clampSentence(item, 180), reason: "" };
+      if (!item || typeof item !== "object") return null;
+      const note = clampSentence(summaryTextValue(field(item, "note", "point", "text", "summary", "mention")), 180);
+      if (!note) return null;
+      return {
+        note,
+        reason: clampSentence(field(item, "reason", "rationale", "why") || "", 180)
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 2);
+}
+
+export function parsePropagation(value) {
+  return reviewItemsFromUnknown(value, isPropagationObject)
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const targetPath = normalizeMarginsPath(String(field(item, "targetPath", "target_path", "path", "wikiPath", "wiki_path") || "").trim());
+      const action = String(field(item, "action", "type") || "link").trim() || "link";
+      const rationale = clampSentence(field(item, "rationale", "reason", "why", "summary") || "", 190);
+      if (!targetPath && !rationale) return null;
+      return {
+        targetPath,
+        action,
+        rationale,
+        confidence: confidenceValue(field(item, "confidence"))
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 3);
+}
+
+export function parseConnections(value) {
+  return reviewItemsFromUnknown(value, isConnectionObject)
+    .map((item) => {
+      if (typeof item === "string") {
+        return { title: clampSentence(item, 60), path: "", type: "existing", relevance: "context", reason: "" };
+      }
+      if (!item || typeof item !== "object") return null;
+      const path = String(field(item, "path", "targetPath", "target_path", "wikiPath", "wiki_path", "href") || "").trim();
+      const title = String(field(item, "title", "label", "name") || "").trim();
+      const reason = cleanSummary(field(item, "reason", "rationale", "why", "summary") || "");
+      if (isGenericChecklistLink(title || path)) return null;
+      if (!path && !title && !reason) return null;
+      return {
+        path,
+        title,
+        type: /new/i.test(field(item, "type", "status") || "") ? "new" : "existing",
+        relevance: relevanceValue(field(item, "relevance", "priority", "group")),
+        reason
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 5);
+}
+
+export function parsePromotion(value) {
+  if (typeof value === "string") {
+    return { candidate: "", recommendation: clampSentence(value, 180), reason: "" };
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { candidate: "", recommendation: "", reason: "" };
+  }
+  return {
+    candidate: clampSentence(field(value, "candidate", "title", "name", "path") || "", 90),
+    recommendation: clampSentence(field(value, "recommendation", "decision", "action") || "", 180),
+    reason: clampSentence(field(value, "reason", "rationale", "why") || "", 180)
+  };
+}
+
+export function parseCandidateFiles(value) {
+  return reviewItemsFromUnknown(value, isCandidateFileObject)
+    .map((item) => {
+      if (typeof item === "string") {
+        return { path: normalizeMarginsPath(item), reason: "", priority: "" };
+      }
+      if (!item || typeof item !== "object") return null;
+      const path = normalizeMarginsPath(field(item, "path", "file", "wikiPath", "wiki_path") || "");
+      const reason = clampSentence(field(item, "reason", "why", "rationale", "note") || "", 180);
+      const priority = cleanSummary(field(item, "priority", "rank", "importance") || "");
+      return path ? { path, reason, priority } : null;
+    })
+    .filter(Boolean)
+    .filter((item) => isContextWikiPagePath(item.path));
+}
+
+export function parseFilingPlacement(value, file = null) {
+  const fallback = emptyFilingPlan(file).placement;
+  if (typeof value === "string") {
+    return { ...fallback, bucket: cleanBucket(value) || "sources", reason: clampSentence(value, 180) };
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) return fallback;
+  const bucket = cleanBucket(field(value, "bucket", "folder", "section")) || fallback.bucket || "sources";
+  const explicitPath = normalizeFilingPath(field(value, "path", "sourcePath", "source_path", "wikiPath", "wiki_path"), bucket);
+  const title = clampSentence(field(value, "title", "name") || fallback.title, 90);
+  return {
+    bucket,
+    path: explicitPath || sourcePathForBucket(file?.name || title, bucket),
+    title: title || (file?.name ? titleFromSlug(basename(file.name).replace(/\.[^.]+$/, "")) : ""),
+    reason: clampSentence(field(value, "reason", "rationale", "why") || "", 220),
+    alternatives: stringListFromUnknown(field(value, "alternatives", "alternativePaths", "alternative_paths", "alsoConsider")).slice(0, 3)
+      .map((path) => normalizeFilingPath(path, bucket) || path)
+      .filter(Boolean)
+  };
+}
+
+export function parseFilingPlan(value, file = null) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return emptyFilingPlan(file);
+  const placement = parseFilingPlacement(firstDefined(
+    field(value, "placement", "placementPlan", "placement_plan", "bucketCall", "bucket_call"),
+    value
+  ), file);
+  return {
+    whySaved: stringListFromUnknown(field(value, "whySaved", "why_saved", "whyItMatters", "why_it_matters", "rationale")).slice(0, 4),
+    candidateFiles: parseCandidateFiles(field(value, "candidateFiles", "candidate_files", "filesToRead", "files_to_read", "filesChecked", "files_checked")).slice(0, 8),
+    placement,
+    tags: tagListFromUnknown(field(value, "tags", "topicTags", "topic_tags", "frontmatterTags", "frontmatter_tags")).slice(0, 12),
+    regionTag: cleanTag(field(value, "regionTag", "region_tag", "region")),
+    typeTag: cleanTag(field(value, "typeTag", "type_tag", "type")),
+    typeTagNote: clampSentence(field(value, "typeTagNote", "type_tag_note", "typeNote", "type_note") || "", 180),
+    promotion: parsePromotion(field(value, "promotion", "promotionCandidate", "promotion_candidate", "concept", "conceptPromotion"))
+  };
+}
+
+export function parseFilingSteps(value) {
+  return reviewItemsFromUnknown(value, isFilingStepObject)
+    .map((item) => {
+      const text = typeof item === "string"
+        ? item
+        : firstDefined(
+          field(item, "text", "step", "line", "summary", "detail", "description"),
+          [field(item, "action", "verb", "kind"), field(item, "target", "title", "name"), field(item, "detail", "reason")].filter(Boolean).join(" · ")
+        );
+      return cleanFilingStep(text);
+    })
+    .filter(Boolean)
+    .slice(0, 8);
+}
+
+export function parseDiscoveries(value) {
+  return reviewItemsFromUnknown(value, isDiscoveryObject)
+    .map((item) => {
+      if (typeof item === "string") {
+        const detail = clampSentence(item, 220);
+        return detail ? { kind: "Discovery", title: "", detail, severity: "review" } : null;
+      }
+      if (!item || typeof item !== "object") return null;
+      const detail = clampSentence(field(item, "detail", "text", "summary", "description", "reason") || "", 220);
+      const title = clampSentence(field(item, "title", "label", "name", "kind") || "", 80);
+      if (!detail && !title) return null;
+      return {
+        kind: clampSentence(field(item, "kind", "type", "category") || "Discovery", 48),
+        title,
+        detail,
+        severity: String(field(item, "severity", "priority", "status") || "review").trim() || "review"
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 3);
+}
+
+export function parseReviewQuestions(value) {
+  return reviewItemsFromUnknown(value, isQuestionObject)
+    .map((item) => {
+      if (typeof item === "string") {
+        return {
+          kind: "Quick check",
+          question: clampSentence(item, 220),
+          whyAsk: "The model flagged this as useful before filing.",
+          recommendation: "My take: use the default unless it looks wrong.",
+          options: ["Yes", "No", "Use default"]
+        };
+      }
+      if (!item || typeof item !== "object") return null;
+      const question = clampSentence(field(item, "question", "ask", "prompt", "text") || "", 240);
+      if (!question) return null;
+      return {
+        kind: String(field(item, "kind", "type", "label", "category", "group") || "Quick check").trim() || "Quick check",
+        question,
+        whyAsk: cleanSummary(field(item, "whyAsk", "why_ask", "reason", "rationale", "why") || ""),
+        recommendation: cleanSummary(field(item, "recommendation", "default", "take", "suggestion") || ""),
+        options: optionListFromUnknown(field(item, "options", "choices", "buttons", "answers"))
+      };
+    })
+    .filter(Boolean);
 }
