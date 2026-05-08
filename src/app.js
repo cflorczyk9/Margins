@@ -20,6 +20,21 @@ import {
   providerLabel,
   providerValue
 } from "./core/api.js";
+import {
+  basename,
+  frontmatterFields,
+  hasYamlFrontmatter,
+  isBucketOverviewPath,
+  isPromotedWikiPagePath,
+  isSourceNodePagePath,
+  isWikiPagePath,
+  markdownTitle,
+  normalizeEntityTag,
+  slugifyLoose,
+  titleFromSlug,
+  warningLabel,
+  yamlScalar
+} from "./core/wiki.js";
 import * as pdfjsLib from "../node_modules/pdfjs-dist/build/pdf.mjs";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
@@ -3594,35 +3609,6 @@ function wikiContextRecord(path, body) {
   };
 }
 
-function frontmatterFields(body) {
-  const match = String(body || "").match(/^---\n([\s\S]*?)\n---\n/);
-  if (!match) return {};
-  const fields = {};
-  let listKey = "";
-  for (const line of match[1].split("\n")) {
-    const item = line.match(/^\s*-\s*(.*)$/);
-    if (listKey && item) {
-      if (!Array.isArray(fields[listKey])) fields[listKey] = [];
-      fields[listKey].push(yamlScalar(item[1]));
-      continue;
-    }
-    const field = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
-    if (!field) {
-      listKey = "";
-      continue;
-    }
-    const value = field[2].trim();
-    if (!value) {
-      fields[field[1]] = "";
-      listKey = field[1];
-      continue;
-    }
-    fields[field[1]] = yamlScalar(value);
-    listKey = "";
-  }
-  return fields;
-}
-
 function frontmatterList(value) {
   if (Array.isArray(value)) return value.map((item) => yamlScalar(item)).filter(Boolean);
   const raw = String(value || "").trim();
@@ -3635,10 +3621,6 @@ function frontmatterList(value) {
       .filter(Boolean);
   }
   return raw.split(",").map((item) => yamlScalar(item)).filter(Boolean);
-}
-
-function yamlScalar(value) {
-  return String(value || "").trim().replace(/^['"]|['"]$/g, "");
 }
 
 function bodyWithoutFrontmatter(body) {
@@ -11490,14 +11472,6 @@ function uniqueEntityTags(tags) {
   return [...new Set(tags.map(normalizeEntityTag).filter(Boolean))];
 }
 
-function normalizeEntityTag(tag) {
-  return String(tag || "")
-    .trim()
-    .replace(/^#/, "")
-    .replace(/^['"]|['"]$/g, "")
-    .toLowerCase();
-}
-
 function entityRecordSort(left, right) {
   const leftDate = Date.parse(left.updated || "");
   const rightDate = Date.parse(right.updated || "");
@@ -12632,36 +12606,6 @@ function validateLlmFiles(fileMap) {
   }
 
   return warningsByPath;
-}
-
-function hasYamlFrontmatter(body) {
-  return /^---\n[\s\S]+?\n---\n/.test(body);
-}
-
-function isWikiPagePath(path) {
-  return (/^wiki\/(sources|concepts|entities|synthesis)\/[^/]+\.md$/.test(path) ||
-    /^wiki\/(ingest-tracker|log|wiki-stats)\.md$/.test(path) ||
-    path === "wiki/index.md");
-}
-
-function isSourceNodePagePath(path) {
-  return path.startsWith("wiki/sources/") && !isBucketOverviewPath(path);
-}
-
-function isPromotedWikiPagePath(path) {
-  return (
-    path.startsWith("wiki/concepts/") ||
-    path.startsWith("wiki/entities/") ||
-    path.startsWith("wiki/synthesis/")
-  ) && !isBucketOverviewPath(path);
-}
-
-function isBucketOverviewPath(path) {
-  return /^wiki\/(sources\/sources|concepts\/concepts|entities\/entities|synthesis\/synthesis)\.md$/.test(path);
-}
-
-function warningLabel(warnings) {
-  return warnings.length ? ` · ${warnings.length} warning${warnings.length === 1 ? "" : "s"}` : "";
 }
 
 function drawGraph(graph) {
@@ -14348,31 +14292,6 @@ function todayString() {
 
 function firstLine(text) {
   return text.split("\n").find((line) => line.trim() && !line.startsWith("#")) || "";
-}
-
-function basename(path) {
-  return path.split("/").pop() || path;
-}
-
-function markdownTitle(body) {
-  const match = body.match(/^#\s+(.+)$/m);
-  return match ? match[1].trim() : "";
-}
-
-function titleFromSlug(slug) {
-  return slug
-    .split(/[-_]+/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
-function slugifyLoose(value) {
-  return String(value)
-    .toLowerCase()
-    .replace(/&/g, " and ")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
 }
 
 function parseJsonLine(line) {
