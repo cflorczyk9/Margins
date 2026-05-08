@@ -54,6 +54,7 @@ import {
   clampSentence,
   confidenceValue,
   escapeRegExp,
+  extractInlineTags,
   extractWikiLinks,
   financialAccountLine,
   financialHoldingLine,
@@ -71,7 +72,9 @@ import {
   insertFrontmatterLine,
   isBucketOverviewPath,
   isContextWikiPagePath,
+  isFolderIndexPath,
   isGenericChecklistLink,
+  isPinnedFrontmatterValue,
   isPromotedWikiPagePath,
   isReadableSourceTextPath,
   isSourceNodePagePath,
@@ -100,6 +103,7 @@ import {
   tagListFromUnknown,
   titleFromSlug,
   uniqueBy,
+  uniqueEntityTags,
   upsertConnectionsSection,
   upsertFilingJudgmentSection,
   upsertFinancialDetailsSection,
@@ -107,6 +111,7 @@ import {
   upsertFrontmatterScalar,
   warningLabel,
   WIKI_SOURCE_BUCKETS,
+  yamlInlineScalar,
   yamlScalar
 } from "./core/wiki.js";
 import {
@@ -10048,11 +10053,6 @@ function removePinnedFrontmatterSignals(frontmatter) {
   return nextLines.filter((line, index, list) => line.trim() || index < list.length - 1).join("\n");
 }
 
-function yamlInlineScalar(value) {
-  const text = String(value || "").trim();
-  return /^[A-Za-z0-9_/-]+$/.test(text) ? text : JSON.stringify(text);
-}
-
 function isEntityFilterActive(kind, value) {
   if (kind === "all") return state.entityFilterKind === "all";
   return state.entityFilterKind === kind && state.entityFilterValue === value;
@@ -10189,12 +10189,6 @@ function isEntityPagePath(path, body) {
   return /^wiki\/(concepts|entities|synthesis|personal|projects|career|ideas|school|coding)\//.test(path);
 }
 
-function isFolderIndexPath(path) {
-  const parts = path.split("/");
-  if (parts.length !== 3) return false;
-  return parts[2].replace(/\.md$/, "") === parts[1];
-}
-
 function entityRecord(path, body) {
   const context = wikiContextRecord(path, body);
   const fields = frontmatterFields(body);
@@ -10230,10 +10224,6 @@ function entityRecord(path, body) {
     filterTags,
     connectionCount: context.keyLinks.length
   };
-}
-
-function isPinnedFrontmatterValue(value) {
-  return /^(true|yes|1|pinned)$/i.test(String(value || "").trim());
 }
 
 function entityField(fields, ...names) {
@@ -10342,24 +10332,6 @@ function entityNextAction(fields, body) {
   return clampSentence(line || "", 96);
 }
 
-function extractInlineTags(body) {
-  const text = bodyWithoutFrontmatter(body)
-    .replace(/```[\s\S]*?```/g, " ")
-    .split("\n")
-    .filter((line) => !/^#{1,6}\s/.test(line.trim()))
-    .join("\n");
-  const tags = [];
-  const pattern = /(^|[\s([{])#([A-Za-z0-9][A-Za-z0-9/_-]{0,64})\b/g;
-  let match;
-  while ((match = pattern.exec(text)) !== null) {
-    tags.push(match[2]);
-  }
-  return tags;
-}
-
-function uniqueEntityTags(tags) {
-  return [...new Set(tags.map(normalizeEntityTag).filter(Boolean))];
-}
 
 function entityRecordSort(left, right) {
   const leftDate = Date.parse(left.updated || "");
