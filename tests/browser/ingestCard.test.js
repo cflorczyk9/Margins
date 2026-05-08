@@ -1612,36 +1612,195 @@ test("dream tab renders actionable vault triage", {
     await page.evaluate(() => window.__marginsTest.seedActivitySections());
     await page.getByRole("button", { name: "Dream", exact: true }).click();
     await page.locator("#dream-view.active").waitFor();
-    assert.equal(await page.locator("#dream-mode-toggle").inputValue(), "hybrid");
-    await page.locator("#dream-mode-help", { hasText: "Safe cleanup first" }).waitFor();
+    assert.equal(await page.locator("#dream-mode-toggle").count(), 0);
+    assert.equal(await page.locator("#dream-stats").count(), 0);
+    await page.locator("#dream-mode-help", { hasText: "Automatically cleans low-risk retrieval issues" }).waitFor();
     await page.locator("#dream-pass-status").waitFor({ state: "hidden" });
-    await page.locator("#dream-mode-toggle").selectOption("walk");
-    await page.locator("#dream-mode-help", { hasText: "Shows one decision at a time." }).waitFor();
-    await page.locator("#dream-mode-toggle").selectOption("hybrid");
-    await page.locator("#dream-mode-help", { hasText: "Safe cleanup first" }).waitFor();
-    await page.getByText("Maintenance pass ready").waitFor();
-    await page.getByText("Check maintenance items").waitFor();
-    assert.equal(await page.locator("#dream-operation-list .dream-op-card").count(), 5);
-    await page.locator("#dream-operation-list", { hasText: "Source queue" }).waitFor();
-    await page.locator("#dream-operation-list", { hasText: "System cleanup" }).waitFor();
-    await page.locator("#dream-operation-list", { hasText: "Link cleanup" }).waitFor();
-    await page.locator("#dream-proposal-list", { hasText: "Create maintenance log entry" }).waitFor();
-    await page.locator("#dream-proposal-list button", { hasText: "Bulk process now" }).waitFor();
-    await page.locator("#dream-log-entries", { hasText: "Checked source queue" }).waitFor();
-    await page.locator("#dream-log-entries", { hasText: "1 pending source still needs processing." }).waitFor();
-    assert.equal(await page.locator("#dream-proposal-list button:disabled").count(), 0);
-    await page.getByRole("button", { name: "Run maintenance" }).click();
-    await page.locator("#dream-pass-status", { hasText: "Auto + review pass finished" }).waitFor();
-    await page.locator("#dream-log-entries", { hasText: "Recorded maintenance pass" }).waitFor();
-    await page.locator("#dream-proposal-list", { hasText: "Step 1 of" }).waitFor();
-    await page.locator("#dream-proposal-list button", { hasText: "Bulk process now" }).waitFor();
+    await page.getByRole("heading", { name: "Ready to clean" }).waitFor();
+    await page.getByText("Margins scans existing vault notes").waitFor();
+    assert.equal(await page.locator("#dream-proposal-list .dream-proposal-card").count(), 0);
+    await page.locator("#dream-proposal-list", { hasText: "Run cleanup when you want Margins" }).waitFor();
+    await page.locator("#dream-log-entries", { hasText: "Ready to scan existing vault" }).waitFor();
+    await page.locator("#dream-log-entries", { hasText: "Pending uploads stay in Activity." }).waitFor();
+    assert.equal(await page.locator("#dream-proposal-list button", { hasText: "Process queue" }).count(), 0);
+    await page.getByRole("button", { name: "Run cleanup" }).click();
+    await page.locator("#dream-pass-status", { hasText: "Cleanup finished" }).waitFor();
+    await page.locator("#dream-log-entries", { hasText: "Updated wiki stats" }).waitFor();
+    await page.locator("#dream-log-entries", { hasText: "Recorded lint pass" }).waitFor();
+    await page.locator("#dream-log-entries", { hasText: "Scanned existing vault" }).waitFor();
+    await page.locator("#dream-proposal-list button", { hasText: "Propose backlinks" }).waitFor();
+    assert.equal(await page.locator("#dream-proposal-list button", { hasText: "Process queue" }).count(), 0);
+    const lintFiles = await page.evaluate(() => ({
+      stats: window.__marginsTest.wikiBody("wiki/wiki-stats.md"),
+      log: window.__marginsTest.wikiBody("wiki/log.md")
+    }));
+    assert.match(lintFiles.stats, /# Wiki Stats/);
+    assert.match(lintFiles.stats, /## Retrieval Health/);
+    assert.match(lintFiles.log, /## \[\d{4}-\d{2}-\d{2}\] lint/);
   } finally {
     await browser.close();
     await server.close();
   }
 });
 
-test("dream broken-link action runs a cleanup helper through the configured API", {
+test("dream cleanup leaves uncertain wikilinks alone without queuing a helper", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => {
+      window.__dreamHelperCalls = [];
+      window.fetch = async () => {
+        window.__dreamHelperCalls.push(true);
+        throw new Error("Dream cleanup should not call Gemini for uncertain wikilinks.");
+      };
+      return window.__marginsTest.seedDreamBrokenLinks();
+    });
+    await page.getByRole("button", { name: "Dream", exact: true }).click();
+    await page.locator("#dream-view.active").waitFor();
+    await page.getByRole("button", { name: "Run cleanup" }).click();
+    await page.locator("#dream-pass-status", { hasText: "Cleanup finished" }).waitFor();
+    await page.locator("#dream-log-entries", { hasText: "Left wikilink alone" }).waitFor();
+    await page.locator("#dream-log-entries", { hasText: "No confident existing target." }).waitFor();
+    assert.equal(await page.locator("#dream-proposal-list button", { hasText: "Fix broken links" }).count(), 0);
+    const body = await page.evaluate(() => window.__marginsTest.wikiBody("wiki/projects/project-home.md"));
+    assert.match(body, /\[\[Missing Advisor\]\]/);
+    assert.equal(await page.evaluate(() => window.__dreamHelperCalls.length), 0);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("dream cleanup automatically updates obvious wikilinks", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => window.__marginsTest.seedDreamBrokenLinks({ suggestedTarget: true }));
+    await page.getByRole("button", { name: "Dream", exact: true }).click();
+    await page.locator("#dream-view.active").waitFor();
+    await page.getByRole("button", { name: "Run cleanup" }).click();
+    await page.locator("#dream-pass-status", { hasText: "1 obvious wikilink updated" }).waitFor();
+    await page.locator("#dream-pass-status", { hasText: "files changed" }).waitFor();
+    await page.locator("#dream-log-entries", { hasText: "Updated wikilink" }).waitFor();
+    await page.locator("#dream-log-entries", { hasText: "wiki/projects/project-home.md" }).waitFor();
+    await page.locator("#dream-log-entries", { hasText: "[[Missing Advisor]]" }).waitFor();
+    await page.locator("#dream-log-entries", { hasText: "[[missing-advisor-profile]]" }).waitFor();
+    const body = await page.evaluate(() => window.__marginsTest.wikiBody("wiki/projects/project-home.md"));
+    assert.match(body, /\[\[missing-advisor-profile\]\]/);
+    assert.doesNotMatch(body, /\[\[Missing Advisor\]\]/);
+    assert.match(await page.locator("#save-vault-btn").innerText(), /Write vault/);
+    assert.equal(await page.locator("#dream-proposal-list .dream-proposal-card", { hasText: "Fix broken links" }).count(), 0);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("dream cleanup does not ask users to decline uncertain wikilinks", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => window.__marginsTest.seedDreamBrokenLinks());
+    await page.getByRole("button", { name: "Dream", exact: true }).click();
+    await page.locator("#dream-view.active").waitFor();
+    await page.getByRole("button", { name: "Run cleanup" }).click();
+    await page.locator("#dream-pass-status", { hasText: "Cleanup finished" }).waitFor();
+    assert.equal(await page.locator("#dream-proposal-list button", { hasText: "Fix broken links" }).count(), 0);
+    await page.locator("#dream-log-entries", { hasText: "Left wikilink alone" }).waitFor();
+    const body = await page.evaluate(() => window.__marginsTest.wikiBody("wiki/projects/project-home.md"));
+    assert.match(body, /\[\[Missing Advisor\]\]/);
+    assert.doesNotMatch(body, /\[\[missing-advisor-profile\]\]/);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("dream cleanup leaves long-source wikilinks alone when there is no confident target", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => {
+      window.__dreamHelperCalls = [];
+      window.fetch = async () => {
+        window.__dreamHelperCalls.push(true);
+        throw new Error("Dream cleanup should not call Gemini for long-source wikilinks.");
+      };
+      return window.__marginsTest.seedDreamBrokenLinks({ largeBrokenSource: true });
+    });
+    await page.getByRole("button", { name: "Dream", exact: true }).click();
+    await page.locator("#dream-view.active").waitFor();
+    await page.getByRole("button", { name: "Run cleanup" }).click();
+    await page.locator("#dream-pass-status", { hasText: "Cleanup finished" }).waitFor();
+    assert.equal(await page.locator("#dream-proposal-list button", { hasText: "Fix broken links" }).count(), 0);
+    await page.locator("#dream-log-entries", { hasText: "wiki/personal/source-2026-04-26-friends-catchup.md" }).waitFor();
+    await page.locator("#dream-log-entries", { hasText: "No confident existing target." }).waitFor();
+    assert.equal(await page.evaluate(() => window.__dreamHelperCalls.length), 0);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("dream helper requires API configuration instead of copying a prompt", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => {
+      window.__dreamHelperCalls = [];
+      window.fetch = async () => {
+        window.__dreamHelperCalls.push(true);
+        throw new Error("Dream helper should not call fetch without required API configuration.");
+      };
+      return window.__marginsTest.seedDreamBrokenLinks({ apiSecret: "" });
+    });
+    await page.getByRole("button", { name: "Dream", exact: true }).click();
+    await page.locator("#dream-view.active").waitFor();
+    await page.getByRole("button", { name: "Run cleanup" }).click();
+    await page.locator("#dream-pass-status", { hasText: "Cleanup finished" }).waitFor();
+    await page.locator("#dream-proposal-list button", { hasText: "Improve entities" }).click();
+    await page.locator("#dream-run-panel", { hasText: "Gemini" }).waitFor();
+    await page.locator("#dream-run-prepared-btn").click();
+    await page.waitForFunction(() => document.querySelector("#dream-run-estimate")?.textContent?.includes("Gemini key required"));
+    assert.equal(await page.locator("#dream-view.active").count(), 1);
+    assert.equal(await page.evaluate(() => window.__dreamHelperCalls.length), 0);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("dream helper retries with a smaller proposal when Gemini output is cut off", {
   skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
 }, async () => {
   const server = await startStaticServer();
@@ -1656,6 +1815,79 @@ test("dream broken-link action runs a cleanup helper through the configured API"
       window.fetch = async (_url, options = {}) => {
         const body = JSON.parse(options.body || "{}");
         window.__dreamHelperCalls.push(body);
+        const first = window.__dreamHelperCalls.length === 1;
+        return new Response(JSON.stringify({
+          candidates: [{
+            finishReason: first ? "MAX_TOKENS" : "STOP",
+            content: {
+              parts: [{
+                text: first
+                  ? [
+                    "```margins-file path=\"wiki/personal/source-2026-04-26-friends-catchup.md\"",
+                    "---",
+                    "type: source",
+                    "summary: This long replacement was cut off before the block closed."
+                  ].join("\n")
+                  : [
+                    "```margins-file path=\"wiki/.margins/dream-log.md\"",
+                    "# Dream Maintenance Log",
+                    "",
+                    "## Broken-link retry",
+                    "",
+                    "- Gemini was asked to return a smaller complete proposal after the first output was cut off.",
+                    "- Proposed repair: review [[Missing Advisor]] in wiki/projects/project-home.md.",
+                    "```"
+                  ].join("\n")
+              }]
+            }
+          }],
+          usageMetadata: {
+            promptTokenCount: first ? 180 : 220,
+            candidatesTokenCount: first ? 12288 : 120,
+            totalTokenCount: first ? 12468 : 340
+          }
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        });
+      };
+      return window.__marginsTest.seedDreamBrokenLinks();
+    });
+    await page.getByRole("button", { name: "Dream", exact: true }).click();
+    await page.locator("#dream-view.active").waitFor();
+    await page.getByRole("button", { name: "Run cleanup" }).click();
+    await page.locator("#dream-pass-status", { hasText: "Cleanup finished" }).waitFor();
+    await page.locator("#dream-proposal-list button", { hasText: "Improve entities" }).click();
+    await page.locator("#dream-run-panel", { hasText: "Gemini" }).waitFor();
+    await page.locator("#dream-run-prepared-btn").click();
+    await page.locator("#llm-view.active").waitFor();
+    await page.locator("#llm-file-list", { hasText: "wiki/.margins/dream-log.md" }).waitFor();
+    const calls = await page.evaluate(() => window.__dreamHelperCalls);
+    assert.equal(calls.length, 2);
+    assert.match(calls[1].contents[0].parts[0].text, /previous Gemini response/i);
+    assert.match(calls[1].contents[0].parts[0].text, /at most two file blocks/i);
+    assert.match(calls[1].contents[0].parts[0].text, /source-\*\.md/);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("dream cleanup queues risky items without calling Gemini automatically", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => {
+      window.__dreamHelperCalls = [];
+      window.fetch = async (url, options = {}) => {
+        const body = JSON.parse(options.body || "{}");
+        window.__dreamHelperCalls.push({ url: String(url), body });
         return new Response(JSON.stringify({
           candidates: [{
             finishReason: "STOP",
@@ -1665,7 +1897,74 @@ test("dream broken-link action runs a cleanup helper through the configured API"
                   "```margins-file path=\"wiki/projects/project-home.md\"",
                   "---",
                   "type: project",
-                  "summary: Project home page with a review note for a missing advisor link.",
+                  "summary: Project home page with deep review output.",
+                  "---",
+                  "",
+                  "# Project Home",
+                  "",
+                  "Deep review keeps this change reviewable before save.",
+                  "```"
+                ].join("\n")
+              }]
+            }
+          }],
+          usageMetadata: {
+            promptTokenCount: 120,
+            candidatesTokenCount: 80,
+            totalTokenCount: 200
+          }
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        });
+      };
+      return window.__marginsTest.seedDreamBrokenLinks();
+    });
+    await page.getByRole("button", { name: "Dream", exact: true }).click();
+    await page.locator("#dream-view.active").waitFor();
+    await page.getByRole("button", { name: "Run cleanup" }).click();
+    await page.locator("#dream-pass-status", { hasText: "Cleanup finished" }).waitFor();
+    await page.locator("#dream-proposal-list button", { hasText: "Improve entities" }).waitFor();
+    const calls = await page.evaluate(() => window.__dreamHelperCalls);
+    assert.equal(calls.length, 0);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("dream helper uses Gemini even when Anthropic is selected", {
+  skip: shouldRunBrowser ? false : "Set MARGINS_BROWSER_TEST=1 and install Chrome to run browser smoke tests."
+}, async () => {
+  const server = await startStaticServer();
+  const browser = await chromium.launch({ executablePath: chromePath });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/index.html?marginsTest=1`);
+    await page.waitForFunction(() => Boolean(window.__marginsTest));
+
+    await page.evaluate(() => {
+      window.__dreamHelperCalls = [];
+      window.fetch = async (url, options = {}) => {
+        const headers = {};
+        for (const [key, value] of new Headers(options.headers || {}).entries()) {
+          headers[key] = value;
+        }
+        window.__dreamHelperCalls.push({
+          url: String(url),
+          headers,
+          body: JSON.parse(options.body || "{}")
+        });
+        return new Response(JSON.stringify({
+          candidates: [{
+            finishReason: "STOP",
+            content: {
+              parts: [{
+                text: [
+                  "```margins-file path=\"wiki/projects/project-home.md\"",
+                  "---",
+                  "type: project",
+                  "summary: Project home page with a Gemini-reviewed link note.",
                   "---",
                   "",
                   "# Project Home",
@@ -1683,7 +1982,6 @@ test("dream broken-link action runs a cleanup helper through the configured API"
           usageMetadata: {
             promptTokenCount: 120,
             candidatesTokenCount: 80,
-            thoughtsTokenCount: 0,
             totalTokenCount: 200
           }
         }), {
@@ -1691,24 +1989,32 @@ test("dream broken-link action runs a cleanup helper through the configured API"
           headers: { "Content-Type": "application/json" }
         });
       };
-      return window.__marginsTest.seedDreamBrokenLinks();
+      return window.__marginsTest.seedDreamBrokenLinks({ apiSecret: "test-anthropic-key" });
+    });
+    await page.evaluate(() => {
+      const provider = document.querySelector("#api-provider");
+      const model = document.querySelector("#api-model");
+      provider.value = "anthropic";
+      provider.dispatchEvent(new Event("change", { bubbles: true }));
+      model.value = "claude-3-5-haiku-latest";
+      model.dispatchEvent(new Event("input", { bubbles: true }));
     });
     await page.getByRole("button", { name: "Dream", exact: true }).click();
     await page.locator("#dream-view.active").waitFor();
-    await page.locator("#dream-proposal-list", { hasText: "broken wiki link" }).waitFor();
-    await page.locator("#dream-proposal-list button", { hasText: "Run link helper" }).click();
+    await page.getByRole("button", { name: "Run cleanup" }).click();
+    await page.locator("#dream-pass-status", { hasText: "Cleanup finished" }).waitFor();
+    await page.locator("#dream-proposal-list button", { hasText: "Improve entities" }).click();
+    await page.locator("#dream-run-panel", { hasText: "Gemini" }).waitFor();
+    await page.locator("#dream-run-prepared-btn").click();
     await page.locator("#llm-view.active").waitFor();
     await page.locator("#llm-file-list", { hasText: "wiki/projects/project-home.md" }).waitFor();
-    assert.match(await page.locator("#llm-status").textContent(), /helper returned 1 file/);
+    assert.match(await page.locator("#llm-status").textContent(), /returned 1 proposed file/);
     const calls = await page.evaluate(() => window.__dreamHelperCalls);
     assert.equal(calls.length, 1);
-    const prompt = calls[0].contents[0].parts[0].text;
-    assert.match(prompt, /Repair broken wiki links/);
-    assert.match(prompt, /wiki\/projects\/project-home\.md -> \[\[Missing Advisor\]\]/);
-    assert.match(prompt, /Operating guardrails/);
-    assert.match(prompt, /Wiki Editor Agent/);
-    assert.match(prompt, /Source Auditor/);
-    assert.equal(calls[0].generationConfig.responseMimeType, undefined);
+    assert.match(calls[0].url, /generativelanguage\.googleapis\.com/);
+    assert.equal(calls[0].headers["x-goog-api-key"], "test-anthropic-key");
+    assert.equal(calls[0].headers["x-api-key"], undefined);
+    assert.match(calls[0].body.contents[0].parts[0].text, /Improve sparse entity pages/);
   } finally {
     await browser.close();
     await server.close();

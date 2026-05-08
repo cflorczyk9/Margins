@@ -220,82 +220,125 @@
             </div>
           </div>
 
-          <section class="dream-state-card" aria-live="polite">
+          <section id="dream-state-card" class="dream-state-card" aria-live="polite">
             <svg class="dream-art" viewBox="0 0 800 320" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-              <line x1="180" y1="160" x2="380" y2="100" stroke="#1a1612" stroke-width="0.8" stroke-dasharray="3 4" opacity="0.45"></line>
-              <line x1="380" y1="100" x2="600" y2="170" stroke="#1a1612" stroke-width="0.8" stroke-dasharray="3 4" opacity="0.45"></line>
-              <line x1="180" y1="160" x2="280" y2="260" stroke="#1a1612" stroke-width="0.8" stroke-dasharray="3 4" opacity="0.45"></line>
-              <line x1="280" y1="260" x2="500" y2="270" stroke="#1a1612" stroke-width="0.8" stroke-dasharray="3 4" opacity="0.45"></line>
-              <line x1="600" y1="170" x2="500" y2="270" stroke="#1a1612" stroke-width="0.8" stroke-dasharray="3 4" opacity="0.45"></line>
-              <line x1="380" y1="100" x2="280" y2="260" stroke="#1a1612" stroke-width="0.6" stroke-dasharray="2 5" opacity="0.3"></line>
-              <line x1="600" y1="170" x2="700" y2="80" stroke="#1a1612" stroke-width="0.6" stroke-dasharray="2 5" opacity="0.3"></line>
-              <g style="mix-blend-mode: multiply;">
-                <circle cx="180" cy="160" r="22" fill="#d63a2f"></circle>
-                <circle cx="180" cy="160" r="6" fill="#1a1612"></circle>
+              <defs>
+                <filter id="dream-soft-focus" x="-20%" y="-40%" width="140%" height="180%">
+                  <feGaussianBlur stdDeviation="18"></feGaussianBlur>
+                  <feColorMatrix type="saturate" values="1.2"></feColorMatrix>
+                </filter>
+                <filter id="dream-line-glow" x="-30%" y="-60%" width="160%" height="220%">
+                  <feGaussianBlur stdDeviation="2.4" result="blur"></feGaussianBlur>
+                  <feMerge>
+                    <feMergeNode in="blur"></feMergeNode>
+                    <feMergeNode in="SourceGraphic"></feMergeNode>
+                  </feMerge>
+                </filter>
+              </defs>
+              <g class="dream-haze" filter="url(#dream-soft-focus)">
+                <ellipse class="dream-haze-field haze-a" cx="260" cy="150" rx="180" ry="90" fill="#6fa863"></ellipse>
+                <ellipse class="dream-haze-field haze-b" cx="520" cy="170" rx="220" ry="98" fill="#f0c14b"></ellipse>
+                <ellipse class="dream-haze-field haze-c" cx="430" cy="95" rx="150" ry="76" fill="#6a4f8c"></ellipse>
+                <ellipse class="dream-haze-field haze-d" cx="620" cy="245" rx="175" ry="70" fill="#2c5aa0"></ellipse>
+                <ellipse class="dream-haze-field haze-e" cx="155" cy="230" rx="128" ry="62" fill="#d63a2f"></ellipse>
               </g>
-              <g style="mix-blend-mode: multiply;">
-                <circle cx="380" cy="100" r="28" fill="#6fa863"></circle>
-                <circle cx="380" cy="100" r="8" fill="#1a1612"></circle>
+              <g class="dream-link-field" filter="url(#dream-line-glow)">
+                <path class="dream-link link-a" d="M150 165 C238 105 302 94 392 118"></path>
+                <path class="dream-link link-b" d="M392 118 C474 82 546 114 632 170"></path>
+                <path class="dream-link link-c" d="M150 165 C220 226 285 264 392 250"></path>
+                <path class="dream-link link-d" d="M392 250 C478 282 570 252 632 170"></path>
+                <path class="dream-link link-e" d="M392 118 C360 164 352 208 392 250"></path>
+                <path class="dream-link link-f" d="M632 170 C664 126 696 92 735 76"></path>
+                <path class="dream-link link-g" d="M72 70 C244 116 386 188 742 66"></path>
               </g>
-              <g style="mix-blend-mode: multiply;">
-                <circle cx="600" cy="170" r="36" fill="#f0c14b"></circle>
-                <circle cx="600" cy="170" r="20" fill="#d63a2f"></circle>
-                <circle cx="600" cy="170" r="6" fill="#1a1612"></circle>
+              <g class="dream-signal-field">
+                <circle class="dream-signal signal-a" cx="150" cy="165" r="38"></circle>
+                <circle class="dream-signal signal-b" cx="392" cy="118" r="44"></circle>
+                <circle class="dream-signal signal-c" cx="632" cy="170" r="54"></circle>
+                <circle class="dream-signal signal-d" cx="392" cy="250" r="32"></circle>
               </g>
-              <circle cx="280" cy="260" r="14" fill="#6a4f8c"></circle>
-              <circle cx="500" cy="270" r="16" fill="#2c5aa0"></circle>
-              <circle cx="700" cy="80" r="10" fill="#6a4f8c"></circle>
-              <circle cx="80" cy="60" r="2" fill="#1a1612"></circle>
-              <circle cx="760" cy="290" r="2.5" fill="#1a1612"></circle>
-              <circle cx="120" cy="290" r="3" fill="#1a1612"></circle>
-              <path d="M 60 60 Q 380 200 760 60" fill="none" stroke="#2c5aa0" stroke-width="1.6" stroke-linecap="round" opacity="0.4"></path>
+              <g class="dream-node-field">
+                <g class="dream-node node-a">
+                  <circle class="dream-node-wake" cx="150" cy="165" r="24" fill="#d63a2f"></circle>
+                  <circle class="dream-node-core" cx="150" cy="165" r="7"></circle>
+                </g>
+                <g class="dream-node node-b">
+                  <circle class="dream-node-wake" cx="392" cy="118" r="31" fill="#6fa863"></circle>
+                  <circle class="dream-node-core" cx="392" cy="118" r="8"></circle>
+                </g>
+                <g class="dream-node node-c">
+                  <circle class="dream-node-wake" cx="632" cy="170" r="39" fill="#f0c14b"></circle>
+                  <circle class="dream-node-wake secondary" cx="632" cy="170" r="21" fill="#d63a2f"></circle>
+                  <circle class="dream-node-core" cx="632" cy="170" r="7"></circle>
+                </g>
+                <g class="dream-node node-d">
+                  <circle class="dream-node-wake" cx="392" cy="250" r="18" fill="#2c5aa0"></circle>
+                  <circle class="dream-node-core" cx="392" cy="250" r="5"></circle>
+                </g>
+                <g class="dream-node node-e">
+                  <circle class="dream-node-wake" cx="735" cy="76" r="13" fill="#6a4f8c"></circle>
+                  <circle class="dream-node-core" cx="735" cy="76" r="4"></circle>
+                </g>
+              </g>
+              <path class="dream-sweep" d="M-80 238 C140 144 300 124 520 154 C640 170 756 130 880 74"></path>
             </svg>
             <div class="dream-state-copy">
               <span class="section-kicker">Maintenance</span>
               <h3 id="dream-state-title">Open a vault to see suggested next actions</h3>
               <p id="dream-state-body">This view checks the vault for issues Margins can surface now, then points you to the right workspace to resolve them.</p>
               <div class="dream-control-row" aria-label="Dream maintenance controls">
-                <button id="dream-run-btn" class="dream-primary-action" type="button">Run maintenance</button>
-                <button id="dream-review-btn" class="dream-secondary-action" type="button">Review step by step</button>
-                <div class="dream-mode-field">
-                  <select id="dream-mode-toggle" class="dream-mode-select" aria-label="Maintenance mode">
-                    <option value="watch">Scan only</option>
-                    <option value="walk">Guided review</option>
-                    <option value="hybrid">Auto + review</option>
-                  </select>
-                </div>
+                <button id="dream-run-btn" class="dream-primary-action" type="button">Run cleanup</button>
               </div>
-              <p id="dream-mode-help" class="dream-mode-help">Safe cleanup first; decisions wait.</p>
+              <p id="dream-mode-help" class="dream-mode-help">Automatically cleans low-risk retrieval issues, then asks only about risky changes.</p>
               <p id="dream-pass-status" class="dream-pass-status" hidden></p>
             </div>
           </section>
 
-          <div id="dream-stats" class="dream-stat-grid" aria-label="Dream stats"></div>
+          <section class="dream-log-card">
+            <span class="section-kicker">Cleanup activity</span>
+            <p id="dream-log-meta">No cleanup run yet.</p>
+            <ul id="dream-log-entries" class="dream-log-list" aria-label="Cleanup activity"></ul>
+          </section>
 
-          <section class="dream-section">
-            <div class="section-head">
+          <section id="dream-run-panel" class="dream-run-panel" hidden aria-live="polite">
+            <div class="dream-run-panel-head">
               <div>
-                <span class="section-kicker">Checks</span>
-                <h3>Maintenance checks</h3>
+                <span class="section-kicker">Prepared run</span>
+                <h3 id="dream-run-title">Select a task</h3>
+                <p id="dream-run-summary">Review the affected notes, then ask AI only if the fix is not obvious.</p>
               </div>
+              <button id="dream-run-cancel-btn" class="dream-run-close" type="button" aria-label="Cancel prepared run">×</button>
             </div>
-            <div id="dream-operation-list" class="dream-grid"></div>
+            <div id="dream-run-scope" class="dream-run-scope"></div>
+            <div class="dream-run-limits" aria-label="Run limits" hidden>
+              <label>
+                <span id="dream-limit-items-label">Max items</span>
+                <input id="dream-limit-items" type="number" min="1" max="200" step="1">
+              </label>
+              <label>
+                <span id="dream-limit-files-label">Max files</span>
+                <input id="dream-limit-files" type="number" min="1" max="80" step="1">
+              </label>
+              <label>
+                <span>Hard stop</span>
+                <input id="dream-limit-usd" type="number" min="0.01" max="10" step="0.01">
+              </label>
+            </div>
+            <p id="dream-run-estimate" class="dream-run-estimate" hidden>No model call prepared.</p>
+            <div class="dream-run-actions">
+              <button id="dream-run-prepared-btn" class="dream-primary-action" type="button">Ask AI</button>
+              <button id="dream-run-cancel-secondary-btn" class="dream-secondary-action" type="button">Cancel</button>
+            </div>
           </section>
 
           <section class="dream-section">
             <div class="section-head">
               <div>
-                <span id="dream-queue-kicker" class="section-kicker">Repair queue</span>
-                <h3 id="dream-queue-title">Safe fixes and review items</h3>
+                <span id="dream-queue-kicker" class="section-kicker">Actions</span>
+                <h3 id="dream-queue-title">Run cleanup to see what needs your call</h3>
               </div>
             </div>
             <div id="dream-proposal-list" class="dream-proposal-list"></div>
-          </section>
-
-          <section class="dream-log-card">
-            <span class="section-kicker">Check log</span>
-            <p id="dream-log-meta">No check log loaded yet.</p>
-            <ul id="dream-log-entries" class="dream-log-list" aria-label="Check log entries"></ul>
           </section>
         </div>
       </section>
