@@ -341,7 +341,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
 const initialTheme = localStorage.getItem(STORAGE_KEYS.theme) || "light";
 document.documentElement.dataset.theme = initialTheme;
 let apiSecretHydrationPromise = null;
-const API_REQUEST_TIMEOUT_MS = 60_000;
+const API_REQUEST_TIMEOUT_MS = 180_000;
 const ACTIVITY_RECENT_PAGE_SIZE = 12;
 const PENDING_SOURCE_PAGE_SIZE = 6;
 // DREAM_LOG_PATH, DREAM_MODES, DREAM_STAGES → core/dream-stats.js
@@ -5840,10 +5840,21 @@ function dreamWikiPathCatalog(fileMap) {
 }
 
 function recentActivityRecords(fileMap) {
+  // Hide sources whose raw file is still in state.files (pending or
+  // currently being processed). compileVault writes the source page
+  // into the file map before the API review completes, which would
+  // otherwise make the source flash into "Recent activity" while the
+  // pending card is still showing the processing animation.
+  const pendingRawNames = new Set(state.files.map((file) => file.name));
   return [...fileMap.entries()]
     .filter(([path, body]) => isActivitySourcePagePath(path, body))
     .map(([path, body]) => activitySourceRecord(path, body, fileMap))
     .filter(Boolean)
+    .filter((record) => {
+      if (!record.rawPath) return true;
+      const rawName = basename(record.rawPath);
+      return !pendingRawNames.has(rawName);
+    })
     .sort((left, right) => (
       right.sortTimestamp - left.sortTimestamp ||
       left.title.localeCompare(right.title)

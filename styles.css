@@ -2118,19 +2118,15 @@ button.activity-pill:focus-visible {
 
 .receipt-log-line {
   --receipt-line-gap: 10px;
-  display: grid;
-  grid-template-rows: 0fr;
-  margin-top: 0;
-  overflow: hidden;
+  margin-top: var(--receipt-line-gap);
   color: var(--ink-2);
   font-size: 13.5px;
   line-height: 1.45;
   opacity: 0;
-  transform: translateY(-3px);
-  transform-origin: top;
-  animation: receipt-line-reveal 920ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  animation-delay: calc(var(--line-index, 0) * 88ms);
-  will-change: grid-template-rows, margin-top, opacity, transform;
+  transform: translateY(-4px);
+  animation: receipt-line-reveal 460ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation-delay: calc(var(--line-index, 0) * 80ms);
+  will-change: opacity, transform;
 }
 
 .receipt-log-line-inner {
@@ -2147,12 +2143,9 @@ button.activity-pill:focus-visible {
 }
 
 .receipt-log-line.settled {
-  grid-template-rows: 1fr;
-  margin-top: var(--receipt-line-gap);
   opacity: 1;
   transform: none;
   animation: none;
-  overflow: visible;
 }
 
 /* Staged reveal for the source receipt — first render only.
@@ -2408,24 +2401,8 @@ button.activity-pill:focus-visible {
 }
 
 @keyframes receipt-line-reveal {
-  0% {
-    grid-template-rows: 0fr;
-    margin-top: 0;
-    opacity: 0;
-    transform: translateY(-3px);
-  }
-  36% {
-    opacity: 0;
-  }
-  72% {
-    opacity: 1;
-  }
-  100% {
-    grid-template-rows: 1fr;
-    margin-top: var(--receipt-line-gap);
-    opacity: 1;
-    transform: none;
-  }
+  0%   { opacity: 0; transform: translateY(-4px); }
+  100% { opacity: 1; transform: none; }
 }
 
 @keyframes filing-dot {
