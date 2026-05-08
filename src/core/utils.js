@@ -128,3 +128,26 @@ export function excerptForQuestion(text, max) {
   const clean = String(text || "").replace(/\s+/g, " ").trim();
   return clean.length <= max ? clean : `${clean.slice(0, max).trim()}...`;
 }
+
+export function safeNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
+}
+
+export function nextAnimationFrame() {
+  return new Promise((resolve) => {
+    if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => resolve());
+    else setTimeout(resolve, 0);
+  });
+}
+
+export function redactEndpoint(endpoint) {
+  if (!endpoint) return "";
+  try {
+    const url = new URL(endpoint);
+    url.search = "";
+    return url.toString();
+  } catch {
+    return String(endpoint).replace(/\?.*$/, "");
+  }
+}

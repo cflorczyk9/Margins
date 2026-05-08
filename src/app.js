@@ -189,9 +189,12 @@ import {
   formatStatNumber,
   formatUsd,
   hashString,
+  nextAnimationFrame,
   normalizedFieldName,
   parseJsonLine,
   pluralize,
+  redactEndpoint,
+  safeNumber,
   textSizeBytes,
   wordCount
 } from "./core/utils.js";
@@ -341,6 +344,8 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
 const initialTheme = localStorage.getItem(STORAGE_KEYS.theme) || "light";
 document.documentElement.dataset.theme = initialTheme;
 let apiSecretHydrationPromise = null;
+// TODO(post-refactor): replace this hard timeout with streaming response
+// rendering — fields appear as they arrive, no all-or-nothing wait. See TODO.md.
 const API_REQUEST_TIMEOUT_MS = 180_000;
 const ACTIVITY_RECENT_PAGE_SIZE = 12;
 const PENDING_SOURCE_PAGE_SIZE = 6;
@@ -2848,31 +2853,8 @@ function trimModelTimingLog() {
   }
 }
 
-function safeNumber(value) {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : 0;
-}
-
 function elapsedSince(startedAtMs) {
   return Math.max(0, Math.round(performance.now() - startedAtMs));
-}
-
-function nextAnimationFrame() {
-  return new Promise((resolve) => {
-    if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => resolve());
-    else setTimeout(resolve, 0);
-  });
-}
-
-function redactEndpoint(endpoint) {
-  if (!endpoint) return "";
-  try {
-    const url = new URL(endpoint);
-    url.search = "";
-    return url.toString();
-  } catch {
-    return String(endpoint).replace(/\?.*$/, "");
-  }
 }
 
 function modelTimingErrorLabel(error) {
