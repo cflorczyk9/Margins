@@ -3,6 +3,23 @@ import { clearApiSettings, loadApiSettings, maskSecret, saveApiSettings } from "
 import { hasFileSystemAccess, loadVaultHandle, saveVaultHandle } from "./vaultHandleStore.js";
 import { STORAGE_KEYS } from "./storageKeys.js";
 import { state } from "./core/state.js";
+import {
+  apiProviderRequiresSecret,
+  defaultApiGuardSettings,
+  defaultEndpointForProvider,
+  defaultModelForProvider,
+  emptyApiUsage,
+  formatControlNumber,
+  loadApiGuardSettings,
+  modelQuestionsOrFallback,
+  nonNegativeNumber,
+  normalizeApiGuardSettings,
+  parseDotEnv,
+  positiveInteger,
+  positiveNumber,
+  providerLabel,
+  providerValue
+} from "./core/api.js";
 import * as pdfjsLib from "../node_modules/pdfjs-dist/build/pdf.mjs";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
@@ -503,17 +520,6 @@ function ensureApiSecretReady() {
   return apiSecretHydrationPromise;
 }
 
-function parseDotEnv(text) {
-  const env = {};
-  for (const line of String(text || "").split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) continue;
-    const [key, ...rest] = trimmed.split("=");
-    env[key.trim()] = rest.join("=").trim().replace(/^["']|["']$/g, "");
-  }
-  return env;
-}
-
 function updateThemeToggleLabel() {
   if (!els.themeToggleLabel) return;
   els.themeToggleLabel.textContent = state.theme === "dark" ? "Dark mode" : "Light mode";
@@ -558,41 +564,6 @@ function renderApiStatus(message = "") {
   els.apiKeyStatus.textContent = message || (secret || settings.hasApiKey
     ? `${provider} · ${model} · ${maskSecret(secret) || settings.maskedApiKey}`
     : "Optional. Stored only in this browser for model-generated filing questions.");
-}
-
-function defaultApiGuardSettings() {
-  return {
-    enabled: true,
-    maxRequests: 20,
-    maxOutputTokens: 8192,
-    maxSessionTokens: 250000,
-    maxSessionUsd: 1,
-    minRequestDelaySeconds: 2,
-    maxRequestsPerWindow: 3,
-    requestWindowSeconds: 10
-  };
-}
-
-function loadApiGuardSettings() {
-  try {
-    return normalizeApiGuardSettings(JSON.parse(localStorage.getItem(STORAGE_KEYS.apiGuard) || "{}"));
-  } catch {
-    return defaultApiGuardSettings();
-  }
-}
-
-function normalizeApiGuardSettings(settings = {}) {
-  const defaults = defaultApiGuardSettings();
-  return {
-    enabled: settings.enabled !== false,
-    maxRequests: positiveInteger(settings.maxRequests, defaults.maxRequests),
-    maxOutputTokens: positiveInteger(settings.maxOutputTokens, defaults.maxOutputTokens),
-    maxSessionTokens: positiveInteger(settings.maxSessionTokens, defaults.maxSessionTokens),
-    maxSessionUsd: positiveNumber(settings.maxSessionUsd, defaults.maxSessionUsd),
-    minRequestDelaySeconds: nonNegativeNumber(settings.minRequestDelaySeconds, defaults.minRequestDelaySeconds),
-    maxRequestsPerWindow: positiveInteger(settings.maxRequestsPerWindow, defaults.maxRequestsPerWindow),
-    requestWindowSeconds: positiveNumber(settings.requestWindowSeconds, defaults.requestWindowSeconds)
-  };
 }
 
 function hydrateApiGuardControls() {
@@ -644,77 +615,6 @@ function renderApiGuardStatus(message = "") {
     ? `${usage.requests}/${settings.maxRequests} attempts · ${formatStatNumber(usage.totalTokens)}/${formatStatNumber(settings.maxSessionTokens)} tokens · ${formatUsd(usage.estimatedUsd)}/${formatUsd(settings.maxSessionUsd)} estimated · ${formatControlNumber(settings.minRequestDelaySeconds)}s gap · ${settings.maxRequestsPerWindow}/${formatControlNumber(settings.requestWindowSeconds)}s cap · ${priceLabel}.`
     : "Spend guard is off.";
   els.apiGuardStatus.textContent = message ? `${message} ${body}` : body;
-}
-
-function emptyApiUsage() {
-  return {
-    requests: 0,
-    inputTokens: 0,
-    outputTokens: 0,
-    totalTokens: 0,
-    estimatedUsd: 0
-  };
-}
-
-function positiveInteger(value, fallback) {
-  const number = Number.parseInt(value, 10);
-  return Number.isFinite(number) && number > 0 ? number : fallback;
-}
-
-function positiveNumber(value, fallback) {
-  const number = Number.parseFloat(value);
-  return Number.isFinite(number) && number > 0 ? number : fallback;
-}
-
-function nonNegativeNumber(value, fallback) {
-  const number = Number.parseFloat(value);
-  return Number.isFinite(number) && number >= 0 ? number : fallback;
-}
-
-function formatControlNumber(value) {
-  return Number(value || 0).toLocaleString("en-US", {
-    maximumFractionDigits: 1
-  });
-}
-
-function providerValue(label) {
-  const value = String(label || "").toLowerCase();
-  if (value.includes("gemini") || value.includes("google")) return "gemini";
-  if (value.includes("anthropic")) return "anthropic";
-  if (value.includes("local")) return "local";
-  if (value.includes("openai")) return "openai";
-  return value;
-}
-
-function providerLabel(value) {
-  return {
-    gemini: "Gemini",
-    openai: "OpenAI",
-    anthropic: "Anthropic",
-    local: "Local model"
-  }[value] || "Gemini";
-}
-
-function defaultModelForProvider(provider) {
-  return {
-    gemini: "gemini-2.5-flash",
-    openai: "gpt-5-mini",
-    anthropic: "claude-3-5-haiku-latest",
-    local: "local-filing-helper"
-  }[provider] || "gemini-2.5-flash";
-}
-
-function defaultEndpointForProvider(provider) {
-  return {
-    gemini: "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
-    openai: "https://api.openai.com/v1/chat/completions",
-    anthropic: "https://api.anthropic.com/v1/messages",
-    local: "http://localhost:11434/v1/chat/completions"
-  }[provider] || "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent";
-}
-
-function apiProviderRequiresSecret(provider) {
-  return provider !== "local";
 }
 
 async function setSourceFiles(files) {
@@ -1878,12 +1778,6 @@ function mergeIngestReview(localReview, apiReview, source) {
     modelTiming: apiReview.modelTiming || localReview.modelTiming || null,
     fallbackQuestions: apiReview.fallbackQuestions || []
   };
-}
-
-function modelQuestionsOrFallback(apiReview) {
-  if (apiReview.questions?.length) return apiReview.questions;
-  if (apiReview.modelReturnedNoQuestions && apiReview.fallbackQuestions?.length) return apiReview.fallbackQuestions;
-  return [];
 }
 
 function applyIngestReviewToFileMap(file, review) {
