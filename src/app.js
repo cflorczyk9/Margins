@@ -6813,14 +6813,18 @@ function openActivityTag(tag) {
 
 function renderSourceIngestRun(file) {
   const processingThis = state.processingInbox && (!state.processingFileName || state.processingFileName === file.name);
-  const isReady = isSourceReviewReady(file) && !processingThis;
+  const reviewReady = isSourceReviewReady(file);
   const error = state.ingestErrors.get(file.name);
-  if (!processingThis && !isReady && !error) return "";
+  if (!processingThis && !reviewReady && !error) return "";
   if (error && !processingThis) return renderSourceIngestError(file, error);
   const review = state.ingestReviews.get(file.name);
+  // If a review already exists, keep showing the receipt — don't fall back
+  // to the processing checklist when the user clicks Approve (which sets
+  // processingInbox=true during the save). That would look like reprocessing.
+  const showReceipt = reviewReady;
   return `
     <div class="source-ingest-run">
-      ${isReady ? renderSourceReceipt(file, review) : renderSourceProcessingChecklist(file)}
+      ${showReceipt ? renderSourceReceipt(file, review) : renderSourceProcessingChecklist(file)}
     </div>
   `;
 }
