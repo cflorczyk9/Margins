@@ -182,6 +182,16 @@ export function cleanWikiLinkLabel(link) {
     .trim();
 }
 
+export function extractWikiLinks(body) {
+  const links = [];
+  const pattern = /\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]/g;
+  let match;
+  while ((match = pattern.exec(String(body || ""))) !== null) {
+    links.push(match[1].trim());
+  }
+  return links;
+}
+
 export function localReadableSourceText(text) {
   return String(text || "")
     .replace(/^---\s*\n[\s\S]*?\n---\s*(?:\n|$)/, "")
@@ -204,6 +214,16 @@ export function cleanExtractedSourceText(text) {
 export function firstMatch(text, pattern) {
   const match = String(text || "").match(pattern);
   return match?.[1] ? cleanSummary(match[1]) : match?.[0] ? cleanSummary(match[0]) : "";
+}
+
+export function stripTrailingEllipsis(value) {
+  return String(value || "").replace(/\s*(?:\.{3}|…)\s*$/u, "").trim();
+}
+
+export function clampSentence(value, limit) {
+  const text = cleanSummary(value);
+  if (text.length <= limit) return text;
+  return `${text.slice(0, limit - 3).trim()}...`;
 }
 
 // ---------------------------------------------------------------------

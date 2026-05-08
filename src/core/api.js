@@ -160,6 +160,33 @@ export function emptyApiUsage() {
 }
 
 // ---------------------------------------------------------------------
+// Error classification
+// ---------------------------------------------------------------------
+
+export function isRateLimitError(error) {
+  return Number(error?.status) === 429 || /rate limit|rate-limited|quota|resource exhausted|free-tier limit|limit reached|HTTP 429/i.test(`${error?.message || error || ""}`);
+}
+
+export function isSpendGuardError(error) {
+  return error?.code === "MARGINS_SPEND_GUARD" || /spend guard stopped/i.test(`${error?.message || error || ""}`);
+}
+
+export function isModelJsonParseError(error) {
+  return error?.code === "MARGINS_MODEL_JSON_PARSE";
+}
+
+export function isModelOutputTruncatedError(error) {
+  return error?.code === "MARGINS_MODEL_OUTPUT_TRUNCATED";
+}
+
+export function retryAfterText(error) {
+  if (!error?.retryAfter) return "Wait a minute, then ";
+  const seconds = Number(error.retryAfter);
+  if (Number.isFinite(seconds) && seconds > 0) return `Wait about ${Math.ceil(seconds)} seconds, then `;
+  return "";
+}
+
+// ---------------------------------------------------------------------
 // Review questions selector
 // ---------------------------------------------------------------------
 
