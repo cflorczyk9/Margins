@@ -18,6 +18,8 @@
 //
 // All functions here are pure: no DOM, no state, no localStorage.
 
+import { excerptForQuestion } from "./utils.js";
+
 // ---------------------------------------------------------------------
 // Path identity
 // ---------------------------------------------------------------------
@@ -506,6 +508,53 @@ export function removePinnedFrontmatterSignals(frontmatter) {
     nextLines.push(line);
   }
   return nextLines.join("\n");
+}
+
+// ---------------------------------------------------------------------
+// Wiki-context record (used by ingest prompt builder + entity view)
+// ---------------------------------------------------------------------
+
+export function contextSnippet(body) {
+  const clean = bodyWithoutFrontmatter(body)
+    .split("\n")
+    .filter((line) => {
+      const trimmed = line.trim();
+      return trimmed && !trimmed.startsWith("# ") && !/^(?:Raw|Original) file:/i.test(trimmed);
+    })
+    .slice(0, 18)
+    .join(" ");
+  return excerptForQuestion(clean, 360);
+}
+
+export function wikiContextRecord(path, body) {
+  const frontmatter = frontmatterFields(body);
+  const title = markdownTitle(body) || titleFromSlug(basename(path).replace(/\.md$/, ""));
+  const summary = cleanSummary(frontmatter.summary || extractSourceSummary(body) || excerptForQuestion(bodyWithoutFrontmatter(body), 260));
+  const tags = frontmatterList(frontmatter.tags);
+  const keyLinks = [
+    ...frontmatterList(frontmatter.key_links),
+    ...extractWikiLinks(body)
+  ].map((link) => cleanWikiLinkLabel(link)).filter(Boolean);
+  return {
+    path,
+    body,
+    title,
+    summary,
+    type: frontmatter.type || graphTypeFromPath(path),
+    bucket: frontmatter.bucket || path.split("/")[1] || "wiki",
+    status: frontmatter.status || "",
+    priority: frontmatter.priority || "",
+    updated: frontmatter.updated || frontmatter.created || "",
+    tags,
+    keyLinks: [...new Set(keyLinks)].slice(0, 12),
+    snippet: contextSnippet(body)
+  };
+}
+
+export function wikiContextRecords(fileMap) {
+  return [...fileMap.entries()]
+    .filter(([path]) => isContextWikiPagePath(path))
+    .map(([path, body]) => wikiContextRecord(path, body));
 }
 
 export function entityPinnedBody(body, shouldPin) {
