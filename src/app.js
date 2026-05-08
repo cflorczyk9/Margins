@@ -1518,6 +1518,9 @@ async function prepareIngestReviews(statusText, files = state.files, options = {
         review = mergeIngestReview(review, apiReview, "api");
         state.apiQuestionSource = "api";
       } catch (error) {
+        // Diagnostic: surface API ingest failures so silent fallbacks to local
+        // are visible. Refactor in progress; remove once the surface stabilizes.
+        console.error("[margins] API ingest failed for", file.name, "→ falling back to local. Error:", error);
         if (requiresModelReview(file)) {
           state.ingestErrors.set(file.name, ingestModelErrorMessage(error));
           reviewMap.delete(file.name);
