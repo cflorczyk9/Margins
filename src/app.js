@@ -2,6 +2,7 @@ import { compileVault, localDateString, vaultToFiles } from "./compiler.js";
 import { clearApiSettings, loadApiSettings, maskSecret, saveApiSettings } from "./apiSettingsStore.js";
 import { hasFileSystemAccess, loadVaultHandle, saveVaultHandle } from "./vaultHandleStore.js";
 import { STORAGE_KEYS } from "./storageKeys.js";
+import { state } from "./core/state.js";
 import * as pdfjsLib from "../node_modules/pdfjs-dist/build/pdf.mjs";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
@@ -93,7 +94,12 @@ let activeOperation = "";
 let dreamRunTickerId = 0;
 const ingestProgressTimers = new Map();
 
-const state = {
+// Hydrate the singleton state imported from core/state.js. Runs at
+// module-load time, before any event handlers fire. Function refs
+// (loadApiGuardSettings, emptyApiUsage, loadModelTimingLog,
+// loadProcessTimingLog) are hoisted, so initialization order matches
+// the original inline definition.
+Object.assign(state, {
   files: [],
   editedRawFiles: new Map(),
   vaultFiles: [],
@@ -149,7 +155,7 @@ const state = {
   dreamPreparedRun: null,
   dreamLastRun: null,
   dreamActiveStage: ""
-};
+});
 
 const apiThrottle = {
   queue: Promise.resolve(),
