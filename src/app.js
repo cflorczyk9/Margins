@@ -53,8 +53,10 @@ import {
   cleanYamlScalar,
   clampSentence,
   confidenceValue,
+  entityPinnedBody,
   escapeRegExp,
   extractInlineTags,
+  extractSourceSummary,
   extractWikiLinks,
   financialAccountLine,
   financialHoldingLine,
@@ -85,10 +87,15 @@ import {
   normalizeEntityTag,
   normalizeFilingPath,
   normalizeMarginsPath,
+  normalizePrimaryTypeValue,
+  removePinnedFrontmatterSignals,
   relevanceValue,
   replaceSourceHeading,
   replaceSummarySection,
   replaceYamlSummary,
+  setEntityPrimaryTypeBody,
+  setFrontmatterScalarField,
+  setPinnedFrontmatterField,
   slugifyLoose,
   sourcePathForBucket,
   sourceSlugForFile,
@@ -7916,13 +7923,6 @@ function sourceNoteForFile(file) {
   return sourceNoteEntryForFile(file)?.body || "";
 }
 
-function extractSourceSummary(body) {
-  if (!body) return "";
-  const section = body.match(/## Summary\s+([\s\S]*?)(?:\n##\s|$)/);
-  if (section?.[1]) return cleanSummary(section[1]);
-  const yaml = body.match(/^summary:\s*("?)(.*?)\1\s*$/m);
-  return yaml?.[2] ? cleanSummary(yaml[2]) : "";
-}
 
 
 function installTestHooks() {
@@ -9950,106 +9950,6 @@ function activeEntityFileMap() {
   return state.currentFileMap || state.entityFileMap || new Map();
 }
 
-function setEntityPrimaryTypeBody(body, primaryType) {
-  return setFrontmatterScalarField(body, "primary_type", normalizePrimaryTypeValue(primaryType));
-}
-
-function setFrontmatterScalarField(body, key, value) {
-  const source = String(body || "");
-  const cleanKey = String(key || "").trim();
-  const cleanValue = String(value || "").trim();
-  if (!cleanKey || !cleanValue) return source;
-  const line = `${cleanKey}: ${yamlInlineScalar(cleanValue)}`;
-  const match = source.match(/^---\n([\s\S]*?)\n---\n?/);
-  if (!match) return `---\n${line}\n---\n\n${source}`;
-
-  const lines = match[1].split("\n");
-  const keyPattern = new RegExp(`^${escapeRegExp(cleanKey)}:\\s*`, "i");
-  let replaced = false;
-  const nextLines = lines.map((item) => {
-    if (keyPattern.test(item)) {
-      replaced = true;
-      return line;
-    }
-    return item;
-  });
-  if (!replaced) {
-    const typeIndex = nextLines.findIndex((item) => /^type:\s*/i.test(item));
-    nextLines.splice(typeIndex >= 0 ? typeIndex + 1 : nextLines.length, 0, line);
-  }
-  return `---\n${nextLines.join("\n")}${nextLines.length && !nextLines[nextLines.length - 1].endsWith("\n") ? "\n" : ""}---\n${source.slice(match[0].length)}`;
-}
-
-function entityPinnedBody(body, shouldPin) {
-  const source = String(body || "");
-  const match = source.match(/^---\n([\s\S]*?)\n---\n?/);
-  if (!match) {
-    return shouldPin ? `---\npriority: pinned\n---\n\n${source}` : source;
-  }
-
-  const frontmatter = shouldPin
-    ? setPinnedFrontmatterField(match[1])
-    : removePinnedFrontmatterSignals(match[1]);
-  return `---\n${frontmatter}${frontmatter.endsWith("\n") ? "" : "\n"}---\n${source.slice(match[0].length)}`;
-}
-
-function setPinnedFrontmatterField(frontmatter) {
-  const lines = frontmatter.split("\n");
-  let foundPriority = false;
-  const nextLines = lines
-    .filter((line) => !/^pinned:\s*/i.test(line))
-    .map((line) => {
-      if (/^priority:\s*/i.test(line)) {
-        foundPriority = true;
-        return "priority: pinned";
-      }
-      return line;
-    });
-  if (!foundPriority) nextLines.push("priority: pinned");
-  return nextLines.join("\n");
-}
-
-function removePinnedFrontmatterSignals(frontmatter) {
-  const lines = frontmatter.split("\n");
-  const nextLines = [];
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index];
-    const field = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
-    if (!field) {
-      nextLines.push(line);
-      continue;
-    }
-
-    const key = field[1].toLowerCase();
-    const value = yamlScalar(field[2]).toLowerCase();
-    if ((key === "priority" || key === "status") && value === "pinned") continue;
-    if (key === "pinned") continue;
-    if (key === "tags") {
-      if (field[2].trim()) {
-        const tags = frontmatterList(field[2]).filter((tag) => normalizeEntityTag(tag) !== "pinned");
-        if (tags.length) nextLines.push(`tags: [${tags.map(yamlInlineScalar).join(", ")}]`);
-        continue;
-      }
-
-      const listItems = [];
-      let cursor = index + 1;
-      while (cursor < lines.length && /^\s*-\s*/.test(lines[cursor])) {
-        const tag = yamlScalar(lines[cursor].replace(/^\s*-\s*/, ""));
-        if (normalizeEntityTag(tag) !== "pinned") listItems.push(lines[cursor]);
-        cursor += 1;
-      }
-      if (listItems.length) {
-        nextLines.push(line);
-        nextLines.push(...listItems);
-      }
-      index = cursor - 1;
-      continue;
-    }
-
-    nextLines.push(line);
-  }
-  return nextLines.filter((line, index, list) => line.trim() || index < list.length - 1).join("\n");
-}
 
 function isEntityFilterActive(kind, value) {
   if (kind === "all") return state.entityFilterKind === "all";
@@ -10370,9 +10270,6 @@ function entityTypeLabel(type, path, fields = {}, tags = [], bucket = "") {
   return titleFromSlug(normalized || "entity");
 }
 
-function normalizePrimaryTypeValue(value) {
-  return slugifyLoose(cleanSummary(value));
-}
 
 function entityTypeDisplayLabel(value) {
   const normalized = normalizePrimaryTypeValue(value);
