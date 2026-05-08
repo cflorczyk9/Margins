@@ -830,8 +830,8 @@ els.exportBtn.addEventListener("click", () => {
   }
 });
 
-els.createVaultBtn.addEventListener("click", () => withBusyOperation("vault creation", createVault));
-els.openVaultBtn.addEventListener("click", () => withBusyOperation("vault open", openVault));
+els.createVaultBtn.addEventListener("click", createVault);
+els.openVaultBtn.addEventListener("click", openVault);
 els.saveVaultBtn.addEventListener("click", () => withBusyOperation("vault write", handleSaveAndOrganize));
 
 els.copyBtn.addEventListener("click", async () => {
@@ -842,13 +842,9 @@ els.copyBtn.addEventListener("click", async () => {
 });
 
 async function createVault() {
-  if (!("showDirectoryPicker" in window)) {
-    els.stats.textContent = "Local vaults need Chrome or Edge on localhost. Use Download vault JSON for now.";
-    return null;
-  }
-
-  try {
-    const handle = await window.showDirectoryPicker({ mode: "readwrite" });
+  const handle = await pickVaultDirectory("Vault creation");
+  if (!handle) return null;
+  return runVaultOperation("vault creation", async () => {
     await scaffoldVault(handle);
     setActiveVault(handle, handle.name);
     state.loadedFileMap = await readVaultFileMap(handle);
@@ -856,12 +852,7 @@ async function createVault() {
     renderVaultTree();
     els.stats.textContent = `Created vault structure in: ${handle.name}`;
     return handle;
-  } catch (error) {
-    if (error.name !== "AbortError") {
-      els.stats.textContent = `Vault creation failed: ${error.message || "unknown error"}`;
-    }
-    return null;
-  }
+  });
 }
 
 async function openVault() {
@@ -870,18 +861,54 @@ async function openVault() {
     return null;
   }
 
-  try {
-    const handle = await window.showDirectoryPicker({ mode: "readwrite" });
+  const handle = await pickVaultDirectory("Vault open");
+  if (!handle) return null;
+  return runVaultOperation("vault open", async () => {
     await scaffoldVault(handle);
     setActiveVault(handle, handle.name);
     await loadExistingVault(handle);
     return handle;
-  } catch (error) {
-    if (error.name !== "AbortError") {
-      els.stats.textContent = `Vault open failed: ${error.message || "unknown error"}`;
-    }
+  });
+}
+
+async function pickVaultDirectory(actionLabel) {
+  if (!("showDirectoryPicker" in window)) {
+    els.stats.textContent = "Local vaults need Chrome or Edge on localhost. Use Download vault JSON for now.";
+    updateVaultStatus("Local vault persistence needs Chrome or Edge on localhost.");
     return null;
   }
+
+  els.stats.textContent = "Select a vault folder in the system picker.";
+  updateVaultStatus("Waiting for folder selection...");
+  try {
+    return await window.showDirectoryPicker({ mode: "readwrite" });
+  } catch (error) {
+    if (error.name === "AbortError") {
+      els.stats.textContent = "Folder selection canceled.";
+      restoreVaultStatusAfterPickerCancel();
+      updateWorkflowState();
+      return null;
+    }
+    els.stats.textContent = `${actionLabel} failed: ${error.message || "unknown error"}`;
+    updateVaultStatus("No local vault connected.");
+    updateWorkflowState();
+    return null;
+  }
+}
+
+function restoreVaultStatusAfterPickerCancel() {
+  if (state.vaultHandle) {
+    updateVaultStatus(state.vaultName || "Vault connected.");
+  } else if (state.rememberedVaultHandle) {
+    updateVaultStatus(`Last vault: ${state.rememberedVaultHandle.name}. Click Reconnect to open it.`);
+  } else {
+    updateVaultStatus("No local vault connected.");
+  }
+}
+
+async function runVaultOperation(label, run) {
+  if (activeOperation) return run();
+  return withBusyOperation(label, run);
 }
 
 function setActiveVault(handle, name) {
@@ -929,9 +956,11 @@ async function reconnectRememberedVault() {
     updateVaultStatus("Reconnect was not granted. Open a vault folder to continue.");
     return false;
   }
-  await scaffoldVault(handle);
-  setActiveVault(handle, handle.name);
-  await loadExistingVault(handle);
+  await runVaultOperation("vault reconnect", async () => {
+    await scaffoldVault(handle);
+    setActiveVault(handle, handle.name);
+    await loadExistingVault(handle);
+  });
   return true;
 }
 
@@ -11109,6 +11138,10 @@ function updateReviewModeHelp() {
 async function handleWorkflowButtonClick() {
   const step = workflowStep();
   if (step.disabled) return;
+  if (step.action === "vault" || step.action === "reconnectVault") {
+    await runWorkflowStep(step);
+    return;
+  }
   await withBusyOperation(step.label, () => runWorkflowStep(step));
 }
 
@@ -12001,20 +12034,6 @@ function strictReviewQuestions(fileMap) {
   )];
 }
 
-function reviewQuestion(severity, kind, path, question, reason, recommendation, options = ["Yes", "No", "Use default"]) {
-  return { severity, kind, path, question, reason, recommendation, options };
-}
-
-function dedupeQuestions(questions) {
-  const seen = new Set();
-  return questions.filter((question) => {
-    const key = `${question.kind}:${question.question}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
 function validateLlmFiles(fileMap) {
   const warningsByPath = new Map();
   const entries = [...fileMap.entries()];
@@ -12660,27 +12679,6 @@ function serializeReviewQuestions(questions) {
   ].join("\n")).join("\n");
 }
 
-function reviewModeLabel(mode) {
-  return {
-    auto: "Auto-file",
-    suggested: "Suggested review",
-    strict: "Strict review"
-  }[mode] || mode;
-}
-
-function parseLlmFiles(value) {
-  const files = new Map();
-  const pattern = /```margins-file\s+path="([^"]+)"\s*\n([\s\S]*?)```/g;
-  let match;
-
-  while ((match = pattern.exec(value)) !== null) {
-    const path = normalizeMarginsPath(match[1].trim());
-    const body = match[2].trim();
-    if (path && body) files.set(path, body);
-  }
-
-  return files;
-}
 
 function serializeLlmFiles(fileMap) {
   return [...fileMap.entries()]
