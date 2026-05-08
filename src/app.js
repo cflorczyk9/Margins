@@ -328,6 +328,7 @@ Object.assign(state, {
   activeProcessTimings: new Map(),
   expandedReceiptLinks: new Set(),
   expandedSummaries: new Set(),
+  revealedReceipts: new Set(),
   entityQuery: "",
   entityFilterKind: "all",
   entityFilterValue: "",
@@ -806,6 +807,7 @@ async function setSourceFiles(files) {
   state.ingestReviews = new Map();
   state.ingestAnswers = new Map();
   state.expandedSummaries = new Set();
+  state.revealedReceipts = new Set();
   els.llmInput.value = "";
   state.llmPromptCopied = false;
   state.hasSavedCurrent = false;
@@ -1243,6 +1245,7 @@ function removeSourceFromState(fileName) {
   state.ingestReviews.delete(fileName);
   state.ingestErrors.delete(fileName);
   state.expandedReceiptLinks.delete(fileName);
+  state.revealedReceipts.delete(fileName);
   for (const key of [...state.ingestAnswers.keys()]) {
     if (key.startsWith(`${fileName}::`)) state.ingestAnswers.delete(key);
   }
@@ -1509,6 +1512,7 @@ async function saveCurrentVault(options = {}) {
     state.ingestErrors = new Map();
     state.expandedSummaries = new Set();
     state.expandedReceiptLinks = new Set();
+    state.revealedReceipts = new Set();
     state.loadedFileMap = new Map(state.currentFileMap);
     renderSources();
     renderVaultTree(state.currentFileMap);
@@ -6852,8 +6856,14 @@ function renderSourceReceipt(file, review) {
   const path = entry?.path || sourceTargetPathFromReview(rawSourceOutputPath(file.name), review);
   const essence = sourceReceiptEssence(file, review);
   const questions = state.reviewMode === "auto" ? [] : reviewQuestionsForCard(file, review);
+  // Stage the staged-reveal class on the FIRST render of this file's receipt
+  // so the receipt sections fade in one-by-one. Subsequent re-renders (Approve,
+  // decision-button click, etc.) do NOT get the class — the receipt stays static.
+  const firstReveal = !state.revealedReceipts.has(file.name);
+  if (firstReveal) state.revealedReceipts.add(file.name);
+  const cls = `source-receipt${firstReveal ? " is-revealing" : ""}`;
   return `
-    <div class="source-receipt">
+    <div class="${cls}">
       ${essence ? `<p class="receipt-essence">${escapeHtml(essence)}</p>` : ""}
       ${renderSourceReceiptChecklist(file, review, path)}
       ${renderSourceReceiptDecision(file, questions)}
