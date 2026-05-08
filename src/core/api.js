@@ -1,30 +1,35 @@
 // Pure API helpers extracted from app.js.
 //
-// Scope (Phase 3 of the module-split refactor):
-//   - Numeric coercion guards used by provider/guard config
-//   - API provider identity helpers (label/value/default model/default
-//     endpoint/secret-requirement)
+// Cumulative scope (Phases 3, 3b, 7d, 7f, 7g of the module-split):
+//   - Numeric coercion guards (positiveInteger, positiveNumber, etc.)
+//   - API provider identity (provider label/value, default model,
+//     default endpoint, secret-requirement)
 //   - .env parser used to seed local API secrets in dev
-//   - Spend-guard settings: defaults, normalization, persistence
-//   - Empty API usage struct
-//   - modelQuestionsOrFallback (pure review-questions selector)
+//   - Spend-guard settings: defaults, normalization, persistence,
+//     emptyApiUsage
+//   - Error classification: isRateLimitError, isSpendGuardError,
+//     isModelJsonParseError, isModelOutputTruncatedError, retryAfterText
+//   - JSON-from-LLM recovery: stripJsonCodeFence, parseJsonObject,
+//     parseJsonCandidate, jsonParseCandidates, hasUnclosedJsonStructure,
+//     balancedJsonSubstring, looksLikeTruncatedJson, isGeminiOutputTruncated
+//   - Error constructors: modelJsonParseError, modelOutputTruncatedError
+//   - Review questions: reviewQuestion (constructor), dedupeQuestions,
+//     reviewModeLabel, modelQuestionsOrFallback
+//   - parseLlmFiles (margins-file code-block extractor)
 //
 // Out of scope (intentionally still in app.js):
 //   - DOM-touching API hydration/render functions (hydrateApiControls,
 //     saveApiControls, clearApiControls, renderApiStatus, hydrateApi-
 //     GuardControls, saveApiGuardControls, resetApiUsage, renderApi-
 //     GuardStatus, hydrateLocalEnvApiSecret, ensureApiSecretReady).
-//     These need access to the `els` DOM cache and will move when
-//     `els` is extracted.
-//   - Error classifiers (isRateLimitError, isSpendGuardError, isModel-
-//     JsonParseError, isModelOutputTruncatedError) and constructors
-//     (modelJsonParseError, modelOutputTruncatedError) — coupled to
-//     looksLikeTruncatedJson + clampSentence string helpers; defer.
-//   - parseApiIngestReview — pulls a large sub-graph of review parsers
-//     (parseMissionFrame, parseTakeaways, parseFilingPlan, etc.); moves
-//     with the ingest pipeline in a later phase.
+//     These need access to the `els` DOM cache.
+//   - parseApiIngestReview itself + the parse* review-section helpers
+//     (parseMissionFrame, parseTakeaways, parseFilingPlan, etc.). These
+//     can move now that their deps are in core, but they're a distinct
+//     ~600 LOC cluster — separate phase.
 
 import { STORAGE_KEYS } from "../storageKeys.js";
+import { clampSentence, normalizeMarginsPath } from "./wiki.js";
 
 // ---------------------------------------------------------------------
 // Numeric coercion
@@ -194,8 +199,6 @@ export function retryAfterText(error) {
 // the strict parsers downstream give up.
 // ---------------------------------------------------------------------
 
-import { clampSentence } from "./wiki.js";
-
 export function stripJsonCodeFence(text) {
   return String(text || "")
     .trim()
@@ -356,11 +359,51 @@ export function modelJsonParseError(provider, content) {
 }
 
 // ---------------------------------------------------------------------
-// Review questions selector
+// Review questions: constructors + selectors + dedup + mode labels
 // ---------------------------------------------------------------------
+
+export function reviewQuestion(severity, kind, path, question, reason, recommendation, options = ["Yes", "No", "Use default"]) {
+  return { severity, kind, path, question, reason, recommendation, options };
+}
+
+export function dedupeQuestions(questions) {
+  const seen = new Set();
+  return questions.filter((question) => {
+    const key = `${question.kind}:${question.question}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+export function reviewModeLabel(mode) {
+  return {
+    auto: "Auto-file",
+    suggested: "Suggested review",
+    strict: "Strict review"
+  }[mode] || mode;
+}
 
 export function modelQuestionsOrFallback(apiReview) {
   if (apiReview.questions?.length) return apiReview.questions;
   if (apiReview.modelReturnedNoQuestions && apiReview.fallbackQuestions?.length) return apiReview.fallbackQuestions;
   return [];
+}
+
+// ---------------------------------------------------------------------
+// Margins-file block parsing (LLM round-trip output format)
+// ---------------------------------------------------------------------
+
+export function parseLlmFiles(value) {
+  const files = new Map();
+  const pattern = /```margins-file\s+path="([^"]+)"\s*\n([\s\S]*?)```/g;
+  let match;
+
+  while ((match = pattern.exec(value)) !== null) {
+    const path = normalizeMarginsPath(match[1].trim());
+    const body = match[2].trim();
+    if (path && body) files.set(path, body);
+  }
+
+  return files;
 }
