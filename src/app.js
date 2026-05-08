@@ -260,8 +260,8 @@ const DREAM_STAGES = [
   }
 ];
 const INGEST_PROGRESS_STEP_DELAYS_MS = [0, 1400, 4400, 12000];
-const INGEST_REVIEW_OUTPUT_TOKEN_FLOOR = 8192;
-const INGEST_REVIEW_RETRY_OUTPUT_TOKEN_FLOOR = 12288;
+const INGEST_REVIEW_OUTPUT_TOKEN_FLOOR = 16384;
+const INGEST_REVIEW_RETRY_OUTPUT_TOKEN_FLOOR = 32768;
 const DREAM_HELPER_OUTPUT_TOKEN_FLOOR = 12288;
 const DREAM_HELPER_RETRY_OUTPUT_TOKEN_FLOOR = 12288;
 const DREAM_BROKEN_LINK_DEFAULT_MAX_LINKS = 10;
@@ -1736,9 +1736,6 @@ async function prepareIngestReviews(statusText, files = state.files, options = {
         review = mergeIngestReview(review, apiReview, "api");
         state.apiQuestionSource = "api";
       } catch (error) {
-        // Temporary debug instrumentation: surface API ingest failures to console
-        // so silent fallbacks to local become visible. Remove once stable.
-        console.error("[margins] API ingest failed for", file.name, "→ falling back to local. Error:", error);
         if (requiresModelReview(file)) {
           state.ingestErrors.set(file.name, ingestModelErrorMessage(error));
           reviewMap.delete(file.name);
