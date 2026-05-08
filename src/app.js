@@ -22,16 +22,33 @@ import {
 } from "./core/api.js";
 import {
   basename,
+  bodyWithoutFrontmatter,
+  cleanExtractedSourceText,
+  cleanSummary,
+  cleanTag,
+  cleanWikiLinkLabel,
+  cleanYamlScalar,
+  escapeRegExp,
+  firstMatch,
   frontmatterFields,
+  frontmatterList,
   hasYamlFrontmatter,
+  insertFrontmatterLine,
   isBucketOverviewPath,
   isPromotedWikiPagePath,
   isSourceNodePagePath,
   isWikiPagePath,
+  localReadableSourceText,
   markdownTitle,
   normalizeEntityTag,
+  replaceSourceHeading,
+  replaceSummarySection,
+  replaceYamlSummary,
   slugifyLoose,
   titleFromSlug,
+  uniqueBy,
+  upsertFrontmatterList,
+  upsertFrontmatterScalar,
   warningLabel,
   yamlScalar
 } from "./core/wiki.js";
@@ -1747,37 +1764,6 @@ function looseFrontmatterFields(text) {
   return { fields, body, hasFrontmatter: true };
 }
 
-function cleanYamlScalar(value) {
-  return cleanSummary(String(value || "")
-    .replace(/^[>|]\s*/, "")
-    .replace(/^['"]|['"]$/g, "")
-    .replace(/\\(["'])/g, "$1"));
-}
-
-function localReadableSourceText(text) {
-  return String(text || "")
-    .replace(/^---\s*\n[\s\S]*?\n---\s*(?:\n|$)/, "")
-    .replace(/^(?:title|description|summary|source|url|author|published|created|tags):[\s\S]*?\n---\s*(?:\n|$)/i, "")
-    .replace(/```[\s\S]*?```/g, " ")
-    .replace(/!\[[^\]]*]\([^)]*\)/g, " ")
-    .replace(/\[([^\]]+)]\([^)]*\)/g, "$1")
-    .replace(/^#+\s+/gm, "")
-    .replace(/^\s*[-*]\s+/gm, "");
-}
-
-function cleanExtractedSourceText(text) {
-  return cleanSummary(String(text || "")
-    .replace(/\bPage\s+\d+\b/gi, " ")
-    .replace(/\bDEMO\b/gi, " demo ")
-    .replace(/\s*[|•]\s*/g, " ")
-    .replace(/\b(?:Member SIPC|Not an actual account statement|Sample client data)\b/gi, (match) => ` ${match}. `));
-}
-
-function firstMatch(text, pattern) {
-  const match = String(text || "").match(pattern);
-  return match?.[1] ? cleanSummary(match[1]) : match?.[0] ? cleanSummary(match[0]) : "";
-}
-
 function mergeIngestReview(localReview, apiReview, source) {
   const questions = source === "api"
     ? modelQuestionsOrFallback(apiReview)
@@ -1890,46 +1876,6 @@ function pendingRawSourcesFromVault(fileMap = state.currentFileMap, rawFiles = s
     .map((file) => ({ ...file, sourceScope: "vault" }));
 }
 
-function replaceYamlSummary(body, summary) {
-  const line = `summary: ${JSON.stringify(cleanSummary(summary))}`;
-  return body.replace(/^summary:\s*.*$/m, line);
-}
-
-function upsertFrontmatterScalar(body, key, value) {
-  const cleanValue = String(value || "").trim();
-  if (!cleanValue) return body;
-  const line = `${key}: ${cleanValue}`;
-  if (new RegExp(`^${escapeRegExp(key)}:\\s*.*$`, "m").test(body)) {
-    return body.replace(new RegExp(`^${escapeRegExp(key)}:\\s*.*$`, "m"), line);
-  }
-  return insertFrontmatterLine(body, line);
-}
-
-function upsertFrontmatterList(body, key, values) {
-  const cleanValues = uniqueBy(values.map(cleanTag).filter(Boolean), (tag) => tag);
-  if (cleanValues.length === 0) return body;
-  const line = `${key}: [${cleanValues.join(", ")}]`;
-  if (new RegExp(`^${escapeRegExp(key)}:\\s*\\[[^\\n]*\\]\\s*$`, "m").test(body)) {
-    return body.replace(new RegExp(`^${escapeRegExp(key)}:\\s*\\[[^\\n]*\\]\\s*$`, "m"), line);
-  }
-  if (new RegExp(`^${escapeRegExp(key)}:\\s*$`, "m").test(body)) {
-    return body.replace(new RegExp(`^${escapeRegExp(key)}:\\s*\\n(?:\\s*-\\s*.*\\n?)*`, "m"), `${line}\n`);
-  }
-  return insertFrontmatterLine(body, line);
-}
-
-function insertFrontmatterLine(body, line) {
-  if (/^---\n/.test(body)) return body.replace(/^---\n/, `---\n${line}\n`);
-  return `---\n${line}\n---\n\n${body}`;
-}
-
-function replaceSourceHeading(body, title) {
-  const heading = `# Source: ${cleanSummary(title)}`;
-  if (/^# Source:\s*.*$/m.test(body)) return body.replace(/^# Source:\s*.*$/m, heading);
-  if (/^#\s+.*$/m.test(body)) return body.replace(/^#\s+.*$/m, heading);
-  return `${heading}\n\n${body}`;
-}
-
 function upsertFilingJudgmentSection(body, plan) {
   const section = formatFilingJudgmentMarkdown(plan);
   if (!section) return body;
@@ -1962,14 +1908,6 @@ function formatFilingJudgmentMarkdown(plan) {
     lines.push(`- ${[plan.promotion.candidate, plan.promotion.recommendation, plan.promotion.reason].filter(Boolean).join(" — ")}`);
   }
   return lines.join("\n");
-}
-
-function replaceSummarySection(body, summary) {
-  const section = `## Summary\n\n${cleanSummary(summary)}`;
-  if (/## Summary\s+[\s\S]*?(?=\n##\s|$)/.test(body)) {
-    return body.replace(/## Summary\s+[\s\S]*?(?=\n##\s|$)/, section);
-  }
-  return `${body.trim()}\n\n${section}\n`;
 }
 
 function upsertConnectionsSection(body, connections) {
@@ -3620,24 +3558,6 @@ function wikiContextRecord(path, body) {
   };
 }
 
-function frontmatterList(value) {
-  if (Array.isArray(value)) return value.map((item) => yamlScalar(item)).filter(Boolean);
-  const raw = String(value || "").trim();
-  if (!raw) return [];
-  if (raw.startsWith("[") && raw.endsWith("]")) {
-    return raw
-      .slice(1, -1)
-      .split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/)
-      .map((item) => yamlScalar(item))
-      .filter(Boolean);
-  }
-  return raw.split(",").map((item) => yamlScalar(item)).filter(Boolean);
-}
-
-function bodyWithoutFrontmatter(body) {
-  return String(body || "").replace(/^---\n[\s\S]*?\n---\n/, "");
-}
-
 function contextSnippet(body) {
   const clean = bodyWithoutFrontmatter(body)
     .split("\n")
@@ -3648,15 +3568,6 @@ function contextSnippet(body) {
     .slice(0, 18)
     .join(" ");
   return excerptForQuestion(clean, 360);
-}
-
-function cleanWikiLinkLabel(link) {
-  return String(link || "")
-    .replace(/^\[\[/, "")
-    .replace(/\]\]$/, "")
-    .split("|")[0]
-    .replace(/\.md$/, "")
-    .trim();
 }
 
 function keywordSet(text) {
@@ -4684,16 +4595,6 @@ function tagListFromUnknown(value) {
     .flatMap((item) => item.split(/[,|]/))
     .map(cleanTag)
     .filter(Boolean);
-}
-
-function cleanTag(value) {
-  return String(value || "")
-    .trim()
-    .replace(/^#/, "")
-    .replace(/\s+/g, "-")
-    .replace(/[^A-Za-z0-9_/-]/g, "")
-    .replace(/-+/g, "-")
-    .toLowerCase();
 }
 
 const WIKI_SOURCE_BUCKETS = new Set(["sources", "coding", "ideas", "projects", "career", "personal", "school"]);
@@ -8553,16 +8454,6 @@ function dedupeFilingLines(lines) {
   });
 }
 
-function uniqueBy(items, keyFn) {
-  const seen = new Set();
-  return items.filter((item) => {
-    const key = keyFn(item);
-    if (!key || seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
 function pluralize(noun, count) {
   if (Number(count) === 1) return noun;
   if (noun === "entity") return "entities";
@@ -9018,17 +8909,6 @@ function extractSourceSummary(body) {
   if (section?.[1]) return cleanSummary(section[1]);
   const yaml = body.match(/^summary:\s*("?)(.*?)\1\s*$/m);
   return yaml?.[2] ? cleanSummary(yaml[2]) : "";
-}
-
-function cleanSummary(value) {
-  return String(value || "")
-    .replace(/\s+/g, " ")
-    .replace(/\[\[([^\]]+)\]\]/g, "$1")
-    .trim();
-}
-
-function escapeRegExp(value) {
-  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function cleanDisplaySummary(value) {

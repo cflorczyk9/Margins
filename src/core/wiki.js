@@ -131,6 +131,155 @@ export function normalizeEntityTag(tag) {
 }
 
 // ---------------------------------------------------------------------
+// Generic string cleaners (used by frontmatter/source/markdown)
+// ---------------------------------------------------------------------
+
+export function cleanSummary(value) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .replace(/\[\[([^\]]+)\]\]/g, "$1")
+    .trim();
+}
+
+export function escapeRegExp(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function uniqueBy(items, keyFn) {
+  const seen = new Set();
+  return items.filter((item) => {
+    const key = keyFn(item);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+export function cleanTag(value) {
+  return String(value || "")
+    .trim()
+    .replace(/^#/, "")
+    .replace(/\s+/g, "-")
+    .replace(/[^A-Za-z0-9_/-]/g, "")
+    .replace(/-+/g, "-")
+    .toLowerCase();
+}
+
+// ---------------------------------------------------------------------
+// Markdown body extraction / cleanup
+// ---------------------------------------------------------------------
+
+export function bodyWithoutFrontmatter(body) {
+  return String(body || "").replace(/^---\n[\s\S]*?\n---\n/, "");
+}
+
+export function cleanWikiLinkLabel(link) {
+  return String(link || "")
+    .replace(/^\[\[/, "")
+    .replace(/\]\]$/, "")
+    .split("|")[0]
+    .replace(/\.md$/, "")
+    .trim();
+}
+
+export function localReadableSourceText(text) {
+  return String(text || "")
+    .replace(/^---\s*\n[\s\S]*?\n---\s*(?:\n|$)/, "")
+    .replace(/^(?:title|description|summary|source|url|author|published|created|tags):[\s\S]*?\n---\s*(?:\n|$)/i, "")
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/!\[[^\]]*]\([^)]*\)/g, " ")
+    .replace(/\[([^\]]+)]\([^)]*\)/g, "$1")
+    .replace(/^#+\s+/gm, "")
+    .replace(/^\s*[-*]\s+/gm, "");
+}
+
+export function cleanExtractedSourceText(text) {
+  return cleanSummary(String(text || "")
+    .replace(/\bPage\s+\d+\b/gi, " ")
+    .replace(/\bDEMO\b/gi, " demo ")
+    .replace(/\s*[|•]\s*/g, " ")
+    .replace(/\b(?:Member SIPC|Not an actual account statement|Sample client data)\b/gi, (match) => ` ${match}. `));
+}
+
+export function firstMatch(text, pattern) {
+  const match = String(text || "").match(pattern);
+  return match?.[1] ? cleanSummary(match[1]) : match?.[0] ? cleanSummary(match[0]) : "";
+}
+
+// ---------------------------------------------------------------------
+// Frontmatter helpers (read + write)
+// ---------------------------------------------------------------------
+
+export function cleanYamlScalar(value) {
+  return cleanSummary(String(value || "")
+    .replace(/^[>|]\s*/, "")
+    .replace(/^['"]|['"]$/g, "")
+    .replace(/\\(["'])/g, "$1"));
+}
+
+export function frontmatterList(value) {
+  if (Array.isArray(value)) return value.map((item) => yamlScalar(item)).filter(Boolean);
+  const raw = String(value || "").trim();
+  if (!raw) return [];
+  if (raw.startsWith("[") && raw.endsWith("]")) {
+    return raw
+      .slice(1, -1)
+      .split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/)
+      .map((item) => yamlScalar(item))
+      .filter(Boolean);
+  }
+  return raw.split(",").map((item) => yamlScalar(item)).filter(Boolean);
+}
+
+export function insertFrontmatterLine(body, line) {
+  if (/^---\n/.test(body)) return body.replace(/^---\n/, `---\n${line}\n`);
+  return `---\n${line}\n---\n\n${body}`;
+}
+
+export function upsertFrontmatterScalar(body, key, value) {
+  const cleanValue = String(value || "").trim();
+  if (!cleanValue) return body;
+  const line = `${key}: ${cleanValue}`;
+  if (new RegExp(`^${escapeRegExp(key)}:\\s*.*$`, "m").test(body)) {
+    return body.replace(new RegExp(`^${escapeRegExp(key)}:\\s*.*$`, "m"), line);
+  }
+  return insertFrontmatterLine(body, line);
+}
+
+export function upsertFrontmatterList(body, key, values) {
+  const cleanValues = uniqueBy(values.map(cleanTag).filter(Boolean), (tag) => tag);
+  if (cleanValues.length === 0) return body;
+  const line = `${key}: [${cleanValues.join(", ")}]`;
+  if (new RegExp(`^${escapeRegExp(key)}:\\s*\\[[^\\n]*\\]\\s*$`, "m").test(body)) {
+    return body.replace(new RegExp(`^${escapeRegExp(key)}:\\s*\\[[^\\n]*\\]\\s*$`, "m"), line);
+  }
+  if (new RegExp(`^${escapeRegExp(key)}:\\s*$`, "m").test(body)) {
+    return body.replace(new RegExp(`^${escapeRegExp(key)}:\\s*\\n(?:\\s*-\\s*.*\\n?)*`, "m"), `${line}\n`);
+  }
+  return insertFrontmatterLine(body, line);
+}
+
+export function replaceYamlSummary(body, summary) {
+  const line = `summary: ${JSON.stringify(cleanSummary(summary))}`;
+  return body.replace(/^summary:\s*.*$/m, line);
+}
+
+export function replaceSummarySection(body, summary) {
+  const section = `## Summary\n\n${cleanSummary(summary)}`;
+  if (/## Summary\s+[\s\S]*?(?=\n##\s|$)/.test(body)) {
+    return body.replace(/## Summary\s+[\s\S]*?(?=\n##\s|$)/, section);
+  }
+  return `${body.trim()}\n\n${section}\n`;
+}
+
+export function replaceSourceHeading(body, title) {
+  const heading = `# Source: ${cleanSummary(title)}`;
+  if (/^# Source:\s*.*$/m.test(body)) return body.replace(/^# Source:\s*.*$/m, heading);
+  if (/^#\s+.*$/m.test(body)) return body.replace(/^#\s+.*$/m, heading);
+  return `${heading}\n\n${body}`;
+}
+
+// ---------------------------------------------------------------------
 // Misc
 // ---------------------------------------------------------------------
 
