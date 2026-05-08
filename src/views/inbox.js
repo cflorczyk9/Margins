@@ -43,7 +43,9 @@ export function needsTextExtraction(file) {
 }
 
 export function requiresModelReview(file) {
-  return needsTextExtraction(file) && !file.text;
+  // Every uploaded source must go through the LLM. The local heuristic path is
+  // not a fallback. Without a model review there is no source.
+  return true;
 }
 
 // ---------------------------------------------------------------------
