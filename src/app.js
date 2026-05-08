@@ -5,29 +5,40 @@ import { STORAGE_KEYS } from "./storageKeys.js";
 import { state } from "./core/state.js";
 import {
   apiProviderRequiresSecret,
+  balancedJsonSubstring,
   defaultApiGuardSettings,
   defaultEndpointForProvider,
   defaultModelForProvider,
   emptyApiUsage,
   formatControlNumber,
+  hasUnclosedJsonStructure,
+  isGeminiOutputTruncated,
   isModelJsonParseError,
   isModelOutputTruncatedError,
   isRateLimitError,
   isSpendGuardError,
+  jsonParseCandidates,
   loadApiGuardSettings,
+  looksLikeTruncatedJson,
+  modelJsonParseError,
+  modelOutputTruncatedError,
   modelQuestionsOrFallback,
   nonNegativeNumber,
   normalizeApiGuardSettings,
   parseDotEnv,
+  parseJsonCandidate,
+  parseJsonObject,
   positiveInteger,
   positiveNumber,
   providerLabel,
   providerValue,
-  retryAfterText
+  retryAfterText,
+  stripJsonCodeFence
 } from "./core/api.js";
 import {
   arrayFromUnknown,
   basename,
+  chunkLongSummary,
   bodyWithoutFrontmatter,
   cleanBucket,
   cleanDisplaySummary,
@@ -71,8 +82,12 @@ import {
   sourcePathForBucket,
   sourceSlugForFile,
   sourceTagsFromFilingPlan,
+  splitSummaryForCard,
   stringListFromUnknown,
   stripTrailingEllipsis,
+  summaryFallbackParts,
+  summaryLabelSections,
+  summarySentences,
   summaryTextValue,
   tagListFromUnknown,
   titleFromSlug,
@@ -3727,70 +3742,6 @@ function hasReviewPayloadSignal(value) {
 }
 
 
-function modelJsonParseError(provider, content) {
-  if (looksLikeTruncatedJson(content)) {
-    return modelOutputTruncatedError(provider, content, "");
-  }
-  const preview = clampSentence(String(content || "").replace(/\s+/g, " "), 240);
-  const error = new Error(`Margins received malformed JSON for the review${preview ? `: ${preview}` : "."}`);
-  error.code = "MARGINS_MODEL_JSON_PARSE";
-  error.provider = provider;
-  return error;
-}
-
-function modelOutputTruncatedError(provider, content, finishReason = "", outputKind = "") {
-  const preview = clampSentence(String(content || "").replace(/\s+/g, " "), 240);
-  const reason = finishReason ? ` (${finishReason})` : "";
-  const kind = outputKind || (String(content || "").includes("```margins-file") ? "margins-file blocks" : "JSON");
-  const subject = kind === "margins-file blocks" ? "helper output" : "review";
-  const error = new Error(`Margins ${subject} was cut off before complete ${kind} came back${reason}${preview ? `: ${preview}` : "."}`);
-  error.code = "MARGINS_MODEL_OUTPUT_TRUNCATED";
-  error.provider = provider;
-  error.finishReason = finishReason;
-  error.partialContent = String(content || "");
-  return error;
-}
-
-function isGeminiOutputTruncated(candidate, content) {
-  return /MAX_TOKENS/i.test(candidate?.finishReason || "") || looksLikeTruncatedJson(content);
-}
-
-function looksLikeTruncatedJson(content) {
-  const text = stripJsonCodeFence(String(content || "").trim());
-  if (!/^[{\[]/.test(text)) return false;
-  if (parseJsonCandidate(text)) return false;
-  return hasUnclosedJsonStructure(text) || /[:,]\s*$/.test(text);
-}
-
-function hasUnclosedJsonStructure(text) {
-  const stack = [];
-  let inString = false;
-  let escaped = false;
-  for (const char of String(text || "")) {
-    if (inString) {
-      if (escaped) {
-        escaped = false;
-      } else if (char === "\\") {
-        escaped = true;
-      } else if (char === "\"") {
-        inString = false;
-      }
-      continue;
-    }
-    if (char === "\"") {
-      inString = true;
-      continue;
-    }
-    if (char === "{" || char === "[") {
-      stack.push(char === "{" ? "}" : "]");
-      continue;
-    }
-    if (char === "}" || char === "]") {
-      if (char !== stack.pop()) return false;
-    }
-  }
-  return inString || stack.length > 0;
-}
 
 function apiSummaryParts(summary, extraBullets = []) {
   if (Array.isArray(summary)) {
@@ -4429,48 +4380,6 @@ function apiSummaryBullets(summary, extraBullets = []) {
     .slice(0, 5);
 }
 
-
-function summaryFallbackParts(summary) {
-  const parts = splitSummaryForCard(summary);
-  return {
-    overview: parts[0] ? clampSentence(parts[0], 220) : "",
-    bullets: parts.slice(1, 6).map((part) => clampSentence(part, 220)).filter(Boolean)
-  };
-}
-
-function splitSummaryForCard(summary) {
-  const clean = cleanDisplaySummary(summary);
-  if (!clean) return [];
-  const markdownParts = clean
-    .split(/\s+(?:[-*]|\d+[.)])\s+/)
-    .map((part) => cleanSummary(part))
-    .filter(Boolean);
-  if (markdownParts.length > 2) return markdownParts;
-  const labeledParts = summaryLabelSections(clean);
-  if (labeledParts.length > 2) return labeledParts;
-  const sentenceParts = summarySentences(clean);
-  if (sentenceParts.length > 2) return sentenceParts;
-  return chunkLongSummary(clean, 180).slice(0, 6);
-}
-
-function chunkLongSummary(summary, maxLength) {
-  const clean = cleanSummary(summary);
-  if (clean.length <= maxLength) return [clean];
-  const words = clean.split(/\s+/);
-  const chunks = [];
-  let current = "";
-  for (const word of words) {
-    if (`${current} ${word}`.trim().length > maxLength && current) {
-      chunks.push(current.trim());
-      current = word;
-    } else {
-      current = `${current} ${word}`.trim();
-    }
-  }
-  if (current) chunks.push(current.trim());
-  return chunks;
-}
-
 function buildApiQuestionPrompt(fileMap, files) {
   const sourceNames = files.map((file) => `- ${file.name}: ${excerptForQuestion(file.text || file.extractionError || "", 600)}`).join("\n") || "- No new source text available.";
   const changedPaths = [...fileMap.keys()]
@@ -4514,92 +4423,6 @@ function parseApiQuestions(content) {
     .filter((question) => question.question);
 }
 
-function parseJsonObject(content) {
-  for (const candidate of jsonParseCandidates(content)) {
-    const parsed = parseJsonCandidate(candidate);
-    if (parsed && typeof parsed === "object") return parsed;
-  }
-  return null;
-}
-
-function jsonParseCandidates(content) {
-  const text = String(content || "").trim();
-  if (!text) return [];
-  const candidates = new Set([text, stripJsonCodeFence(text)]);
-  for (const match of text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)) {
-    candidates.add(match[1].trim());
-  }
-  const balanced = balancedJsonSubstring(text);
-  if (balanced) candidates.add(balanced);
-  return [...candidates].filter(Boolean);
-}
-
-function stripJsonCodeFence(text) {
-  return String(text || "")
-    .trim()
-    .replace(/^\uFEFF/, "")
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/i, "")
-    .trim();
-}
-
-function parseJsonCandidate(candidate) {
-  const stripped = stripJsonCodeFence(candidate);
-  const variants = [
-    candidate,
-    stripped,
-    candidate.replace(/,\s*([}\]])/g, "$1"),
-    stripped.replace(/,\s*([}\]])/g, "$1")
-  ];
-  for (const variant of variants) {
-    try {
-      const parsed = JSON.parse(variant);
-      if (typeof parsed === "string") return parseJsonObject(parsed);
-      return parsed;
-    } catch {
-      // Try the next repair variant.
-    }
-  }
-  return null;
-}
-
-function balancedJsonSubstring(text) {
-  const source = String(text || "");
-  for (let start = 0; start < source.length; start += 1) {
-    const opener = source[start];
-    if (opener !== "{" && opener !== "[") continue;
-    const closerFor = opener === "{" ? "}" : "]";
-    const stack = [closerFor];
-    let inString = false;
-    let escaped = false;
-    for (let index = start + 1; index < source.length; index += 1) {
-      const char = source[index];
-      if (inString) {
-        if (escaped) {
-          escaped = false;
-        } else if (char === "\\") {
-          escaped = true;
-        } else if (char === "\"") {
-          inString = false;
-        }
-        continue;
-      }
-      if (char === "\"") {
-        inString = true;
-        continue;
-      }
-      if (char === "{" || char === "[") {
-        stack.push(char === "{" ? "}" : "]");
-        continue;
-      }
-      if (char === "}" || char === "]") {
-        if (char !== stack.pop()) break;
-        if (stack.length === 0) return source.slice(start, index + 1);
-      }
-    }
-  }
-  return "";
-}
 
 function excerptForQuestion(text, max) {
   const clean = String(text || "").replace(/\s+/g, " ").trim();
@@ -8524,28 +8347,6 @@ function summaryOverview(summary, bullets) {
   return clampSentence(overview, 220);
 }
 
-function summarySentences(summary) {
-  const clean = cleanSummary(summary);
-  const matches = clean.match(/[^.!?]+[.!?]+(?:\s|$)/g);
-  if (!matches || matches.length < 2) {
-    const sections = summaryLabelSections(clean);
-    return sections.length > 1 ? sections : clean ? [clean] : [];
-  }
-  const consumed = matches.join("").trim();
-  const tail = clean.slice(consumed.length).trim();
-  return [...matches.map((part) => part.trim()), ...(tail ? [tail] : [])].filter(Boolean);
-}
-
-function summaryLabelSections(summary) {
-  const clean = cleanSummary(summary);
-  if (clean.length < 260) return clean ? [clean] : [];
-  return clean
-    .replace(/\s+(Date|Participants|Background|Opportunity|Assessment|Current status|Next steps|Risks|Decision|Follow-up|Context|Transcript)\b/g, "\n$1")
-    .split(/\n+/)
-    .map((part) => cleanSummary(part))
-    .filter(Boolean)
-    .slice(0, 8);
-}
 
 function renderSourceConnections(file) {
   const connections = state.ingestReviews.get(file.name)?.connections || [];
