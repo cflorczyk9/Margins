@@ -26,20 +26,31 @@ import {
   retryAfterText
 } from "./core/api.js";
 import {
+  arrayFromUnknown,
   basename,
   bodyWithoutFrontmatter,
   cleanBucket,
+  cleanDisplaySummary,
   cleanExtractedSourceText,
   cleanSummary,
   cleanTag,
   cleanWikiLinkLabel,
   cleanYamlScalar,
   clampSentence,
+  confidenceValue,
   escapeRegExp,
   extractWikiLinks,
+  financialAccountLine,
+  financialHoldingLine,
+  financialTransactionLine,
   firstMatch,
+  formatConnectionLine,
+  formatFilingJudgmentMarkdown,
+  formatFinancialDetailsMarkdown,
   frontmatterFields,
   frontmatterList,
+  hasFilingPlan,
+  hasFinancialDetails,
   hasYamlFrontmatter,
   insertFrontmatterLine,
   isBucketOverviewPath,
@@ -52,22 +63,37 @@ import {
   normalizeEntityTag,
   normalizeFilingPath,
   normalizeMarginsPath,
+  relevanceValue,
   replaceSourceHeading,
   replaceSummarySection,
   replaceYamlSummary,
   slugifyLoose,
   sourcePathForBucket,
   sourceSlugForFile,
+  sourceTagsFromFilingPlan,
+  stringListFromUnknown,
   stripTrailingEllipsis,
+  summaryTextValue,
+  tagListFromUnknown,
   titleFromSlug,
   uniqueBy,
+  upsertConnectionsSection,
+  upsertFilingJudgmentSection,
+  upsertFinancialDetailsSection,
   upsertFrontmatterList,
   upsertFrontmatterScalar,
   warningLabel,
   WIKI_SOURCE_BUCKETS,
   yamlScalar
 } from "./core/wiki.js";
-import { clamp, escapeHtml, hashString } from "./core/utils.js";
+import {
+  clamp,
+  escapeHtml,
+  field,
+  firstDefined,
+  hashString,
+  normalizedFieldName
+} from "./core/utils.js";
 import {
   drawGraph,
   graphFromFileMap,
@@ -1831,15 +1857,6 @@ function applyFilingPlanToSourceBody(body, plan) {
   return next;
 }
 
-function sourceTagsFromFilingPlan(plan) {
-  return uniqueBy([
-    "source",
-    ...tagListFromUnknown(plan.tags),
-    plan.regionTag,
-    plan.typeTag
-  ].map(cleanTag).filter(Boolean), (tag) => tag);
-}
-
 function sourceNoteEntryForFile(file) {
   return sourceNoteEntryForFileMap(file, state.currentFileMap);
 }
@@ -1870,94 +1887,6 @@ function pendingRawSourcesFromVault(fileMap = state.currentFileMap, rawFiles = s
   return rawFiles
     .filter((file) => !isRawSourceIngested(file, fileMap))
     .map((file) => ({ ...file, sourceScope: "vault" }));
-}
-
-function upsertFilingJudgmentSection(body, plan) {
-  const section = formatFilingJudgmentMarkdown(plan);
-  if (!section) return body;
-  if (/## Filing Judgment\s+[\s\S]*?(?=\n##\s|$)/.test(body)) {
-    return body.replace(/## Filing Judgment\s+[\s\S]*?(?=\n##\s|$)/, section);
-  }
-  return `${body.trim()}\n\n${section}\n`;
-}
-
-function formatFilingJudgmentMarkdown(plan) {
-  const lines = ["## Filing Judgment", ""];
-  const placement = plan.placement || {};
-  if (placement.path || placement.bucket || placement.reason) {
-    lines.push(`- Placement: ${[placement.path, placement.bucket ? `bucket ${placement.bucket}` : "", placement.reason].filter(Boolean).join(" — ")}`);
-  }
-  if (plan.tags?.length || plan.regionTag || plan.typeTag || plan.typeTagNote) {
-    lines.push(`- Tags: ${sourceTagsFromFilingPlan(plan).join(", ") || "source"}`);
-    if (plan.typeTagNote) lines.push(`- Type tag note: ${plan.typeTagNote}`);
-  }
-  if (plan.whySaved?.length) {
-    lines.push("", "### Why this belongs");
-    lines.push(...plan.whySaved.map((item) => `- ${item}`));
-  }
-  if (plan.candidateFiles?.length) {
-    lines.push("", "### Files checked");
-    lines.push(...plan.candidateFiles.map((item) => `- ${item.path}${item.reason ? ` — ${item.reason}` : ""}`));
-  }
-  if (plan.promotion?.candidate || plan.promotion?.recommendation) {
-    lines.push("", "### Promotion");
-    lines.push(`- ${[plan.promotion.candidate, plan.promotion.recommendation, plan.promotion.reason].filter(Boolean).join(" — ")}`);
-  }
-  return lines.join("\n");
-}
-
-function upsertConnectionsSection(body, connections) {
-  const section = `## Connections\n\n${connections.map(formatConnectionLine).join("\n")}`;
-  if (/## Connections\s+[\s\S]*?(?=\n##\s|$)/.test(body)) {
-    return body.replace(/## Connections\s+[\s\S]*?(?=\n##\s|$)/, section);
-  }
-  return `${body.trim()}\n\n${section}\n`;
-}
-
-function upsertFinancialDetailsSection(body, details) {
-  const section = `## Financial Details\n\n${formatFinancialDetailsMarkdown(details)}`;
-  if (/## Financial Details\s+[\s\S]*?(?=\n##\s|$)/.test(body)) {
-    return body.replace(/## Financial Details\s+[\s\S]*?(?=\n##\s|$)/, section);
-  }
-  return `${body.trim()}\n\n${section}\n`;
-}
-
-function formatFinancialDetailsMarkdown(details) {
-  const lines = [];
-  if (details.accounts?.length) {
-    lines.push("### Accounts");
-    lines.push(...details.accounts.map((account) => `- ${financialAccountLine(account)}`));
-    lines.push("");
-  }
-  if (details.figures?.length) {
-    lines.push("### Important Figures");
-    lines.push(...details.figures.map((figure) => `- ${[figure.label || "Figure", figure.value, figure.date, figure.context].filter(Boolean).join(" — ")}`));
-    lines.push("");
-  }
-  if (details.holdings?.length) {
-    lines.push("### Holdings");
-    lines.push(...details.holdings.map((holding) => `- ${financialHoldingLine(holding)}`));
-    lines.push("");
-  }
-  if (details.transactions?.length) {
-    lines.push("### Transactions");
-    lines.push(...details.transactions.map((transaction) => `- ${financialTransactionLine(transaction)}`));
-    lines.push("");
-  }
-  if (details.caveats?.length) {
-    lines.push("### Caveats");
-    lines.push(...details.caveats.map((caveat) => `- ${caveat}`));
-  }
-  return lines.join("\n").trim() || "- No structured financial details extracted.";
-}
-
-function formatConnectionLine(connection) {
-  const title = connection.title || titleFromSlug(basename(connection.path || "connection").replace(/\.md$/, ""));
-  const link = connection.path && connection.path.startsWith("wiki/")
-    ? `[[${basename(connection.path).replace(/\.md$/, "")}|${title}]]`
-    : title;
-  const label = connection.type === "new" ? "new page" : "existing";
-  return `- ${link} (${label}) — ${connection.reason || "Relevant to this source."}`;
 }
 
 async function generateApiReviewQuestions(fileMap, files) {
@@ -3751,10 +3680,6 @@ function parseApiIngestReview(content, file, mode, provider = "gemini") {
   };
 }
 
-function firstDefined(...values) {
-  return values.find((value) => value !== undefined && value !== null);
-}
-
 function financialDetailsPayload(parsed) {
   const explicit = field(parsed, "financialDetails", "financial_details", "finance");
   if (explicit) return explicit;
@@ -3801,21 +3726,6 @@ function hasReviewPayloadSignal(value) {
   ].some((key) => field(value, key) !== undefined);
 }
 
-function field(value, ...names) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-  for (const name of names) {
-    if (Object.prototype.hasOwnProperty.call(value, name)) return value[name];
-  }
-  const normalizedNames = new Set(names.map(normalizedFieldName));
-  for (const [key, fieldValue] of Object.entries(value)) {
-    if (normalizedNames.has(normalizedFieldName(key))) return fieldValue;
-  }
-  return undefined;
-}
-
-function normalizedFieldName(name) {
-  return String(name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-}
 
 function modelJsonParseError(provider, content) {
   if (looksLikeTruncatedJson(content)) {
@@ -4136,20 +4046,6 @@ function emptyFilingPlan(file = null) {
   };
 }
 
-function hasFilingPlan(plan) {
-  return Boolean(plan && (
-    plan.whySaved?.length ||
-    plan.candidateFiles?.length ||
-    plan.tags?.length ||
-    plan.regionTag ||
-    plan.typeTag ||
-    plan.typeTagNote ||
-    plan.promotion?.candidate ||
-    plan.promotion?.recommendation ||
-    plan.placement?.path ||
-    plan.placement?.reason
-  ));
-}
 
 function parseFilingPlacement(value, file = null) {
   const fallback = emptyFilingPlan(file).placement;
@@ -4390,22 +4286,6 @@ function isFinancialTransactionObject(value) {
   return Boolean(field(value, "date", "description", "memo", "amount", "netAmount", "net_amount", "type", "category"));
 }
 
-function summaryTextValue(value) {
-  if (value === undefined || value === null) return "";
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-    return cleanDisplaySummary(value);
-  }
-  if (Array.isArray(value)) {
-    return cleanDisplaySummary(value.map(summaryTextValue).filter(Boolean).join(" "));
-  }
-  if (typeof value === "object") {
-    return cleanDisplaySummary(firstDefined(
-      field(value, "point", "takeaway", "text", "summary", "overview", "oneLine", "one_line", "note", "reason", "title", "description"),
-      ""
-    ));
-  }
-  return "";
-}
 
 function optionListFromUnknown(value) {
   const options = Array.isArray(value)
@@ -4431,15 +4311,6 @@ function emptyFinancialDetails() {
   };
 }
 
-function hasFinancialDetails(details) {
-  return Boolean(details && (
-    details.accounts?.length ||
-    details.figures?.length ||
-    details.holdings?.length ||
-    details.transactions?.length ||
-    details.caveats?.length
-  ));
-}
 
 function cleanFinancialValue(value) {
   const clean = cleanSummary(value);
@@ -4542,17 +4413,6 @@ function transactionTypeFromText(text) {
   return "unknown";
 }
 
-function relevanceValue(value) {
-  const normalized = String(value || "").toLowerCase();
-  if (normalized === "secondary" || normalized === "context") return normalized;
-  return "primary";
-}
-
-function confidenceValue(value) {
-  const normalized = String(value || "").toLowerCase();
-  if (normalized === "high" || normalized === "medium" || normalized === "low") return normalized;
-  return "medium";
-}
 
 function apiSummaryBullets(summary, extraBullets = []) {
   const values = [];
@@ -4569,25 +4429,6 @@ function apiSummaryBullets(summary, extraBullets = []) {
     .slice(0, 5);
 }
 
-function arrayFromUnknown(value) {
-  if (Array.isArray(value)) return value;
-  if (typeof value === "string" && value.trim()) return [value];
-  return [];
-}
-
-function stringListFromUnknown(value) {
-  return arrayFromUnknown(value)
-    .flatMap((item) => Array.isArray(item) ? item : [item])
-    .map(summaryTextValue)
-    .filter(Boolean);
-}
-
-function tagListFromUnknown(value) {
-  return stringListFromUnknown(value)
-    .flatMap((item) => item.split(/[,|]/))
-    .map(cleanTag)
-    .filter(Boolean);
-}
 
 function summaryFallbackParts(summary) {
   const parts = splitSummaryForCard(summary);
@@ -8761,34 +8602,6 @@ function renderSourceFinancialDetails(file) {
   `;
 }
 
-function financialAccountLine(account) {
-  return [
-    account.institution,
-    account.accountType,
-    account.owner ? `owner: ${account.owner}` : "",
-    account.accountNumberLast4 ? `last4: ${account.accountNumberLast4}` : "",
-    account.period
-  ].filter(Boolean).join(" · ");
-}
-
-function financialHoldingLine(holding) {
-  return [
-    holding.symbol,
-    holding.name,
-    holding.quantity,
-    holding.value,
-    holding.context
-  ].filter(Boolean).join(" · ");
-}
-
-function financialTransactionLine(transaction) {
-  return [
-    transaction.date,
-    transaction.type && transaction.type !== "unknown" ? transaction.type : "",
-    transaction.description,
-    transaction.amount
-  ].filter(Boolean).join(" · ");
-}
 
 function renderSourceLightTouch(file) {
   const notes = state.ingestReviews.get(file.name)?.lightTouch || [];
@@ -8860,14 +8673,6 @@ function extractSourceSummary(body) {
   return yaml?.[2] ? cleanSummary(yaml[2]) : "";
 }
 
-function cleanDisplaySummary(value) {
-  return cleanSummary(String(value || "")
-    .replace(/\b[A-Z0-9._%+-]+@\s*[A-Z0-9.-]+(?:\s*\.\s*[A-Z]{2,})+\b/gi, " ")
-    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, " ")
-    .replace(/\b[A-Z][A-Za-z-]+(?:\s+[A-Z][A-Za-z-]+){0,3}\s+(?:Department|School|Faculty|Institute)\s+of\s+[^.!?]{0,180}/g, " ")
-    .replace(/\b(?:Department|School|Faculty|Institute)\s+of\s+[^.!?]{0,160}/gi, " ")
-    .replace(/\s{2,}/g, " "));
-}
 
 function installTestHooks() {
   if (!new URLSearchParams(location.search).has("marginsTest")) return;

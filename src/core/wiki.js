@@ -346,6 +346,229 @@ export function isReadableSourceTextPath(path) {
 }
 
 // ---------------------------------------------------------------------
+// Loose-shape value coercion (used by API review parsers + format-section)
+// ---------------------------------------------------------------------
+
+export function arrayFromUnknown(value) {
+  if (Array.isArray(value)) return value;
+  if (typeof value === "string" && value.trim()) return [value];
+  return [];
+}
+
+export function cleanDisplaySummary(value) {
+  return cleanSummary(String(value || "")
+    .replace(/\b[A-Z0-9._%+-]+@\s*[A-Z0-9.-]+(?:\s*\.\s*[A-Z]{2,})+\b/gi, " ")
+    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, " ")
+    .replace(/\b[A-Z][A-Za-z-]+(?:\s+[A-Z][A-Za-z-]+){0,3}\s+(?:Department|School|Faculty|Institute)\s+of\s+[^.!?]{0,180}/g, " ")
+    .replace(/\b(?:Department|School|Faculty|Institute)\s+of\s+[^.!?]{0,160}/gi, " ")
+    .replace(/\s{2,}/g, " "));
+}
+
+export function summaryTextValue(value) {
+  if (value === undefined || value === null) return "";
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return cleanDisplaySummary(value);
+  }
+  if (Array.isArray(value)) {
+    return cleanDisplaySummary(value.map(summaryTextValue).filter(Boolean).join(" "));
+  }
+  if (typeof value === "object") {
+    const candidate = ["point", "takeaway", "text", "summary", "overview", "oneLine", "one_line", "note", "reason", "title", "description"]
+      .map((key) => value[key])
+      .find((item) => item !== undefined && item !== null);
+    return cleanDisplaySummary(candidate ?? "");
+  }
+  return "";
+}
+
+export function stringListFromUnknown(value) {
+  return arrayFromUnknown(value)
+    .flatMap((item) => Array.isArray(item) ? item : [item])
+    .map(summaryTextValue)
+    .filter(Boolean);
+}
+
+export function tagListFromUnknown(value) {
+  return stringListFromUnknown(value)
+    .flatMap((item) => item.split(/[,|]/))
+    .map(cleanTag)
+    .filter(Boolean);
+}
+
+export function relevanceValue(value) {
+  const normalized = String(value || "").toLowerCase();
+  if (normalized === "secondary" || normalized === "context") return normalized;
+  return "primary";
+}
+
+export function confidenceValue(value) {
+  const normalized = String(value || "").toLowerCase();
+  if (normalized === "high" || normalized === "medium" || normalized === "low") return normalized;
+  return "medium";
+}
+
+// ---------------------------------------------------------------------
+// Filing-plan + financial-details predicates
+// ---------------------------------------------------------------------
+
+export function hasFilingPlan(plan) {
+  return Boolean(plan && (
+    plan.whySaved?.length ||
+    plan.candidateFiles?.length ||
+    plan.tags?.length ||
+    plan.regionTag ||
+    plan.typeTag ||
+    plan.typeTagNote ||
+    plan.placement?.path ||
+    plan.placement?.bucket ||
+    plan.placement?.title ||
+    plan.placement?.reason ||
+    plan.promotion?.candidate ||
+    plan.promotion?.recommendation
+  ));
+}
+
+export function hasFinancialDetails(details) {
+  return Boolean(details && (
+    details.accounts?.length ||
+    details.figures?.length ||
+    details.holdings?.length ||
+    details.transactions?.length ||
+    details.caveats?.length
+  ));
+}
+
+export function sourceTagsFromFilingPlan(plan) {
+  return uniqueBy([
+    "source",
+    ...tagListFromUnknown(plan.tags),
+    plan.regionTag,
+    plan.typeTag
+  ].map(cleanTag).filter(Boolean), (tag) => tag);
+}
+
+// ---------------------------------------------------------------------
+// Section-format helpers (markdown body section writers)
+// ---------------------------------------------------------------------
+
+export function formatFilingJudgmentMarkdown(plan) {
+  const lines = ["## Filing Judgment", ""];
+  const placement = plan.placement || {};
+  if (placement.path || placement.bucket || placement.reason) {
+    lines.push(`- Placement: ${[placement.path, placement.bucket ? `bucket ${placement.bucket}` : "", placement.reason].filter(Boolean).join(" — ")}`);
+  }
+  if (plan.tags?.length || plan.regionTag || plan.typeTag || plan.typeTagNote) {
+    lines.push(`- Tags: ${sourceTagsFromFilingPlan(plan).join(", ") || "source"}`);
+    if (plan.typeTagNote) lines.push(`- Type tag note: ${plan.typeTagNote}`);
+  }
+  if (plan.whySaved?.length) {
+    lines.push("", "### Why this belongs");
+    lines.push(...plan.whySaved.map((item) => `- ${item}`));
+  }
+  if (plan.candidateFiles?.length) {
+    lines.push("", "### Files checked");
+    lines.push(...plan.candidateFiles.map((item) => `- ${item.path}${item.reason ? ` — ${item.reason}` : ""}`));
+  }
+  if (plan.promotion?.candidate || plan.promotion?.recommendation) {
+    lines.push("", "### Promotion");
+    lines.push(`- ${[plan.promotion.candidate, plan.promotion.recommendation, plan.promotion.reason].filter(Boolean).join(" — ")}`);
+  }
+  return lines.join("\n");
+}
+
+export function upsertFilingJudgmentSection(body, plan) {
+  const section = formatFilingJudgmentMarkdown(plan);
+  if (!section) return body;
+  if (/## Filing Judgment\s+[\s\S]*?(?=\n##\s|$)/.test(body)) {
+    return body.replace(/## Filing Judgment\s+[\s\S]*?(?=\n##\s|$)/, section);
+  }
+  return `${body.trim()}\n\n${section}\n`;
+}
+
+export function formatConnectionLine(connection) {
+  const title = connection.title || titleFromSlug(basename(connection.path || "connection").replace(/\.md$/, ""));
+  const link = connection.path && connection.path.startsWith("wiki/")
+    ? `[[${basename(connection.path).replace(/\.md$/, "")}|${title}]]`
+    : title;
+  const label = connection.type === "new" ? "new page" : "existing";
+  return `- ${link} (${label}) — ${connection.reason || "Relevant to this source."}`;
+}
+
+export function upsertConnectionsSection(body, connections) {
+  const section = `## Connections\n\n${connections.map(formatConnectionLine).join("\n")}`;
+  if (/## Connections\s+[\s\S]*?(?=\n##\s|$)/.test(body)) {
+    return body.replace(/## Connections\s+[\s\S]*?(?=\n##\s|$)/, section);
+  }
+  return `${body.trim()}\n\n${section}\n`;
+}
+
+export function financialAccountLine(account) {
+  return [
+    account.institution,
+    account.accountType,
+    account.owner ? `owner: ${account.owner}` : "",
+    account.accountNumberLast4 ? `last4: ${account.accountNumberLast4}` : "",
+    account.period
+  ].filter(Boolean).join(" · ");
+}
+
+export function financialHoldingLine(holding) {
+  return [
+    holding.symbol,
+    holding.name,
+    holding.quantity,
+    holding.value,
+    holding.context
+  ].filter(Boolean).join(" · ");
+}
+
+export function financialTransactionLine(transaction) {
+  return [
+    transaction.date,
+    transaction.type && transaction.type !== "unknown" ? transaction.type : "",
+    transaction.description,
+    transaction.amount
+  ].filter(Boolean).join(" · ");
+}
+
+export function formatFinancialDetailsMarkdown(details) {
+  const lines = [];
+  if (details.accounts?.length) {
+    lines.push("### Accounts");
+    lines.push(...details.accounts.map((account) => `- ${financialAccountLine(account)}`));
+    lines.push("");
+  }
+  if (details.figures?.length) {
+    lines.push("### Important Figures");
+    lines.push(...details.figures.map((figure) => `- ${[figure.label || "Figure", figure.value, figure.date, figure.context].filter(Boolean).join(" — ")}`));
+    lines.push("");
+  }
+  if (details.holdings?.length) {
+    lines.push("### Holdings");
+    lines.push(...details.holdings.map((holding) => `- ${financialHoldingLine(holding)}`));
+    lines.push("");
+  }
+  if (details.transactions?.length) {
+    lines.push("### Transactions");
+    lines.push(...details.transactions.map((transaction) => `- ${financialTransactionLine(transaction)}`));
+    lines.push("");
+  }
+  if (details.caveats?.length) {
+    lines.push("### Caveats");
+    lines.push(...details.caveats.map((caveat) => `- ${caveat}`));
+  }
+  return lines.join("\n").trim() || "- No structured financial details extracted.";
+}
+
+export function upsertFinancialDetailsSection(body, details) {
+  const section = `## Financial Details\n\n${formatFinancialDetailsMarkdown(details)}`;
+  if (/## Financial Details\s+[\s\S]*?(?=\n##\s|$)/.test(body)) {
+    return body.replace(/## Financial Details\s+[\s\S]*?(?=\n##\s|$)/, section);
+  }
+  return `${body.trim()}\n\n${section}\n`;
+}
+
+// ---------------------------------------------------------------------
 // Misc
 // ---------------------------------------------------------------------
 
