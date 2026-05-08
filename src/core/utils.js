@@ -51,3 +51,80 @@ export function field(value, ...names) {
   }
   return undefined;
 }
+
+// ---------------------------------------------------------------------
+// Numeric and string formatters
+// ---------------------------------------------------------------------
+
+export function formatStatNumber(value) {
+  return Number(value || 0).toLocaleString("en-US");
+}
+
+export function formatUsd(value) {
+  return `$${Number(value || 0).toFixed(4).replace(/0+$/, "").replace(/\.$/, ".00")}`;
+}
+
+export function formatFileSize(size) {
+  if (!Number.isFinite(size) || size <= 0) return "";
+  if (size < 1024) return `${size} B`;
+  const units = ["KB", "MB", "GB"];
+  let value = size / 1024;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`;
+}
+
+export function textSizeBytes(value) {
+  const text = String(value || "");
+  try {
+    return new TextEncoder().encode(text).length;
+  } catch {
+    return text.length;
+  }
+}
+
+export function formatByteSize(bytes) {
+  const value = Math.max(0, Number(bytes) || 0);
+  if (value < 1024) return `${formatStatNumber(value)} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(value < 10 * 1024 ? 1 : 0)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(value < 10 * 1024 * 1024 ? 1 : 0)} MB`;
+}
+
+export function formatProcessDuration(milliseconds) {
+  const seconds = Math.max(0, Number(milliseconds) || 0) / 1000;
+  if (seconds < 10) return `${seconds.toFixed(1)}s`;
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.round(seconds % 60);
+  return `${minutes}m ${String(remainingSeconds).padStart(2, "0")}s`;
+}
+
+export function pluralize(noun, count) {
+  if (Number(count) === 1) return noun;
+  if (noun === "entity") return "entities";
+  return `${noun}${Number(count) === 1 ? "" : "s"}`;
+}
+
+export function wordCount(text) {
+  return (text.match(/\S+/g) || []).length;
+}
+
+export function firstLine(text) {
+  return text.split("\n").find((line) => line.trim() && !line.startsWith("#")) || "";
+}
+
+export function parseJsonLine(line) {
+  try {
+    return JSON.parse(line);
+  } catch {
+    return null;
+  }
+}
+
+export function excerptForQuestion(text, max) {
+  const clean = String(text || "").replace(/\s+/g, " ").trim();
+  return clean.length <= max ? clean : `${clean.slice(0, max).trim()}...`;
+}
