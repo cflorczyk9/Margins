@@ -6,6 +6,7 @@ import { state } from "./core/state.js";
 import {
   apiProviderRequiresSecret,
   balancedJsonSubstring,
+  dedupeQuestions,
   defaultApiGuardSettings,
   defaultEndpointForProvider,
   defaultModelForProvider,
@@ -28,11 +29,14 @@ import {
   parseDotEnv,
   parseJsonCandidate,
   parseJsonObject,
+  parseLlmFiles,
   positiveInteger,
   positiveNumber,
   providerLabel,
   providerValue,
   retryAfterText,
+  reviewModeLabel,
+  reviewQuestion,
   stripJsonCodeFence
 } from "./core/api.js";
 import {
@@ -3791,6 +3795,46 @@ function parseApiIngestReview(content, file, mode, provider = "gemini") {
     modelSummaryFallback,
     fallbackQuestions: []
   };
+}
+
+function filingPlanQuestions(file, plan) {
+  if (!hasFilingPlan(plan)) return [];
+  const questions = [];
+  const placement = plan.placement || {};
+  if (placement.alternatives?.length) {
+    questions.push(reviewQuestion(
+      "suggest",
+      "Bucket",
+      rawSourceOutputPath(file.name),
+      `File this in ${placement.bucket || "sources"} or use another proposed bucket?`,
+      placement.reason || "The source has more than one plausible home.",
+      `My take: use ${placement.path || placement.bucket || "the recommended path"}.`,
+      [placement.path || placement.bucket, ...placement.alternatives, "Skip"].filter(Boolean).slice(0, 4)
+    ));
+  }
+  if (plan.typeTagNote && !plan.typeTag) {
+    questions.push(reviewQuestion(
+      "suggest",
+      "Type tag",
+      rawSourceOutputPath(file.name),
+      "This source does not fit the closed type-tag set cleanly. Leave type blank for now?",
+      plan.typeTagNote,
+      "My take: leave the source page typed as source and use topic tags until the tag set is extended.",
+      ["Leave blank", "Use closest existing type", "Skip"]
+    ));
+  }
+  if (plan.promotion?.candidate && /wait|hold|later|second|another/i.test(`${plan.promotion.recommendation} ${plan.promotion.reason}`)) {
+    questions.push(reviewQuestion(
+      "suggest",
+      "Promotion",
+      rawSourceOutputPath(file.name),
+      `Promote ${plan.promotion.candidate} now, or wait for another source?`,
+      plan.promotion.reason || "Promotion changes whether Margins creates a durable concept page.",
+      plan.promotion.recommendation || "My take: wait until there is another supporting source.",
+      ["Wait", "Promote now", "Skip"]
+    ));
+  }
+  return questions;
 }
 
 
