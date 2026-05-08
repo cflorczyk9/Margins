@@ -569,6 +569,74 @@ export function upsertFinancialDetailsSection(body, details) {
 }
 
 // ---------------------------------------------------------------------
+// Summary card splitting (overview + bullets from a single blob)
+// ---------------------------------------------------------------------
+
+export function chunkLongSummary(summary, maxLength) {
+  const clean = cleanSummary(summary);
+  if (clean.length <= maxLength) return [clean];
+  const words = clean.split(/\s+/);
+  const chunks = [];
+  let current = "";
+  for (const word of words) {
+    if (`${current} ${word}`.trim().length > maxLength && current) {
+      chunks.push(current.trim());
+      current = word;
+    } else {
+      current = `${current} ${word}`.trim();
+    }
+  }
+  if (current) chunks.push(current.trim());
+  return chunks;
+}
+
+export function summaryLabelSections(summary) {
+  const clean = cleanSummary(summary);
+  if (clean.length < 260) return clean ? [clean] : [];
+  return clean
+    .replace(/\s+(Date|Participants|Background|Opportunity|Assessment|Current status|Next steps|Risks|Decision|Follow-up|Context|Transcript)\b/g, "\n$1")
+    .split(/\n+/)
+    .map((part) => cleanSummary(part))
+    .filter(Boolean)
+    .slice(0, 8);
+}
+
+export function summarySentences(summary) {
+  const clean = cleanSummary(summary);
+  const matches = clean.match(/[^.!?]+[.!?]+(?:\s|$)/g);
+  if (!matches || matches.length < 2) {
+    const sections = summaryLabelSections(clean);
+    return sections.length > 1 ? sections : clean ? [clean] : [];
+  }
+  const consumed = matches.join("").trim();
+  const tail = clean.slice(consumed.length).trim();
+  return [...matches.map((part) => part.trim()), ...(tail ? [tail] : [])].filter(Boolean);
+}
+
+export function splitSummaryForCard(summary) {
+  const clean = cleanDisplaySummary(summary);
+  if (!clean) return [];
+  const markdownParts = clean
+    .split(/\s+(?:[-*]|\d+[.)])\s+/)
+    .map((part) => cleanSummary(part))
+    .filter(Boolean);
+  if (markdownParts.length > 2) return markdownParts;
+  const labeledParts = summaryLabelSections(clean);
+  if (labeledParts.length > 2) return labeledParts;
+  const sentenceParts = summarySentences(clean);
+  if (sentenceParts.length > 2) return sentenceParts;
+  return chunkLongSummary(clean, 180).slice(0, 6);
+}
+
+export function summaryFallbackParts(summary) {
+  const parts = splitSummaryForCard(summary);
+  return {
+    overview: parts[0] ? clampSentence(parts[0], 220) : "",
+    bullets: parts.slice(1, 6).map((part) => clampSentence(part, 220)).filter(Boolean)
+  };
+}
+
+// ---------------------------------------------------------------------
 // Misc
 // ---------------------------------------------------------------------
 

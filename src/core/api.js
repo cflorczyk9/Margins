@@ -187,6 +187,175 @@ export function retryAfterText(error) {
 }
 
 // ---------------------------------------------------------------------
+// JSON-from-LLM parsing utilities
+//
+// Models occasionally wrap JSON in code fences, emit BOMs, or truncate
+// before closing braces. These helpers do best-effort recovery before
+// the strict parsers downstream give up.
+// ---------------------------------------------------------------------
+
+import { clampSentence } from "./wiki.js";
+
+export function stripJsonCodeFence(text) {
+  return String(text || "")
+    .trim()
+    .replace(/^﻿/, "")
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+}
+
+export function hasUnclosedJsonStructure(text) {
+  const stack = [];
+  let inString = false;
+  let escaped = false;
+  for (const char of String(text || "")) {
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === "\"") {
+        inString = false;
+      }
+      continue;
+    }
+    if (char === "\"") {
+      inString = true;
+      continue;
+    }
+    if (char === "{" || char === "[") {
+      stack.push(char === "{" ? "}" : "]");
+      continue;
+    }
+    if (char === "}" || char === "]") {
+      if (char !== stack.pop()) return false;
+    }
+  }
+  return inString || stack.length > 0;
+}
+
+export function balancedJsonSubstring(text) {
+  const source = String(text || "");
+  for (let start = 0; start < source.length; start += 1) {
+    const opener = source[start];
+    if (opener !== "{" && opener !== "[") continue;
+    const closerFor = opener === "{" ? "}" : "]";
+    const stack = [closerFor];
+    let inString = false;
+    let escaped = false;
+    for (let index = start + 1; index < source.length; index += 1) {
+      const char = source[index];
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (char === "\\") {
+          escaped = true;
+        } else if (char === "\"") {
+          inString = false;
+        }
+        continue;
+      }
+      if (char === "\"") {
+        inString = true;
+        continue;
+      }
+      if (char === "{" || char === "[") {
+        stack.push(char === "{" ? "}" : "]");
+        continue;
+      }
+      if (char === "}" || char === "]") {
+        const expected = stack.pop();
+        if (char !== expected) break;
+        if (stack.length === 0) {
+          return source.slice(start, index + 1);
+        }
+      }
+    }
+  }
+  return "";
+}
+
+export function parseJsonCandidate(candidate) {
+  const stripped = stripJsonCodeFence(candidate);
+  const variants = [
+    candidate,
+    stripped,
+    candidate.replace(/,\s*([}\]])/g, "$1"),
+    stripped.replace(/,\s*([}\]])/g, "$1")
+  ];
+  for (const variant of variants) {
+    try {
+      const parsed = JSON.parse(variant);
+      if (typeof parsed === "string") return parseJsonObject(parsed);
+      return parsed;
+    } catch {
+      // Try the next repair variant.
+    }
+  }
+  return null;
+}
+
+export function jsonParseCandidates(content) {
+  const text = String(content || "").trim();
+  if (!text) return [];
+  const candidates = new Set([text, stripJsonCodeFence(text)]);
+  for (const match of text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)) {
+    candidates.add(match[1].trim());
+  }
+  const balanced = balancedJsonSubstring(text);
+  if (balanced) candidates.add(balanced);
+  return [...candidates].filter(Boolean);
+}
+
+export function parseJsonObject(content) {
+  for (const candidate of jsonParseCandidates(content)) {
+    const parsed = parseJsonCandidate(candidate);
+    if (parsed && typeof parsed === "object") return parsed;
+  }
+  return null;
+}
+
+export function looksLikeTruncatedJson(content) {
+  const text = stripJsonCodeFence(String(content || "").trim());
+  if (!/^[{\[]/.test(text)) return false;
+  if (parseJsonCandidate(text)) return false;
+  return hasUnclosedJsonStructure(text) || /[:,]\s*$/.test(text);
+}
+
+export function isGeminiOutputTruncated(candidate, content) {
+  return /MAX_TOKENS/i.test(candidate?.finishReason || "") || looksLikeTruncatedJson(content);
+}
+
+// ---------------------------------------------------------------------
+// Error constructors (paired with the predicates above)
+// ---------------------------------------------------------------------
+
+export function modelOutputTruncatedError(provider, content, finishReason = "", outputKind = "") {
+  const preview = clampSentence(String(content || "").replace(/\s+/g, " "), 240);
+  const reason = finishReason ? ` (${finishReason})` : "";
+  const kind = outputKind || (String(content || "").includes("```margins-file") ? "margins-file blocks" : "JSON");
+  const subject = kind === "margins-file blocks" ? "helper output" : "review";
+  const error = new Error(`Margins ${subject} was cut off before complete ${kind} came back${reason}${preview ? `: ${preview}` : "."}`);
+  error.code = "MARGINS_MODEL_OUTPUT_TRUNCATED";
+  error.provider = provider;
+  error.finishReason = finishReason;
+  error.partialContent = String(content || "");
+  return error;
+}
+
+export function modelJsonParseError(provider, content) {
+  if (looksLikeTruncatedJson(content)) {
+    return modelOutputTruncatedError(provider, content, "");
+  }
+  const preview = clampSentence(String(content || "").replace(/\s+/g, " "), 240);
+  const error = new Error(`Margins received malformed JSON for the review${preview ? `: ${preview}` : "."}`);
+  error.code = "MARGINS_MODEL_JSON_PARSE";
+  error.provider = provider;
+  return error;
+}
+
+// ---------------------------------------------------------------------
 // Review questions selector
 // ---------------------------------------------------------------------
 
