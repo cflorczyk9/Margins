@@ -163,6 +163,17 @@ import {
   selectVaultPath
 } from "./views/wiki.js";
 import {
+  applyFilingPlanToSourceBody,
+  bodyReferencesRawSource,
+  formatSourceTimestamp,
+  ingestAnswerKey,
+  needsTextExtraction,
+  renderSourceTimestamp,
+  requiresModelReview,
+  sourceDateFromPath,
+  sourceTimestampDate
+} from "./views/inbox.js";
+import {
   apiSummaryBullets,
   apiSummaryParts,
   cleanAccountLast4,
@@ -1318,10 +1329,6 @@ function toggleReceiptLinkedEntities(fileName) {
   renderSources();
 }
 
-function ingestAnswerKey(fileName, question) {
-  return `${fileName}::${question}`;
-}
-
 function ingestAnswerFor(fileName, question) {
   return state.ingestAnswers.get(ingestAnswerKey(fileName, question))?.answer || "";
 }
@@ -1865,10 +1872,6 @@ function canSendSourceToModel(file) {
   return provider === "gemini" && canAttachSourceToGemini(file);
 }
 
-function requiresModelReview(file) {
-  return needsTextExtraction(file) && !file.text;
-}
-
 function canAttachSourceToGemini(file) {
   return Boolean(file && (file.browserFile || file.rawSourceHandle || rawSourceAlreadySaved(file)) && sourceAttachmentMimeType(file));
 }
@@ -2018,18 +2021,6 @@ function sourceTargetPathFromReview(currentPath, review) {
   return target;
 }
 
-function applyFilingPlanToSourceBody(body, plan) {
-  if (!hasFilingPlan(plan)) return body;
-  let next = body;
-  const placement = plan.placement || {};
-  if (placement.bucket) next = upsertFrontmatterScalar(next, "bucket", placement.bucket);
-  const tags = sourceTagsFromFilingPlan(plan);
-  if (tags.length) next = upsertFrontmatterList(next, "tags", tags);
-  if (placement.title) next = replaceSourceHeading(next, placement.title);
-  next = upsertFilingJudgmentSection(next, plan);
-  return next;
-}
-
 function sourceNoteEntryForFile(file) {
   return sourceNoteEntryForFileMap(file, state.currentFileMap);
 }
@@ -2041,15 +2032,6 @@ function sourceNoteEntryForFileMap(file, fileMap) {
     if (isActivitySourcePagePath(path, body) && bodyReferencesRawSource(body, rawPaths)) return { path, body };
   }
   return null;
-}
-
-function bodyReferencesRawSource(body, rawPaths) {
-  const text = String(body || "");
-  const candidates = Array.isArray(rawPaths) ? rawPaths : [rawPaths];
-  if (candidates.some((rawPath) => text.includes(rawPath))) return true;
-  const fields = frontmatterFields(text);
-  const frontmatterPaths = frontmatterList(fields.raw_file).map((path) => normalizeMarginsPath(path));
-  return candidates.some((rawPath) => frontmatterPaths.includes(rawPath));
 }
 
 function isRawSourceIngested(file, fileMap = state.currentFileMap) {
@@ -4112,31 +4094,6 @@ function renderPendingSourceActions(visibleCount, totalCount) {
       </button>
     </div>
   `;
-}
-
-function renderSourceTimestamp(file) {
-  const date = sourceTimestampDate(file);
-  if (!date) return "";
-  return `<time class="source-timestamp" datetime="${escapeHtml(date.toISOString())}">${escapeHtml(formatSourceTimestamp(date))}</time>`;
-}
-
-function sourceTimestampDate(file) {
-  const value = Number(file?.lastModified || 0);
-  if (!Number.isFinite(value) || value <= 0) return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function formatSourceTimestamp(date) {
-  const now = new Date();
-  const includeYear = date.getFullYear() !== now.getFullYear();
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    ...(includeYear ? { year: "numeric" } : {}),
-    hour: "numeric",
-    minute: "2-digit"
-  }).format(date);
 }
 
 function bindSourceListControls() {
@@ -6498,10 +6455,6 @@ function sourceActivityRawPath(fields, body) {
 
 function sourceActivityDateValue(fields, path) {
   return cleanSummary(fields.updated || fields.created || fields.event_date || sourceDateFromPath(path));
-}
-
-function sourceDateFromPath(path) {
-  return path.match(/(?:^|\/)source-(\d{4}-\d{2}-\d{2})/)?.[1] || "";
 }
 
 function sourceActivitySortTimestamp(value) {
@@ -11273,10 +11226,6 @@ function sourceClass(file) {
   else if (isSourceReviewReady(file)) classes.push("ready-to-write");
   else if (!state.ingestErrors.has(file?.name)) classes.push("pending-ghost");
   return classes.join(" ");
-}
-
-function needsTextExtraction(file) {
-  return (file.type === "pdf" || file.type === "docx" || file.type === "attachment") && !file.text;
 }
 
 function rawSourceAlreadySaved(file) {
