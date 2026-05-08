@@ -48,6 +48,61 @@ export function isBucketOverviewPath(path) {
   return /^wiki\/(sources\/sources|concepts\/concepts|entities\/entities|synthesis\/synthesis)\.md$/.test(path);
 }
 
+export function isContextWikiPagePath(path) {
+  return path.startsWith("wiki/") &&
+    path.endsWith(".md") &&
+    !path.startsWith("wiki/.margins/") &&
+    !path.startsWith("wiki/_templates/");
+}
+
+export const GENERIC_CHECKLIST_LINKS = new Set([
+  "abstract",
+  "analysis",
+  "actually",
+  "condition",
+  "conditions",
+  "conclusion",
+  "data",
+  "display",
+  "displays",
+  "discussion",
+  "experiment",
+  "experiments",
+  "figure",
+  "figures",
+  "going",
+  "introduction",
+  "know",
+  "method",
+  "methods",
+  "paper",
+  "participant",
+  "participants",
+  "procedure",
+  "reference",
+  "references",
+  "result",
+  "results",
+  "section",
+  "study",
+  "subjects",
+  "table",
+  "thats",
+  "that-s",
+  "thing",
+  "things",
+  "think",
+  "task",
+  "tasks",
+  "really",
+  "yeah"
+]);
+
+export function isGenericChecklistLink(link) {
+  const slug = slugifyLoose(cleanWikiLinkLabel(link));
+  return slug.length < 3 || GENERIC_CHECKLIST_LINKS.has(slug);
+}
+
 // ---------------------------------------------------------------------
 // Markdown body
 // ---------------------------------------------------------------------
