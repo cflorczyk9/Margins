@@ -55,6 +55,22 @@ export function isContextWikiPagePath(path) {
     !path.startsWith("wiki/_templates/");
 }
 
+export function graphTypeFromPath(path, body = "") {
+  const fields = frontmatterFields(body);
+  const frontmatterType = normalizeEntityTag(fields.type || fields.primary_type || "");
+  if (frontmatterType === "source") return "source";
+  if (frontmatterType === "concept") return "concept";
+  if (frontmatterType === "entity" || frontmatterType === "person" || frontmatterType === "company") return "entity";
+  if (frontmatterType === "project") return "project";
+  if (frontmatterType === "synthesis") return "synthesis";
+  if (path.startsWith("wiki/sources/")) return "source";
+  if (path.startsWith("wiki/concepts/")) return "concept";
+  if (path.startsWith("wiki/entities/")) return "entity";
+  if (path.startsWith("wiki/projects/")) return "project";
+  if (path.startsWith("wiki/synthesis/")) return "synthesis";
+  return "index";
+}
+
 export const GENERIC_CHECKLIST_LINKS = new Set([
   "abstract",
   "analysis",

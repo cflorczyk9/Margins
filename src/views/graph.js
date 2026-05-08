@@ -14,14 +14,16 @@
 // Cross-module deps:
 //   - state from core/state.js (reads state.currentFileMap)
 //   - clamp, hashString, escapeHtml from core/utils.js
-//   - basename, frontmatterFields, markdownTitle, normalizeEntityTag,
-//     slugifyLoose, titleFromSlug from core/wiki.js
+//   - basename, extractWikiLinks, frontmatterFields, markdownTitle,
+//     normalizeEntityTag, slugifyLoose, titleFromSlug from core/wiki.js
 
 import { state } from "../core/state.js";
 import { clamp, escapeHtml, hashString } from "../core/utils.js";
 import {
   basename,
+  extractWikiLinks,
   frontmatterFields,
+  graphTypeFromPath,
   markdownTitle,
   normalizeEntityTag,
   slugifyLoose,
@@ -687,32 +689,6 @@ function nodeFromMarkdownFile(path, body) {
 
 function isGraphNodePath(path) {
   return /^wiki\/(sources|concepts|entities|projects|synthesis)\/[^/]+\.md$/.test(path) || path === "wiki/index.md";
-}
-
-function graphTypeFromPath(path, body = "") {
-  const fields = frontmatterFields(body);
-  const frontmatterType = normalizeEntityTag(fields.type || fields.primary_type || "");
-  if (frontmatterType === "source") return "source";
-  if (frontmatterType === "concept") return "concept";
-  if (frontmatterType === "entity" || frontmatterType === "person" || frontmatterType === "company") return "entity";
-  if (frontmatterType === "project") return "project";
-  if (frontmatterType === "synthesis") return "synthesis";
-  if (path.startsWith("wiki/sources/")) return "source";
-  if (path.startsWith("wiki/concepts/")) return "concept";
-  if (path.startsWith("wiki/entities/")) return "entity";
-  if (path.startsWith("wiki/projects/")) return "project";
-  if (path.startsWith("wiki/synthesis/")) return "synthesis";
-  return "index";
-}
-
-function extractWikiLinks(body) {
-  const links = [];
-  const pattern = /\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]/g;
-  let match;
-  while ((match = pattern.exec(body)) !== null) {
-    links.push(match[1].trim());
-  }
-  return links;
 }
 
 function resolveGraphLink(target, byPath, bySlug) {
