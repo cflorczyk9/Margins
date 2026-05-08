@@ -117,7 +117,7 @@
         </div>
         <button id="extract-btn" disabled>Extract PDF text</button>
         <button id="compile-btn" disabled>Local compile</button>
-        <button id="llm-btn" disabled>Copy LLM ingest prompt</button>
+        <button id="llm-btn" disabled>Copy LLM process prompt</button>
         <button id="export-btn" disabled>Download vault JSON</button>
         <button id="copy-btn" disabled>Copy operator manual</button>
         <div class="section-kicker">Review</div>
@@ -162,19 +162,20 @@
             <circle cx="240" cy="60"  r="2"  fill="#1a1612"/>
             <line x1="80" y1="120" x2="130" y2="140" stroke="#1a1612" stroke-width="1" stroke-linecap="round"/>
           </svg>
-          <div class="drop-mark" aria-hidden="true"></div>
-          <h3>Drag and drop here</h3>
-          <p>or click to browse</p>
-          <div class="drop-formats">.txt · .md · .docx · .pdf · folders</div>
-          <div class="drop-actions">
-            <label class="file-picker primary-picker">
-              <input id="file-input" type="file" multiple>
-              <span>Choose files</span>
-            </label>
-            <label class="file-picker">
-              <input id="folder-input" type="file" webkitdirectory directory multiple>
-              <span>Choose folder</span>
-            </label>
+          <div class="drop-copy">
+            <h3>Drag and drop here</h3>
+            <p>or click to browse</p>
+            <div class="drop-formats">.txt · .md · .docx · .pdf · .ics · folders</div>
+            <div class="drop-actions">
+              <label class="file-picker primary-picker">
+                <input id="file-input" type="file" multiple>
+                <span>Choose files</span>
+              </label>
+              <label class="file-picker">
+                <input id="folder-input" type="file" webkitdirectory directory multiple>
+                <span>Choose folder</span>
+              </label>
+            </div>
           </div>
         </section>
 
@@ -182,12 +183,12 @@
           <div class="section-head">
             <div>
               <span id="pending-count-label" class="section-kicker">0 pending</span>
-              <h3>Raw sources not ingested</h3>
+              <h3>Sources to process</h3>
             </div>
-            <button id="bulk-ingest-btn" class="bulk-ingest-btn" type="button" disabled>Bulk ingest</button>
+            <button id="bulk-ingest-btn" class="bulk-ingest-btn" type="button" disabled>Bulk process</button>
             <button id="save-vault-btn" class="primary shadow-action" disabled hidden>Process</button>
           </div>
-          <div id="source-list" class="source-list empty">No pending raw sources.</div>
+          <div id="source-list" class="source-list empty">No pending sources.</div>
         </section>
 
         <section id="recent-activity-panel" class="recent-activity-panel">
@@ -197,7 +198,7 @@
               <h3>Recent activity</h3>
             </div>
           </div>
-          <div id="recent-activity-list" class="activity-card-wall empty">Open a vault to see recently ingested source notes.</div>
+          <div id="recent-activity-list" class="activity-card-wall empty">Open a vault to see recently processed source notes.</div>
         </section>
 
         <section id="inline-review-panel" class="inline-review-panel" hidden>
@@ -215,45 +216,129 @@
           <div class="page-head dream-head">
             <div>
               <h2>Dream</h2>
-              <div id="dream-meta" class="meta-row">Open a vault to let Margins consolidate overnight.</div>
+              <div id="dream-meta" class="meta-row">Open a vault to see what needs attention.</div>
             </div>
           </div>
 
-          <section class="dream-state-card" aria-live="polite">
-            <div class="dream-orbit" aria-hidden="true"></div>
-            <div>
-              <span class="section-kicker">Night pass</span>
-              <h3 id="dream-state-title">Open a vault to let Margins dream</h3>
-              <p id="dream-state-body">Dreams consolidate concepts, prune weak links, sync operating memory, and prepare reviewable proposals.</p>
-            </div>
-          </section>
-
-          <div id="dream-stats" class="dream-stat-grid" aria-label="Dream stats"></div>
-
-          <section class="dream-section">
-            <div class="section-head">
-              <div>
-                <span class="section-kicker">Operations</span>
-                <h3>What dreaming works on</h3>
+          <section id="dream-state-card" class="dream-state-card" aria-live="polite">
+            <svg class="dream-art" viewBox="0 0 800 320" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+              <defs>
+                <filter id="dream-soft-focus" x="-20%" y="-40%" width="140%" height="180%">
+                  <feGaussianBlur stdDeviation="18"></feGaussianBlur>
+                  <feColorMatrix type="saturate" values="1.2"></feColorMatrix>
+                </filter>
+                <filter id="dream-line-glow" x="-30%" y="-60%" width="160%" height="220%">
+                  <feGaussianBlur stdDeviation="2.4" result="blur"></feGaussianBlur>
+                  <feMerge>
+                    <feMergeNode in="blur"></feMergeNode>
+                    <feMergeNode in="SourceGraphic"></feMergeNode>
+                  </feMerge>
+                </filter>
+              </defs>
+              <g class="dream-haze" filter="url(#dream-soft-focus)">
+                <ellipse class="dream-haze-field haze-a" cx="260" cy="150" rx="180" ry="90" fill="#6fa863"></ellipse>
+                <ellipse class="dream-haze-field haze-b" cx="520" cy="170" rx="220" ry="98" fill="#f0c14b"></ellipse>
+                <ellipse class="dream-haze-field haze-c" cx="430" cy="95" rx="150" ry="76" fill="#6a4f8c"></ellipse>
+                <ellipse class="dream-haze-field haze-d" cx="620" cy="245" rx="175" ry="70" fill="#2c5aa0"></ellipse>
+                <ellipse class="dream-haze-field haze-e" cx="155" cy="230" rx="128" ry="62" fill="#d63a2f"></ellipse>
+              </g>
+              <g class="dream-link-field" filter="url(#dream-line-glow)">
+                <path class="dream-link link-a" d="M150 165 C238 105 302 94 392 118"></path>
+                <path class="dream-link link-b" d="M392 118 C474 82 546 114 632 170"></path>
+                <path class="dream-link link-c" d="M150 165 C220 226 285 264 392 250"></path>
+                <path class="dream-link link-d" d="M392 250 C478 282 570 252 632 170"></path>
+                <path class="dream-link link-e" d="M392 118 C360 164 352 208 392 250"></path>
+                <path class="dream-link link-f" d="M632 170 C664 126 696 92 735 76"></path>
+                <path class="dream-link link-g" d="M72 70 C244 116 386 188 742 66"></path>
+              </g>
+              <g class="dream-signal-field">
+                <circle class="dream-signal signal-a" cx="150" cy="165" r="38"></circle>
+                <circle class="dream-signal signal-b" cx="392" cy="118" r="44"></circle>
+                <circle class="dream-signal signal-c" cx="632" cy="170" r="54"></circle>
+                <circle class="dream-signal signal-d" cx="392" cy="250" r="32"></circle>
+              </g>
+              <g class="dream-node-field">
+                <g class="dream-node node-a">
+                  <circle class="dream-node-wake" cx="150" cy="165" r="24" fill="#d63a2f"></circle>
+                  <circle class="dream-node-core" cx="150" cy="165" r="7"></circle>
+                </g>
+                <g class="dream-node node-b">
+                  <circle class="dream-node-wake" cx="392" cy="118" r="31" fill="#6fa863"></circle>
+                  <circle class="dream-node-core" cx="392" cy="118" r="8"></circle>
+                </g>
+                <g class="dream-node node-c">
+                  <circle class="dream-node-wake" cx="632" cy="170" r="39" fill="#f0c14b"></circle>
+                  <circle class="dream-node-wake secondary" cx="632" cy="170" r="21" fill="#d63a2f"></circle>
+                  <circle class="dream-node-core" cx="632" cy="170" r="7"></circle>
+                </g>
+                <g class="dream-node node-d">
+                  <circle class="dream-node-wake" cx="392" cy="250" r="18" fill="#2c5aa0"></circle>
+                  <circle class="dream-node-core" cx="392" cy="250" r="5"></circle>
+                </g>
+                <g class="dream-node node-e">
+                  <circle class="dream-node-wake" cx="735" cy="76" r="13" fill="#6a4f8c"></circle>
+                  <circle class="dream-node-core" cx="735" cy="76" r="4"></circle>
+                </g>
+              </g>
+              <path class="dream-sweep" d="M-80 238 C140 144 300 124 520 154 C640 170 756 130 880 74"></path>
+            </svg>
+            <div class="dream-state-copy">
+              <span class="section-kicker">Maintenance</span>
+              <h3 id="dream-state-title">Open a vault to see suggested next actions</h3>
+              <p id="dream-state-body">This view checks the vault for issues Margins can surface now, then points you to the right workspace to resolve them.</p>
+              <div class="dream-control-row" aria-label="Dream maintenance controls">
+                <button id="dream-run-btn" class="dream-primary-action" type="button">Run cleanup</button>
               </div>
+              <p id="dream-mode-help" class="dream-mode-help">Automatically cleans low-risk retrieval issues, then asks only about risky changes.</p>
+              <p id="dream-pass-status" class="dream-pass-status" hidden></p>
             </div>
-            <div id="dream-operation-list" class="dream-grid"></div>
-          </section>
-
-          <section class="dream-section">
-            <div class="section-head">
-              <div>
-                <span class="section-kicker">Morning report</span>
-                <h3>Proposals to review</h3>
-              </div>
-            </div>
-            <div id="dream-proposal-list" class="dream-proposal-list"></div>
           </section>
 
           <section class="dream-log-card">
-            <span class="section-kicker">Dream log</span>
-            <p id="dream-log-meta">No dream log loaded yet.</p>
-            <ul id="dream-log-titles" class="dream-title-list" aria-label="Possible dream titles"></ul>
+            <span class="section-kicker">Cleanup activity</span>
+            <p id="dream-log-meta">No cleanup run yet.</p>
+            <ul id="dream-log-entries" class="dream-log-list" aria-label="Cleanup activity"></ul>
+          </section>
+
+          <section id="dream-run-panel" class="dream-run-panel" hidden aria-live="polite">
+            <div class="dream-run-panel-head">
+              <div>
+                <span class="section-kicker">Prepared run</span>
+                <h3 id="dream-run-title">Select a task</h3>
+                <p id="dream-run-summary">Review the affected notes, then ask AI only if the fix is not obvious.</p>
+              </div>
+              <button id="dream-run-cancel-btn" class="dream-run-close" type="button" aria-label="Cancel prepared run">×</button>
+            </div>
+            <div id="dream-run-scope" class="dream-run-scope"></div>
+            <div class="dream-run-limits" aria-label="Run limits" hidden>
+              <label>
+                <span id="dream-limit-items-label">Max items</span>
+                <input id="dream-limit-items" type="number" min="1" max="200" step="1">
+              </label>
+              <label>
+                <span id="dream-limit-files-label">Max files</span>
+                <input id="dream-limit-files" type="number" min="1" max="80" step="1">
+              </label>
+              <label>
+                <span>Hard stop</span>
+                <input id="dream-limit-usd" type="number" min="0.01" max="10" step="0.01">
+              </label>
+            </div>
+            <p id="dream-run-estimate" class="dream-run-estimate" hidden>No model call prepared.</p>
+            <div class="dream-run-actions">
+              <button id="dream-run-prepared-btn" class="dream-primary-action" type="button">Ask AI</button>
+              <button id="dream-run-cancel-secondary-btn" class="dream-secondary-action" type="button">Cancel</button>
+            </div>
+          </section>
+
+          <section class="dream-section">
+            <div class="section-head">
+              <div>
+                <span id="dream-queue-kicker" class="section-kicker">Actions</span>
+                <h3 id="dream-queue-title">Run cleanup to see what needs your call</h3>
+              </div>
+            </div>
+            <div id="dream-proposal-list" class="dream-proposal-list"></div>
           </section>
         </div>
       </section>
@@ -280,7 +365,7 @@
           <section id="entity-browser" class="entity-empty-state">
             <div class="empty-icon" aria-hidden="true"></div>
             <h3>No entities loaded</h3>
-            <p>Open a local vault or ingest a source. Margins will only show entities backed by real vault files.</p>
+            <p>Open a local vault or process a source. Margins will only show entities backed by real vault files.</p>
           </section>
         </div>
       </section>
@@ -317,7 +402,7 @@
             </div>
             <div class="vault-editor-shell">
               <pre id="doc-highlight" class="doc-highlight" aria-hidden="true"></pre>
-              <textarea id="doc-body" class="doc-body vault-editor" spellcheck="false">Open raw or wiki, then choose a file.</textarea>
+              <textarea id="doc-body" class="doc-body vault-editor" spellcheck="false">Open a source file or wiki note, then choose a file.</textarea>
             </div>
           </article>
         </div>
