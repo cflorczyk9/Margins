@@ -210,6 +210,7 @@ import {
 } from "./views/graph.js";
 import {
   initWikiView,
+  isOperatingBrowserPath,
   renderVaultTree,
   renderWikiFiles,
   selectVaultPath

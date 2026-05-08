@@ -190,7 +190,7 @@ function vaultBrowserEntries(fileMap) {
   ));
 }
 
-function isOperatingBrowserPath(path) {
+export function isOperatingBrowserPath(path) {
   const normalizedPath = normalizeMarginsPath(path);
   return ROOT_GENERATED_TEXT_FILES.has(normalizedPath) ||
     normalizedPath.startsWith("commands/") ||
