@@ -1,0 +1,1833 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Files — Tag Cluster · Library</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #faf7f2;
+      --paper: #ffffff;
+      --paper-soft: #f5f1ea;
+      --ink: #1a1612;
+      --ink-2: #4a423a;
+      --muted: #847a6b;
+      --faint: #a89e8d;
+      --line: #e8e2d6;
+      --line-strong: #d8d0bf;
+      --accent: #d63a2f;
+      --accent-soft: rgba(214, 58, 47, 0.10);
+      --accent-line: rgba(214, 58, 47, 0.22);
+
+      --vermillion: #d63a2f;
+      --cobalt:     #2c5aa0;
+      --mustard:    #c79a26;
+      --violet:     #6a4f8c;
+      --green-poly: #5d9656;
+      --ink-poly:   #1a1612;
+
+      --vermillion-desat: #b85248;
+      --cobalt-desat:     #4f74a6;
+      --mustard-desat:    #b08e3e;
+      --violet-desat:     #806b9b;
+      --green-desat:      #6f9569;
+
+      --vermillion-soft: rgba(214, 58, 47, 0.08);
+      --cobalt-soft:     rgba(44, 90, 160, 0.08);
+      --mustard-soft:    rgba(199, 154, 38, 0.10);
+      --violet-soft:     rgba(106, 79, 140, 0.09);
+      --green-soft:      rgba(93, 150, 86, 0.09);
+      --ink-soft:        rgba(26, 22, 18, 0.05);
+
+      --r-sm: 6px;
+      --r-md: 8px;
+      --r-lg: 12px;
+      --r-xl: 16px;
+      --r-pill: 999px;
+
+      --focus-ring: 0 0 0 3px rgba(214, 58, 47, 0.10);
+      --shadow-card: 0 1px 0 rgba(26,22,18,0.04), 0 4px 14px rgba(26,22,18,0.04);
+      --shadow-card-hover: 0 1px 0 rgba(26,22,18,0.06), 0 18px 40px rgba(26,22,18,0.08);
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif;
+      font-weight: 400;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      line-height: 1.5;
+    }
+
+    .page {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 56px 32px 120px;
+    }
+    .feed-wrap {
+      max-width: 880px;
+      margin: 0 auto;
+    }
+
+    /* ==== Header ==== */
+    .lib-head { margin-bottom: 24px; }
+    .lib-kicker {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .lib-kicker::after {
+      content: "";
+      flex: 1;
+      height: 1px;
+      background: var(--line);
+      margin-left: 6px;
+    }
+    .lib-title {
+      font-family: 'Manrope', sans-serif;
+      font-size: 44px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin: 0 0 8px;
+      line-height: 1.05;
+    }
+    .lib-subtitle {
+      color: var(--muted);
+      font-size: 16px;
+      margin: 0;
+      max-width: 540px;
+    }
+
+    .pull-band {
+      font-family: 'Manrope', sans-serif;
+      font-style: italic;
+      font-weight: 400;
+      font-size: 18px;
+      line-height: 1.4;
+      color: var(--ink-2);
+      margin: 24px 0 18px;
+      letter-spacing: -0.005em;
+      max-width: 760px;
+    }
+    .pull-band em { font-style: italic; color: var(--ink); }
+    .pull-band .pull-sep { color: var(--faint); margin: 0 8px; font-style: normal; }
+
+    /* ==== Search ==== */
+    .search-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 0 0 14px;
+    }
+    .search-wrap {
+      position: relative;
+      flex: 1;
+      max-width: 460px;
+    }
+    .search-input {
+      width: 100%;
+      font-family: inherit;
+      font-size: 14px;
+      padding: 10px 14px 10px 36px;
+      border: 1px solid var(--line);
+      background: var(--paper);
+      border-radius: var(--r-md);
+      color: var(--ink);
+      outline: none;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    .search-input:focus {
+      border-color: var(--accent-line);
+      box-shadow: var(--focus-ring);
+    }
+    .search-input::placeholder { color: var(--faint); }
+    .search-icon {
+      position: absolute;
+      left: 12px; top: 50%;
+      transform: translateY(-50%);
+      width: 14px; height: 14px;
+      color: var(--faint);
+    }
+    .search-key {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: var(--faint);
+      padding: 2px 6px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: var(--paper);
+    }
+    .search-hint {
+      font-size: 11px;
+      color: var(--faint);
+      letter-spacing: 0.04em;
+    }
+
+    /* ==== Tag Cluster Hero ==== */
+    .cluster-hero {
+      position: relative;
+      width: 100%;
+      height: 320px;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: var(--r-lg);
+      overflow: hidden;
+      margin: 0 0 36px;
+    }
+    .cluster-canvas {
+      position: absolute;
+      inset: 0;
+    }
+    .cluster-tag {
+      position: absolute;
+      font-family: 'Manrope', sans-serif;
+      letter-spacing: -0.015em;
+      line-height: 1;
+      cursor: pointer;
+      user-select: none;
+      transition: opacity 0.25s ease, transform 0.25s ease, filter 0.25s ease;
+      white-space: nowrap;
+      transform-origin: center;
+      will-change: transform;
+    }
+    .cluster-tag .drift {
+      display: inline-block;
+      animation: drift var(--drift-dur, 12s) ease-in-out infinite;
+      animation-delay: var(--drift-delay, 0s);
+    }
+    @keyframes drift {
+      0%, 100% { transform: translateX(-2px); }
+      50%      { transform: translateX(2px); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .cluster-tag .drift { animation: none; }
+    }
+
+    /* color tiers */
+    .cluster-tag.t-bucket-entities  { color: var(--cobalt); }
+    .cluster-tag.t-bucket-concepts  { color: var(--violet); }
+    .cluster-tag.t-bucket-sources   { color: var(--mustard); }
+    .cluster-tag.t-bucket-synthesis { color: var(--vermillion); }
+    .cluster-tag.t-bucket-career    { color: var(--green-poly); }
+    .cluster-tag.t-bucket-meta      { color: var(--ink-poly); }
+    /* specific-thing tags: desaturated polychrome */
+    .cluster-tag.t-thing-cobalt     { color: var(--cobalt-desat); }
+    .cluster-tag.t-thing-vermillion { color: var(--vermillion-desat); }
+    .cluster-tag.t-thing-violet     { color: var(--violet-desat); }
+    .cluster-tag.t-thing-mustard    { color: var(--mustard-desat); }
+    /* action/strategy tags: muted ink */
+    .cluster-tag.t-action { color: var(--ink-2); }
+
+    /* size tiers */
+    .cluster-tag.sz-xl { font-size: 34px; font-weight: 800; }
+    .cluster-tag.sz-lg { font-size: 28px; font-weight: 700; }
+    .cluster-tag.sz-md { font-size: 22px; font-weight: 600; }
+    .cluster-tag.sz-sm { font-size: 16px; font-weight: 500; }
+    .cluster-tag.sz-xs { font-size: 14px; font-weight: 500; }
+
+    /* hover state — applied via JS to the hero */
+    .cluster-hero.has-hover .cluster-tag { opacity: 0.3; }
+    .cluster-hero.has-hover .cluster-tag.is-hot { opacity: 1; transform: scale(1.08); }
+    .cluster-tag.is-pinned {
+      text-decoration: underline;
+      text-decoration-color: var(--vermillion);
+      text-decoration-thickness: 2px;
+      text-underline-offset: 5px;
+    }
+
+    /* tooltip */
+    .cluster-tip {
+      position: absolute;
+      pointer-events: none;
+      background: var(--ink);
+      color: #fff;
+      font-size: 11px;
+      letter-spacing: 0.02em;
+      padding: 5px 9px;
+      border-radius: var(--r-sm);
+      opacity: 0;
+      transform: translate(-50%, -100%) translateY(-8px);
+      transition: opacity 0.15s ease;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+      z-index: 5;
+    }
+    .cluster-tip.show { opacity: 1; }
+    .cluster-tip::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      bottom: -4px;
+      transform: translateX(-50%);
+      width: 8px; height: 8px;
+      background: var(--ink);
+      clip-path: polygon(0 0, 100% 0, 50% 100%);
+    }
+
+    .cluster-legend {
+      position: absolute;
+      bottom: 12px;
+      right: 16px;
+      font-size: 10px;
+      letter-spacing: 0.04em;
+      color: var(--faint);
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      pointer-events: none;
+    }
+    .cluster-legend .lg-row {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .cluster-legend .lg-dot-sm { width: 4px; height: 4px; border-radius: 50%; background: var(--ink-poly); opacity: 0.4; }
+    .cluster-legend .lg-dot-lg { width: 9px; height: 9px; border-radius: 50%; background: var(--ink-poly); opacity: 0.7; }
+
+    .cluster-eyebrow {
+      position: absolute;
+      top: 14px;
+      left: 18px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--faint);
+      pointer-events: none;
+    }
+
+    /* ==== Index spread (preserved) ==== */
+    .index-spread {
+      margin: 0 0 56px;
+      padding: 36px 0 32px;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+    }
+    .index-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 4px;
+    }
+    .index-eyebrow {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .index-mode {
+      display: inline-flex;
+      gap: 4px;
+      padding: 3px;
+      background: var(--paper-soft);
+      border-radius: var(--r-pill);
+      border: 1px solid var(--line);
+    }
+    .index-mode button {
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      padding: 5px 12px;
+      border-radius: var(--r-pill);
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .index-mode button.active {
+      background: var(--ink);
+      color: var(--paper);
+    }
+
+    .index-pull {
+      font-family: 'Manrope', sans-serif;
+      font-style: italic;
+      font-weight: 400;
+      font-size: 18px;
+      line-height: 1.35;
+      color: var(--ink-2);
+      margin: 8px 0 22px;
+      letter-spacing: -0.005em;
+      max-width: 760px;
+    }
+    .index-pull em { font-style: italic; color: var(--ink); }
+    .index-pull .pull-sep { color: var(--faint); margin: 0 8px; font-style: normal; }
+
+    /* cluster filter chip above index */
+    .cluster-filter {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      margin: 0 0 18px;
+      padding: 9px 14px;
+      background: var(--paper);
+      border: 1px solid var(--accent-line);
+      border-radius: var(--r-md);
+      font-size: 13px;
+      color: var(--ink-2);
+    }
+    .cluster-filter.show { display: inline-flex; }
+    .cluster-filter strong { color: var(--vermillion); font-weight: 700; }
+    .cluster-filter .cf-clear {
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 16px;
+      line-height: 1;
+      padding: 0 0 0 6px;
+      transition: color 0.15s ease;
+    }
+    .cluster-filter .cf-clear:hover { color: var(--accent); }
+    .cluster-filter .cf-count {
+      color: var(--faint);
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* bucket grid */
+    .index-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      column-gap: 56px;
+      row-gap: 44px;
+    }
+
+    .bucket { min-width: 0; }
+    .bucket-head {
+      cursor: pointer;
+      user-select: none;
+      display: inline-block;
+      position: relative;
+      padding-bottom: 2px;
+    }
+    .bucket-name {
+      font-family: 'Manrope', sans-serif;
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: -0.015em;
+      margin: 0;
+      line-height: 1.15;
+      display: inline-block;
+    }
+    .b-entities  .bucket-name { color: var(--cobalt); }
+    .b-concepts  .bucket-name { color: var(--violet); }
+    .b-sources   .bucket-name { color: var(--mustard); }
+    .b-synthesis .bucket-name { color: var(--vermillion); }
+    .b-career    .bucket-name { color: var(--green-poly); }
+    .b-meta      .bucket-name { color: var(--ink-poly); }
+
+    .bucket-head::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      right: 50%;
+      bottom: -2px;
+      height: 2px;
+      background: currentColor;
+      transition: left 0.25s ease, right 0.25s ease, opacity 0.2s ease;
+      opacity: 0;
+    }
+    .b-entities  .bucket-head::after { background: var(--cobalt); }
+    .b-concepts  .bucket-head::after { background: var(--violet); }
+    .b-sources   .bucket-head::after { background: var(--mustard); }
+    .b-synthesis .bucket-head::after { background: var(--vermillion); }
+    .b-career    .bucket-head::after { background: var(--green-poly); }
+    .b-meta      .bucket-head::after { background: var(--ink-poly); }
+    .bucket-head:hover::after { left: 0; right: 0; opacity: 1; }
+
+    .bucket-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 12px;
+      margin-bottom: 4px;
+    }
+    .density-bar {
+      flex: 1;
+      height: 4px;
+      background: var(--line);
+      border-radius: 2px;
+      overflow: hidden;
+      max-width: 180px;
+    }
+    .density-fill {
+      height: 100%;
+      border-radius: 2px;
+      transition: transform 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
+      transform-origin: left center;
+    }
+    .b-entities  .density-fill { background: var(--cobalt); }
+    .b-concepts  .density-fill { background: var(--violet); }
+    .b-sources   .density-fill { background: var(--mustard); }
+    .b-synthesis .density-fill { background: var(--vermillion); }
+    .b-career    .density-fill { background: var(--green-poly); }
+    .b-meta      .density-fill { background: var(--ink-poly); }
+
+    .bucket-count {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.01em;
+      white-space: nowrap;
+    }
+    .bucket-count strong { color: var(--ink-2); font-weight: 600; }
+
+    .bucket-list {
+      list-style: none;
+      padding: 14px 0 0;
+      margin: 0;
+    }
+    .bucket-item {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 8px 8px 8px 8px;
+      margin: 0 -8px 2px;
+      border-radius: var(--r-sm);
+      cursor: pointer;
+      transition: background 0.15s ease, transform 0.2s ease, color 0.15s ease, box-shadow 0.2s ease;
+      color: var(--ink);
+      position: relative;
+    }
+    .bucket-item:hover { transform: translateX(4px); }
+    .b-entities  .bucket-item:hover { background: var(--cobalt-soft); }
+    .b-concepts  .bucket-item:hover { background: var(--violet-soft); }
+    .b-sources   .bucket-item:hover { background: var(--mustard-soft); }
+    .b-synthesis .bucket-item:hover { background: var(--vermillion-soft); }
+    .b-career    .bucket-item:hover { background: var(--green-soft); }
+    .b-meta      .bucket-item:hover { background: var(--ink-soft); }
+
+    /* glow propagated from hovered cluster tag */
+    .bucket-item.is-glow {
+      background: var(--accent-soft);
+      box-shadow: inset 2px 0 0 var(--accent);
+    }
+
+    .item-title-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .item-title {
+      font-family: 'Manrope', sans-serif;
+      font-size: 14px;
+      font-weight: 500;
+      letter-spacing: -0.005em;
+      color: var(--ink);
+      line-height: 1.35;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex: 1;
+      min-width: 0;
+    }
+    .item-meta {
+      font-size: 11px;
+      color: var(--faint);
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.01em;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    /* inline tag chips on each file row */
+    .item-tagstrip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .item-tagstrip .ttag {
+      font-size: 10px;
+      font-weight: 500;
+      color: var(--muted);
+      padding: 1px 6px;
+      border-radius: var(--r-pill);
+      background: var(--paper-soft);
+      border: 1px solid var(--line);
+      letter-spacing: 0.01em;
+      white-space: nowrap;
+      transition: all 0.15s ease;
+    }
+    .item-tagstrip .ttag.is-hot {
+      color: var(--vermillion);
+      background: var(--accent-soft);
+      border-color: var(--accent-line);
+    }
+
+    /* row tooltip (peek) */
+    .item-peek {
+      position: absolute;
+      left: calc(100% + 14px);
+      top: 0;
+      width: 320px;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: var(--r-md);
+      padding: 12px 14px;
+      box-shadow: var(--shadow-card-hover);
+      font-size: 12px;
+      color: var(--ink-2);
+      line-height: 1.5;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+      transform: translateX(-4px);
+      z-index: 6;
+    }
+    .item-peek.show { opacity: 1; transform: translateX(0); }
+    .item-peek .pk-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--ink);
+      margin: 0 0 6px;
+      letter-spacing: -0.005em;
+    }
+    .item-peek .pk-body {
+      margin: 0 0 8px;
+    }
+    .item-peek .pk-conn {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      padding-top: 8px;
+      border-top: 1px dashed var(--line);
+    }
+    .item-peek .pk-conn .pk-conn-label {
+      font-size: 10px;
+      color: var(--faint);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      margin-right: 2px;
+      align-self: center;
+    }
+    .item-peek .pk-conn .pk-chip {
+      font-size: 10px;
+      padding: 2px 7px;
+      border-radius: var(--r-pill);
+      background: var(--paper-soft);
+      border: 1px solid var(--line);
+      color: var(--ink-2);
+    }
+
+    /* alpha view */
+    .index-alpha { display: none; }
+    .index-spread.alpha-mode .index-grid { display: none; }
+    .index-spread.alpha-mode .index-alpha { display: block; }
+    .alpha-section {
+      display: grid;
+      grid-template-columns: 56px 1fr;
+      gap: 24px;
+      padding: 14px 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .alpha-section:last-child { border-bottom: none; }
+    .alpha-letter {
+      font-family: 'Manrope', sans-serif;
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: var(--ink);
+      line-height: 1;
+      padding-top: 6px;
+    }
+    .alpha-files {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      column-gap: 32px;
+      row-gap: 4px;
+    }
+    .alpha-file {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 4px 8px;
+      margin: 0 -8px;
+      border-radius: var(--r-sm);
+      cursor: pointer;
+      transition: background 0.15s ease, transform 0.2s ease;
+    }
+    .alpha-file:hover {
+      transform: translateX(4px);
+      background: var(--paper-soft);
+    }
+    .alpha-file.is-glow { background: var(--accent-soft); }
+    .alpha-file .item-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      align-self: center;
+    }
+    .alpha-file.k-entities  .item-dot { background: var(--cobalt); }
+    .alpha-file.k-concepts  .item-dot { background: var(--violet); }
+    .alpha-file.k-sources   .item-dot { background: var(--mustard); }
+    .alpha-file.k-synthesis .item-dot { background: var(--vermillion); }
+    .alpha-file.k-career    .item-dot { background: var(--green-poly); }
+    .alpha-file.k-meta      .item-dot { background: var(--ink-poly); }
+    .alpha-file .item-row {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      flex: 1;
+      min-width: 0;
+    }
+
+    /* ==== Feed (preserved) ==== */
+    .feed-section-head-wrap { margin-top: 8px; }
+
+    .active-filter {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      margin: 0 0 20px;
+      padding: 10px 14px;
+      border-radius: var(--r-md);
+      background: var(--paper);
+      border: 1px solid var(--line);
+      font-size: 13px;
+      color: var(--ink-2);
+    }
+    .active-filter.show { display: inline-flex; }
+    .active-filter strong { font-weight: 600; color: var(--ink); }
+    .active-filter .filter-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--ink);
+    }
+    .active-filter .filter-clear {
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 14px;
+      padding: 0 0 0 6px;
+      line-height: 1;
+      transition: color 0.15s ease;
+    }
+    .active-filter .filter-clear:hover { color: var(--accent); }
+    .filter-dot.k-entities  { background: var(--cobalt); }
+    .filter-dot.k-concepts  { background: var(--violet); }
+    .filter-dot.k-sources   { background: var(--mustard); }
+    .filter-dot.k-synthesis { background: var(--vermillion); }
+    .filter-dot.k-career    { background: var(--green-poly); }
+    .filter-dot.k-meta      { background: var(--ink-poly); }
+
+    .section { margin-top: 40px; }
+    .section-head {
+      display: flex;
+      align-items: baseline;
+      gap: 14px;
+      margin-bottom: 4px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .section-title {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--ink);
+      margin: 0;
+    }
+    .section-count {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+    .section-rule { flex: 1; height: 1px; background: var(--line); }
+    .section-toggle {
+      width: 18px; height: 18px;
+      color: var(--muted);
+      transition: transform 0.2s ease;
+    }
+    .section.collapsed .section-toggle { transform: rotate(-90deg); }
+    .section.collapsed .cards { display: none; }
+
+    .cards {
+      display: flex;
+      flex-direction: column;
+      padding-top: 8px;
+    }
+    .card {
+      position: relative;
+      padding: 24px 4px 28px;
+      border-bottom: 1px solid var(--line);
+      cursor: pointer;
+      transition: transform 0.2s ease, opacity 0.2s ease, background 0.25s ease;
+    }
+    .card.hidden { display: none; }
+    .card.is-glow { background: var(--accent-soft); }
+    .card:last-child { border-bottom: none; }
+    .card:hover { transform: translateX(2px); }
+    .card-path {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--faint);
+      margin-bottom: 8px;
+      letter-spacing: -0.01em;
+    }
+    .card-title {
+      font-family: 'Manrope', sans-serif;
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.015em;
+      color: var(--ink);
+      margin: 0 0 10px;
+      line-height: 1.2;
+    }
+    .card:hover .card-title { color: var(--accent); }
+    .card-snippet {
+      font-size: 15px;
+      line-height: 1.55;
+      color: var(--ink-2);
+      margin: 0 0 16px;
+      max-width: 640px;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .card-peek {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease, opacity 0.2s ease, margin 0.2s ease;
+      opacity: 0;
+      font-size: 14px;
+      line-height: 1.6;
+      color: var(--ink-2);
+      max-width: 640px;
+      border-left: 2px solid var(--accent-line);
+      padding-left: 14px;
+    }
+    .card:hover .card-peek {
+      max-height: 200px;
+      opacity: 1;
+      margin: -4px 0 16px;
+    }
+    .card-meta {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 10px;
+      border-radius: var(--r-pill);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      border: 1px solid transparent;
+      white-space: nowrap;
+    }
+    .tag-career    { color: var(--green-poly); background: rgba(93,150,86,0.10); border-color: rgba(93,150,86,0.22); }
+    .tag-product   { color: var(--violet);     background: rgba(106,79,140,0.08); border-color: rgba(106,79,140,0.18); }
+    .tag-strategy  { color: var(--vermillion); background: rgba(214,58,47,0.08);  border-color: rgba(214,58,47,0.18); }
+    .tag-entity    { color: var(--cobalt);     background: rgba(44,90,160,0.08);  border-color: rgba(44,90,160,0.18); }
+    .tag-source    { color: var(--mustard);    background: rgba(199,154,38,0.12); border-color: rgba(199,154,38,0.24); }
+    .tag-meta      { color: var(--muted);      background: var(--paper-soft);     border-color: var(--line); }
+    .tag-meeting   { color: var(--mustard);    background: rgba(199,154,38,0.12); border-color: rgba(199,154,38,0.28); }
+    .tag-prospect  { color: var(--vermillion); background: rgba(214,58,47,0.08);  border-color: rgba(214,58,47,0.18); }
+    .tag-mentor    { color: var(--violet);     background: rgba(106,79,140,0.08); border-color: rgba(106,79,140,0.18); }
+    .tag-default   { color: var(--ink-2);      background: var(--paper-soft);     border-color: var(--line); }
+    .meta-dot {
+      width: 3px; height: 3px;
+      border-radius: 50%;
+      background: var(--line-strong);
+    }
+    .meta-text {
+      font-size: 12px;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+    .meta-text strong { color: var(--ink-2); font-weight: 600; }
+    .connections {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 12px;
+      flex-wrap: wrap;
+    }
+    .conn-label {
+      font-size: 11px;
+      color: var(--faint);
+      letter-spacing: 0.02em;
+      font-weight: 500;
+    }
+    .conn-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 9px 3px 8px;
+      border-radius: var(--r-pill);
+      background: var(--paper);
+      border: 1px solid var(--line);
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--ink-2);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      text-decoration: none;
+    }
+    .conn-chip:hover {
+      border-color: var(--accent-line);
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+    .conn-chip::before {
+      content: "→";
+      color: var(--faint);
+      font-size: 10px;
+      line-height: 1;
+    }
+    .conn-chip:hover::before { color: var(--accent); }
+
+    .footer-hint {
+      margin-top: 80px;
+      padding-top: 24px;
+      border-top: 1px solid var(--line);
+      font-size: 12px;
+      color: var(--faint);
+      text-align: center;
+    }
+
+    /* ==== Responsive ==== */
+    @media (max-width: 900px) {
+      .index-grid { grid-template-columns: repeat(2, 1fr); column-gap: 40px; row-gap: 36px; }
+      .alpha-files { grid-template-columns: 1fr; }
+      .cluster-hero { height: 380px; }
+      .item-peek { display: none; }
+    }
+    @media (max-width: 600px) {
+      .page { padding: 32px 20px 80px; }
+      .lib-title { font-size: 34px; }
+      .card-title { font-size: 19px; }
+      .card-snippet { font-size: 14px; }
+      .index-grid { grid-template-columns: 1fr; column-gap: 0; row-gap: 32px; }
+      .index-pull { font-size: 16px; }
+      .bucket-name { font-size: 22px; }
+      .alpha-section { grid-template-columns: 40px 1fr; gap: 16px; }
+      .alpha-letter { font-size: 22px; }
+      .cluster-hero { height: 440px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="lib-head">
+      <div class="lib-kicker">Margins · Files · Tag Cluster</div>
+      <h1 class="lib-title">Library</h1>
+      <p class="lib-subtitle">Your vault as a typographic landscape — your topics first, files underneath.</p>
+    </header>
+
+    <div class="pull-band">
+      <em>14 files.</em> <span class="pull-sep">·</span> <em>22,400 words.</em> <span class="pull-sep">·</span> <em>20 tags.</em> <span class="pull-sep">·</span> Last touched <em>2 hours ago</em>.
+    </div>
+
+    <!-- ============ SEARCH ============ -->
+    <div class="search-row">
+      <div class="search-wrap">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <input type="text" class="search-input" id="searchInput" placeholder="Search tags and files…">
+      </div>
+      <span class="search-hint">Press <span class="search-key">/</span> to search</span>
+    </div>
+
+    <!-- ============ TAG CLUSTER HERO ============ -->
+    <section class="cluster-hero" id="clusterHero" aria-label="Tag cluster">
+      <div class="cluster-eyebrow">Topics in this vault</div>
+      <div class="cluster-canvas" id="clusterCanvas"></div>
+      <div class="cluster-tip" id="clusterTip"></div>
+      <div class="cluster-legend">
+        <span class="lg-row"><span class="lg-dot-sm"></span><span class="lg-dot-lg"></span>&nbsp;Larger = more files</span>
+        <span class="lg-row">Closer = more co-occurrence</span>
+      </div>
+    </section>
+
+    <!-- ============ INDEX SPREAD ============ -->
+    <section class="index-spread" id="indexSpread">
+      <div class="index-header">
+        <div class="index-eyebrow">Index of the Vault</div>
+        <div class="index-mode" role="tablist">
+          <button class="active" data-mode="buckets">By section</button>
+          <button data-mode="alpha">A–Z</button>
+        </div>
+      </div>
+
+      <div class="index-pull">
+        <em>Drill into a topic.</em> <span class="pull-sep">·</span> Hover a tag above to glow its files; click to filter.
+      </div>
+
+      <div class="cluster-filter" id="clusterFilter">
+        <span>Filtering by tag: <strong id="cfLabel"></strong></span>
+        <span class="cf-count" id="cfCount"></span>
+        <button class="cf-clear" id="cfClear" aria-label="Clear tag filter">×</button>
+      </div>
+
+      <div class="index-grid" id="indexGrid"></div>
+      <div class="index-alpha" id="indexAlpha"></div>
+    </section>
+
+    <div class="feed-wrap">
+      <div class="active-filter" id="activeFilter">
+        <span class="filter-dot" id="filterDot"></span>
+        <span>Filtering: <strong id="filterLabel"></strong></span>
+        <button class="filter-clear" id="filterClear" aria-label="Clear filter">×</button>
+      </div>
+
+      <!-- ============ ACTIVE THIS WEEK ============ -->
+      <section class="section" data-section>
+        <header class="section-head" onclick="toggleSection(this)">
+          <h2 class="section-title">Active this week</h2>
+          <span class="section-count">7 files</span>
+          <span class="section-rule"></span>
+          <svg class="section-toggle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </header>
+
+        <div class="cards">
+          <article class="card" data-path="wiki/log.md" data-bucket="meta" data-tags="log">
+            <div class="card-path">wiki/log.md</div>
+            <h3 class="card-title">Operations log</h3>
+            <p class="card-snippet">Ingested two source files this morning — Ellis meeting transcript and the pricing-deck feedback from Larry. Updated centric-wm overview with the $50–100 pilot anchor. Linted; one drift flag remaining on synthesis/briefly-strategic-direction.</p>
+            <div class="card-peek">Recent ops: 5/10 ingest (ellis-meeting source); 5/09 compile (8 backlink suggestions, 6 accepted); 5/08 query — "what's the right price for centric"; 5/07 update on briefly-competitive-landscape adding Affinity benchmark…</div>
+            <div class="card-meta">
+              <span class="tag tag-meta">log</span>
+              <span class="meta-dot"></span>
+              <span class="meta-text"><strong>1h</strong> ago</span>
+              <span class="meta-dot"></span>
+              <span class="meta-text">5,400 words</span>
+            </div>
+          </article>
+
+          <article class="card" data-path="wiki/career/alex-wolf.md" data-bucket="career" data-tags="career,advisor">
+            <div class="card-path">wiki/career/alex-wolf.md</div>
+            <h3 class="card-title">Alex Wolf</h3>
+            <p class="card-snippet">MS PWM colleague, now FA in Chicago. Reached out 5/8 after seeing the Riviera close-out post. Warm but cautious — not a buyer; useful intel on advisor adoption of Jump and Hazel inside MS's tech-allow list.</p>
+            <div class="card-peek">Knows the MS internal compliance posture on third-party AI tools. Could be a door-opener to two FA teams in Naperville if Briefly ever pursues MS-affiliated independents. Predates Briefly — protect the relationship.</div>
+            <div class="card-meta">
+              <span class="tag tag-career">career</span>
+              <span class="tag tag-default">advisor</span>
+              <span class="meta-dot"></span>
+              <span class="meta-text"><strong>2h</strong> ago</span>
+              <span class="meta-dot"></span>
+              <span class="meta-text">380 words</span>
+            </div>
+            <div class="connections">
+              <span class="conn-label">Linked to</span>
+              <a class="conn-chip" href="#">Briefly</a>
+              <a class="conn-chip" href="#">Morgan Stanley</a>
+            </div>
+          </article>
+
+          <article class="card" data-path="wiki/entities/ellis-rutili.md" data-bucket="entities" data-tags="prospect,centric">
+            <div class="card-path">wiki/entities/ellis-rutili.md</div>
+            <h3 class="card-title">Ellis Rutili</h3>
+            <p class="card-snippet">Champion at Centric WM — operations role, nephew of founder Virgil. Named action-item routing as his #1 pilot ask. Pilot scoped at $125/seat × Ellis + 1–2 advisors, 60–90 days. He sits one level below the real buyer; don't surface Virgil yet.</p>
+            <div class="card-peek">Background: ex-NU econ, three years at Centric across ops and client service. Trusted by Virgil for vendor evaluation. Strong reader, prefers async demos to live calls. Coffee notes from 4/15: cares about reducing post-meeting CRM time more than pre-meeting brief quality…</div>
+            <div class="card-meta">
+              <span class="tag tag-prospect">prospect</span>
+              <span class="tag tag-entity">centric</span>
+              <span class="meta-dot"></span>
+              <span class="meta-text"><strong>3h</strong> ago</span>
+              <span class="meta-dot"></span>
+              <span class="meta-text">1,580 words</span>
+            </div>
+            <div class="connections">
+              <span class="conn-label">Linked to</span>
+              <a class="conn-chip" href="#">Centric WM</a>
+              <a class="conn-chip" href="#">Virgil Rutili</a>
+            </div>
+          </article>
+
+          <article class="card" data-path="wiki/entities/centric-wm.md" data-bucket="entities" data-tags="firm,prospect">
+            <div class="card-path">wiki/entities/centric-wm.md</div>
+            <h3 class="card-title">Centric Wealth Management</h3>
+            <p class="card-snippet">Chicago-based RIA, ~$300M AUM split across an FSC-SMB core book and one $300M family-office household (Mastro for that one, Orion for everyone else). First-firm pilot anchor for Briefly at $50–100/seat.</p>
+            <div class="card-peek">Founded 2014 by Virgil Rutili. ~12 staff. Reporting stack: Orion (default) plus a Mastro deployment for the meat-family. Tech-curious leadership; willing to be first on a vendor if the founder relationship is strong.</div>
+            <div class="card-meta">
+              <span class="tag tag-entity">firm</span>
+              <span class="tag tag-prospect">prospect</span>
+              <span class="meta-dot"></span>
+              <span class="meta-text"><strong>3h</strong> ago</span>
+              <span class="meta-dot"></span>
+              <span class="meta-text">740 words</span>
+            </div>
+            <div class="connections">
+              <span class="conn-label">Linked to</span>
+              <a class="conn-chip" href="#">Ellis Rutili</a>
+            </div>
+          </article>
+
+          <article class="card" data-path="wiki/concepts/relationship-graph.md" data-bucket="concepts" data-tags="product,briefly-vision">
+            <div class="card-path">wiki/concepts/relationship-graph.md</div>
+            <h3 class="card-title">Relationship graph</h3>
+            <p class="card-snippet">The substrate underneath Briefly — every advisor interaction, household, referral, and vendor edge as a typed node. Five-year optionality for vertical extension. Open question: surface it visibly in the advisor UI, or keep it backend-only with narrative positioning.</p>
+            <div class="card-peek">Affinity is the proof-of-concept analog at $2K/user/year, 1,700 customers. Pricing anchor should sit near Affinity, not Wealthbox/Jump. The graph is committed; UI surfacing is the live debate.</div>
+            <div class="card-meta">
+              <span class="tag tag-product">product</span>
+              <span class="tag tag-strategy">briefly-vision</span>
+              <span class="meta-dot"></span>
+              <span class="meta-text"><strong>5h</strong> ago</span>
+              <span class="meta-dot"></span>
+              <span class="meta-text">920 words</span>
+            </div>
+            <div class="connections">
+              <span class="conn-label">Linked to</span>
+              <a class="conn-chip" href="#">Briefly</a>
+              <a class="conn-chip" href="#">Margins</a>
+            </div>
+          </article>
+
+          <article class="card" data-path="wiki/concepts/audio-retention-privacy.md" data-bucket="concepts" data-tags="product,security">
+            <div class="card-path">wiki/concepts/audio-retention-privacy.md</div>
+            <h3 class="card-title">Audio retention as a privacy pitch</h3>
+            <p class="card-snippet">v1 default deletes the raw audio file the moment AssemblyAI returns a transcript. Originally a dev convenience; reframe it in client materials as a deliberate privacy/security feature. Per-firm retention configurable but not the default.</p>
+            <div class="card-peek">Surfacing this in the Centric pilot deck distinguishes Briefly from Jump and Zocks, both of which keep recordings indefinitely on their own buckets. Compliance angle is real but not the lead story.</div>
+            <div class="card-meta">
+              <span class="tag tag-product">product</span>
+              <span class="tag tag-default">security</span>
+              <span class="meta-dot"></span>
+              <span class="meta-text"><strong>1d</strong> ago</span>
+              <span class="meta-dot"></span>
+              <span class="meta-text">460 words</span>
+            </div>
+            <div class="connections">
+              <span class="conn-label">Linked to</span>
+              <a class="conn-chip" href="#">Briefly</a>
+            </div>
+          </article>
+
+          <article class="card" data-path="wiki/career/morgan-stanley.md" data-bucket="career" data-tags="career">
+            <div class="card-path">wiki/career/morgan-stanley.md</div>
+            <h3 class="card-title">Morgan Stanley</h3>
+            <p class="card-snippet">Connor's prior firm — Private Wealth analyst, 2021–2024. The MS PWM rolodex is mostly ex-coworkers, not buyers. Treat as a relationship cluster to maintain rather than a pipeline to mine.</p>
+            <div class="card-peek">Compliance posture inside MS WM: third-party AI vendors blocked at the firm level; FA-side workflow tools allowed only if they don't touch client data. Briefly cannot sell into MS proper — only to MS-affiliated independents who have left.</div>
+            <div class="card-meta">
+              <span class="tag tag-career">career</span>
+              <span class="meta-dot"></span>
+              <span class="meta-text"><strong>2d</strong> ago</span>
+              <span class="meta-dot"></span>
+              <span class="meta-text">1,240 words</span>
+            </div>
+            <div class="connections">
+              <span class="conn-label">Linked to</span>
+              <a class="conn-chip" href="#">Alex Wolf</a>
+              <a class="conn-chip" href="#">Joel Florczyk</a>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- ============ LAST MONTH ============ -->
+      <section class="section" data-section>
+        <header class="section-head" onclick="toggleSection(this)">
+          <h2 class="section-title">Last month</h2>
+          <span class="section-count">5 files</span>
+          <span class="section-rule"></span>
+          <svg class="section-toggle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </header>
+
+        <div class="cards">
+          <article class="card" data-path="wiki/index.md" data-bucket="meta" data-tags="meta">
+            <div class="card-path">wiki/index.md</div>
+            <h3 class="card-title">Vault index</h3>
+            <p class="card-snippet">Map of the wiki. Folders: career, concepts, entities, sources, synthesis, ideas, outbound. Use this page to orient any new agent or future-Connor returning after a long gap.</p>
+            <div class="card-peek">Quick links: ingest-tracker, log, wiki-stats, operator-manual, query-cookbook. Update this when a new bucket is added — sources of truth should be one click away.</div>
+            <div class="card-meta">
+              <span class="tag tag-meta">meta</span>
+              <span class="meta-dot"></span>
+              <span class="meta-text"><strong>3d</strong> ago</span>
+              <span class="meta-dot"></span>
+              <span class="meta-text">720 words</span>
+            </div>
+          </article>
+
+          <article class="card" data-path="wiki/synthesis/briefly-strategic-direction-apr2026.md" data-bucket="synthesis" data-tags="strategy,briefly">
+            <div class="card-path">wiki/synthesis/briefly-strategic-direction-apr2026.md</div>
+            <h3 class="card-title">Briefly strategic direction — Apr 2026</h3>
+            <p class="card-snippet">Connor's lean: partner with a few small RIAs, customize per-firm, pull the relationship graph forward as the underlying vision. Not horizontal SaaS. Anthropic's March memory ship narrowed the broad "AI memory" pitch into a portability + vertical posture story.</p>
+            <div class="card-peek">Three premium-earn defenses (customization, founder-led relationship, firm-voice tuning) hold. Three rationalizations to avoid: data portability alone, compliance alone, UX alone. Open fork: customize for Centric and extend, or build multi-tenant customization from day one.</div>
+            <div class="card-meta">
+              <span class="tag tag-strategy">strategy</span>
+              <span class="tag tag-default">briefly</span>
+              <span class="meta-dot"></span>
+              <span class="meta-text"><strong>4d</strong> ago</span>
+              <span class="meta-dot"></span>
+              <span class="meta-text">1,260 words</span>
+            </div>
+            <div class="connections">
+              <span class="conn-label">Linked to</span>
+              <a class="conn-chip" href="#">Briefly</a>
+              <a class="conn-chip" href="#">Margins</a>
+              <a class="conn-chip" href="#">Anthropic memory</a>
+            </div>
+          </article>
+
+          <article class="card" data-path="wiki/career/oliver-wyman.md" data-bucket="career" data-tags="career,consulting">
+            <div class="card-path">wiki/career/oliver-wyman.md</div>
+            <h3 class="card-title">Oliver Wyman</h3>
+            <p class="card-snippet">Pre-MS consulting stint, FS strategy. Useful credentialing line on the Briefly site and for Booth-deferral conversations. Two FS-partner contacts still warm; not buyers but credible referrers for RIA owner intros.</p>
+            <div class="card-peek">Project pattern was wealth-segment growth strategy for large banks — exactly the buyer-side perspective Briefly is now selling against. Don't mention OW credentials in cold emails to small RIAs; can read as overweight.</div>
+            <div class="card-meta">
+              <span class="tag tag-career">career</span>
+              <span class="tag tag-default">consulting</span>
+              <span class="meta-dot"></span>
+              <span class="meta-text"><strong>6d</strong> ago</span>
+              <span class="meta-dot"></span>
+              <span class="meta-text">620 words</span>
+            </div>
+          </article>
+
+          <article class="card" data-path="wiki/synthesis/margins-briefly-consolidation.md" data-bucket="synthesis" data-tags="strategy,architecture">
+            <div class="card-path">wiki/synthesis/margins-briefly-consolidation.md</div>
+            <h3 class="card-title">Margins and Briefly are the same architecture</h3>
+            <p class="card-snippet">Margins is the architecture — vault, operator manual, ingest, graph. Briefly is the vertical product on top of it for RIAs. Don't treat them as parallel projects. This consolidation justifies $40K services pricing for the firm-customized build.</p>
+            <div class="card-peek">As of 5/2: Margins is lead build, Briefly enters formal maintenance, Ihor freeze real. Traction signal = 10+ users or a paying Margins customer before reopening Briefly product investment.</div>
+            <div class="card-meta">
+              <span class="tag tag-strategy">strategy</span>
+              <span class="tag tag-default">architecture</span>
+              <span class="meta-dot"></span>
+              <span class="meta-text"><strong>7d</strong> ago</span>
+              <span class="meta-dot"></span>
+              <span class="meta-text">1,920 words</span>
+            </div>
+            <div class="connections">
+              <span class="conn-label">Linked to</span>
+              <a class="conn-chip" href="#">Briefly</a>
+              <a class="conn-chip" href="#">Margins</a>
+            </div>
+          </article>
+
+          <article class="card" data-path="wiki/entities/bob-casey.md" data-bucket="entities" data-tags="mentor,riviera">
+            <div class="card-path">wiki/entities/bob-casey.md</div>
+            <h3 class="card-title">Bob Casey</h3>
+            <p class="card-snippet">Founder of Santa Barbara Management (Chicago-based despite the name), Booth lecturer, founding-team offer extender. Closed out 5/3 — relationship moves to stay-in-touch. Plans to share Margins personal-productivity tool; business fold-in stays gated.</p>
+            <div class="card-peek">Mentor pattern: deep, slow, deliberate. Won't be rushed into a yes or a no. Predates Briefly. Travels heavily for the SBM book; best reach time is Wednesday mornings Chicago. Knows the Booth deferral landscape cold.</div>
+            <div class="card-meta">
+              <span class="tag tag-mentor">mentor</span>
+              <span class="tag tag-default">riviera</span>
+              <span class="meta-dot"></span>
+              <span class="meta-text"><strong>8d</strong> ago</span>
+              <span class="meta-dot"></span>
+              <span class="meta-text">2,100 words</span>
+            </div>
+            <div class="connections">
+              <span class="conn-label">Linked to</span>
+              <a class="conn-chip" href="#">Santa Barbara Management</a>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- ============ OLDER ============ -->
+      <section class="section collapsed" data-section>
+        <header class="section-head" onclick="toggleSection(this)">
+          <h2 class="section-title">Older</h2>
+          <span class="section-count">2 files</span>
+          <span class="section-rule"></span>
+          <svg class="section-toggle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </header>
+
+        <div class="cards">
+          <article class="card" data-path="wiki/sources/2026-04-28-pricing-deck-feedback.md" data-bucket="sources" data-tags="source,pricing">
+            <div class="card-path">wiki/sources/2026-04-28-pricing-deck-feedback.md</div>
+            <h3 class="card-title">Pricing deck feedback — 4/28</h3>
+            <p class="card-snippet">Larry's review of the Centric pilot pricing slide. Anchor at $50–100/seat reads correctly as first-partner discount, not desperation, if framed against $200/seat full price. Pull Affinity comparison forward; drop the Jump/Zocks delta — too defensive.</p>
+            <div class="card-peek">Larry suggested adding a "what changes at full price" slide so Ellis sees the value gradient clearly. Three premium tiers landed: standard, firm-customized, full graph-substrate. Connor flagged that the graph-substrate tier is aspirational and shouldn't appear in the pilot deck.</div>
+            <div class="card-meta">
+              <span class="tag tag-source">source</span>
+              <span class="tag tag-default">pricing</span>
+              <span class="meta-dot"></span>
+              <span class="meta-text"><strong>12d</strong> ago</span>
+              <span class="meta-dot"></span>
+              <span class="meta-text">1,840 words</span>
+            </div>
+            <div class="connections">
+              <span class="conn-label">Linked to</span>
+              <a class="conn-chip" href="#">Briefly</a>
+            </div>
+          </article>
+
+          <article class="card" data-path="wiki/sources/2026-04-15-ellis-meeting.md" data-bucket="sources" data-tags="meeting,source">
+            <div class="card-path">wiki/sources/2026-04-15-ellis-meeting.md</div>
+            <h3 class="card-title">Ellis meeting — 4/15 Centric WM visit</h3>
+            <p class="card-snippet">90-minute on-site at Centric. Ellis named action-item routing as the #1 pilot ask, ranking it above the pre-meeting brief feature that Connor expected to lead with. Pilot ask landed: Ellis + 1–2 advisors, $125/seat, 60–90 days.</p>
+            <div class="card-peek">Notes: Ellis prefers async demos. Compliance concerns minimal at Centric's size. Virgil mentioned once, not introduced — confirms champion/buyer separation. Three follow-ups assigned to Connor: send pilot agreement draft, share Affinity comparison, set up Orion read-only sandbox.</div>
+            <div class="card-meta">
+              <span class="tag tag-source">source</span>
+              <span class="tag tag-meeting">meeting</span>
+              <span class="meta-dot"></span>
+              <span class="meta-text"><strong>24d</strong> ago</span>
+              <span class="meta-dot"></span>
+              <span class="meta-text">3,200 words</span>
+            </div>
+            <div class="connections">
+              <span class="conn-label">Linked to</span>
+              <a class="conn-chip" href="#">Ellis Rutili</a>
+              <a class="conn-chip" href="#">Centric WM</a>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <div class="footer-hint">14 files · 20 tags · 22,400 words · backed by plain markdown in <code>~/Documents/connor_brain2/wiki/</code></div>
+    </div>
+  </main>
+
+  <script>
+    // ===== File data =====
+    const FILES = [
+      { bucket: 'meta',      path: 'wiki/log.md',                                          title: 'Operations log',                                words: 5400, age: '1h',  tags: ['log'] },
+      { bucket: 'career',    path: 'wiki/career/alex-wolf.md',                             title: 'Alex Wolf',                                     words: 380,  age: '2h',  tags: ['career', 'advisor'] },
+      { bucket: 'entities',  path: 'wiki/entities/ellis-rutili.md',                        title: 'Ellis Rutili',                                  words: 1580, age: '3h',  tags: ['prospect', 'centric'] },
+      { bucket: 'entities',  path: 'wiki/entities/centric-wm.md',                          title: 'Centric Wealth Management',                     words: 740,  age: '3h',  tags: ['firm', 'prospect'] },
+      { bucket: 'concepts',  path: 'wiki/concepts/relationship-graph.md',                  title: 'Relationship graph',                            words: 920,  age: '5h',  tags: ['product', 'briefly-vision'] },
+      { bucket: 'concepts',  path: 'wiki/concepts/audio-retention-privacy.md',             title: 'Audio retention as a privacy pitch',            words: 460,  age: '1d',  tags: ['product', 'security'] },
+      { bucket: 'career',    path: 'wiki/career/morgan-stanley.md',                        title: 'Morgan Stanley',                                words: 1240, age: '2d',  tags: ['career'] },
+      { bucket: 'meta',      path: 'wiki/index.md',                                        title: 'Vault index',                                   words: 720,  age: '3d',  tags: ['meta'] },
+      { bucket: 'synthesis', path: 'wiki/synthesis/briefly-strategic-direction-apr2026.md',title: 'Briefly strategic direction — Apr 2026',        words: 1260, age: '4d',  tags: ['strategy', 'briefly'] },
+      { bucket: 'career',    path: 'wiki/career/oliver-wyman.md',                          title: 'Oliver Wyman',                                  words: 620,  age: '6d',  tags: ['career', 'consulting'] },
+      { bucket: 'synthesis', path: 'wiki/synthesis/margins-briefly-consolidation.md',      title: 'Margins and Briefly are the same architecture', words: 1920, age: '7d',  tags: ['strategy', 'architecture'] },
+      { bucket: 'entities',  path: 'wiki/entities/bob-casey.md',                           title: 'Bob Casey',                                     words: 2100, age: '8d',  tags: ['mentor', 'riviera'] },
+      { bucket: 'sources',   path: 'wiki/sources/2026-04-28-pricing-deck-feedback.md',     title: 'Pricing deck feedback — 4/28',                  words: 1840, age: '12d', tags: ['source', 'pricing'] },
+      { bucket: 'sources',   path: 'wiki/sources/2026-04-15-ellis-meeting.md',             title: 'Ellis meeting — 4/15 Centric WM visit',         words: 3200, age: '24d', tags: ['meeting', 'source'] },
+    ];
+
+    const FILE_BODIES = {
+      'wiki/log.md': 'Recent ops: 5/10 ingest (ellis-meeting source); 5/09 compile (8 backlink suggestions, 6 accepted); 5/08 query — "what\'s the right price for centric"; 5/07 update on briefly-competitive-landscape adding Affinity benchmark.',
+      'wiki/career/alex-wolf.md': 'MS PWM colleague, now FA in Chicago. Reached out 5/8 after seeing the Riviera close-out post. Warm but cautious — not a buyer; useful intel on advisor adoption of Jump and Hazel inside MS\'s tech-allow list.',
+      'wiki/entities/ellis-rutili.md': 'Champion at Centric WM — operations role, nephew of founder Virgil. Named action-item routing as his #1 pilot ask. Pilot scoped at $125/seat × Ellis + 1–2 advisors, 60–90 days.',
+      'wiki/entities/centric-wm.md': 'Chicago-based RIA, ~$300M AUM split across an FSC-SMB core book and one $300M family-office household. First-firm pilot anchor for Briefly at $50–100/seat.',
+      'wiki/concepts/relationship-graph.md': 'The substrate underneath Briefly — every advisor interaction, household, referral, and vendor edge as a typed node. Five-year optionality for vertical extension.',
+      'wiki/concepts/audio-retention-privacy.md': 'v1 default deletes the raw audio file the moment AssemblyAI returns a transcript. Reframe in client materials as a deliberate privacy/security feature.',
+      'wiki/career/morgan-stanley.md': 'Connor\'s prior firm — Private Wealth analyst, 2021–2024. The MS PWM rolodex is mostly ex-coworkers, not buyers. Treat as a relationship cluster to maintain rather than a pipeline to mine.',
+      'wiki/index.md': 'Map of the wiki. Folders: career, concepts, entities, sources, synthesis, ideas, outbound. Use this page to orient any new agent or future-Connor returning after a long gap.',
+      'wiki/synthesis/briefly-strategic-direction-apr2026.md': 'Connor\'s lean: partner with a few small RIAs, customize per-firm, pull the relationship graph forward as the underlying vision. Not horizontal SaaS.',
+      'wiki/career/oliver-wyman.md': 'Pre-MS consulting stint, FS strategy. Useful credentialing line on the Briefly site and for Booth-deferral conversations.',
+      'wiki/synthesis/margins-briefly-consolidation.md': 'Margins is the architecture — vault, operator manual, ingest, graph. Briefly is the vertical product on top of it for RIAs. Don\'t treat them as parallel projects.',
+      'wiki/entities/bob-casey.md': 'Founder of Santa Barbara Management (Chicago-based despite the name), Booth lecturer. Closed out 5/3 — relationship moves to stay-in-touch.',
+      'wiki/sources/2026-04-28-pricing-deck-feedback.md': 'Larry\'s review of the Centric pilot pricing slide. Anchor at $50–100/seat reads correctly as first-partner discount, not desperation.',
+      'wiki/sources/2026-04-15-ellis-meeting.md': '90-minute on-site at Centric. Ellis named action-item routing as the #1 pilot ask, ranking it above the pre-meeting brief feature.',
+    };
+    const FILE_CONN = {
+      'wiki/career/alex-wolf.md': ['Briefly','Morgan Stanley'],
+      'wiki/entities/ellis-rutili.md': ['Centric WM','Virgil Rutili'],
+      'wiki/entities/centric-wm.md': ['Ellis Rutili'],
+      'wiki/concepts/relationship-graph.md': ['Briefly','Margins'],
+      'wiki/concepts/audio-retention-privacy.md': ['Briefly'],
+      'wiki/career/morgan-stanley.md': ['Alex Wolf','Joel Florczyk'],
+      'wiki/synthesis/briefly-strategic-direction-apr2026.md': ['Briefly','Margins','Anthropic memory'],
+      'wiki/synthesis/margins-briefly-consolidation.md': ['Briefly','Margins'],
+      'wiki/entities/bob-casey.md': ['Santa Barbara Management'],
+      'wiki/sources/2026-04-28-pricing-deck-feedback.md': ['Briefly'],
+      'wiki/sources/2026-04-15-ellis-meeting.md': ['Ellis Rutili','Centric WM'],
+    };
+
+    const BUCKETS = [
+      { key: 'entities',  label: 'Entities' },
+      { key: 'concepts',  label: 'Concepts' },
+      { key: 'sources',   label: 'Sources' },
+      { key: 'synthesis', label: 'Synthesis' },
+      { key: 'career',    label: 'Career' },
+      { key: 'meta',      label: 'Logs & meta' },
+    ];
+
+    // ===== Hand-authored tag cluster =====
+    // Position in % of cluster-hero (left, top). Authored so:
+    //   - briefly/strategy/product/briefly-vision/architecture/security cluster top-center
+    //   - prospect/centric/firm/meeting/source/pricing cluster right
+    //   - career/advisor/consulting/ms-pwm cluster left
+    //   - mentor/riviera cluster center-bottom
+    //   - log/meta isolated at edges
+    // Size = file count (sz-xl, sz-lg, sz-md, sz-sm, sz-xs)
+    // tier = bucket | thing | action
+    const TAGS = [
+      // === career cluster (left) ===
+      { name: 'career',        count: 3, files: ['wiki/career/alex-wolf.md','wiki/career/morgan-stanley.md','wiki/career/oliver-wyman.md'], size: 'sz-lg', tier: 'bucket-career',   x: 9,  y: 36 },
+      { name: 'advisor',       count: 1, files: ['wiki/career/alex-wolf.md'],                                                                size: 'sz-sm', tier: 'action',          x: 5,  y: 55 },
+      { name: 'consulting',    count: 1, files: ['wiki/career/oliver-wyman.md'],                                                             size: 'sz-xs', tier: 'thing-violet',    x: 19, y: 60 },
+
+      // === strategy / product cluster (top center) ===
+      { name: 'strategy',      count: 2, files: ['wiki/synthesis/briefly-strategic-direction-apr2026.md','wiki/synthesis/margins-briefly-consolidation.md'], size: 'sz-lg', tier: 'bucket-synthesis', x: 38, y: 26 },
+      { name: 'product',       count: 2, files: ['wiki/concepts/relationship-graph.md','wiki/concepts/audio-retention-privacy.md'],          size: 'sz-lg', tier: 'bucket-concepts', x: 56, y: 22 },
+      { name: 'briefly',       count: 1, files: ['wiki/synthesis/briefly-strategic-direction-apr2026.md'],                                   size: 'sz-md', tier: 'thing-vermillion',x: 47, y: 44 },
+      { name: 'architecture',  count: 1, files: ['wiki/synthesis/margins-briefly-consolidation.md'],                                         size: 'sz-sm', tier: 'action',          x: 30, y: 47 },
+      { name: 'briefly-vision',count: 1, files: ['wiki/concepts/relationship-graph.md'],                                                     size: 'sz-sm', tier: 'thing-violet',    x: 64, y: 42 },
+      { name: 'security',      count: 1, files: ['wiki/concepts/audio-retention-privacy.md'],                                                size: 'sz-sm', tier: 'action',          x: 70, y: 32 },
+
+      // === prospect / centric / source / meeting cluster (right) ===
+      { name: 'prospect',      count: 2, files: ['wiki/entities/ellis-rutili.md','wiki/entities/centric-wm.md'],                             size: 'sz-lg', tier: 'bucket-entities', x: 78, y: 56 },
+      { name: 'source',        count: 2, files: ['wiki/sources/2026-04-15-ellis-meeting.md','wiki/sources/2026-04-28-pricing-deck-feedback.md'], size: 'sz-lg', tier: 'bucket-sources', x: 88, y: 70 },
+      { name: 'centric',       count: 1, files: ['wiki/entities/ellis-rutili.md'],                                                           size: 'sz-sm', tier: 'thing-cobalt',    x: 73, y: 72 },
+      { name: 'firm',          count: 1, files: ['wiki/entities/centric-wm.md'],                                                             size: 'sz-sm', tier: 'bucket-entities', x: 65, y: 64 },
+      { name: 'meeting',       count: 1, files: ['wiki/sources/2026-04-15-ellis-meeting.md'],                                                size: 'sz-sm', tier: 'bucket-sources',  x: 82, y: 84 },
+      { name: 'pricing',       count: 1, files: ['wiki/sources/2026-04-28-pricing-deck-feedback.md'],                                        size: 'sz-sm', tier: 'action',          x: 92, y: 56 },
+
+      // === mentor / riviera (center-bottom) ===
+      { name: 'mentor',        count: 1, files: ['wiki/entities/bob-casey.md'],                                                              size: 'sz-md', tier: 'action',          x: 42, y: 78 },
+      { name: 'riviera',       count: 1, files: ['wiki/entities/bob-casey.md'],                                                              size: 'sz-sm', tier: 'thing-mustard',   x: 52, y: 84 },
+
+      // === isolated at edges ===
+      { name: 'log',           count: 1, files: ['wiki/log.md'],                                                                              size: 'sz-sm', tier: 'bucket-meta',     x: 4,  y: 14 },
+      { name: 'meta',          count: 1, files: ['wiki/index.md'],                                                                            size: 'sz-sm', tier: 'bucket-meta',     x: 16, y: 82 },
+    ];
+
+    // size to font px (approximate, for tooltip alignment)
+    const SIZE_HEIGHT = { 'sz-xl': 34, 'sz-lg': 28, 'sz-md': 22, 'sz-sm': 16, 'sz-xs': 14 };
+
+    function fmtNum(n) { return n.toLocaleString('en-US'); }
+    function escapeHTML(s) { return s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+    // ===== Build tag cluster =====
+    const clusterCanvas = document.getElementById('clusterCanvas');
+    const clusterHero = document.getElementById('clusterHero');
+    const clusterTip = document.getElementById('clusterTip');
+    const tagEls = {};
+
+    TAGS.forEach((t, i) => {
+      const el = document.createElement('div');
+      el.className = `cluster-tag ${t.size} t-${t.tier}`;
+      el.style.left = `${t.x}%`;
+      el.style.top  = `${t.y}%`;
+      // anchor: translate -50%, -50% so x/y is the center of the label
+      el.style.transform = 'translate(-50%, -50%)';
+      // ambient drift: randomize duration + delay
+      const dur = 10 + ((i * 1.37) % 6);     // 10–16s
+      const delay = -((i * 0.83) % 12);       // negative delay = different phase
+      el.style.setProperty('--drift-dur', `${dur.toFixed(2)}s`);
+      el.style.setProperty('--drift-delay', `${delay.toFixed(2)}s`);
+      el.dataset.tag = t.name;
+      el.innerHTML = `<span class="drift">${escapeHTML(t.name)}</span>`;
+      clusterCanvas.appendChild(el);
+      tagEls[t.name] = el;
+    });
+
+    // ===== Hover & click handling on cluster =====
+    let pinnedTag = null;
+
+    function fileWordsForTag(tagName) {
+      const t = TAGS.find(x => x.name === tagName);
+      if (!t) return 0;
+      return t.files.reduce((sum, p) => {
+        const f = FILES.find(ff => ff.path === p);
+        return sum + (f ? f.words : 0);
+      }, 0);
+    }
+
+    function highlightTag(tagName) {
+      clusterHero.classList.add('has-hover');
+      TAGS.forEach(t => {
+        tagEls[t.name].classList.toggle('is-hot', t.name === tagName);
+      });
+      // glow bucket items in index that have this tag
+      glowIndexItems(tagName);
+      // glow inline tag chips
+      document.querySelectorAll('.item-tagstrip .ttag').forEach(ch => {
+        ch.classList.toggle('is-hot', ch.dataset.tag === tagName);
+      });
+      // glow feed cards
+      document.querySelectorAll('.card').forEach(c => {
+        const tags = (c.dataset.tags || '').split(',');
+        c.classList.toggle('is-glow', tags.includes(tagName));
+      });
+    }
+
+    function unhighlight() {
+      clusterHero.classList.remove('has-hover');
+      TAGS.forEach(t => tagEls[t.name].classList.remove('is-hot'));
+      document.querySelectorAll('.bucket-item.is-glow').forEach(b => b.classList.remove('is-glow'));
+      document.querySelectorAll('.alpha-file.is-glow').forEach(b => b.classList.remove('is-glow'));
+      document.querySelectorAll('.item-tagstrip .ttag.is-hot').forEach(ch => ch.classList.remove('is-hot'));
+      document.querySelectorAll('.card.is-glow').forEach(c => c.classList.remove('is-glow'));
+    }
+
+    function glowIndexItems(tagName) {
+      const t = TAGS.find(x => x.name === tagName);
+      if (!t) return;
+      const paths = new Set(t.files);
+      document.querySelectorAll('.bucket-item').forEach(it => {
+        it.classList.toggle('is-glow', paths.has(it.dataset.path));
+      });
+      document.querySelectorAll('.alpha-file').forEach(it => {
+        it.classList.toggle('is-glow', paths.has(it.dataset.path));
+      });
+    }
+
+    // Tooltip
+    function showTip(tagName, anchorEl) {
+      const t = TAGS.find(x => x.name === tagName);
+      if (!t) return;
+      const words = fileWordsForTag(tagName);
+      const rect = anchorEl.getBoundingClientRect();
+      const heroRect = clusterHero.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2 - heroRect.left;
+      const cy = rect.top - heroRect.top;
+      clusterTip.textContent = `${t.count} ${t.count === 1 ? 'file' : 'files'} · ${fmtNum(words)} words`;
+      clusterTip.style.left = `${cx}px`;
+      clusterTip.style.top = `${cy}px`;
+      clusterTip.classList.add('show');
+    }
+    function hideTip() { clusterTip.classList.remove('show'); }
+
+    // Wire up hover/click for each tag
+    Object.entries(tagEls).forEach(([name, el]) => {
+      el.addEventListener('mouseenter', () => {
+        if (!pinnedTag) {
+          highlightTag(name);
+        }
+        showTip(name, el);
+      });
+      el.addEventListener('mouseleave', () => {
+        if (!pinnedTag) unhighlight();
+        hideTip();
+      });
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (pinnedTag === name) {
+          clearPin();
+        } else {
+          pinTag(name);
+        }
+      });
+    });
+
+    // Pin/unpin
+    const clusterFilter = document.getElementById('clusterFilter');
+    const cfLabel = document.getElementById('cfLabel');
+    const cfCount = document.getElementById('cfCount');
+    const cfClear = document.getElementById('cfClear');
+
+    function pinTag(tagName) {
+      pinnedTag = tagName;
+      // visual pin: vermillion underline on the tag
+      Object.values(tagEls).forEach(el => el.classList.remove('is-pinned'));
+      tagEls[tagName].classList.add('is-pinned');
+      highlightTag(tagName);
+
+      const t = TAGS.find(x => x.name === tagName);
+      cfLabel.textContent = tagName;
+      cfCount.textContent = `· ${t.count} ${t.count === 1 ? 'file' : 'files'}`;
+      clusterFilter.classList.add('show');
+
+      // Filter the Index: collapse buckets with zero matches; hide non-matching items
+      const paths = new Set(t.files);
+      document.querySelectorAll('.bucket').forEach(b => {
+        const items = b.querySelectorAll('.bucket-item');
+        let visible = 0;
+        items.forEach(it => {
+          const match = paths.has(it.dataset.path);
+          it.style.display = match ? '' : 'none';
+          if (match) visible++;
+        });
+        b.style.display = visible === 0 ? 'none' : '';
+      });
+      // Filter alpha view too
+      document.querySelectorAll('.alpha-file').forEach(it => {
+        it.style.display = paths.has(it.dataset.path) ? '' : 'none';
+      });
+      document.querySelectorAll('.alpha-section').forEach(sec => {
+        const visible = [...sec.querySelectorAll('.alpha-file')].filter(f => f.style.display !== 'none').length;
+        sec.style.display = visible === 0 ? 'none' : '';
+      });
+      // Filter feed
+      document.querySelectorAll('.card').forEach(c => {
+        const tags = (c.dataset.tags || '').split(',');
+        c.classList.toggle('hidden', !tags.includes(tagName));
+      });
+      document.querySelectorAll('.section').forEach(s => {
+        const visible = s.querySelectorAll('.card:not(.hidden)').length;
+        s.style.display = visible === 0 ? 'none' : '';
+        s.classList.remove('collapsed');
+      });
+    }
+
+    function clearPin() {
+      pinnedTag = null;
+      Object.values(tagEls).forEach(el => el.classList.remove('is-pinned'));
+      unhighlight();
+      clusterFilter.classList.remove('show');
+      // restore index
+      document.querySelectorAll('.bucket').forEach(b => {
+        b.style.display = '';
+        b.querySelectorAll('.bucket-item').forEach(it => it.style.display = '');
+      });
+      document.querySelectorAll('.alpha-section').forEach(sec => sec.style.display = '');
+      document.querySelectorAll('.alpha-file').forEach(it => it.style.display = '');
+      // restore feed
+      document.querySelectorAll('.card').forEach(c => c.classList.remove('hidden'));
+      document.querySelectorAll('.section').forEach(s => s.style.display = '');
+      // re-collapse "Older" to default
+      const older = document.querySelectorAll('.section')[2];
+      if (older) older.classList.add('collapsed');
+    }
+    cfClear.addEventListener('click', clearPin);
+
+    // ===== Build bucketed view (Index) =====
+    const grid = document.getElementById('indexGrid');
+    const totalsByBucket = {};
+    BUCKETS.forEach(b => {
+      const files = FILES.filter(f => f.bucket === b.key);
+      totalsByBucket[b.key] = files.reduce((s, f) => s + f.words, 0);
+    });
+    const maxBucketWords = Math.max(...Object.values(totalsByBucket));
+
+    BUCKETS.forEach(b => {
+      const files = FILES.filter(f => f.bucket === b.key).sort((a, c) => c.words - a.words);
+      const total = totalsByBucket[b.key];
+      const ratio = total / maxBucketWords;
+
+      const div = document.createElement('div');
+      div.className = `bucket b-${b.key}`;
+      div.innerHTML = `
+        <div class="bucket-head" data-bucket="${b.key}" data-label="${b.label}">
+          <h3 class="bucket-name">${b.label}</h3>
+        </div>
+        <div class="bucket-meta">
+          <div class="density-bar"><div class="density-fill" style="transform: scaleX(${ratio.toFixed(3)})"></div></div>
+          <div class="bucket-count"><strong>${files.length}</strong> ${files.length === 1 ? 'file' : 'files'} · ${fmtNum(total)} words</div>
+        </div>
+        <ul class="bucket-list">
+          ${files.map(f => `
+            <li class="bucket-item" data-path="${f.path}" data-title="${f.title}">
+              <div class="item-title-row">
+                <span class="item-title">${f.title}</span>
+                <span class="item-meta">${f.age}</span>
+              </div>
+              <div class="item-tagstrip">
+                ${f.tags.map(tg => `<span class="ttag" data-tag="${tg}">${tg}</span>`).join('')}
+              </div>
+            </li>`).join('')}
+        </ul>
+      `;
+      grid.appendChild(div);
+    });
+
+    // ===== Alphabetical view =====
+    const alphaWrap = document.getElementById('indexAlpha');
+    const groups = {};
+    FILES.forEach(f => {
+      const letter = f.title.charAt(0).toUpperCase();
+      (groups[letter] = groups[letter] || []).push(f);
+    });
+    const letters = Object.keys(groups).sort();
+    letters.forEach(L => {
+      const sec = document.createElement('div');
+      sec.className = 'alpha-section';
+      sec.id = `alpha-${L}`;
+      const files = groups[L].sort((a, b) => a.title.localeCompare(b.title));
+      sec.innerHTML = `
+        <div class="alpha-letter">${L}</div>
+        <div class="alpha-files">
+          ${files.map(f => `
+            <div class="alpha-file k-${f.bucket}" data-path="${f.path}" data-title="${f.title}">
+              <div class="item-row">
+                <span class="item-dot"></span>
+                <span class="item-title">${f.title}</span>
+              </div>
+              <span class="item-meta">${fmtNum(f.words)} w</span>
+            </div>`).join('')}
+        </div>
+      `;
+      alphaWrap.appendChild(sec);
+    });
+
+    // ===== Mode toggle =====
+    const spread = document.getElementById('indexSpread');
+    const modeBtns = document.querySelectorAll('.index-mode button');
+    function setMode(mode) {
+      modeBtns.forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+      spread.classList.toggle('alpha-mode', mode === 'alpha');
+    }
+    modeBtns.forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
+
+    // ===== Tag-strip chip click also pins =====
+    document.querySelectorAll('.item-tagstrip .ttag').forEach(ch => {
+      ch.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const t = ch.dataset.tag;
+        if (pinnedTag === t) clearPin(); else pinTag(t);
+      });
+      ch.addEventListener('mouseenter', () => {
+        if (!pinnedTag) highlightTag(ch.dataset.tag);
+      });
+      ch.addEventListener('mouseleave', () => {
+        if (!pinnedTag) unhighlight();
+      });
+    });
+
+    // ===== Bucket-head click → existing feed filter (preserved) =====
+    const filterEl = document.getElementById('activeFilter');
+    const filterLabel = document.getElementById('filterLabel');
+    const filterDot = document.getElementById('filterDot');
+    const filterClear = document.getElementById('filterClear');
+    const allCards = document.querySelectorAll('.card');
+    const allSections = document.querySelectorAll('.section');
+
+    function applyFilter({ bucket, path, label }) {
+      filterEl.classList.add('show');
+      filterLabel.textContent = label;
+      filterDot.className = 'filter-dot' + (bucket ? ` k-${bucket}` : '');
+      allCards.forEach(c => {
+        let match = true;
+        if (path) match = c.dataset.path === path;
+        else if (bucket) match = c.dataset.bucket === bucket;
+        c.classList.toggle('hidden', !match);
+      });
+      allSections.forEach(s => s.classList.remove('collapsed'));
+      allSections.forEach(s => {
+        const visible = s.querySelectorAll('.card:not(.hidden)').length;
+        s.style.display = visible === 0 ? 'none' : '';
+      });
+    }
+    function clearFilter() {
+      filterEl.classList.remove('show');
+      allCards.forEach(c => c.classList.remove('hidden'));
+      allSections.forEach(s => s.style.display = '');
+    }
+    filterClear.addEventListener('click', clearFilter);
+
+    document.querySelectorAll('.bucket-head').forEach(h => {
+      h.addEventListener('click', () => {
+        applyFilter({ bucket: h.dataset.bucket, label: h.dataset.label });
+        document.querySelector('.feed-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
+
+    // ===== Bucket-item + alpha-file: hover peek + click =====
+    let peekTimer = null;
+    let activePeek = null;
+
+    function buildPeek(item) {
+      const path = item.dataset.path;
+      const body = FILE_BODIES[path] || '';
+      const conn = FILE_CONN[path] || [];
+      const f = FILES.find(ff => ff.path === path);
+      const peek = document.createElement('div');
+      peek.className = 'item-peek';
+      peek.innerHTML = `
+        <p class="pk-title">${f.title}</p>
+        <p class="pk-body">${body}</p>
+        ${conn.length ? `
+          <div class="pk-conn">
+            <span class="pk-conn-label">Links</span>
+            ${conn.map(c => `<span class="pk-chip">${c}</span>`).join('')}
+          </div>` : ''}
+      `;
+      return peek;
+    }
+    function clearPeek() {
+      if (activePeek) {
+        activePeek.remove();
+        activePeek = null;
+      }
+      clearTimeout(peekTimer);
+    }
+
+    document.querySelectorAll('.bucket-item').forEach(item => {
+      item.addEventListener('mouseenter', () => {
+        clearPeek();
+        peekTimer = setTimeout(() => {
+          activePeek = buildPeek(item);
+          item.appendChild(activePeek);
+          requestAnimationFrame(() => activePeek.classList.add('show'));
+        }, 400);
+      });
+      item.addEventListener('mouseleave', () => {
+        clearPeek();
+      });
+      item.addEventListener('click', (e) => {
+        if (e.target.classList.contains('ttag')) return; // chip handled separately
+        applyFilter({ bucket: null, path: item.dataset.path, label: item.dataset.title });
+        document.querySelector('.feed-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
+
+    document.querySelectorAll('.alpha-file').forEach(el => {
+      el.addEventListener('click', () => {
+        applyFilter({ bucket: null, path: el.dataset.path, label: el.dataset.title });
+        document.querySelector('.feed-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
+
+    // ===== Search =====
+    const searchInput = document.getElementById('searchInput');
+    function runSearch(q) {
+      q = q.trim().toLowerCase();
+      if (!q) {
+        // clear any search filtering
+        Object.values(tagEls).forEach(el => el.style.opacity = '');
+        document.querySelectorAll('.bucket-item').forEach(it => it.style.opacity = '');
+        document.querySelectorAll('.alpha-file').forEach(it => it.style.opacity = '');
+        return;
+      }
+      // dim non-matching tags
+      TAGS.forEach(t => {
+        tagEls[t.name].style.opacity = t.name.includes(q) ? '1' : '0.18';
+      });
+      // dim non-matching file rows in index
+      document.querySelectorAll('.bucket-item').forEach(it => {
+        const title = (it.dataset.title || '').toLowerCase();
+        const path = (it.dataset.path || '').toLowerCase();
+        const file = FILES.find(f => f.path === it.dataset.path);
+        const fileTags = file ? file.tags.join(' ') : '';
+        const match = title.includes(q) || path.includes(q) || fileTags.includes(q);
+        it.style.opacity = match ? '1' : '0.3';
+      });
+      document.querySelectorAll('.alpha-file').forEach(it => {
+        const title = (it.dataset.title || '').toLowerCase();
+        const match = title.includes(q);
+        it.style.opacity = match ? '1' : '0.3';
+      });
+    }
+    searchInput.addEventListener('input', e => runSearch(e.target.value));
+    // "/" keystroke focus
+    document.addEventListener('keydown', (e) => {
+      if (e.key === '/' && document.activeElement !== searchInput) {
+        e.preventDefault();
+        searchInput.focus();
+        searchInput.select();
+      }
+      if (e.key === 'Escape') {
+        if (pinnedTag) clearPin();
+        if (searchInput.value) { searchInput.value = ''; runSearch(''); }
+      }
+    });
+
+    // ===== Accordion toggle =====
+    function toggleSection(headerEl) {
+      headerEl.parentElement.classList.toggle('collapsed');
+    }
+    window.toggleSection = toggleSection;
+  </script>
+</body>
+</html>

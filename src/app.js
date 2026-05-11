@@ -362,6 +362,11 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 const initialTheme = localStorage.getItem(STORAGE_KEYS.theme) || "light";
 document.documentElement.dataset.theme = initialTheme;
 let apiSecretHydrationPromise = null;
+// Tracks whether the optional `.env` fetch has settled. Until it has,
+// updateNoKeyBanner refuses to *show* the API gate — keeps the brief
+// page-load flash from happening on dev reloads that resolve their
+// key via .env rather than localStorage.
+let envHydrationSettled = false;
 // TODO(post-refactor): replace this hard timeout with streaming response
 // rendering — fields appear as they arrive, no all-or-nothing wait. See TODO.md.
 const API_REQUEST_TIMEOUT_MS = 180_000;
@@ -446,6 +451,7 @@ Object.assign(state, {
   expandedReceiptLinks: new Set(),
   expandedSummaries: new Set(),
   revealedReceipts: new Set(),
+  completedMeters: new Map(),
   entityQuery: "",
   entityFilterKind: "all",
   entityFilterValue: "",
@@ -575,6 +581,32 @@ const els = {
   docBody: document.getElementById("doc-body"),
   docDeleteBtn: document.getElementById("doc-delete-btn"),
   docSaveBtn: document.getElementById("doc-save-btn"),
+  qfilesShell: document.querySelector(".qfiles-shell"),
+  qfilesPullquote: document.getElementById("qfiles-pullquote"),
+  qfilesSearch: document.getElementById("qfiles-search"),
+  qfilesIndexBody: document.getElementById("qfiles-index-body"),
+  qfilesPreview: document.getElementById("qfiles-preview"),
+  qfilesPreviewEmpty: document.getElementById("qfiles-preview-empty"),
+  qfilesEmptyStats: document.getElementById("qfiles-empty-stats"),
+  qfilesPreviewContent: document.getElementById("qfiles-preview-content"),
+  qfilesPreviewTitle: document.getElementById("qfiles-preview-title"),
+  qfilesPreviewPath: document.getElementById("qfiles-preview-path"),
+  qfilesPreviewExcerpt: document.getElementById("qfiles-preview-excerpt"),
+  qfilesPreviewExtended: document.getElementById("qfiles-preview-extended"),
+  qfilesPreviewMore: document.getElementById("qfiles-preview-more"),
+  qfilesPreviewEdited: document.getElementById("qfiles-preview-edited"),
+  qfilesPreviewWords: document.getElementById("qfiles-preview-words"),
+  qfilesPreviewTags: document.getElementById("qfiles-preview-tags"),
+  qfilesPreviewConnections: document.getElementById("qfiles-preview-connections"),
+  qfilesPreviewConnPills: document.getElementById("qfiles-preview-conn-pills"),
+  qfilesPreviewEditBtn: document.getElementById("qfiles-preview-edit-btn"),
+  qfilesPreviewPinBtn: document.getElementById("qfiles-preview-pin-btn"),
+  qfilesEditMode: document.getElementById("qfiles-edit-mode"),
+  qfilesEditBack: document.getElementById("qfiles-edit-back"),
+  qfilesPalette: document.getElementById("qfiles-palette"),
+  qfilesPaletteBackdrop: document.getElementById("qfiles-palette-backdrop"),
+  qfilesPaletteInput: document.getElementById("qfiles-palette-input"),
+  qfilesPaletteResults: document.getElementById("qfiles-palette-results"),
   graphSvg: document.getElementById("graph-svg"),
   graphSelection: document.getElementById("graph-selection"),
   graphSelectionMeta: document.getElementById("graph-selection-meta"),
@@ -954,10 +986,10 @@ function stopUsageMeter() {
   }
   if (usageMeterStartedAt === 0) return;
   // Final tick — write the completed elapsed/token/cost values into
-  // whichever processing meter is still on the page. The renderer may
-  // have swapped the card to a completed receipt by now; in that case
-  // the selector finds nothing and we silently move on.
-  const meter = document.querySelector(".processing-meter");
+  // whichever LIVE processing meter is still on the page. Settled
+  // meters (rendered into receipts) carry their own snapshot already
+  // and are excluded from this selector so we don't overwrite them.
+  const meter = document.querySelector(".processing-meter:not(.is-settled)");
   if (meter) {
     meter.classList.add("is-idle");
     const elapsed = (Date.now() - usageMeterStartedAt) / 1000;
@@ -967,6 +999,21 @@ function stopUsageMeter() {
   }
   usageMeterStartedAt = 0;
   usageMeterBaseline = null;
+}
+
+function currentMeterSnapshot() {
+  if (usageMeterStartedAt === 0) return null;
+  const elapsed = (Date.now() - usageMeterStartedAt) / 1000;
+  const tokens = (state.apiUsage?.totalTokens || 0) - (usageMeterBaseline?.tokens || 0);
+  const usd = (state.apiUsage?.estimatedUsd || 0) - (usageMeterBaseline?.usd || 0);
+  return { elapsed, tokens, usd };
+}
+
+function snapshotCompletedMeter(fileName) {
+  if (!fileName) return;
+  const snapshot = currentMeterSnapshot();
+  if (!snapshot) return;
+  state.completedMeters.set(fileName, snapshot);
 }
 
 function renderUsageMeterTick() {
@@ -1034,21 +1081,29 @@ function hydrateApiControls() {
 }
 
 async function hydrateLocalEnvApiSecret() {
-  if (state.apiSecret) return;
-  if (new URLSearchParams(location.search).has("marginsTest")) return;
   try {
-    const response = await fetch(".env", { cache: "no-store" });
-    if (!response.ok) return;
-    const env = parseDotEnv(await response.text());
-    if (!env.GEMINI_API_KEY) return;
-    state.apiSecret = env.GEMINI_API_KEY;
-    if (els.apiProvider) els.apiProvider.value = "gemini";
-    if (els.apiModel && !els.apiModel.value.trim()) {
-      els.apiModel.value = defaultModelForProvider("gemini");
+    if (state.apiSecret) return;
+    if (new URLSearchParams(location.search).has("marginsTest")) return;
+    try {
+      const response = await fetch(".env", { cache: "no-store" });
+      if (!response.ok) return;
+      const env = parseDotEnv(await response.text());
+      if (!env.GEMINI_API_KEY) return;
+      state.apiSecret = env.GEMINI_API_KEY;
+      if (els.apiProvider) els.apiProvider.value = "gemini";
+      if (els.apiModel && !els.apiModel.value.trim()) {
+        els.apiModel.value = defaultModelForProvider("gemini");
+      }
+      renderApiStatus(`${env.GEMINI_API_LABEL || "Gemini API free tier"} loaded from local .env.`);
+    } catch {
+      // Local .env is optional and ignored in production.
     }
-    renderApiStatus(`${env.GEMINI_API_LABEL || "Gemini API free tier"} loaded from local .env.`);
-  } catch {
-    // Local .env is optional and ignored in production.
+  } finally {
+    // Either we found a key, didn't, or the fetch failed — gate logic
+    // can now run authoritatively. Re-run the banner check once so the
+    // gate appears for fresh installs without a key.
+    envHydrationSettled = true;
+    updateNoKeyBanner();
   }
 }
 
@@ -1112,6 +1167,14 @@ function renderApiStatus(message = "") {
 function updateNoKeyBanner() {
   if (!els.apiGate) return;
   const hasKey = Boolean(state.apiSecret) || Boolean(state.apiSettings?.hasApiKey);
+  // Keep the gate hidden until the optional `.env` hydration has had a
+  // chance to resolve. Without this guard, page reloads on dev (where
+  // the key lives in .env, not localStorage) briefly show the gate
+  // before the fetch lands — a visible flash on every refresh.
+  if (!hasKey && !envHydrationSettled) {
+    els.apiGate.hidden = true;
+    return;
+  }
   els.apiGate.hidden = hasKey;
 }
 
@@ -1705,6 +1768,21 @@ async function processPendingSource(fileName = "") {
   const targetFiles = filesForInboxProcess(fileName);
   const trackTiming = shouldTrackProcessTiming(fileName, targetFiles);
   if (trackTiming) beginProcessTimings(targetFiles, { action: fileName ? "single" : "batch", autoFile: false });
+  const preFile = fileName ? state.files.find((entry) => entry.name === fileName) : null;
+  const isApprove = Boolean(preFile && isSourceReviewReady(preFile));
+
+  // FLIP capture — must read DOM rect BEFORE any state change or re-render.
+  let flipFrom = null;
+  let flipTargetPath = "";
+  if (isApprove) {
+    const review = state.ingestReviews.get(preFile.name);
+    flipTargetPath = sourceNoteEntryForFile(preFile)?.path
+      || sourceTargetPathFromReview(rawSourceOutputPath(preFile.name), review)
+      || "";
+    const sourceItem = findSourceItemElement(preFile.name);
+    if (sourceItem) flipFrom = sourceItem.getBoundingClientRect();
+  }
+
   state.processingInbox = true;
   state.processingFileName = fileName || "";
   if (fileName) state.ingestErrors.delete(fileName);
@@ -1712,8 +1790,7 @@ async function processPendingSource(fileName = "") {
   updateSaveButtonState();
   let processError = null;
   try {
-    const file = fileName ? state.files.find((entry) => entry.name === fileName) : null;
-    if (file && isSourceReviewReady(file)) {
+    if (isApprove) {
       await saveCurrentVault({ afterSaveView: "inbox" });
     } else if (!fileName && state.pendingSave && state.currentFileMap) {
       await saveCurrentVault();
@@ -1724,13 +1801,79 @@ async function processPendingSource(fileName = "") {
     processError = error;
     throw error;
   } finally {
+    // Snapshot the live meter for the just-completed Process step so the
+    // receipt keeps the time/tokens/cost visible until the user approves.
+    // Approve completion clears the snapshot — the card is leaving anyway.
+    if (!isApprove && fileName && !processError) {
+      const completed = state.files.find((entry) => entry.name === fileName);
+      if (completed && isSourceReviewReady(completed)) snapshotCompletedMeter(fileName);
+    } else if (isApprove && fileName) {
+      state.completedMeters.delete(fileName);
+    }
     state.processingInbox = false;
     state.processingFileName = "";
     clearIngestProgress();
     renderSources();
     if (trackTiming) await finishProcessTimingsAfterRender(targetFiles, { error: processError, autoFile: false });
     updateSaveButtonState();
+    if (isApprove && !processError && flipFrom && flipTargetPath) {
+      requestAnimationFrame(() => animateApproveFlip(flipFrom, flipTargetPath));
+    }
   }
+}
+
+function findSourceItemElement(fileName) {
+  if (!fileName || !els.sourceList) return null;
+  const escaped = (typeof CSS !== "undefined" && CSS.escape) ? CSS.escape(fileName) : fileName.replace(/"/g, '\\"');
+  const trigger = els.sourceList.querySelector(`[data-source-file="${escaped}"]`)
+    || els.sourceList.querySelector(`[data-source-delete="${escaped}"]`);
+  return trigger ? trigger.closest(".source-item") : null;
+}
+
+// FLIP animation — when the user approves a processed card, the new
+// activity card in the Recent activity wall slides from the old
+// source-item position down to its new home. Reads the destination
+// rect, applies an inverted transform, then transitions to identity.
+function animateApproveFlip(fromRect, targetPath) {
+  if (!fromRect || !targetPath || !els.recentActivityList) return;
+  const escaped = (typeof CSS !== "undefined" && CSS.escape) ? CSS.escape(targetPath) : targetPath.replace(/"/g, '\\"');
+  const card = els.recentActivityList.querySelector(`[data-activity-path="${escaped}"]`);
+  if (!card) return;
+  const toRect = card.getBoundingClientRect();
+  if (!toRect.width || !toRect.height) return;
+  const dx = fromRect.left - toRect.left;
+  const dy = fromRect.top - toRect.top;
+  const sx = Math.max(fromRect.width / toRect.width, 0.4);
+  const sy = Math.max(fromRect.height / toRect.height, 0.4);
+
+  card.classList.add("is-arriving");
+  card.style.transformOrigin = "top left";
+  card.style.transition = "none";
+  card.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
+  card.style.opacity = "0.65";
+  // Force layout so the starting transform is applied before we
+  // queue the transition to identity.
+  card.getBoundingClientRect();
+  card.style.transition = "transform 720ms cubic-bezier(0.22, 1, 0.36, 1), opacity 720ms cubic-bezier(0.22, 1, 0.36, 1)";
+  card.style.transform = "translate(0, 0) scale(1, 1)";
+  card.style.opacity = "1";
+
+  const cleanup = () => {
+    if (!card.isConnected) return;
+    card.style.transform = "";
+    card.style.transformOrigin = "";
+    card.style.transition = "";
+    card.style.opacity = "";
+    card.classList.remove("is-arriving");
+    card.removeEventListener("transitionend", onEnd);
+  };
+  const onEnd = (event) => {
+    if (event.target !== card) return;
+    if (event.propertyName && event.propertyName !== "transform") return;
+    cleanup();
+  };
+  card.addEventListener("transitionend", onEnd);
+  setTimeout(cleanup, 1100);
 }
 
 async function bulkIngestPendingSources() {
@@ -7044,15 +7187,34 @@ function renderSourceReceipt(file, review) {
   const firstReveal = !state.revealedReceipts.has(file.name);
   if (firstReveal) state.revealedReceipts.add(file.name);
   const cls = `source-receipt${firstReveal ? " is-revealing" : ""}`;
+  const settled = state.completedMeters.get(file.name);
   return `
     <div class="${cls}">
       ${essence ? `<p class="receipt-essence">${escapeHtml(essence)}</p>` : ""}
       ${renderSourceReceiptChecklist(file, review, path)}
       ${renderSourceReceiptDecision(file, questions)}
       <div class="receipt-footer">
+        ${settled ? renderSettledMeter(settled) : ""}
         ${renderSourceActionButton(file, "source-process-btn run-action-btn")}
         ${renderSourceReceiptDetails(file, review)}
       </div>
+    </div>
+  `;
+}
+
+function renderSettledMeter({ elapsed = 0, tokens = 0, usd = 0 } = {}) {
+  const tokensHtml = tokens > 0
+    ? `<strong>${formatStatNumber(tokens)}</strong> tokens`
+    : "<span>—</span>";
+  const costHtml = usd > 0
+    ? `<strong>$${usd.toFixed(3)}</strong>`
+    : "<span>—</span>";
+  return `
+    <div class="processing-meter is-settled" aria-label="Processing run summary">
+      <span class="processing-meter-dot" aria-hidden="true"></span>
+      <span class="processing-meter-item"><strong>${elapsed.toFixed(1)}s</strong></span>
+      <span class="processing-meter-item">${tokensHtml}</span>
+      <span class="processing-meter-item">${costHtml}</span>
     </div>
   `;
 }
