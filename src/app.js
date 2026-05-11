@@ -2330,6 +2330,41 @@ function markIngestPhase(phase) {
   ingestTimingTracker?.mark(phase);
 }
 
+// Attempt to repair a partially-truncated JSON string. The model
+// finished mid-output; the prefix may still contain a usable shape.
+// Walks the text tracking string state and bracket depth, then
+// closes any hanging quote, drops trailing colons/commas, and
+// appends the right sequence of `}` and `]` closers. Returns the
+// repaired string if it now parses, null otherwise.
+function repairTruncatedJson(text) {
+  const source = String(text || "");
+  if (!source.trim()) return null;
+  const stack = [];
+  let inString = false;
+  let escaped = false;
+  for (const ch of source) {
+    if (escaped) { escaped = false; continue; }
+    if (ch === "\\") { escaped = true; continue; }
+    if (ch === "\"") { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === "{") stack.push("}");
+    else if (ch === "[") stack.push("]");
+    else if (ch === "}" || ch === "]") {
+      if (stack[stack.length - 1] === ch) stack.pop();
+    }
+  }
+  let repaired = source;
+  // Close an unterminated string.
+  if (inString) repaired += "\"";
+  // Strip a trailing colon or comma — those leave the JSON in an
+  // intermediate state that no closer can fix.
+  repaired = repaired.replace(/[\s]*[,:]\s*$/, "");
+  // Close every still-open bracket/brace, deepest first.
+  while (stack.length) repaired += stack.pop();
+  try { JSON.parse(repaired); return repaired; }
+  catch { return null; }
+}
+
 async function streamSseModelResponse(response, extractEvent, { onUpdate, model } = {}) {
   const debug = (() => {
     try { return localStorage.getItem("margins.streamDebug") === "1"; }
@@ -2937,7 +2972,22 @@ async function generateGeminiJsonContent(model, prompt, extraParts = [], trackin
   // streamGenerateContent?alt=sse instead of generateContent.
   const safeModel = encodeURIComponent(normalizeGeminiModel(model));
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${safeModel}:streamGenerateContent?alt=sse`;
-  const outputTokenLimit = positiveInteger(options.outputTokenLimit, apiOutputTokenLimit());
+  const baseLimit = positiveInteger(options.outputTokenLimit, apiOutputTokenLimit());
+  // Dynamic output cap: scale with input size so longer articles get
+  // enough room for their structured response. Floor at the baseline
+  // (so short sources still fit comfortably); ceil at 32K (Gemini's
+  // practical cap for a single response).
+  const inputTokenEstimate = estimateRequestInputTokens(prompt, extraParts);
+  const dynamicOutputLimit = Math.max(
+    baseLimit,
+    Math.min(32768, Math.ceil(inputTokenEstimate * 0.5))
+  );
+  // CoT budget: bounded so we get predictable accounting against
+  // maxOutputTokens. Reasoning helps quality but a few K is plenty
+  // for an ingest-review task. Gemini 2.5 Flash counts these tokens
+  // against maxOutputTokens, so the cap below is sized for both.
+  const thinkingBudget = 2048;
+  const outputTokenLimit = dynamicOutputLimit + thinkingBudget;
   const budget = reserveApiBudget({
     provider: "gemini",
     model,
@@ -2986,18 +3036,12 @@ async function generateGeminiJsonContent(model, prompt, extraParts = [], trackin
         responseMimeType: "application/json",
         responseSchema: options.responseSchema,
         maxOutputTokens: budget.outputTokenLimit,
-        // Gemini 2.5 Flash counts "thinking" tokens against
-        // maxOutputTokens but doesn't surface them in
-        // candidatesTokenCount. With thinking on, the model could
-        // emit 8K visible tokens, burn ~4K hidden CoT tokens, hit
-        // 12K cap, and return finishReason: MAX_TOKENS even though
-        // the visible JSON is complete and well-formed. The
-        // structured-JSON ingest task doesn't need CoT —
-        // responseSchema already enforces structure — so disable
-        // thinking entirely. Belt + suspenders: the MAX_TOKENS
-        // check below also no-throws if the content parses as
-        // valid JSON.
-        thinkingConfig: { thinkingBudget: 0 }
+        // Bounded CoT budget. Gemini 2.5 Flash counts thinking
+        // tokens against maxOutputTokens, so the visibleCap =
+        // outputTokenLimit - thinkingBudget. Leaves CoT enabled
+        // (helps with multi-file filing decisions and contradiction
+        // detection) while keeping accounting predictable.
+        thinkingConfig: { thinkingBudget }
       }
       })
     });
@@ -3025,16 +3069,33 @@ async function generateGeminiJsonContent(model, prompt, extraParts = [], trackin
       // Treat other terminal reasons (SAFETY, RECITATION, OTHER) the same as truncation.
     }
     if (stream.finishReason === "MAX_TOKENS" || stream.finishReason === "MAX_TOKENS_REACHED") {
-      // Defensive: if Gemini says MAX_TOKENS but the content actually
-      // parses as valid JSON, the model finished cleanly even if it
-      // ran out of internal budget on its way there. Don't throw.
-      let usable = false;
-      try { JSON.parse(content); usable = true; } catch {}
+      // Three cases:
+      // (1) Visible JSON closes cleanly even though Gemini said
+      //     MAX_TOKENS (CoT burned the budget, output completed).
+      //     → parse succeeds, use as-is.
+      // (2) Output was actually truncated mid-JSON but the prefix
+      //     contains usable content. → repair by closing hanging
+      //     strings/brackets/braces, then parse. If it parses,
+      //     use the repaired content. Caller gets a partial-but-
+      //     valid response instead of a 30s retry.
+      // (3) Repair also fails. → genuine truncation, throw.
+      let usable = null;
+      try { JSON.parse(content); usable = content; } catch {}
+      if (!usable) {
+        const repaired = repairTruncatedJson(content);
+        if (repaired) {
+          usable = repaired;
+          if (ingestTimingTracker) {
+            console.log(`[ingest] MAX_TOKENS but JSON repaired: original ${content.length} chars, repaired ${repaired.length} chars`);
+          }
+        }
+      }
       if (!usable) {
         const error = modelOutputTruncatedError("gemini", content, stream.finishReason);
         finishModelTiming(timing, { ok: false, usage, contentChars: content.length, error });
         throw error;
       }
+      content = usable;
     }
     finishModelTiming(timing, { ok: true, usage, contentChars: content.length });
     return content;
