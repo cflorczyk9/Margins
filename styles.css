@@ -6386,51 +6386,178 @@ button.type-tag.active {
   opacity: 0.55;
 }
 
-/* No-key banner — only banner that remains. Sits above the drop zone
-   when the user has a vault connected but no model key saved yet. */
-.no-key-banner {
-  box-sizing: border-box;
+/* API gate modal — shown when no model key is saved. Hard gate; can't
+   be dismissed without saving (or refusing the entire app). */
+.api-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
   display: flex;
   align-items: center;
-  gap: 14px;
-  width: 100%;
-  max-width: 860px;
-  margin: 24px auto 0;
-  padding: 11px 16px;
+  justify-content: center;
+  padding: 24px;
+}
+.api-gate[hidden] { display: none; }
+.api-gate-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(26, 22, 18, 0.55);
+  backdrop-filter: blur(6px) saturate(110%);
+  -webkit-backdrop-filter: blur(6px) saturate(110%);
+}
+.api-gate-card {
+  position: relative;
   background: var(--paper);
   border: 1px solid var(--line);
-  border-radius: 10px;
-  font-size: 13.5px;
-  line-height: 1.45;
-  color: var(--ink-2);
-  box-shadow: var(--shadow-sm);
+  border-radius: 16px;
+  padding: 32px 36px;
+  max-width: 480px;
+  width: 100%;
+  box-shadow: var(--shadow-lg);
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
 }
-.no-key-banner-dot {
-  flex: 0 0 auto;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--amber);
-}
-.no-key-banner-text { flex: 1 1 auto; min-width: 0; }
-.no-key-banner-text strong { color: var(--ink); font-weight: 600; margin-right: 4px; }
-.no-key-banner-cta {
-  flex: 0 0 auto;
-  width: auto;
-  margin: 0;
-  padding: 6px 12px;
-  border-radius: 7px;
-  background: transparent;
-  border: 1px solid var(--line-strong);
+.api-gate-card h2 {
+  margin: 0 0 8px;
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
   color: var(--ink);
+}
+.api-gate-lede {
+  margin: 0 0 20px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+.api-gate-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.api-gate-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.api-gate-field-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.api-gate-field-hint {
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+.api-gate-field-hint a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 500;
+}
+.api-gate-field-hint a:hover { text-decoration: underline; }
+.api-gate-field input,
+.api-gate-field select {
+  width: 100%;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line-strong);
+  background: var(--control);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.4;
+}
+.api-gate-field input:focus,
+.api-gate-field select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.api-gate-limits {
+  margin: 4px 0 0;
+  padding: 12px 14px;
+  background: var(--paper-soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.api-gate-limits summary {
+  cursor: pointer;
   font-size: 13px;
   font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: border-color 0.12s ease, color 0.12s ease;
+  color: var(--ink-2);
 }
-.no-key-banner-cta:hover { border-color: var(--accent); color: var(--accent); }
-.no-key-banner-cta:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.api-gate-limits summary:hover { color: var(--ink); }
+.api-gate-limits-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 12px;
+}
+.api-gate-limits-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.api-gate-limits-grid input {
+  width: 100%;
+  margin: 0;
+  padding: 7px 9px;
+  border-radius: 6px;
+  border: 1px solid var(--line-strong);
+  font-size: 13px;
+  background: var(--control);
+  color: var(--ink);
+}
+.api-gate-limits-hint {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.api-gate-submit {
+  width: 100%;
+  margin: 8px 0 0;
+  padding: 12px 18px;
+  border-radius: 9px;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  color: var(--on-accent);
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.12s ease, transform 0.06s ease;
+}
+.api-gate-submit:hover { opacity: 0.92; transform: translateY(-1px); }
+.api-gate-submit:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+.api-gate-error {
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  background: var(--accent-soft);
+  border-radius: 7px;
+  color: var(--accent);
+  font-size: 13px;
+}
+.api-gate-trust {
+  margin: 18px 0 0;
+  font-size: 12.5px;
+  color: var(--muted);
+  text-align: center;
+  line-height: 1.5;
+}
+.api-gate-trust a {
+  color: var(--ink-2);
+  text-decoration: underline;
+}
+.api-gate-trust a:hover { color: var(--ink); }
+
+/* When the gate is open, prevent the rest of the page from scrolling. */
+body:has(.api-gate:not([hidden])) {
+  overflow: hidden;
+}
 
 /* Drop-zone connect mode — shown in place of "Drag and drop here"
    when the vault isn't currently connected. Same shell + Kandinsky

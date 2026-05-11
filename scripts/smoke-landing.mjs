@@ -254,9 +254,20 @@ async function main() {
       "Connect-mode CTA button present",
       await page.locator("#connect-prompt-btn").count() === 1
     );
-    // No-key banner still exists (separate concern)
-    check("No-key banner element exists", await page.locator("#no-key-banner").count() === 1);
-    // Reconnect banner is GONE
+    // API gate (hard modal) replaces the old soft no-key banner
+    check("API gate modal exists in DOM", await page.locator("#api-gate").count() === 1);
+    check("Gate form has provider/model/key inputs",
+      await page.locator("#gate-provider").count() === 1 &&
+      await page.locator("#gate-model").count() === 1 &&
+      await page.locator("#gate-api-key").count() === 1);
+    check("Gate has spend-limit fields",
+      await page.locator("#gate-max-request-usd").count() === 1 &&
+      await page.locator("#gate-max-session-usd").count() === 1 &&
+      await page.locator("#gate-max-output-tokens").count() === 1);
+    check(
+      "Old no-key banner removed",
+      await page.locator("#no-key-banner").count() === 0
+    );
     check(
       "Reconnect banner removed (replaced by drop-zone mode)",
       await page.locator("#reconnect-banner").count() === 0

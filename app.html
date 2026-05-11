@@ -144,14 +144,6 @@
 
     <main class="workspace">
       <section id="inbox-view" class="view active">
-        <div id="no-key-banner" class="no-key-banner" hidden role="status">
-          <span class="no-key-banner-dot" aria-hidden="true"></span>
-          <span class="no-key-banner-text">
-            <strong>Add an AI key to start processing.</strong>
-            Margins needs a model key to read your sources.
-          </span>
-          <button id="no-key-banner-cta" type="button" class="no-key-banner-cta">Add key</button>
-        </div>
         <div class="inbox-copy">
           <h2>Activity</h2>
           <p>Drop a file, paste a transcript, or add a folder. Margins reads what comes in, asks only what it needs, and files it locally.</p>
@@ -509,6 +501,75 @@
         </div>
       </section>
     </main>
+  </div>
+
+  <!-- API key gate. Shown when state.apiSecret + state.apiSettings.hasApiKey
+       are both empty. Blocks the inbox/process flow until a key is saved. -->
+  <div id="api-gate" class="api-gate" hidden role="dialog" aria-modal="true" aria-labelledby="api-gate-title">
+    <div class="api-gate-backdrop" aria-hidden="true"></div>
+    <div class="api-gate-card">
+      <h2 id="api-gate-title">Connect your AI to start</h2>
+      <p class="api-gate-lede">
+        Margins is bring-your-own-key. Your key is saved only in this browser —
+        Margins has no servers and never sees it.
+      </p>
+
+      <form id="api-gate-form" class="api-gate-form" novalidate>
+        <label class="api-gate-field">
+          <span class="api-gate-field-label">Provider</span>
+          <select id="gate-provider">
+            <option value="gemini" selected>Google Gemini</option>
+            <option value="openai">OpenAI</option>
+            <option value="anthropic">Anthropic</option>
+          </select>
+          <span class="api-gate-field-hint">Gemini has a free tier — easiest to start.</span>
+        </label>
+
+        <label class="api-gate-field">
+          <span class="api-gate-field-label">Model</span>
+          <input id="gate-model" type="text" placeholder="gemini-2.5-flash" autocomplete="off">
+          <span class="api-gate-field-hint">Leave blank to use the recommended default for your provider.</span>
+        </label>
+
+        <label class="api-gate-field">
+          <span class="api-gate-field-label">API key</span>
+          <input id="gate-api-key" type="password" placeholder="paste your key" autocomplete="off" spellcheck="false" required>
+          <span class="api-gate-field-hint">
+            Need one? <a id="gate-key-link" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Get a free Gemini key →</a>
+          </span>
+        </label>
+
+        <details class="api-gate-limits">
+          <summary>Spending limits</summary>
+          <div class="api-gate-limits-grid">
+            <label>
+              <span>Per-call $</span>
+              <input id="gate-max-request-usd" type="number" min="0.01" step="0.01" value="1.00">
+            </label>
+            <label>
+              <span>Session $</span>
+              <input id="gate-max-session-usd" type="number" min="0.01" step="0.01" value="5.00">
+            </label>
+            <label>
+              <span>Output tokens / call</span>
+              <input id="gate-max-output-tokens" type="number" min="128" step="128" value="8192">
+            </label>
+          </div>
+          <p class="api-gate-limits-hint">
+            Hard caps Margins enforces in your browser. Conservative defaults; raise them as you trust the workflow.
+          </p>
+        </details>
+
+        <button type="submit" class="api-gate-submit primary">Save and continue</button>
+        <p class="api-gate-error" id="api-gate-error" hidden></p>
+      </form>
+
+      <p class="api-gate-trust">
+        Margins is open source —
+        <a href="https://github.com/cflorczyk9/Margins" target="_blank" rel="noopener">read the code</a>.
+        No telemetry, no key sync, no Margins account.
+      </p>
+    </div>
   </div>
 
   <script type="module" src="src/app.js"></script>
