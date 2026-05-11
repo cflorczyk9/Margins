@@ -429,6 +429,9 @@ Object.assign(state, {
   // Set during a streaming model call; null otherwise. Drives the
   // live token + cost display in the processing-card meter.
   activeStreamUsage: null,
+  // True while loadExistingVault is in flight. Render functions show
+  // a single "Loading vault…" overlay instead of partial state.
+  vaultLoading: false,
   apiQuestionSource: "",
   ingestReviews: new Map(),
   ingestAnswers: new Map(),
@@ -2217,11 +2220,24 @@ async function generateApiIngestReview(file, fileMap, mode) {
     throw new Error("Direct browser calls are wired for Gemini, OpenAI, and Anthropic right now.");
   }
 
+  // Debug aid: log the last 200 chars of `content` so we can see if
+  // the JSON closes cleanly (`}`) or if there's something at the
+  // tail triggering the looksLikeTruncatedJson heuristic.
+  if (ingestTimingTracker) {
+    try {
+      const tail = String(content || "").slice(-200);
+      console.log(`[ingest] content tail (last ${tail.length} chars):`, tail);
+    } catch {}
+  }
+
   try {
     const review = parseApiIngestReview(content, file, mode, provider);
     review.modelTiming = publicModelTiming(timing.record);
     return review;
   } catch (error) {
+    if (ingestTimingTracker) {
+      console.log(`[ingest] parseApiIngestReview threw: code=${error?.code || "?"}, retry=${isModelOutputTruncatedError(error) ? "YES" : "no"}`);
+    }
     if (provider === "gemini" && runGeminiIngestReview && isModelOutputTruncatedError(error) && !retriedAfterTruncation) {
       markModelTimingParseFailure(timing.record, error);
       retriedAfterTruncation = true;

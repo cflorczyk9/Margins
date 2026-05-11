@@ -686,13 +686,21 @@ export async function openVault() {
 }
 
 export async function loadExistingVault(handle) {
+  // Show the loading overlay and defer ALL rendering until both the
+  // wiki file scan and the raw/ source scan complete. Previously the
+  // inbox flickered through partial states — activity appeared first,
+  // pending sources later — with no signal that loading was in
+  // progress. Now it's one batch render at the end.
+  state.vaultLoading = true;
+  const loadingEl = document.getElementById("vault-loading");
+  if (loadingEl) loadingEl.hidden = false;
+
   const fileMap = await readVaultFileMap(handle);
 
   state.vaultFiles = [];
   state.editedRawFiles = new Map();
   state.loadedFileMap = new Map(fileMap);
   state.files = [];
-  applyLoadedVaultFileMap(fileMap);
   if (els?.stats) {
     els.stats.textContent = fileMap.size
       ? `Opened ${state.vaultName}: ${fileMap.size} vault file${fileMap.size === 1 ? "" : "s"} loaded. Scanning raw/ sources...`
@@ -703,6 +711,9 @@ export async function loadExistingVault(handle) {
   try {
     rawFiles = await readRawSourcesFromVault(handle);
   } catch (error) {
+    state.vaultLoading = false;
+    if (loadingEl) loadingEl.hidden = true;
+    applyLoadedVaultFileMap(fileMap);
     if (els?.stats) {
       els.stats.textContent = fileMap.size
         ? `Opened ${state.vaultName}: ${fileMap.size} vault file${fileMap.size === 1 ? "" : "s"} loaded. Raw scan failed: ${error.message || "unknown error"}`
@@ -715,6 +726,10 @@ export async function loadExistingVault(handle) {
   state.vaultFiles = rawFiles;
   state.files = pendingRawSourcesFromVault(fileMap, rawFiles);
   state.hasSavedCurrent = fileMap.size > 0 || rawFiles.length > 0;
+  // Single batch render — applies the file map + raw files together.
+  state.vaultLoading = false;
+  if (loadingEl) loadingEl.hidden = true;
+  applyLoadedVaultFileMap(fileMap);
   callbacks.renderSources?.();
   callbacks.renderVaultTree?.(fileMap);
   callbacks.updateSaveButtonState?.();

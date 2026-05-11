@@ -6386,6 +6386,49 @@ button.type-tag.active {
   opacity: 0.55;
 }
 
+/* Vault-loading overlay — shown while loadExistingVault reads wiki/
+ * + raw/ from disk. Hides the staged-render flicker (activity
+ * appearing first, pending sources later) by deferring everything
+ * to a single batch render at the end. */
+.vault-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  max-width: 860px;
+  margin: 80px auto 0;
+  padding: 40px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm);
+}
+.vault-loading[hidden] { display: none; }
+.vault-loading-spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid var(--line-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: vault-loading-spin 0.9s linear infinite;
+}
+.vault-loading-text {
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+@keyframes vault-loading-spin {
+  to { transform: rotate(360deg); }
+}
+body:has(.vault-loading:not([hidden])) .inbox-copy,
+body:has(.vault-loading:not([hidden])) #source-drop-zone,
+body:has(.vault-loading:not([hidden])) #queue-panel,
+body:has(.vault-loading:not([hidden])) #recent-activity-panel,
+body:has(.vault-loading:not([hidden])) #inline-review-panel {
+  display: none;
+}
+
 /* Processing meter — sits in the bottom-right of the source card
  * that's currently being processed. Shows live elapsed time, tokens
  * burned for this run, and estimated cost. Updates every 250ms via
