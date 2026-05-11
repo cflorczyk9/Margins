@@ -470,10 +470,6 @@ const els = {
   clearApiKeyBtn: document.getElementById("clear-api-key-btn"),
   apiKeyStatus: document.getElementById("api-key-status"),
   advancedPanel: document.querySelector("details.advanced-panel"),
-  usageMeter: document.getElementById("usage-meter"),
-  usageMeterHeadline: document.getElementById("usage-meter-headline"),
-  usageMeterDetail: document.getElementById("usage-meter-detail"),
-  usageMeterSession: document.getElementById("usage-meter-session"),
   apiGate: document.getElementById("api-gate"),
   apiGateForm: document.getElementById("api-gate-form"),
   apiGateError: document.getElementById("api-gate-error"),
@@ -912,18 +908,18 @@ async function withBusyOperation(label, run) {
   }
 }
 
-// Usage meter — shows a live elapsed-time + session-tokens pill at the
-// top of the inbox while a Process operation is running. After the call
-// completes, the pill keeps the session total visible (tokens + $)
-// until the user reloads or clears local data. Non-streaming for V1,
-// so per-call token counts only land in the meter when each model call
-// returns.
+// Processing meter — lives in the bottom-right of the source card
+// that's currently being processed. Shows live elapsed time + tokens
+// burned for this run + estimated cost. The renderer plants the meter
+// DOM in renderProcessingMeter(file); the interval here finds it via
+// data-meter-file selector and writes textContent. Non-streaming for
+// V1, so per-call token deltas land in the meter when each model call
+// returns; elapsed time is live every 250ms.
 let usageMeterTickHandle = null;
 let usageMeterStartedAt = 0;
 let usageMeterBaseline = null;
 
 function startUsageMeter(label = "Processing…") {
-  if (!els.usageMeter) return;
   if (!labelTouchesModel(label)) return;
   usageMeterStartedAt = Date.now();
   usageMeterBaseline = {
@@ -931,13 +927,6 @@ function startUsageMeter(label = "Processing…") {
     tokens: state.apiUsage?.totalTokens || 0,
     usd: state.apiUsage?.estimatedUsd || 0
   };
-  els.usageMeter.hidden = false;
-  els.usageMeter.classList.remove("is-idle");
-  if (els.usageMeterHeadline) {
-    els.usageMeterHeadline.textContent = label
-      ? `${label.charAt(0).toUpperCase()}${label.slice(1)}…`
-      : "Processing…";
-  }
   renderUsageMeterTick();
   if (usageMeterTickHandle) clearInterval(usageMeterTickHandle);
   usageMeterTickHandle = setInterval(renderUsageMeterTick, 250);
@@ -948,49 +937,44 @@ function stopUsageMeter() {
     clearInterval(usageMeterTickHandle);
     usageMeterTickHandle = null;
   }
-  if (!els.usageMeter || usageMeterStartedAt === 0) return;
-  const totalCalls = (state.apiUsage?.requests || 0) - (usageMeterBaseline?.requests || 0);
-  const totalTokens = (state.apiUsage?.totalTokens || 0) - (usageMeterBaseline?.tokens || 0);
-  const elapsed = (Date.now() - usageMeterStartedAt) / 1000;
-  if (totalCalls > 0) {
-    // Keep the meter visible after the run with the final tally.
-    els.usageMeter.classList.add("is-idle");
-    if (els.usageMeterHeadline) els.usageMeterHeadline.textContent = "Done";
-    if (els.usageMeterDetail) {
-      els.usageMeterDetail.textContent =
-        `${formatStatNumber(totalTokens)} tokens · ${elapsed.toFixed(1)}s elapsed`;
-    }
-    renderUsageMeterSession();
-  } else {
-    // No model calls happened (e.g. local-only operation). Hide.
-    els.usageMeter.hidden = true;
+  if (usageMeterStartedAt === 0) return;
+  // Final tick — write the completed elapsed/token/cost values into
+  // whichever processing meter is still on the page. The renderer may
+  // have swapped the card to a completed receipt by now; in that case
+  // the selector finds nothing and we silently move on.
+  const meter = document.querySelector(".processing-meter");
+  if (meter) {
+    meter.classList.add("is-idle");
+    const elapsed = (Date.now() - usageMeterStartedAt) / 1000;
+    const tokens = (state.apiUsage?.totalTokens || 0) - (usageMeterBaseline?.tokens || 0);
+    const usd = (state.apiUsage?.estimatedUsd || 0) - (usageMeterBaseline?.usd || 0);
+    writeMeterValues(meter, elapsed, tokens, usd);
   }
   usageMeterStartedAt = 0;
   usageMeterBaseline = null;
 }
 
 function renderUsageMeterTick() {
-  if (!els.usageMeter || usageMeterStartedAt === 0) return;
+  if (usageMeterStartedAt === 0) return;
+  const meter = document.querySelector(".processing-meter");
+  if (!meter) return;
   const elapsed = (Date.now() - usageMeterStartedAt) / 1000;
-  const tokensSoFar = (state.apiUsage?.totalTokens || 0) - (usageMeterBaseline?.tokens || 0);
-  if (els.usageMeterDetail) {
-    els.usageMeterDetail.textContent = tokensSoFar > 0
-      ? `${elapsed.toFixed(1)}s elapsed · ${formatStatNumber(tokensSoFar)} tokens`
-      : `${elapsed.toFixed(1)}s elapsed`;
-  }
-  renderUsageMeterSession();
+  const tokens = (state.apiUsage?.totalTokens || 0) - (usageMeterBaseline?.tokens || 0);
+  const usd = (state.apiUsage?.estimatedUsd || 0) - (usageMeterBaseline?.usd || 0);
+  writeMeterValues(meter, elapsed, tokens, usd);
 }
 
-function renderUsageMeterSession() {
-  if (!els.usageMeterSession) return;
-  const usage = state.apiUsage || {};
-  if (!usage.totalTokens) {
-    els.usageMeterSession.textContent = "";
-    return;
-  }
-  const tokens = formatStatNumber(usage.totalTokens);
-  const usd = (usage.estimatedUsd || 0).toFixed(2);
-  els.usageMeterSession.textContent = `session: ${tokens} tokens · $${usd}`;
+function writeMeterValues(meter, elapsed, tokens, usd) {
+  const elapsedEl = meter.querySelector("[data-meter-elapsed]");
+  const tokensEl = meter.querySelector("[data-meter-tokens]");
+  const costEl = meter.querySelector("[data-meter-cost]");
+  if (elapsedEl) elapsedEl.innerHTML = `<strong>${elapsed.toFixed(1)}s</strong>`;
+  if (tokensEl) tokensEl.innerHTML = tokens > 0
+    ? `<strong>${formatStatNumber(tokens)}</strong> tokens`
+    : "<span>—</span>";
+  if (costEl) costEl.innerHTML = usd > 0
+    ? `<strong>$${usd.toFixed(3)}</strong>`
+    : "<span>—</span>";
 }
 
 function labelTouchesModel(label) {
@@ -6466,7 +6450,26 @@ function renderSourceProcessingChecklist(file) {
       ...line,
       settled: Boolean(line.done && !line.active)
     }));
-  return renderReceiptLog(lines, { processing: true });
+  return `
+    ${renderReceiptLog(lines, { processing: true })}
+    ${renderProcessingMeter(file)}
+  `;
+}
+
+// Card-anchored meter — bottom-right of the source card while
+// processing. Shows live elapsed time, tokens, and estimated cost.
+// Updated by the startUsageMeter / renderUsageMeterTick interval,
+// which queries by data-meter-file so the right card gets updated
+// even if the source list re-renders mid-flight.
+function renderProcessingMeter(file) {
+  return `
+    <div class="processing-meter" data-meter-file="${escapeHtml(file.name || "")}">
+      <span class="processing-meter-dot" aria-hidden="true"></span>
+      <span class="processing-meter-item" data-meter-elapsed>0.0s</span>
+      <span class="processing-meter-item" data-meter-tokens>—</span>
+      <span class="processing-meter-item" data-meter-cost>—</span>
+    </div>
+  `;
 }
 
 function renderSourceGeneratedChecklist(file, review) {
