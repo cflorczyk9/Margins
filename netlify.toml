@@ -1,29 +1,14 @@
 # Netlify deploy config for Margins.
 #
-# Margins runs entirely in the browser — no backend, no server-side
-# state, just static HTML/CSS/JS plus the npm-installed runtime deps
-# (mammoth for DOCX, pdfjs-dist for PDF extraction). `node_modules/`
-# is gitignored, so the build step installs production deps fresh,
-# then the repo root publishes verbatim.
-#
-# Dev dependency (playwright-core) is skipped via --omit=dev — it's
-# only used by the Playwright smoke tests, not by the runtime.
+# Margins runs entirely in the browser. Runtime deps (mammoth for
+# DOCX extraction, pdfjs-dist for PDF text) are loaded from jsdelivr
+# CDN, so the deploy is a pure-static publish — no build step, no
+# `npm install`, no `node_modules/` to ship.
 
 [build]
-  command = "npm install --omit=dev --no-audit --no-fund --loglevel=error"
   publish = "."
 
-# Cache the install so subsequent builds skip when package-lock is
-# unchanged.
-[build.environment]
-  NPM_FLAGS = "--no-audit --no-fund"
-
-# Long-cache the immutable deps; short-cache the HTML so updates ship.
-[[headers]]
-  for = "/node_modules/*"
-  [headers.values]
-    Cache-Control = "public, max-age=31536000, immutable"
-
+# Short-cache the HTML so iterating on the landing/app ships quickly.
 [[headers]]
   for = "/*.html"
   [headers.values]
