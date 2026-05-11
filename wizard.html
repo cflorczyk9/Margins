@@ -848,7 +848,7 @@
 
   /* ─── Wizard ────────────────────────────── */
   .wizard {
-    display: none;
+    display: block;
     max-width: 760px;
     margin: 0 auto;
     padding: 130px 32px 96px;
@@ -2585,279 +2585,6 @@
 
 <!-- Scroll progress (landing only, toggled by JS) -->
 <div class="scroll-progress" aria-hidden="true"></div>
-
-<!-- ═══════ DEMO NAV ═══════ -->
-<!-- ═══════ HERO ═══════ -->
-<section class="hero" id="hero">
-  <div class="brand">
-    <svg class="brand-mark" viewBox="0 0 28 16" fill="none">
-      <line x1="3" y1="2" x2="3" y2="14" stroke="#1d1d1f" stroke-width="1.7" stroke-linecap="round"/>
-      <circle cx="17" cy="8" r="6" fill="#f0c14b"/>
-      <circle cx="17" cy="8" r="3.5" fill="#d63a2f"/>
-      <circle cx="17" cy="8" r="1.2" fill="#1d1d1f"/>
-    </svg>
-    margins
-  </div>
-
-  <div class="hero-grid">
-    <div>
-      <h1 class="hero-title display">Your AI is brilliant. But it forgets.</h1>
-
-      <p>
-        Margins is the memory it's missing. A personal wiki ChatGPT or Claude reads, writes to, and thinks alongside — so every conversation picks up where the last one left off, with full context of your work, your people, and your thinking.
-      </p>
-
-      <p class="muted">
-        Drop in a meeting, an email, a long article. Margins handles the filing. Files live on your machine. Setup takes ten minutes.
-      </p>
-
-      <div class="hero-cta-row">
-        <button class="cta large" onclick="goToWizard()">Set it up</button>
-        <button class="cta ghost large" id="hero-use-btn" type="button">Open Margins</button>
-      </div>
-
-      <div class="hero-meta">
-        <span>Files live on your machine</span>
-        <span>Bring your own AI key</span>
-        <span>Drag, drop, or share from anywhere</span>
-      </div>
-    </div>
-
-    <!-- Kandinsky-inspired composition (vermillion / cobalt / mustard) -->
-    <svg class="hero-art" viewBox="0 0 400 400" fill="none" aria-hidden="true">
-      <!-- thin diagonal line crossing the whole composition -->
-      <g class="hero-shape" style="--delay: 0.05s; --ix: -180px; --iy: 140px; --strength: 5;">
-        <line x1="20" y1="370" x2="385" y2="60" stroke="#1d1d1f" stroke-width="0.8"/>
-      </g>
-
-      <!-- sweeping cobalt arc -->
-      <g class="hero-shape" style="--delay: 0.18s; --ix: 0px; --iy: -160px; --strength: 7;">
-        <path d="M 20,90 Q 200,200 380,80" fill="none" stroke="#2c5aa0" stroke-width="2.5" stroke-linecap="round"/>
-      </g>
-
-      <!-- big yellow circle with concentric vermillion + ink core -->
-      <g class="hero-shape" style="--delay: 0.32s; --ix: 220px; --iy: -120px; --strength: 4;">
-        <circle cx="280" cy="135" r="78" fill="#f0c14b"/>
-        <circle cx="280" cy="135" r="46" fill="#d63a2f"/>
-        <circle cx="280" cy="135" r="14" fill="#1d1d1f"/>
-      </g>
-
-      <!-- open black triangle -->
-      <g class="hero-shape" style="--delay: 0.46s; --ix: -200px; --iy: 180px; --strength: 6;">
-        <polygon points="55,205 245,245 130,365" fill="none" stroke="#1d1d1f" stroke-width="2" stroke-linejoin="round"/>
-      </g>
-
-      <!-- deep violet disc -->
-      <g class="hero-shape" style="--delay: 0.58s; --ix: -140px; --iy: -120px; --strength: 14;">
-        <circle cx="92" cy="78" r="11" fill="#6a4f8c"/>
-      </g>
-
-      <!-- green dot -->
-      <g class="hero-shape" style="--delay: 0.7s; --ix: -100px; --iy: 200px; --strength: 16;">
-        <circle cx="195" cy="320" r="7" fill="#6fa863"/>
-      </g>
-
-      <!-- vermillion small disc bottom-left -->
-      <g class="hero-shape" style="--delay: 0.62s; --ix: -160px; --iy: 100px; --strength: 18;">
-        <circle cx="48" cy="290" r="5" fill="#d63a2f"/>
-      </g>
-
-      <!-- tiny ink dots scattered -->
-      <g class="hero-shape" style="--delay: 0.78s; --ix: 160px; --iy: 80px; --strength: 22;">
-        <circle cx="320" cy="280" r="3" fill="#1d1d1f"/>
-      </g>
-      <g class="hero-shape" style="--delay: 0.84s; --ix: -40px; --iy: -180px; --strength: 24;">
-        <circle cx="160" cy="80" r="2.5" fill="#1d1d1f"/>
-      </g>
-      <g class="hero-shape" style="--delay: 0.9s; --ix: 200px; --iy: 60px; --strength: 22;">
-        <circle cx="370" cy="240" r="2" fill="#1d1d1f"/>
-      </g>
-
-      <!-- short gestural line -->
-      <g class="hero-shape" style="--delay: 0.52s; --ix: -120px; --iy: 20px; --strength: 12;">
-        <line x1="60" y1="120" x2="105" y2="140" stroke="#1d1d1f" stroke-width="1.2" stroke-linecap="round"/>
-      </g>
-    </svg>
-  </div>
-</section>
-
-<!-- ═══════ HOW IT WORKS ═══════ -->
-<section class="how-it-works" id="how-it-works">
-  <div class="how-eyebrow reveal-sm" data-reveal-delay="0">How it works</div>
-  <h2 class="how-headline display reveal-sm" data-reveal-delay="0.1">Three steps. Ten minutes.</h2>
-
-  <div class="how-step">
-    <div class="how-step-text">
-      <div class="how-step-num">01</div>
-      <h3 class="how-step-heading">Drop anything in.</h3>
-      <p class="how-step-body">Files, emails, transcripts, articles, voice memos, photos of pages you care about. Margins reads everything you give it. No formatting required, no schemas to learn.</p>
-    </div>
-    <div class="how-step-art">
-      <svg viewBox="0 0 400 240" fill="none" aria-hidden="true">
-        <line x1="40" y1="200" x2="360" y2="200" stroke="#1d1d1f" stroke-width="1.4" stroke-linecap="round"/>
-        <line x1="200" y1="125" x2="200" y2="180" stroke="#1d1d1f" stroke-width="1.6" stroke-linecap="round"/>
-        <path d="M 188 170 L 200 184 L 212 170" stroke="#1d1d1f" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-        <circle cx="200" cy="80" r="44" fill="#f0c14b"/>
-        <circle cx="200" cy="80" r="22" fill="#d63a2f"/>
-        <circle cx="200" cy="80" r="6" fill="#1d1d1f"/>
-        <circle cx="100" cy="60" r="8" fill="#6a4f8c"/>
-        <circle cx="320" cy="50" r="5" fill="#2c5aa0"/>
-        <circle cx="60" cy="160" r="4" fill="#1d1d1f"/>
-        <circle cx="340" cy="170" r="6" fill="#d63a2f"/>
-        <line x1="100" y1="68" x2="155" y2="80" stroke="#1d1d1f" stroke-width="0.8"/>
-      </svg>
-    </div>
-  </div>
-
-  <div class="how-step flip">
-    <div class="how-step-text">
-      <div class="how-step-num">02</div>
-      <h3 class="how-step-heading">It asks before filing.</h3>
-      <p class="how-step-body">A few quick questions to make sure things land in the right place — and to update every connection they touch. The AI checks before it commits, instead of guessing and being wrong later.</p>
-    </div>
-    <div class="how-step-art">
-      <svg viewBox="0 0 400 240" fill="none" aria-hidden="true">
-        <circle cx="120" cy="125" r="40" fill="#f0c14b"/>
-        <circle cx="120" cy="125" r="20" fill="#1d1d1f"/>
-        <path d="M 168 105 Q 200 60 232 105" stroke="#1d1d1f" stroke-width="1.6" fill="none" stroke-linecap="round"/>
-        <circle cx="200" cy="55" r="4" fill="#d63a2f"/>
-        <circle cx="280" cy="125" r="32" fill="none" stroke="#2c5aa0" stroke-width="2"/>
-        <circle cx="280" cy="125" r="8" fill="#2c5aa0"/>
-        <circle cx="180" cy="200" r="6" fill="#6a4f8c"/>
-        <circle cx="220" cy="200" r="6" fill="#1d1d1f"/>
-        <circle cx="260" cy="200" r="6" fill="#d63a2f"/>
-        <line x1="160" y1="125" x2="240" y2="125" stroke="#1d1d1f" stroke-width="0.8" stroke-dasharray="3 3"/>
-      </svg>
-    </div>
-  </div>
-
-  <div class="how-step">
-    <div class="how-step-text">
-      <div class="how-step-num">03</div>
-      <h3 class="how-step-heading">Claude knows the rest.</h3>
-      <p class="how-step-body">Every conversation has full context of your work, your people, your thinking. The graph fills in. The AI gets sharper the more you feed it. No prompt engineering required — your wiki is the prompt.</p>
-    </div>
-    <div class="how-step-art">
-      <svg viewBox="0 0 400 240" fill="none" aria-hidden="true">
-        <circle cx="200" cy="120" r="16" fill="#1d1d1f"/>
-        <line x1="200" y1="120" x2="80" y2="60" stroke="rgba(0,0,0,0.18)" stroke-width="1"/>
-        <line x1="200" y1="120" x2="320" y2="50" stroke="rgba(0,0,0,0.18)" stroke-width="1"/>
-        <line x1="200" y1="120" x2="60" y2="180" stroke="rgba(0,0,0,0.18)" stroke-width="1"/>
-        <line x1="200" y1="120" x2="340" y2="200" stroke="rgba(0,0,0,0.18)" stroke-width="1"/>
-        <line x1="200" y1="120" x2="160" y2="40" stroke="rgba(0,0,0,0.18)" stroke-width="1"/>
-        <line x1="200" y1="120" x2="240" y2="220" stroke="rgba(0,0,0,0.18)" stroke-width="1"/>
-        <line x1="80" y1="60" x2="160" y2="40" stroke="rgba(0,0,0,0.10)" stroke-width="1"/>
-        <line x1="320" y1="50" x2="340" y2="200" stroke="rgba(0,0,0,0.10)" stroke-width="1"/>
-        <circle cx="80" cy="60" r="11" fill="#d63a2f"/>
-        <circle cx="320" cy="50" r="14" fill="#f0c14b"/>
-        <circle cx="60" cy="180" r="9" fill="#2c5aa0"/>
-        <circle cx="340" cy="200" r="11" fill="#6a4f8c"/>
-        <circle cx="160" cy="40" r="6" fill="#2c5aa0"/>
-        <circle cx="240" cy="220" r="7" fill="#d63a2f"/>
-        <circle cx="120" cy="120" r="3" fill="#1d1d1f"/>
-        <circle cx="280" cy="160" r="3" fill="#1d1d1f"/>
-      </svg>
-    </div>
-  </div>
-</section>
-
-<!-- ═══════ TRUST ═══════ -->
-<div class="trust-band" id="trust-band">
-<section class="trust" id="trust">
-  <div class="trust-eyebrow reveal-sm" data-reveal-delay="0">Built for trust</div>
-  <h2 class="trust-headline display reveal-sm" data-reveal-delay="0.1">AI built to resist drift, hallucination, and flattery. <span style="opacity:0.55; font-weight:400;">(Unfortunately.)</span></h2>
-  <p class="trust-intro reveal-sm" data-reveal-delay="0.2">
-    Vanilla assistants drift over time. They mirror your tone, fabricate sources to sound certain, and tell you what you want to hear. Margins is built around an operator manual that pushes back. Five things it does differently.
-  </p>
-
-  <div class="trust-list">
-
-    <div class="trust-item">
-      <div class="trust-mark">
-        <svg viewBox="0 0 80 80" fill="none" aria-hidden="true">
-          <circle cx="28" cy="50" r="20" fill="#f0c14b"/>
-          <circle cx="60" cy="26" r="9" fill="#d63a2f"/>
-          <path d="M 44 38 Q 50 22 55 26" stroke="#1d1d1f" stroke-width="1.6" fill="none" stroke-linecap="round"/>
-          <circle cx="50" cy="22" r="2" fill="#1d1d1f"/>
-        </svg>
-      </div>
-      <div class="trust-content">
-        <h3>It asks before guessing.</h3>
-        <p>When there's ambiguity, it stops and checks instead of inferring confidently. The most common failure mode of AI is fluent guessing. Margins is allergic to it.</p>
-      </div>
-    </div>
-
-    <div class="trust-item flip">
-      <div class="trust-mark">
-        <svg viewBox="0 0 80 80" fill="none" aria-hidden="true">
-          <circle cx="22" cy="40" r="14" fill="#d63a2f"/>
-          <circle cx="58" cy="40" r="14" fill="#1d1d1f"/>
-          <line x1="36" y1="40" x2="44" y2="40" stroke="#1d1d1f" stroke-width="2" stroke-linecap="round"/>
-          <circle cx="40" cy="14" r="3" fill="#2c5aa0"/>
-          <line x1="40" y1="14" x2="40" y2="26" stroke="#2c5aa0" stroke-width="1" stroke-dasharray="2 2"/>
-        </svg>
-      </div>
-      <div class="trust-content">
-        <h3>It cites, or it labels.</h3>
-        <p>Every claim either points to a source in your vault, or it's clearly marked as synthesis. You always know whether you're reading something Claude found versus something Claude inferred.</p>
-      </div>
-    </div>
-
-    <div class="trust-item">
-      <div class="trust-mark">
-        <svg viewBox="0 0 80 80" fill="none" aria-hidden="true">
-          <circle cx="40" cy="40" r="22" fill="none" stroke="#2c5aa0" stroke-width="2" stroke-dasharray="4 4"/>
-          <line x1="32" y1="40" x2="48" y2="40" stroke="#2c5aa0" stroke-width="2" stroke-linecap="round"/>
-          <circle cx="40" cy="40" r="3" fill="#2c5aa0"/>
-        </svg>
-      </div>
-      <div class="trust-content">
-        <h3>It tells you when it doesn't know.</h3>
-        <p>No fabricated sources, no hallucinated citations. If your vault doesn't have the answer, Margins says so — and offers to ingest something that would.</p>
-      </div>
-    </div>
-
-    <div class="trust-item flip">
-      <div class="trust-mark">
-        <svg viewBox="0 0 80 80" fill="none" aria-hidden="true">
-          <path d="M 14 40 L 32 40 M 26 32 L 32 40 L 26 48" stroke="#6a4f8c" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M 66 40 L 48 40 M 54 32 L 48 40 L 54 48" stroke="#6a4f8c" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-          <line x1="40" y1="20" x2="40" y2="60" stroke="#1d1d1f" stroke-width="1" stroke-dasharray="2 3"/>
-        </svg>
-      </div>
-      <div class="trust-content">
-        <h3>It pushes back.</h3>
-        <p>Default AI assistants mirror. Margins is told to disagree when it should — flag weak reasoning, name unsupported assumptions, refuse to go along just because you asked nicely.</p>
-      </div>
-    </div>
-
-    <div class="trust-item">
-      <div class="trust-mark">
-        <svg viewBox="0 0 80 80" fill="none" aria-hidden="true">
-          <path d="M 24 28 A 18 18 0 1 1 28 56" stroke="#1d1d1f" stroke-width="2.2" fill="none" stroke-linecap="round"/>
-          <path d="M 24 28 L 19 30 M 24 28 L 24 34" stroke="#1d1d1f" stroke-width="2.2" fill="none" stroke-linecap="round"/>
-          <circle cx="40" cy="40" r="6" fill="#d63a2f"/>
-        </svg>
-      </div>
-      <div class="trust-content">
-        <h3>It reorients itself.</h3>
-        <p>A monthly drift report flags whether your wiki has stayed about what you set it up for, or quietly become something else. The AI gets reoriented on a timer, not just at setup.</p>
-      </div>
-    </div>
-
-  </div>
-</section>
-</div>
-
-<!-- ═══════ FINAL CTA ═══════ -->
-<section class="final-cta reveal-stagger">
-  <h3>Built for people who want to think better, not type more.</h3>
-  <p>Free during the beta. Bring your own AI key.</p>
-  <div style="display:flex; gap:12px; justify-content:center; flex-wrap:wrap;">
-    <button class="cta" onclick="goToWizard()">Set it up</button>
-    <button class="cta ghost" id="final-use-btn" type="button">Open Margins</button>
-  </div>
-</section>
 
 <!-- ═══════ WIZARD ═══════ -->
 <section class="wizard" id="wizard">
@@ -6501,6 +6228,19 @@ window.personaCustomizations = personaCustomizations;
   document.getElementById("final-use-btn")?.addEventListener("click", function () {
     useMargins(this);
   });
+
+  // wizard.html is wizard-only — old landing sections were removed.
+  // Initialize the wizard on every page load: render step 1, scroll
+  // to top, set state.view = "wizard". `goToWizard` already does this.
+  function initWizard() {
+    if (typeof goToWizard !== "function") return;
+    goToWizard();
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initWizard);
+  } else {
+    initWizard();
+  }
 </script>
 
 </body>
