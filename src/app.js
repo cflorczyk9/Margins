@@ -3011,44 +3011,73 @@ async function generateGeminiJsonContent(model, prompt, extraParts = [], trackin
   markIngestPhase(`waitForApiThrottle (${timing.throttleMs?.toFixed(0) || "?"}ms — wait done)`);
   timing.throttleMs = elapsedSince(timing.throttleStartedAt);
   timing.requestStartedAt = performance.now();
-  try {
-    markIngestPhase(`fetch start (Gemini :streamGenerateContent)`);
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": state.apiSecret
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            role: "user",
-            parts: [
-              {
-                text: prompt
-              },
-              ...extraParts
-            ]
-          }
-        ],
-      generationConfig: {
-        temperature: 0.2,
-        responseMimeType: "application/json",
-        responseSchema: options.responseSchema,
-        maxOutputTokens: budget.outputTokenLimit,
-        // Bounded CoT budget. Gemini 2.5 Flash counts thinking
-        // tokens against maxOutputTokens, so the visibleCap =
-        // outputTokenLimit - thinkingBudget. Leaves CoT enabled
-        // (helps with multi-file filing decisions and contradiction
-        // detection) while keeping accounting predictable.
-        thinkingConfig: { thinkingBudget }
+  // Request body is constructed once and re-sent on transient
+  // server-side failures (5xx / 429). Google's API gateway times
+  // out around 60s and returns 503; their docs say retry. We do
+  // one retry with a short backoff before surfacing the error to
+  // the user.
+  const requestBody = JSON.stringify({
+    contents: [
+      {
+        role: "user",
+        parts: [
+          { text: prompt },
+          ...extraParts
+        ]
       }
-      })
-    });
-    markIngestPhase(`fetch headers received (HTTP ${response.status})`);
+    ],
+    generationConfig: {
+      temperature: 0.2,
+      responseMimeType: "application/json",
+      responseSchema: options.responseSchema,
+      maxOutputTokens: budget.outputTokenLimit,
+      // Bounded CoT budget. Gemini 2.5 Flash counts thinking
+      // tokens against maxOutputTokens, so the visibleCap =
+      // outputTokenLimit - thinkingBudget. Leaves CoT enabled
+      // (helps with multi-file filing decisions and contradiction
+      // detection) while keeping accounting predictable.
+      thinkingConfig: { thinkingBudget }
+    }
+  });
+  const requestInit = {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-goog-api-key": state.apiSecret
+    },
+    body: requestBody
+  };
+  try {
+    let response = null;
+    const maxAttempts = 2;
+    let attempt = 0;
+    while (attempt < maxAttempts) {
+      attempt += 1;
+      markIngestPhase(`fetch start (Gemini :streamGenerateContent, attempt ${attempt}/${maxAttempts})`);
+      response = await fetch(endpoint, requestInit);
+      markIngestPhase(`fetch headers received (HTTP ${response.status})`);
+      const transient = response.status === 429 || (response.status >= 500 && response.status < 600);
+      if (transient && attempt < maxAttempts) {
+        // Read + discard the body so the connection cleans up.
+        try { await response.text(); } catch {}
+        const backoffMs = response.status === 429 ? 30000 : 8000;
+        markIngestPhase(`transient ${response.status}; backing off ${backoffMs / 1000}s and retrying`);
+        await sleep(backoffMs);
+        continue;
+      }
+      break;
+    }
     timing.httpStatus = response.status;
     if (!response.ok) {
       const error = await apiErrorFromResponse(response, "Gemini");
+      // Annotate transient errors so the inbox UI can frame them
+      // as Google-side rather than user-data-side. The error
+      // message itself already mentions the HTTP code; the flag
+      // lets downstream code suggest "try again in a minute"
+      // rather than "check your data".
+      if (response.status === 429 || (response.status >= 500 && response.status < 600)) {
+        error.transient = true;
+      }
       finishModelTiming(timing, { ok: false, error });
       throw error;
     }
