@@ -186,7 +186,7 @@ export async function writeBlobFile(rootHandle, path, blob) {
 // Vault scaffolding + read
 // ---------------------------------------------------------------------
 
-export async function scaffoldVault(rootHandle) {
+export async function scaffoldVault(rootHandle, plan = null) {
   await ensureDirectory(rootHandle, RAW_SOURCE_DIR);
   await ensureDirectory(rootHandle, "wiki/sources");
   await ensureDirectory(rootHandle, "wiki/concepts");
@@ -196,6 +196,14 @@ export async function scaffoldVault(rootHandle) {
   await ensureDirectory(rootHandle, "commands");
   await ensureDirectory(rootHandle, "agents");
   await ensureDirectory(rootHandle, "wiki/.margins");
+
+  const extraFolders = Array.isArray(plan?.folders) ? plan.folders : [];
+  for (const folder of extraFolders) {
+    if (typeof folder === "string" && folder.trim()) {
+      await ensureDirectory(rootHandle, folder.trim());
+    }
+  }
+
   await writeTextFileIfMissing(rootHandle, `${RAW_SOURCE_DIR}/README.md`, `# Original Sources
 
 Drop original source files here. Margins treats this folder as evidence and writes generated knowledge into wiki/.
@@ -203,9 +211,17 @@ Drop original source files here. Margins treats this folder as evidence and writ
   await writeTextFileIfMissing(rootHandle, "CLAUDE.md", "# CLAUDE.md\n\nMargins will write the agent operating skeleton here.\n");
   await writeTextFileIfMissing(rootHandle, "operator-manual.md", "# Operator Manual\n\nMargins will write model operating instructions here.\n");
   await writeTextFileIfMissing(rootHandle, "query-cookbook.md", "# Query Cookbook\n\nMargins will write query recipes here.\n");
+
+  const seedFiles = plan?.seedFiles && typeof plan.seedFiles === "object" ? plan.seedFiles : {};
+  for (const [path, body] of Object.entries(seedFiles)) {
+    if (typeof path === "string" && typeof body === "string") {
+      await writeTextFileIfMissing(rootHandle, path, body);
+    }
+  }
+
   await writeTextFileIfMissing(rootHandle, "wiki/.margins/manifest.json", JSON.stringify({
-    name: "Margins Vault",
-    template: "karpathy-original",
+    name: plan?.vaultName || "Margins Vault",
+    template: plan?.templateId || "karpathy-original",
     version: "0.1.0",
     created_at: new Date().toISOString(),
     storage: "local-folder"

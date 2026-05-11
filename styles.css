@@ -169,7 +169,13 @@ p {
   align-items: flex-start;
   gap: 16px;
   padding: 4px 0 12px;
+  color: inherit;
+  text-decoration: none;
+  border-radius: 6px;
+  transition: opacity 0.12s ease;
 }
+a.brand:hover { opacity: 0.75; }
+a.brand:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
 
 .brand-lockup {
   display: flex;
@@ -6379,3 +6385,84 @@ button.type-tag.active {
   cursor: not-allowed;
   opacity: 0.55;
 }
+
+/* No-key banner — only banner that remains. Sits above the drop zone
+   when the user has a vault connected but no model key saved yet. */
+.no-key-banner {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  max-width: 860px;
+  margin: 24px auto 0;
+  padding: 11px 16px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--ink-2);
+  box-shadow: var(--shadow-sm);
+}
+.no-key-banner-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--amber);
+}
+.no-key-banner-text { flex: 1 1 auto; min-width: 0; }
+.no-key-banner-text strong { color: var(--ink); font-weight: 600; margin-right: 4px; }
+.no-key-banner-cta {
+  flex: 0 0 auto;
+  width: auto;
+  margin: 0;
+  padding: 6px 12px;
+  border-radius: 7px;
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.12s ease, color 0.12s ease;
+}
+.no-key-banner-cta:hover { border-color: var(--accent); color: var(--accent); }
+.no-key-banner-cta:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Drop-zone connect mode — shown in place of "Drag and drop here"
+   when the vault isn't currently connected. Same shell + Kandinsky
+   art; just swaps the heading/sub/button. */
+.drop-copy-connect h3 {
+  color: var(--ink);
+}
+.drop-copy-connect p {
+  color: var(--muted);
+}
+.connect-prompt-btn {
+  width: auto;
+  margin: 0;
+  padding: 10px 22px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  background: var(--accent);
+  color: var(--on-accent);
+  border: 1px solid var(--accent);
+  cursor: pointer;
+  transition: transform 0.06s ease, box-shadow 0.12s ease;
+}
+.connect-prompt-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+.connect-prompt-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.source-drop-zone.connect-mode {
+  cursor: default;
+}
+.source-drop-zone.connect-mode #drop-copy-default { display: none; }
