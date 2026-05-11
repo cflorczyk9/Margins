@@ -6387,45 +6387,94 @@ button.type-tag.active {
 }
 
 /* Vault-loading overlay — shown while loadExistingVault reads wiki/
- * + raw/ from disk. Hides the staged-render flicker (activity
- * appearing first, pending sources later) by deferring everything
- * to a single batch render at the end. */
+ * + raw/ from disk. Single batch render at the end eliminates the
+ * "activity appears first, pending appears later" staging.
+ *
+ * Body class `is-vault-loading` toggled by JS — using a class
+ * selector instead of :has() so cache-fragility doesn't suppress
+ * the rule on stale CSS. */
 .vault-loading {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 16px;
-  max-width: 860px;
+  gap: 18px;
+  max-width: 560px;
   margin: 80px auto 0;
-  padding: 40px;
+  padding: 56px 40px;
   background: var(--paper);
   border: 1px solid var(--line);
-  border-radius: 14px;
-  box-shadow: var(--shadow-sm);
+  border-radius: 16px;
+  box-shadow: var(--shadow-md);
+  text-align: center;
 }
 .vault-loading[hidden] { display: none; }
 .vault-loading-spinner {
-  width: 28px;
-  height: 28px;
-  border: 3px solid var(--line-strong);
+  width: 44px;
+  height: 44px;
+  border: 4px solid var(--line-strong);
   border-top-color: var(--accent);
+  border-right-color: var(--accent);
   border-radius: 50%;
   animation: vault-loading-spin 0.9s linear infinite;
+  flex: 0 0 auto;
+}
+.vault-loading-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--ink);
 }
 .vault-loading-text {
   margin: 0;
   font-size: 14px;
-  color: var(--muted);
+  color: var(--ink-2);
+  min-height: 20px;
+}
+.vault-loading-text::after {
+  content: "";
+  display: inline-block;
+  width: 0;
+  overflow: hidden;
+  animation: vault-loading-dots 1.4s steps(4, end) infinite;
+  vertical-align: bottom;
+}
+.vault-loading-bar {
+  width: 100%;
+  max-width: 360px;
+  height: 4px;
+  background: var(--line);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 6px;
+}
+.vault-loading-bar-fill {
+  display: block;
+  width: 35%;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  animation: vault-loading-slide 1.4s ease-in-out infinite;
 }
 @keyframes vault-loading-spin {
   to { transform: rotate(360deg); }
 }
-body:has(.vault-loading:not([hidden])) .inbox-copy,
-body:has(.vault-loading:not([hidden])) #source-drop-zone,
-body:has(.vault-loading:not([hidden])) #queue-panel,
-body:has(.vault-loading:not([hidden])) #recent-activity-panel,
-body:has(.vault-loading:not([hidden])) #inline-review-panel {
+@keyframes vault-loading-dots {
+  0%   { content: ""; }
+  25%  { content: "."; }
+  50%  { content: ".."; }
+  75%  { content: "..."; }
+  100% { content: ""; }
+}
+@keyframes vault-loading-slide {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(360%); }
+}
+body.is-vault-loading .inbox-copy,
+body.is-vault-loading #source-drop-zone,
+body.is-vault-loading #queue-panel,
+body.is-vault-loading #recent-activity-panel,
+body.is-vault-loading #inline-review-panel {
   display: none;
 }
 

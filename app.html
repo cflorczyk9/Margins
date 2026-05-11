@@ -144,9 +144,11 @@
 
     <main class="workspace">
       <section id="inbox-view" class="view active">
-        <div id="vault-loading" class="vault-loading" hidden role="status">
+        <div id="vault-loading" class="vault-loading" hidden role="status" aria-live="polite">
           <div class="vault-loading-spinner" aria-hidden="true"></div>
-          <p class="vault-loading-text">Loading your vault…</p>
+          <h3 class="vault-loading-title">Loading your vault</h3>
+          <p class="vault-loading-text" id="vault-loading-status">Reading wiki files…</p>
+          <div class="vault-loading-bar" aria-hidden="true"><span class="vault-loading-bar-fill"></span></div>
         </div>
         <div class="inbox-copy">
           <h2>Activity</h2>

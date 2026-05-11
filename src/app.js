@@ -4341,6 +4341,11 @@ function bindSourceListControls() {
 }
 
 function activeActivityFileMap() {
+  // Suppress activity while loadExistingVault is in flight; otherwise
+  // any incidental render call (workflow state, action state, etc.)
+  // would render the wiki portion immediately and surface staged
+  // results before the raw/ scan finishes.
+  if (state.vaultLoading) return new Map();
   return state.currentFileMap || state.loadedFileMap || new Map();
 }
 
