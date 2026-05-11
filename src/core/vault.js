@@ -614,6 +614,9 @@ export async function restoreRememberedVault() {
       callbacks.updateWorkflowState?.();
     }
   } catch (error) {
+    // Log the full stack so the dev console shows where the throw came
+    // from; the user-facing status only carries the message.
+    console.error("restoreRememberedVault threw:", error);
     updateVaultStatus(`Could not restore last vault: ${error.message || "unknown error"}`);
   }
 }
@@ -766,19 +769,28 @@ function applyLoadedVaultFileMap(fileMap) {
   state.hasSavedCurrent = fileMap.size > 0;
   state.hasUnsavedEdits = false;
   state.pendingSave = false;
-  callbacks.renderSources?.();
-  callbacks.renderVaultTree?.(fileMap);
-  callbacks.renderWikiFiles?.(fileMap);
-  callbacks.renderOperatingLayer?.(fileMap);
-  callbacks.renderAcceptedLlmEditState?.();
+  // Per-renderer try/catch so a single throwing callback can't blow up
+  // the whole load sequence — and the failing one identifies itself in
+  // the console with a precise stack.
+  const safeCall = (label, fn) => {
+    if (typeof fn !== "function") return;
+    try { fn(); } catch (error) {
+      console.error(`applyLoadedVaultFileMap: ${label} threw`, error);
+    }
+  };
+  safeCall("renderSources", () => callbacks.renderSources?.());
+  safeCall("renderVaultTree", () => callbacks.renderVaultTree?.(fileMap));
+  safeCall("renderWikiFiles", () => callbacks.renderWikiFiles?.(fileMap));
+  safeCall("renderOperatingLayer", () => callbacks.renderOperatingLayer?.(fileMap));
+  safeCall("renderAcceptedLlmEditState", () => callbacks.renderAcceptedLlmEditState?.());
   if (callbacks.drawGraph && callbacks.graphFromFileMap) {
-    callbacks.drawGraph(callbacks.graphFromFileMap(fileMap));
+    safeCall("drawGraph", () => callbacks.drawGraph(callbacks.graphFromFileMap(fileMap)));
   }
-  callbacks.renderChangePreview?.();
+  safeCall("renderChangePreview", () => callbacks.renderChangePreview?.());
   if (els?.exportBtn) els.exportBtn.disabled = fileMap.size === 0;
-  callbacks.updateSaveButtonState?.();
+  safeCall("updateSaveButtonState", () => callbacks.updateSaveButtonState?.());
   if (els?.copyBtn) els.copyBtn.disabled = true;
-  callbacks.updateWorkflowState?.();
+  safeCall("updateWorkflowState", () => callbacks.updateWorkflowState?.());
 }
 
 // ---------------------------------------------------------------------

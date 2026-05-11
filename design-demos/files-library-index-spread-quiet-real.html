@@ -1,0 +1,2615 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Files — Spread · Quiet</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #faf7f2;
+      --paper: #ffffff;
+      --paper-soft: #f5f1ea;
+      --ink: #1a1612;
+      --ink-2: #4a423a;
+      --muted: #847a6b;
+      --faint: #a89e8d;
+      --line: #ece6da;
+      --line-strong: #ddd5c4;
+      --accent: #d63a2f;
+      --accent-soft: rgba(214, 58, 47, 0.10);
+      --accent-line: rgba(214, 58, 47, 0.22);
+
+      /* polychrome tokens unchanged (do not modify token values),
+         but Index headings use the -quiet variants below for 25% desat */
+      --vermillion: #d63a2f;
+      --cobalt:     #2c5aa0;
+      --mustard:    #c79a26;
+      --violet:     #6a4f8c;
+      --green-poly: #5d9656;
+      --ink-poly:   #1a1612;
+
+      /* Desaturated heading colors (~25% less chroma) — used ONLY on bucket headings.
+         Tag pills, connection pills, and bucket dots keep the saturated tokens. */
+      --vermillion-quiet: #b35148;
+      --cobalt-quiet:     #506f9c;
+      --mustard-quiet:    #a89047;
+      --violet-quiet:     #7c6c91;
+      --green-quiet:      #71926d;
+      --ink-quiet:        #3a342c;
+
+      --vermillion-soft: rgba(214, 58, 47, 0.08);
+      --cobalt-soft:     rgba(44, 90, 160, 0.08);
+      --mustard-soft:    rgba(199, 154, 38, 0.10);
+      --violet-soft:     rgba(106, 79, 140, 0.09);
+      --green-soft:      rgba(93, 150, 86, 0.09);
+      --ink-soft:        rgba(26, 22, 18, 0.05);
+
+      --r-sm: 6px;
+      --r-md: 8px;
+      --r-lg: 12px;
+      --r-pill: 999px;
+
+      --focus-ring: 0 0 0 3px rgba(214, 58, 47, 0.10);
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif;
+      font-weight: 400;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      line-height: 1.5;
+    }
+    .page {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 56px 32px 120px;
+    }
+
+    /* ==== Header ==== */
+    .lib-head { margin-bottom: 36px; }
+    .lib-kicker {
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .lib-kicker::after {
+      content: ""; flex: 1; height: 1px;
+      background: var(--line); margin-left: 6px;
+    }
+    .lib-title {
+      font-family: 'Manrope', sans-serif;
+      font-size: 44px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      margin: 0;
+      line-height: 1.05;
+    }
+
+    /* ==== Spread layout ==== */
+    .spread {
+      display: grid;
+      grid-template-columns: 520px 640px;
+      gap: 48px;
+      margin: 36px 0 0;
+      padding: 36px 0 0;
+      border-top: 1px solid var(--line);
+      align-items: start;
+    }
+
+    /* ---- LEFT: Index ---- */
+    .index-col { min-width: 0; }
+
+    .index-toprow {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .index-eyebrow {
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--muted);
+      flex-shrink: 0;
+    }
+    .index-search {
+      flex: 1;
+      position: relative;
+    }
+    .index-search input {
+      width: 100%;
+      font-family: inherit;
+      font-size: 13px;
+      color: var(--ink);
+      padding: 7px 12px 7px 30px;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: var(--r-pill);
+      outline: none;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    .index-search input::placeholder { color: var(--faint); }
+    .index-search input:focus {
+      border-color: var(--accent-line);
+      box-shadow: var(--focus-ring);
+    }
+    .index-search .search-icon {
+      position: absolute;
+      left: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 13px; height: 13px;
+      color: var(--faint);
+      pointer-events: none;
+    }
+
+    /* One-line, italic pull-quote — bare facts only */
+    .index-pull {
+      font-family: 'Manrope', sans-serif;
+      font-style: italic;
+      font-size: 13px;
+      line-height: 1.4;
+      color: var(--muted);
+      margin: 6px 0 36px;
+      letter-spacing: -0.005em;
+    }
+
+    .index-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 36px;
+    }
+    .bucket { min-width: 0; }
+    .bucket-head {
+      cursor: pointer;
+      user-select: none;
+      display: inline-flex;
+      align-items: baseline;
+      gap: 10px;
+      position: relative;
+      padding-bottom: 2px;
+    }
+    .bucket-name {
+      font-family: 'Manrope', sans-serif;
+      font-size: 19px;
+      font-weight: 600;
+      letter-spacing: -0.015em;
+      margin: 0;
+      line-height: 1.15;
+    }
+    /* Desaturated polychrome for bucket headings */
+    .b-entities  .bucket-name { color: var(--cobalt-quiet); }
+    .b-concepts  .bucket-name { color: var(--violet-quiet); }
+    .b-sources   .bucket-name { color: var(--mustard-quiet); }
+    .b-synthesis .bucket-name { color: var(--vermillion-quiet); }
+    .b-career    .bucket-name { color: var(--green-quiet); }
+    .b-meta      .bucket-name { color: var(--ink-quiet); }
+
+    .bucket-head::after {
+      content: "";
+      position: absolute;
+      left: 50%; right: 50%;
+      bottom: -2px;
+      height: 1px;
+      background: currentColor;
+      transition: left 0.25s ease, right 0.25s ease, opacity 0.2s ease;
+      opacity: 0;
+    }
+    .bucket-head:hover::after { left: 0; right: 0; opacity: 0.6; }
+
+    .bucket-count {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--faint);
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.01em;
+      white-space: nowrap;
+    }
+
+    .bucket-list {
+      list-style: none;
+      padding: 14px 0 0;
+      margin: 0;
+    }
+    .bucket-item {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: baseline;
+      gap: 12px;
+      padding: 6px 10px;
+      margin: 0 -10px;
+      border-radius: var(--r-sm);
+      cursor: pointer;
+      transition: background 0.15s ease, transform 0.18s ease, opacity 0.18s ease;
+      color: var(--ink);
+      position: relative;
+    }
+    .bucket-item:hover { transform: translateX(3px); }
+    .b-entities  .bucket-item:hover { background: var(--cobalt-soft); }
+    .b-concepts  .bucket-item:hover { background: var(--violet-soft); }
+    .b-sources   .bucket-item:hover { background: var(--mustard-soft); }
+    .b-synthesis .bucket-item:hover { background: var(--vermillion-soft); }
+    .b-career    .bucket-item:hover { background: var(--green-soft); }
+    .b-meta      .bucket-item:hover { background: var(--ink-soft); }
+
+    .bucket-item.is-active {
+      background: var(--paper) !important;
+      box-shadow: inset 2px 0 0 currentColor;
+    }
+    .b-entities  .bucket-item.is-active { color: var(--cobalt); }
+    .b-concepts  .bucket-item.is-active { color: var(--violet); }
+    .b-sources   .bucket-item.is-active { color: var(--mustard); }
+    .b-synthesis .bucket-item.is-active { color: var(--vermillion); }
+    .b-career    .bucket-item.is-active { color: var(--green-poly); }
+    .b-meta      .bucket-item.is-active { color: var(--ink-poly); }
+
+    .bucket-item.is-active .item-title { color: inherit; font-weight: 600; }
+
+    .item-title {
+      font-family: 'Manrope', sans-serif;
+      font-size: 14px;
+      font-weight: 400;
+      letter-spacing: -0.005em;
+      color: var(--ink);
+      line-height: 1.3;
+      display: block;
+    }
+    .item-path {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: var(--faint);
+      letter-spacing: -0.01em;
+      margin-top: 2px;
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .item-age {
+      font-size: 11px;
+      color: var(--faint);
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.01em;
+      white-space: nowrap;
+      align-self: start;
+      padding-top: 3px;
+    }
+
+    /* search dim / glow */
+    .bucket-item.dim { opacity: 0.28; }
+    .bucket-item.glow {
+      background: var(--accent-soft) !important;
+      box-shadow: inset 2px 0 0 var(--accent);
+    }
+    .bucket-item.glow .item-title { color: var(--accent); font-weight: 600; }
+
+    /* connection-pill hover highlight */
+    .bucket-item.conn-highlight {
+      background: var(--accent-soft) !important;
+      transform: translateX(3px);
+    }
+
+    /* ---- RIGHT: Preview pane ---- */
+    .preview-col { min-width: 0; }
+    .preview {
+      position: sticky;
+      top: 24px;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: var(--r-lg);
+      padding: 36px 36px 28px;
+      min-height: 520px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .preview-empty {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      color: var(--muted);
+      padding: 40px 20px;
+    }
+    .preview-empty .empty-mark {
+      width: 40px; height: 40px;
+      border: 1px dashed var(--line-strong);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--faint);
+      margin-bottom: 20px;
+    }
+    .preview-empty .empty-prompt {
+      font-family: 'Manrope', sans-serif;
+      font-style: italic;
+      font-size: 16px;
+      color: var(--ink-2);
+      margin: 0;
+      letter-spacing: -0.005em;
+    }
+
+    .preview-active { display: none; flex-direction: column; flex: 1; }
+    .preview.has-file .preview-empty { display: none; }
+    .preview.has-file .preview-active { display: flex; }
+
+    .preview-title {
+      font-family: 'Manrope', sans-serif;
+      font-size: 27px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      margin: 0 0 4px;
+      color: var(--ink);
+    }
+    .preview-path {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11.5px;
+      color: var(--faint);
+      letter-spacing: -0.01em;
+      margin: 0 0 26px;
+    }
+
+    .preview-excerpt {
+      font-size: 16px;
+      line-height: 1.65;
+      color: var(--ink-2);
+      margin: 0;
+      max-width: 540px;
+    }
+    .preview-extended {
+      display: none;
+      font-size: 15px;
+      line-height: 1.65;
+      color: var(--ink-2);
+      margin: 16px 0 0;
+      padding-left: 14px;
+      border-left: 1px solid var(--accent-line);
+      max-width: 540px;
+    }
+    .preview.is-expanded .preview-extended { display: block; }
+
+    /* Hover-revealed actions: only visible when cursor is in the preview pane */
+    .preview-actions {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      opacity: 0;
+      transform: translateY(-2px);
+      transition: opacity 0.18s ease, transform 0.18s ease;
+      pointer-events: none;
+    }
+    .preview:hover .preview-actions,
+    .preview:focus-within .preview-actions,
+    .preview.is-pinned .preview-actions {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+    .more-btn,
+    .pin-btn {
+      background: transparent;
+      border: 1px solid var(--line);
+      border-radius: var(--r-pill);
+      font-family: inherit;
+      font-size: 11.5px;
+      font-weight: 500;
+      color: var(--muted);
+      cursor: pointer;
+      padding: 4px 10px;
+      transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+    }
+    .more-btn:hover { color: var(--ink); border-color: var(--line-strong); }
+    .pin-btn {
+      width: 28px; height: 28px;
+      padding: 0;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .pin-btn svg { width: 12px; height: 12px; }
+    .pin-btn:hover { color: var(--ink); border-color: var(--line-strong); }
+    .preview.is-pinned .pin-btn {
+      background: var(--accent-soft);
+      border-color: var(--accent-line);
+      color: var(--accent);
+      transform: rotate(-25deg);
+    }
+    .preview.is-expanded .more-btn { color: var(--accent); border-color: var(--accent-line); }
+
+    .preview-meta-row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px 10px;
+      margin: 28px 0 0;
+      padding-top: 22px;
+      border-top: 1px solid var(--line);
+    }
+    .meta-text {
+      font-size: 12px;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+    .meta-text strong { color: var(--ink-2); font-weight: 600; }
+    .meta-dot {
+      width: 3px; height: 3px;
+      border-radius: 50%;
+      background: var(--line-strong);
+    }
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 10px;
+      border-radius: var(--r-pill);
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+      border: 1px solid transparent;
+      white-space: nowrap;
+    }
+    .tag-career         { color: var(--green-poly); background: rgba(93,150,86,0.10);  border-color: rgba(93,150,86,0.22); }
+    .tag-advisor        { color: var(--green-poly); background: rgba(93,150,86,0.06);  border-color: rgba(93,150,86,0.16); }
+    .tag-consulting     { color: var(--green-poly); background: rgba(93,150,86,0.06);  border-color: rgba(93,150,86,0.16); }
+    .tag-product        { color: var(--violet);     background: rgba(106,79,140,0.08); border-color: rgba(106,79,140,0.18); }
+    .tag-security       { color: var(--violet);     background: rgba(106,79,140,0.05); border-color: rgba(106,79,140,0.14); }
+    .tag-briefly-vision { color: var(--violet);     background: rgba(106,79,140,0.05); border-color: rgba(106,79,140,0.14); }
+    .tag-strategy       { color: var(--vermillion); background: rgba(214,58,47,0.08);  border-color: rgba(214,58,47,0.18); }
+    .tag-architecture   { color: var(--vermillion); background: rgba(214,58,47,0.05);  border-color: rgba(214,58,47,0.14); }
+    .tag-briefly        { color: var(--vermillion); background: rgba(214,58,47,0.05);  border-color: rgba(214,58,47,0.14); }
+    .tag-firm           { color: var(--cobalt);     background: rgba(44,90,160,0.08);  border-color: rgba(44,90,160,0.18); }
+    .tag-prospect       { color: var(--cobalt);     background: rgba(44,90,160,0.05);  border-color: rgba(44,90,160,0.14); }
+    .tag-centric        { color: var(--cobalt);     background: rgba(44,90,160,0.05);  border-color: rgba(44,90,160,0.14); }
+    .tag-source         { color: var(--mustard);    background: rgba(199,154,38,0.12); border-color: rgba(199,154,38,0.24); }
+    .tag-meeting        { color: var(--mustard);    background: rgba(199,154,38,0.10); border-color: rgba(199,154,38,0.22); }
+    .tag-pricing        { color: var(--mustard);    background: rgba(199,154,38,0.08); border-color: rgba(199,154,38,0.18); }
+    .tag-mentor         { color: var(--violet);     background: rgba(106,79,140,0.08); border-color: rgba(106,79,140,0.18); }
+    .tag-riviera        { color: var(--violet);     background: rgba(106,79,140,0.05); border-color: rgba(106,79,140,0.14); }
+    .tag-log            { color: var(--muted);      background: var(--paper-soft);     border-color: var(--line); }
+    .tag-meta           { color: var(--muted);      background: var(--paper-soft);     border-color: var(--line); }
+    .tag-default        { color: var(--ink-2);      background: var(--paper-soft);     border-color: var(--line); }
+
+    /* Tag overflow chip — same shape, neutral palette */
+    .tag-overflow {
+      cursor: pointer;
+      color: var(--muted);
+      background: var(--paper-soft);
+      border-color: var(--line);
+      font-weight: 500;
+    }
+    .tag-overflow:hover { color: var(--ink); border-color: var(--line-strong); }
+
+    .preview-connect {
+      margin-top: 28px;
+    }
+    .connect-label {
+      font-size: 10.5px;
+      font-weight: 500;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+    .connect-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .conn-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 12px 5px 11px;
+      border-radius: var(--r-pill);
+      background: var(--paper);
+      border: 1px solid var(--line);
+      font-size: 12.5px;
+      font-weight: 500;
+      color: var(--ink-2);
+      cursor: pointer;
+      transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+      text-decoration: none;
+      font-family: inherit;
+    }
+    .conn-pill::before {
+      content: "→";
+      color: var(--faint);
+      font-size: 11px;
+      line-height: 1;
+    }
+    .conn-pill:hover {
+      border-color: var(--accent-line);
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+    .conn-pill:hover::before { color: var(--accent); }
+    .conn-pill.no-file {
+      color: var(--muted);
+      font-style: italic;
+    }
+    .conn-empty {
+      font-size: 13px;
+      color: var(--faint);
+      font-style: italic;
+    }
+
+    /* ==== Command palette (Cmd+K) — still wired, just not advertised ==== */
+    .palette-shroud {
+      position: fixed;
+      inset: 0;
+      background: rgba(26, 22, 18, 0.32);
+      backdrop-filter: blur(2px);
+      z-index: 50;
+      display: none;
+      align-items: flex-start;
+      justify-content: center;
+      padding-top: 18vh;
+    }
+    .palette-shroud.show { display: flex; }
+    .palette {
+      width: 540px;
+      max-width: calc(100vw - 32px);
+      background: var(--paper);
+      border-radius: var(--r-lg);
+      box-shadow: 0 16px 60px rgba(26,22,18,0.20);
+      border: 1px solid var(--line);
+      overflow: hidden;
+    }
+    .palette-input-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--line);
+    }
+    .palette-input-row svg {
+      width: 16px; height: 16px;
+      color: var(--faint);
+      flex-shrink: 0;
+    }
+    .palette-input-row input {
+      flex: 1;
+      font-family: inherit;
+      font-size: 15px;
+      color: var(--ink);
+      border: none;
+      outline: none;
+      background: transparent;
+    }
+    .palette-input-row input::placeholder { color: var(--faint); }
+    .palette-results {
+      max-height: 400px;
+      overflow-y: auto;
+      padding: 6px 0;
+    }
+    .palette-result {
+      display: grid;
+      grid-template-columns: 8px 1fr auto;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 18px;
+      cursor: pointer;
+      transition: background 0.1s ease;
+    }
+    .palette-result:hover,
+    .palette-result.kbd-active { background: var(--paper-soft); }
+    .palette-result .pr-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+    }
+    .pr-entities  .pr-dot { background: var(--cobalt); }
+    .pr-concepts  .pr-dot { background: var(--violet); }
+    .pr-sources   .pr-dot { background: var(--mustard); }
+    .pr-synthesis .pr-dot { background: var(--vermillion); }
+    .pr-career    .pr-dot { background: var(--green-poly); }
+    .pr-meta      .pr-dot { background: var(--ink-poly); }
+    .palette-result .pr-title {
+      font-size: 14px;
+      color: var(--ink);
+    }
+    .palette-result .pr-path {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10.5px;
+      color: var(--faint);
+    }
+    .palette-empty {
+      padding: 24px 18px;
+      text-align: center;
+      color: var(--faint);
+      font-size: 13px;
+      font-style: italic;
+    }
+
+    /* ==== Help icon: keyboard hints on demand ==== */
+    .help-toggle {
+      position: fixed;
+      right: 22px;
+      bottom: 22px;
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: color 0.15s ease, border-color 0.15s ease;
+      z-index: 40;
+    }
+    .help-toggle:hover { color: var(--ink); border-color: var(--line-strong); }
+    .help-popover {
+      position: fixed;
+      right: 22px;
+      bottom: 58px;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: var(--r-md);
+      box-shadow: 0 10px 30px rgba(26,22,18,0.12);
+      padding: 14px 16px;
+      font-size: 12px;
+      color: var(--ink-2);
+      line-height: 1.7;
+      display: none;
+      z-index: 40;
+    }
+    .help-popover.show { display: block; }
+    .help-popover kbd {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10.5px;
+      background: var(--paper-soft);
+      border: 1px solid var(--line);
+      padding: 1px 6px;
+      border-radius: 4px;
+      color: var(--ink-2);
+      margin: 0 2px;
+    }
+
+    /* ==== Responsive ==== */
+    @media (max-width: 1100px) {
+      .spread {
+        grid-template-columns: 1fr;
+        gap: 36px;
+      }
+      .preview {
+        position: static;
+        min-height: 380px;
+      }
+    }
+    @media (max-width: 600px) {
+      .page { padding: 32px 20px 100px; }
+      .lib-title { font-size: 34px; }
+      .preview { padding: 26px 22px 22px; }
+      .preview-title { font-size: 24px; }
+      .preview-excerpt { font-size: 15px; }
+      .bucket-name { font-size: 18px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="lib-head">
+      <div class="lib-kicker">Margins · Files</div>
+      <h1 class="lib-title">Library</h1>
+    </header>
+
+    <!-- ============ SPREAD ============ -->
+    <section class="spread" id="spread">
+
+      <!-- LEFT: Index -->
+      <div class="index-col">
+        <div class="index-toprow">
+          <div class="index-eyebrow">Index</div>
+          <div class="index-search">
+            <input type="text" id="searchInput" placeholder="Search titles, tags, paths…" autocomplete="off">
+            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="7"></circle>
+              <line x1="20" y1="20" x2="16.65" y2="16.65"></line>
+            </svg>
+          </div>
+        </div>
+
+        <div class="index-pull">
+          <em>48 files · 48,393 words · last touched 11m ago</em>
+        </div>
+
+        <div class="index-stack" id="indexStack"></div>
+      </div>
+
+      <!-- RIGHT: Preview pane -->
+      <div class="preview-col">
+        <div class="preview" id="preview">
+          <div class="preview-empty">
+            <div class="empty-mark">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 5v14M5 12h14"></path>
+              </svg>
+            </div>
+            <p class="empty-prompt">Hover a file.</p>
+          </div>
+          <div class="preview-active" id="previewActive"></div>
+        </div>
+      </div>
+
+    </section>
+  </main>
+
+  <!-- Help popover (keyboard hints on demand) -->
+  <button class="help-toggle" id="helpToggle" aria-label="Keyboard shortcuts">?</button>
+  <div class="help-popover" id="helpPopover">
+    <kbd>/</kbd> search &nbsp; <kbd>⌘</kbd><kbd>K</kbd> palette &nbsp; <kbd>Esc</kbd> close
+  </div>
+
+  <!-- Command palette overlay -->
+  <div class="palette-shroud" id="paletteShroud">
+    <div class="palette">
+      <div class="palette-input-row">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="7"></circle>
+          <line x1="20" y1="20" x2="16.65" y2="16.65"></line>
+        </svg>
+        <input type="text" id="paletteInput" placeholder="Search the vault…" autocomplete="off">
+      </div>
+      <div class="palette-results" id="paletteResults"></div>
+    </div>
+  </div>
+
+  <script>
+    // ===== File data (unchanged) =====
+    const FILES = [
+      {
+        "bucket": "meta",
+        "path": "wiki/usage-tracker.md",
+        "title": "Agent + Skill usage tracker",
+        "age": "11m",
+        "words": 1567,
+        "lastEdited": "2026-05-11 10:17",
+        "tags": [
+          "admin",
+          "usage",
+          "tracking",
+          "region/self",
+          "vibrance/aged"
+        ],
+        "connections": [],
+        "excerpt": "Automatic record of every Skill or Agent invocation across all Claude Code sessions in this vault. Populated by the PostToolUse hook at `~/.claude/hooks/agent-skill-tracker.py`. The hook fires on every tool call but exits silently for tools other than Skill / Agent, so cost is negligible. ```bash # Skills, ranked by call count grep '| skill |' wiki/usage-tracker.md | awk -F'|'…",
+        "extended": "sort -rn grep '| agent |' wiki/usage-tracker.md | awk -F'|' '{print $4}' | sort | uniq -c | sort -rn grep \"| $(date -v -7d +%Y-%m-%d)\" wiki/usage-tracker.md # macOS ``` - Captures invocations made via the Skill or Agent tools in Claude Code only. Web claude.ai or IDE-extension sessions without the hook won't record here. - Records the invocation, not the outcome. A skill that bailed (returned an…"
+      },
+      {
+        "bucket": "sources",
+        "path": "wiki/daily/2026-05-11.md",
+        "title": "2026-05-11, Monday",
+        "age": "22m",
+        "words": 1300,
+        "lastEdited": "2026-05-11 10:05",
+        "tags": [
+          "log",
+          "daily"
+        ],
+        "connections": [],
+        "excerpt": "9:08 AM CT — ultrathink Let's jump back into analyzing career paths. So look at my career fork, all the MBA…. #wiki-maintenance <!-- session: 64b37bde-cfa --> 9:33 AM CT — Briefly Library tab integration plan: Designed Library tab for Briefly integrating Margins for document classification and retrieval. Created integration plan with architectural decisions, AWS infra delta, an…",
+        "extended": ", and five open decisions at wiki/queries/2026-05-10-briefly-margins-library-tab-plan.html. #wiki-maintenance <!-- session: e73bd4f4-70e --> - 9:36 AM CT — AI Daily Brief podcast summary: Summarized podcast episode about AI job creation from transcript, producing structured notes with key takeaways on the industry's shift from job-loss narratives to examining new roles AI will create, plus notable…"
+      },
+      {
+        "bucket": "concepts",
+        "path": "wiki/ideas/aidailybrief.md",
+        "title": "AI Daily Brief — daily digest",
+        "age": "32m",
+        "words": 5422,
+        "lastEdited": "2026-05-11 09:55",
+        "tags": [
+          "hub",
+          "ai-news",
+          "podcast",
+          "aidailybrief"
+        ],
+        "connections": [
+          {
+            "label": "Source aidailybrief 2026 05 10 the new jobs ai will create",
+            "target": null
+          },
+          {
+            "label": "Source aidailybrief 2026 05 09 how to build an ai native team with mike cannon",
+            "target": null
+          },
+          {
+            "label": "Source aidailybrief 2026 05 08 the week the ai story shifted",
+            "target": null
+          },
+          {
+            "label": "Source aidailybrief 2026 05 07 surprise elon anthropic team up reshapes the ai",
+            "target": null
+          },
+          {
+            "label": "Source aidailybrief 2026 05 06 who cares about consumer ai",
+            "target": null
+          },
+          {
+            "label": "Source aidailybrief 2026 05 05 why openai and anthropic are becoming consultants",
+            "target": null
+          }
+        ],
+        "excerpt": "Auto-maintained by `aidailybrief_poller.py`. New entries land each morning at 7:30 AM CT. Each entry: date, title (linked to the full source page), and the opening paragraph of the show notes in NLW's voice. > [!claude-note]+ How to use this page > When Connor asks about current AI news, AI tools, or workflow improvements, scan the entries below and drill into a source page if…",
+        "extended": "the topic is relevant. Show-note text is NLW's words, not Connor's. - The AI industry has spent far too much time identifying at-risk jobs and almost no time exploring what new jobs an AI-enabled economy will create, leaving optimists without a concrete vision. - The job apocalypse narrative rests on a hidden lump-of-labor assumption that demand stays constant as labor supply grows, but demand act…"
+      },
+      {
+        "bucket": "concepts",
+        "path": "wiki/ideas/source-aidailybrief-2026-04-24-what-i-learned-testing-gpt-5-5.md",
+        "title": "How Headless Agents Will Change Work",
+        "age": "32m",
+        "words": 505,
+        "lastEdited": "2026-05-11 09:55",
+        "tags": [
+          "source",
+          "ai-news",
+          "podcast",
+          "aidailybrief"
+        ],
+        "connections": [],
+        "excerpt": "**Source:** [The AI Daily Brief](https://podcasters.spotify.com/pod/show/nlw/episodes/How-Headless-Agents-Will-Change-Work-e3icmjg) · **Published:** 2026-04-24 · **Duration:** 00:30:34 This week, Salesforce, OpenAI, Microsoft, and Google all made major moves toward \"headless\" software — platforms designed for agents rather than human users. The episode explores what this shift…",
+        "extended": "dustry. - Compute scarcity has flipped the bubble narrative: data center buildout is no longer seen as risking a glut, but as failing to keep up with token-hungry agent demand. - Google's eighth-generation TPUs split into separate training and inference chips, reflecting an industry-wide shift toward dedicated inference clusters as inference demand vastly outstrips training. - Salesforce's \"Headle…"
+      },
+      {
+        "bucket": "concepts",
+        "path": "wiki/ideas/source-aidailybrief-2026-04-24-how-headless-agents-will-change-work.md",
+        "title": "How Headless Agents Will Change Work",
+        "age": "33m",
+        "words": 448,
+        "lastEdited": "2026-05-11 09:55",
+        "tags": [
+          "source",
+          "ai-news",
+          "podcast",
+          "aidailybrief"
+        ],
+        "connections": [],
+        "excerpt": "**Source:** [The AI Daily Brief](https://podcasters.spotify.com/pod/show/nlw/episodes/How-Headless-Agents-Will-Change-Work-e3icmjg) · **Published:** 2026-04-24 · **Duration:** 00:30:34 This week, Salesforce, OpenAI, Microsoft, and Google all made major moves toward \"headless\" software — platforms designed for agents rather than human users. The episode explores what this shift…",
+        "extended": "nce crunch that is straining Anthropic and quietly shifting the \"AI bubble\" narrative from oversupply to undersupply of compute and power. - Google's eighth-gen TPUs split into separate training and inference chips, reflecting an industry-wide separation of those two workloads (also seen in Nvidia-Grock and OpenAI-Cerebras deals). - Salesforce's \"Headless 360,\" OpenAI's workspace agents, Microsoft…"
+      },
+      {
+        "bucket": "concepts",
+        "path": "wiki/ideas/source-aidailybrief-2026-04-22-what-gpt-images-2-unlocks.md",
+        "title": "What GPT Images 2 Unlocks",
+        "age": "33m",
+        "words": 510,
+        "lastEdited": "2026-05-11 09:54",
+        "tags": [
+          "source",
+          "ai-news",
+          "podcast",
+          "aidailybrief"
+        ],
+        "connections": [],
+        "excerpt": "**Source:** [The AI Daily Brief](https://podcasters.spotify.com/pod/show/nlw/episodes/What-GPT-Images-2-Unlocks-e3iack9) · **Published:** 2026-04-22 · **Duration:** 00:24:38 OpenAI's GPT Image 2 topped the LM Arena leaderboard by a record 242 points, but the real story is how it fits the agentic stack. This episode digs into the image-to-code workflows driving most of the excit…",
+        "extended": "Arena's text-to-image board with a 242-point lead, the largest gap the leaderboard has ever recorded, marking a genuine step change rather than incremental progress. - Its biggest practical unlock is dense text, UI mockups, diagrams, and editorial layouts at usable quality, opening real enterprise and knowledge-worker workflows. - The pairing of Images 2.0 with Codex is the most disruptive workflo…"
+      },
+      {
+        "bucket": "concepts",
+        "path": "wiki/ideas/source-aidailybrief-2026-04-21-how-apple-s-ai-strategy-changes-with-a-new-ceo.md",
+        "title": "How Apple's AI Strategy Changes with a New CEO",
+        "age": "34m",
+        "words": 501,
+        "lastEdited": "2026-05-11 09:53",
+        "tags": [
+          "source",
+          "ai-news",
+          "podcast",
+          "aidailybrief"
+        ],
+        "connections": [],
+        "excerpt": "**Source:** [The AI Daily Brief](https://podcasters.spotify.com/pod/show/nlw/episodes/How-Apples-AI-Strategy-Changes-with-a-New-CEO-e3i8iaq) · **Published:** 2026-04-21 · **Duration:** 00:23:57 Apple's incoming CEO John Ternus inherits a company that some say brilliantly sat out the AI spending race and others say completely squandered its advantages. Either way, the biggest qu…",
+        "extended": "tmare that NLW expects to normalize. - Anthropic's new \"live artifacts\" in Claude and OpenAI's Chronicle are largely UX wrappers on existing capabilities, but cementing workflows in a simpler interface is itself a meaningful unlock. - The Trump administration appears to be walking back hostilities toward Anthropic after Dario Amodei met White House officials, even as the Pentagon's contract cancel…"
+      },
+      {
+        "bucket": "concepts",
+        "path": "wiki/ideas/source-aidailybrief-2026-05-10-the-new-jobs-ai-will-create.md",
+        "title": "The New Jobs AI Will Create",
+        "age": "36m",
+        "words": 522,
+        "lastEdited": "2026-05-11 09:51",
+        "tags": [
+          "source",
+          "ai-news",
+          "podcast",
+          "aidailybrief"
+        ],
+        "connections": [],
+        "excerpt": "**Source:** [The AI Daily Brief](https://podcasters.spotify.com/pod/show/nlw/episodes/The-New-Jobs-AI-Will-Create-e3j4fts) · **Published:** 2026-05-10 · **Duration:** 00:30:57 The AI jobs debate has spent years asking which roles will disappear. This weekend long-read asks the more important question: what becomes possible when AI expands the amount of useful work the economy c…",
+        "extended": "apocalypse narrative rests on a hidden lump-of-labor assumption that demand stays constant as labor supply grows, but demand actually stretches across six elasticities: price, access, complexity, continuity, personalization, and relational value. - AI expands the demand frontier through two distinct mechanisms: an \"affordability unlock\" that brings existing services to new buyers, and a \"possibili…"
+      },
+      {
+        "bucket": "concepts",
+        "path": "wiki/ideas/source-aidailybrief-2026-05-09-how-to-build-an-ai-native-team-with-mike-cannon.md",
+        "title": "How to Build an AI Native Team with Mike Cannon-Brookes",
+        "age": "37m",
+        "words": 451,
+        "lastEdited": "2026-05-11 09:51",
+        "tags": [
+          "source",
+          "ai-news",
+          "podcast",
+          "aidailybrief"
+        ],
+        "connections": [],
+        "excerpt": "**Source:** [The AI Daily Brief](https://podcasters.spotify.com/pod/show/nlw/episodes/How-to-Build-an-AI-Native-Team-with-Mike-Cannon-Brookes-e3j4cjo) · **Published:** 2026-05-09 · **Duration:** 00:29:39 In this sponsored bonus episode, NLW is joined by Atlassian co-founder and CEO Mike Cannon-Brookes for a conversation about how to build AI native teams. They discuss what sepa…",
+        "extended": "n's internal adoption playbook centers on three loops: making tools legally available, giving employees space to play, and broadcasting both wins and failures so learnings spread. - Enterprises succeed when AI is wired into existing workflows (assigning a Jira ticket to a coding or business agent) rather than forcing wholesale process redesign upfront. - Leading AI-native organizations push for 20…"
+      },
+      {
+        "bucket": "concepts",
+        "path": "wiki/ideas/source-aidailybrief-2026-05-08-the-week-the-ai-story-shifted.md",
+        "title": "The Week the AI Story Shifted",
+        "age": "37m",
+        "words": 473,
+        "lastEdited": "2026-05-11 09:50",
+        "tags": [
+          "source",
+          "ai-news",
+          "podcast",
+          "aidailybrief"
+        ],
+        "connections": [],
+        "excerpt": "**Source:** [The AI Daily Brief](https://podcasters.spotify.com/pod/show/nlw/episodes/The-Week-the-AI-Story-Shifted-e3j3nh7) · **Published:** 2026-05-08 · **Duration:** 00:30:46 This week-in-review episode looks at a week when the AI narrative started to fork, from job-apocalypse panic toward a more mature picture of how AI will actually diffuse through the economy, markets, in…",
+        "extended": "er than destroying employment outright. - OpenAI and Anthropic both launched massive enterprise deployment joint ventures (a $10B-valued OpenAI vehicle with $4B in, plus a $1.5B Anthropic effort), signaling that the labs now accept that diffusion into the enterprise is slow, painful work that extends disruption timelines from years to decades. - Wall Street has flipped from bubble fears to active…"
+      },
+      {
+        "bucket": "sources",
+        "path": "wiki/sources/source-three-decades-at-boston-consulting-group-making-partner-after-being-rejected-twice-ep-101.md",
+        "title": "Source: Three Decades At Boston Consulting Group Making Partner After Being Rejected Twice Ep 101",
+        "age": "47m",
+        "words": 371,
+        "lastEdited": "2026-05-11 09:40",
+        "tags": [
+          "source"
+        ],
+        "connections": [
+          {
+            "label": "Career",
+            "target": "wiki/career/career.md"
+          },
+          {
+            "label": "School",
+            "target": null
+          },
+          {
+            "label": "2026 05 07 consulting pre mba punchlist",
+            "target": null
+          },
+          {
+            "label": "2026 05 06 pre mba consulting programs and assessments",
+            "target": null
+          },
+          {
+            "label": "2026 05 06 post mba target companies",
+            "target": null
+          }
+        ],
+        "excerpt": "Original file: `raw/Three Decades at Boston Consulting Group Making Partner After Being Rejected Twice Ep 101.md` Debbie Lovich was rejected by BCG twice before joining, then became their fastest partner promote in under six years. She discusses navigating the executive committee as one of the few women and stepping back from partner for work-life balance. Lovich emphasizes per…",
+        "extended": "twice before joining, then became their fastest partner promote in under six years. - She discusses navigating the executive committee as one of the few women and stepping back from partner for work-life balance. - Lovich emphasizes persistence, optimism, and the addictive nature of solving complex problems with brilliant teams in consulting. - She advises MBA applicants on what it takes to stand…"
+      },
+      {
+        "bucket": "meta",
+        "path": "wiki/ingest-tracker.md",
+        "title": "Ingest Tracker",
+        "age": "47m",
+        "words": 150,
+        "lastEdited": "2026-05-11 09:40",
+        "tags": [
+          "tracker",
+          "ingest",
+          "system"
+        ],
+        "connections": [
+          {
+            "label": "Source three decades at boston consulting group making partner after being rejected twice ep 101",
+            "target": "wiki/sources/source-three-decades-at-boston-consulting-group-making-partner-after-being-rejected-twice-ep-101.md"
+          }
+        ],
+        "excerpt": "This is the single source of truth for which source files in raw/ have been converted into wiki pages. Update it whenever ingest creates, rewrites, or skips a source. ingested: source text was available and a wiki source page exists. needs-extraction: the original file is preserved in raw/, but readable text was not available to the compiler. skipped: the user intentionally cho…",
+        "extended": "ource-three-decades-at-boston-consulting-group-making-partner-after-being-rejected-twice-ep-101 | - | 7274 | Source page generated from model review. | - ingested: source text was available and a wiki source page exists. - needs-extraction: the original file is preserved in raw/, but readable text was not available to the compiler. - skipped: the user intentionally chose not to file this source. -…"
+      },
+      {
+        "bucket": "meta",
+        "path": "wiki/index.md",
+        "title": "Wiki Index",
+        "age": "47m",
+        "words": 104,
+        "lastEdited": "2026-05-11 09:40",
+        "tags": [
+          "index"
+        ],
+        "connections": [
+          {
+            "label": "Ingest tracker",
+            "target": "wiki/ingest-tracker.md"
+          },
+          {
+            "label": "Log",
+            "target": "wiki/log.md"
+          },
+          {
+            "label": "Wiki stats",
+            "target": "wiki/wiki-stats.md"
+          },
+          {
+            "label": "Sources",
+            "target": "wiki/sources/sources.md"
+          },
+          {
+            "label": "Concepts",
+            "target": "wiki/concepts/concepts.md"
+          },
+          {
+            "label": "Entities",
+            "target": "wiki/entities/entities.md"
+          }
+        ],
+        "excerpt": "Generated by Margins. ingest-tracker — source-file processing status log — human-readable operation history wiki-stats — drift, extraction, and size dashboard sources — source bucket overview concepts — concept bucket overview entities — entity bucket overview synthesis — synthesis bucket overview source-three-decades-at-boston-consulting-group-making-partner-after-being-reject…",
+        "extended": "ter-being-rejected-twice-ep-101 — Debbie Lovich, a BCG Managing Director and Senior Partner, shares her 32-year career journey, including becoming the fastest partner, navigating challenges as a woman, and offering advice for MBA applicants considering consulting. - _(none)_ - _(none)_ - _(none)_"
+      },
+      {
+        "bucket": "meta",
+        "path": "wiki/log.md",
+        "title": "Log",
+        "age": "47m",
+        "words": 114,
+        "lastEdited": "2026-05-11 09:40",
+        "tags": [
+          "log",
+          "operations",
+          "system"
+        ],
+        "connections": [],
+        "excerpt": "Allowed ops: ingest | query | compile | lint | update Use headings shaped like `## [YYYY-MM-DD] ingest` so agents can grep the log without a plugin. Registered 1 source file. Created 1 source page, 0 concept pages, 0 entity pages, and 0 synthesis pages. Queued 0 proposals in `wiki/.margins/edit-log.jsonl`. Updated `wiki/ingest-tracker.md`, bucket overviews, and `wiki/wiki-stats…",
+        "extended": "ki-stats.md`. - ingest: source file preservation, source-page creation, propagation, and tracker updates. - query: user-facing answer from current wiki state. - compile: backlink, concept, entity, synthesis, and index refresh. - lint: drift, stale summary, missing citation, and structure health checks. - update: user-approved content or structure edits."
+      },
+      {
+        "bucket": "meta",
+        "path": "wiki/wiki-stats.md",
+        "title": "Wiki Stats",
+        "age": "47m",
+        "words": 127,
+        "lastEdited": "2026-05-11 09:40",
+        "tags": [
+          "stats",
+          "lint",
+          "drift",
+          "system"
+        ],
+        "connections": [],
+        "excerpt": "Generated: 2026-05-11 Source files: 1 Source pages: 1 Concept pages: 0 Entity pages: 0 Synthesis pages: 0 Graph edges: 0 Source words available: 7274 Source-summary words: 30 Approximate compression: 242:1 Summary freshness: new vault pass; no stale summaries detected at generation time. Extraction gaps: 0 Review rule: if a summary is older than the sources it represents, refre…",
+        "extended": "ces it represents, refresh it before answering from memory. - `raw/Three Decades at Boston Consulting Group Making Partner After Being Rejected Twice Ep 101.md` — 7274 words - Run compile after new ingest batches to promote repeated concepts and backlink gaps. - Run lint when source pages grow faster than summaries. - Prefer fixing the tracker and log before adding more generated pages."
+      },
+      {
+        "bucket": "entities",
+        "path": "wiki/entities/entities.md",
+        "title": "Entities",
+        "age": "47m",
+        "words": 51,
+        "lastEdited": "2026-05-11 09:40",
+        "tags": [
+          "index",
+          "entities"
+        ],
+        "connections": [],
+        "excerpt": "Entity pages need snapshots and source logs. Do not fill roles, relationships, or next moves without evidence or user confirmation. Keep this overview short enough for an agent to scan first. Add only pages that belong in `entities/`. Update summaries when underlying source pages change.",
+        "extended": ""
+      },
+      {
+        "bucket": "entities",
+        "path": "wiki/entities/rama-ramakrishnan.md",
+        "title": "Rama Ramakrishnan",
+        "age": "47m",
+        "words": 131,
+        "lastEdited": "2026-05-11 09:40",
+        "tags": [
+          "entity",
+          "person",
+          "academic",
+          "mit-sloan",
+          "ai",
+          "region/self"
+        ],
+        "connections": [
+          {
+            "label": "Mit sloan",
+            "target": "wiki/entities/mit-sloan.md"
+          },
+          {
+            "label": "Source 2026 05 ramakrishnan chatbot to agent",
+            "target": null
+          }
+        ],
+        "excerpt": "Author of non-technical primer decks aimed at executives. May 2026 deck, \"From Chatbot to Agent: How LLMs Use Tools to Get Work Done,\" walks through agent architecture as LLM + harness + tools. Earlier deck cited: \"How LLMs got better at reasoning\" (Jul 2025). Companion article: MIT Sloan Management Review, Feb 12 2026, \"AI Coding Tools for Knowledge Work: What Executives Need…",
+        "extended": "as LLM + harness + tools. Earlier deck cited: \"How LLMs got better at reasoning\" (Jul 2025). Companion article: MIT Sloan Management Review, Feb 12 2026, \"AI Coding Tools for Knowledge Work: What Executives Need to Know.\" - source-2026-05-ramakrishnan-chatbot-to-agent — Authored the May 2026 90-slide deck on agents, harness, and tool use. Cited prior Jul 2025 reasoning deck and Feb 12 2026 MIT Sl…"
+      },
+      {
+        "bucket": "entities",
+        "path": "wiki/entities/mit-sloan.md",
+        "title": "MIT Sloan School of Management",
+        "age": "47m",
+        "words": 95,
+        "lastEdited": "2026-05-11 09:40",
+        "tags": [
+          "entity",
+          "organization",
+          "school",
+          "mit",
+          "ai",
+          "region/self"
+        ],
+        "connections": [
+          {
+            "label": "Rama ramakrishnan",
+            "target": "wiki/entities/rama-ramakrishnan.md"
+          },
+          {
+            "label": "Source 2026 05 ramakrishnan chatbot to agent",
+            "target": null
+          }
+        ],
+        "excerpt": "Affiliation listed for rama-ramakrishnan (Professor of the Practice). Publishes the MIT Sloan Management Review, where the Feb 12 2026 article \"AI Coding Tools for Knowledge Work: What Executives Need to Know\" appeared as the companion piece to the May 2026 chatbot-to-agent deck. source-2026-05-ramakrishnan-chatbot-to-agent — Listed as Ramakrishnan's affiliation. Companion arti…",
+        "extended": "What Executives Need to Know\" appeared as the companion piece to the May 2026 chatbot-to-agent deck. - source-2026-05-ramakrishnan-chatbot-to-agent — Listed as Ramakrishnan's affiliation. Companion article hosted at sloanreview.mit.edu."
+      },
+      {
+        "bucket": "meta",
+        "path": "wiki/travel/travel.md",
+        "title": "Travel",
+        "age": "47m",
+        "words": 72,
+        "lastEdited": "2026-05-11 09:40",
+        "tags": [
+          "adventure",
+          "places",
+          "exploration",
+          "region/self",
+          "vibrance/aged"
+        ],
+        "connections": [
+          {
+            "label": "Chiara learmonth",
+            "target": null
+          },
+          {
+            "label": "Matt gullotta",
+            "target": "wiki/projects/matt-gullotta.md"
+          }
+        ],
+        "excerpt": "Places visited, trip notes, and future travel plans. No sources ingested yet. Add trip notes or travel logs to `raw/` to populate this bucket. Known from other sources: 600+ miles hiked across 30+ U.S. national parks (including Half Dome, Angels Landing). 15 countries visited. Annual camping tradition in Sequoia with high school friends.",
+        "extended": "otta flying into Rome separately."
+      },
+      {
+        "bucket": "meta",
+        "path": "wiki/school/source-2026-04-08-booth-pre-mba-recruiting.md",
+        "title": "Source: Booth Career Services Pre-MBA Recruiting Webinar",
+        "age": "47m",
+        "words": 338,
+        "lastEdited": "2026-05-11 09:40",
+        "tags": [
+          "booth",
+          "recruiting",
+          "pre-mba",
+          "consulting",
+          "career-services",
+          "region/future"
+        ],
+        "connections": [
+          {
+            "label": "Booth",
+            "target": null
+          },
+          {
+            "label": "Career",
+            "target": "wiki/career/career.md"
+          },
+          {
+            "label": "Briefly",
+            "target": "wiki/projects/briefly.md"
+          }
+        ],
+        "excerpt": "**Raw files:** `raw/[2026-04-08] Connor - Booth Career Services Pre-MBA Recruiting Webinar (1).docx` (Connor's live notes) `raw/Pre-MBA Recruiting Webinar.md` (clipped recording, 2026-04-28) **Recording:** [Pre-MBA Recruiting Webinar on YouTube](https://www.youtube.com/watch?v=8UUMiZZWI28) **Date:** April 8, 2026 Webinar for admitted Booth students covering pre-MBA recruiting o…",
+        "extended": "ng opportunities over the summer before fall enrollment. - **May 6:** Canvas course launches with career modules; VMOC virtual resume reviews start - **Summer 2026:** Pre-MBA opportunities (organizations, company events, conferences, internships) - **Fall 2026:** Formal recruiting process begins 1. **Organizations** (MLT, Jumpstart) -- structured programs and networks 2. **Company-hosted events**…"
+      },
+      {
+        "bucket": "meta",
+        "path": "wiki/school/source-2026-04-07-booth-tolan-healthcare-spotlight.md",
+        "title": "Source: Zoom in on Booth -- Healthcare Spotlight",
+        "age": "47m",
+        "words": 681,
+        "lastEdited": "2026-05-11 09:40",
+        "tags": [
+          "booth",
+          "mba",
+          "healthcare",
+          "tolan-center",
+          "admit-event",
+          "region/future"
+        ],
+        "connections": [
+          {
+            "label": "Source 2025 12 16 tolan therese wareham",
+            "target": null
+          },
+          {
+            "label": "Booth",
+            "target": null
+          }
+        ],
+        "excerpt": "**Raw file:** `raw/Healthcare Spotlight.md` **Video:** [Healthcare Spotlight](https://www.youtube.com/watch?v=3IgLsVyDe4E) **Speakers:** Kristen Hitchcock (Director, Tolan Center for Healthcare); Heather Gomez (Admissions, host) **Date:** April 7, 2026 (admit event) 55-minute admit overview of healthcare programs and resources at Booth, anchored by the Tolan Center for Healthca…",
+        "extended": "re. Covers the center's origins, faculty leadership, MBA concentration, experiential learning, speaker series, and how to get involved. - Originally founded 2020 as the Healthcare Initiative. Endowed and renamed Tolan Center for Healthcare in 2024-25 after a gift from Mary Tolen (also serves on the advisory circle). - Faculty co-directors: **Dan Adelman** (operations) and **Matthew Notowidigdo** (…"
+      },
+      {
+        "bucket": "sources",
+        "path": "wiki/outbound/2026-05-01-bob-casey-checkin.md",
+        "title": "Bob Casey check-in — keep the Riviera conversation alive",
+        "age": "47m",
+        "words": 379,
+        "lastEdited": "2026-05-11 09:40",
+        "tags": [
+          "outbound",
+          "artifact",
+          "email",
+          "briefly",
+          "riviera",
+          "bob-casey"
+        ],
+        "connections": [
+          {
+            "label": "Bob casey",
+            "target": "wiki/projects/bob-casey.md"
+          },
+          {
+            "label": "Briefly",
+            "target": "wiki/projects/briefly.md"
+          },
+          {
+            "label": "Riviera",
+            "target": "wiki/career/riviera.md"
+          },
+          {
+            "label": "Santa barbara management",
+            "target": "wiki/projects/santa-barbara-management.md"
+          },
+          {
+            "label": "Source 2026 04 24 connor bob casey",
+            "target": "wiki/career/source-2026-04-24-connor-bob-casey.md"
+          },
+          {
+            "label": "Source 2026 04 29 connor mark",
+            "target": "wiki/projects/source-2026-04-29-connor-mark.md"
+          }
+        ],
+        "excerpt": "**Sent:** 2026-05-01 to bob-casey via email **Context:** Bob promised on 2026-04-24 to send Connor a Monday-evening email by 4/28 with his read on whether briefly could fold into riviera. The email never arrived. Per Mark Loh's 4/29 read, the delay was friction, not a signal — Bob is busy closing $4M, hiring engineers, prepping a Pritzker presentation, and \"just doesn't know wh…",
+        "extended": "at to do\" with the Briefly question. Mark coached on 5/1 to send a light check-in before the weekend rather than wait Bob out, and to save substance for the phone. Connor drafted iteratively in chat. v1 ran too long with hedged \"thinking about it\" framing. v2 added \"I'm in / numbers later\" leverage moves but Connor's instinct (matching his earlier note on bob-casey) was that hard-leverage framing…"
+      },
+      {
+        "bucket": "sources",
+        "path": "wiki/outbound/2026-04-29-centric-pilot-agreement.md",
+        "title": "Centric WM × Briefly — Pilot Agreement (Draft)",
+        "age": "47m",
+        "words": 649,
+        "lastEdited": "2026-05-11 09:40",
+        "tags": [
+          "briefly",
+          "centric-wm",
+          "ellis-rutili",
+          "pilot",
+          "contract",
+          "artifact"
+        ],
+        "connections": [
+          {
+            "label": "Project briefly pricing",
+            "target": null
+          },
+          {
+            "label": "Project briefly premium earn",
+            "target": null
+          },
+          {
+            "label": "Ellis rutili",
+            "target": "wiki/projects/ellis-rutili.md"
+          },
+          {
+            "label": "Centric wm",
+            "target": "wiki/projects/centric-wm.md"
+          },
+          {
+            "label": "Briefly",
+            "target": "wiki/projects/briefly.md"
+          },
+          {
+            "label": "2026 04 29 centric security one pager",
+            "target": null
+          }
+        ],
+        "excerpt": "**Sent:** TBD — drafted 2026-04-29 for the in-person Centric visit on 2026-04-30. **Context:** Connor is bringing this to Ellis Rutili at Centric WM, 333 W. Wacker, Chicago, on Thu 4/30 1pm CT. Companion docs: security one-pager and feedback rubric (filed same day). Pricing lane: premium-because-customization at $125/seat, above the $50–75 commoditized market and below the $200…",
+        "extended": "full-price anchor. See `project_briefly_pricing` and `project_briefly_premium_earn`. **Verify before sending:** - Confirm legal entity name on Centric's side (Centric Wealth Management vs. Centric WM LLC vs. another). - Confirm Connor's signing entity — sole proprietor vs. Briefly LLC. Update party block accordingly. - Confirm pilot start date. Below uses May 1; adjust if Ellis wants earlier or l…"
+      },
+      {
+        "bucket": "sources",
+        "path": "wiki/outbound/2026-05-04-centric-pilot-agreement.md",
+        "title": "Centric WM × Briefly — Pilot Agreement V4 (Draft)",
+        "age": "47m",
+        "words": 3220,
+        "lastEdited": "2026-05-11 09:40",
+        "tags": [
+          "briefly",
+          "centric-wm",
+          "ellis-rutili",
+          "pilot",
+          "contract",
+          "artifact"
+        ],
+        "connections": [
+          {
+            "label": "2026 05 03 centric pilot agreement",
+            "target": null
+          },
+          {
+            "label": "2026 04 29 centric security one pager",
+            "target": null
+          },
+          {
+            "label": "Ellis rutili",
+            "target": "wiki/projects/ellis-rutili.md"
+          },
+          {
+            "label": "Centric wm",
+            "target": "wiki/projects/centric-wm.md"
+          },
+          {
+            "label": "Briefly",
+            "target": "wiki/projects/briefly.md"
+          },
+          {
+            "label": "2026 04 29 centric pilot agreement",
+            "target": null
+          }
+        ],
+        "excerpt": "**Sent:** Not yet — drafted 2026-05-04 as the v4 successor to the v3 draft, which was itself a v2 (`2026-05-03-centric-pilot-agreement`) amendment. **Material changes in v4 (legal-flaw remediation + scope correction pass):** **§3 What's Included narrowed.** Removed promise of \"in-meeting and post-meeting capture functionality\" and removed the input-type list (calendar, transcri…",
+        "extended": "ripts, CRM) that implied Briefly accepts or produces transcripts as a deliverable. v4 commits only to \"pre-meeting briefs generated from context Centric users choose to provide.\" Reason: Connor is not promising transcript generation. Recitals also drop \"and capture\" from the Service description for the same reason. - **§6.2 Usage Telemetry removed.** v3 reserved the right to \"collect aggregated, d…"
+      },
+      {
+        "bucket": "sources",
+        "path": "wiki/outbound/2026-05-03-centric-pilot-agreement.md",
+        "title": "Centric WM × Briefly — Pilot Agreement V2 (Draft)",
+        "age": "47m",
+        "words": 1174,
+        "lastEdited": "2026-05-11 09:40",
+        "tags": [
+          "briefly",
+          "centric-wm",
+          "ellis-rutili",
+          "pilot",
+          "contract",
+          "artifact"
+        ],
+        "connections": [
+          {
+            "label": "2026 04 29 centric pilot agreement",
+            "target": null
+          },
+          {
+            "label": "2026 04 29 centric security one pager",
+            "target": null
+          },
+          {
+            "label": "2026 04 29 centric feedback rubric",
+            "target": null
+          },
+          {
+            "label": "Ellis rutili",
+            "target": "wiki/projects/ellis-rutili.md"
+          },
+          {
+            "label": "Centric wm",
+            "target": "wiki/projects/centric-wm.md"
+          },
+          {
+            "label": "Briefly",
+            "target": "wiki/projects/briefly.md"
+          }
+        ],
+        "excerpt": "**Sent:** Not yet — drafted 2026-05-03 as the v2 amendment to the 4/29 in-person draft. **Context:** This supersedes `2026-04-29-centric-pilot-agreement`. Material changes: signing party is Briefly Wealth LLC (not sole prop), pricing moves to $150/seat, term anchored to first user provisioning instead of a fixed calendar date, the Centric-specific feature commitment is removed,…",
+        "extended": "and IP / AI-disclaimer / consent / audit / E&O / seat-add-authority clauses are added. Companion docs unchanged: `2026-04-29-centric-security-one-pager` becomes Exhibit A; `2026-04-29-centric-feedback-rubric` remains a separate operational doc. **Verify before sending:** - ~~Centric's exact legal entity name~~ — **resolved 2026-05-03 via SEC IAPD lookup**. Legal entity is \"Centric Wealth Manageme…"
+      },
+      {
+        "bucket": "sources",
+        "path": "wiki/outbound/2026-05-04-ellis-pilot-agreement-cover-email.md",
+        "title": "Pilot Agreement Cover Email — Ellis Rutili",
+        "age": "47m",
+        "words": 398,
+        "lastEdited": "2026-05-11 09:40",
+        "tags": [
+          "briefly",
+          "centric-wm",
+          "ellis-rutili",
+          "pilot",
+          "contract",
+          "artifact"
+        ],
+        "connections": [
+          {
+            "label": "2026 05 04 centric pilot agreement",
+            "target": null
+          },
+          {
+            "label": "2026 04 29 centric security one pager",
+            "target": null
+          },
+          {
+            "label": "Ellis rutili",
+            "target": "wiki/projects/ellis-rutili.md"
+          },
+          {
+            "label": "Centric wm",
+            "target": "wiki/projects/centric-wm.md"
+          }
+        ],
+        "excerpt": "**Sent:** Not yet — drafted 2026-05-04. Pairs with `2026-05-04-centric-pilot-agreement` (v3 of the pilot agreement) as the attachment, and `2026-04-29-centric-security-one-pager` as Exhibit A. **Context:** Ellis said yes to the pilot in person on 2026-04-30 but pricing was never explicitly discussed verbally. Connor's read: Ellis is in champion-as-favor framing, not buyer-as-pr…",
+        "extended": "ocurement framing. The contract should not be the price introduction. This cover email front-runs the price conversation in writing, anchors against $150 list, offers a $125 Centric-pilot rate as recognition of Ellis's contribution, and opens the door to a phone call. Tone is understated and warm-adult per Connor's voice rules — no over-thanking, no apology, no negotiation language. No security ex…"
+      },
+      {
+        "bucket": "sources",
+        "path": "wiki/outbound/outbound.md",
+        "title": "Outbound",
+        "age": "47m",
+        "words": 429,
+        "lastEdited": "2026-05-11 09:40",
+        "tags": [
+          "admin",
+          "meta",
+          "outbound",
+          "artifacts",
+          "region/briefly",
+          "vibrance/aged"
+        ],
+        "connections": [],
+        "excerpt": "This bucket holds **outbound artifacts** — things Connor produced and sent into the world. Cold emails, decks, blog posts, prepared talking points, drafted comms before they got finalized. `/file-query` captures inbound chat synthesis (what Claude generated for Connor). This bucket captures the inverse: outputs Connor created (with or without Claude's help) that got delivered.…",
+        "extended": "Without this, every cold email iteration / deck draft / outreach message evaporates after sending. With it, future-Claude can read past artifacts and learn the voice + structure that's been used. Practical examples: - **Cold-email drafts** to Briefly prospects — what got sent to whom and when - **Decks** for Riviera GTM, Briefly competitive, Booth essays - **Talking-point sheets** for Centric visi…"
+      },
+      {
+        "bucket": "entities",
+        "path": "wiki/finance/source-2026-02-12-mercury-banking.md",
+        "title": "Source: Mercury Banking Exploration for Briefly (Feb 12, 2026)",
+        "age": "47m",
+        "words": 222,
+        "lastEdited": "2026-05-11 09:40",
+        "tags": [
+          "briefly",
+          "banking",
+          "mercury",
+          "startup-infrastructure",
+          "region/self",
+          "vibrance/recent"
+        ],
+        "connections": [
+          {
+            "label": "Briefly",
+            "target": "wiki/projects/briefly.md"
+          },
+          {
+            "label": "Morgan stanley",
+            "target": "wiki/career/morgan-stanley.md"
+          }
+        ],
+        "excerpt": "Raw file: `raw/2026-02-12-mercury-banking.md` Connor explored Mercury as a startup banking platform for briefly, replacing Amex. Call with Tommy from Mercury's startup banking team. **Why Mercury**: Connor wanted the right banking infrastructure from day one rather than switching later. He'd seen firms struggle with bank migrations at morgan-stanley. **Mercury platform highligh…",
+        "extended": "ts**: - 300,000 companies on platform, profitable 2+ years, $500M raised, 1,000 employees - FDIC insurance up to $10M (vs $250K traditional) via sweep network model with banking partners Choice and Column - Free, no minimums or hidden fees. Revenue from interest splitting and merchant card fees. - Treasury accounts through JP Morgan/Morgan Stanley: 3-4% yield on government-backed securities, same-…"
+      },
+      {
+        "bucket": "entities",
+        "path": "wiki/finance/personal-financial-statement.md",
+        "title": "Personal Financial Statement",
+        "age": "47m",
+        "words": 1147,
+        "lastEdited": "2026-05-11 09:40",
+        "tags": [
+          "personal-finance",
+          "balance-sheet",
+          "net-worth",
+          "region/self",
+          "vibrance/recent"
+        ],
+        "connections": [
+          {
+            "label": "Source budget runway",
+            "target": null
+          },
+          {
+            "label": "Briefly",
+            "target": "wiki/projects/briefly.md"
+          },
+          {
+            "label": "Prcurve",
+            "target": "wiki/projects/prcurve.md"
+          },
+          {
+            "label": "Bracketengine",
+            "target": null
+          },
+          {
+            "label": "Finance",
+            "target": null
+          },
+          {
+            "label": "Source 2026 02 12 mercury banking",
+            "target": null
+          }
+        ],
+        "excerpt": "**As of 2026-04-27.** Sources: Rocket Money (auto-aggregated), MS 401(k) statement dated 2026-04-06, source-budget-runway (revised 2026-03-23). **Name:** Connor Florczyk **DOB:** 1998-07-23 (age 27) **Address:** 550 N St Clair St Apt 1504, Chicago IL 60611 **Email:** connor.florczyk@brieflywealth.com **Cell:** 315-530-3474 > **Note:** source-budget-runway (Mar 2026) lists a \"Fi…",
+        "extended": "---| | General Checking | Chase | $4,930 | > **Note:** source-budget-runway (Mar 2026) lists a \"Fidelity Brokerage\" at ~$47K — that label is wrong. The account is actually the E*TRADE Individual Brokerage shown below in non-retirement investments. Balance dropped from ~$47K (Mar 23) to ~$37K (Apr 27) — likely a mix of market and ~$3.2K/mo burn over five weeks. The budget-runway label needs to be c…"
+      },
+      {
+        "bucket": "entities",
+        "path": "wiki/finance/source-budget-runway.md",
+        "title": "Source: Personal Budget & Runway Projection",
+        "age": "47m",
+        "words": 573,
+        "lastEdited": "2026-05-11 09:40",
+        "tags": [
+          "budget",
+          "runway",
+          "personal-finance",
+          "booth",
+          "region/self",
+          "vibrance/fresh"
+        ],
+        "connections": [
+          {
+            "label": "Briefly",
+            "target": "wiki/projects/briefly.md"
+          },
+          {
+            "label": "Booth",
+            "target": null
+          },
+          {
+            "label": "Ihor romanchuk",
+            "target": "wiki/projects/ihor-romanchuk.md"
+          }
+        ],
+        "excerpt": "**Raw file:** `raw/updated_budget_runway.xlsx` **Revised:** March 23, 2026 **Monthly net burn: ~$3,247/month** (after roommate rent offset) **Removed from prior forecast:** Apr $2,000 Ihor final payment — Connor capped Ihor's spend; no further payments authorized. Jul $1,500 MBA deposit — Booth deposit schedule closed out by April $1,000 installment instead. **Property tax fore…",
+        "extended": "00 accidental charge) - Gym: $15 - Groceries: $100 - Dining & Social: $400 (revised up from $150 -- \"actual ~$400 post-breakup\") - Shopping: $200 - Transportation: $100 - Medical: $100 - Personal Care: $20 - Entertainment: $100 - Fun/Misc: $200 (revised down from $500 since dining is now honest) - Product Testing: $100 (was $250, winding down) - Legal & Corporate: $50 - Roommate rent: -$1,750/mo |…"
+      },
+      {
+        "bucket": "entities",
+        "path": "wiki/finance/finance.md",
+        "title": "Finance",
+        "age": "47m",
+        "words": 404,
+        "lastEdited": "2026-05-11 09:40",
+        "tags": [
+          "money",
+          "budgeting",
+          "planning",
+          "region/self",
+          "vibrance/fresh"
+        ],
+        "connections": [
+          {
+            "label": "Source budget runway",
+            "target": null
+          },
+          {
+            "label": "Sean becker",
+            "target": "wiki/projects/sean-becker.md"
+          },
+          {
+            "label": "Ihor romanchuk",
+            "target": "wiki/projects/ihor-romanchuk.md"
+          },
+          {
+            "label": "Source 2026 02 12 mercury banking",
+            "target": null
+          },
+          {
+            "label": "Source 2026 04 23 booth personal finance",
+            "target": null
+          },
+          {
+            "label": "Briefly",
+            "target": "wiki/projects/briefly.md"
+          }
+        ],
+        "excerpt": "Cross-cutting hub connecting personal and business finances. **Liquid assets:** ~$51,400 (mostly Fidelity brokerage at $47K) **Monthly burn:** ~$3,250/month (after $1,750 roommate rent offset) **Runway to Booth (Sept 2026):** ~$18,450 projected balance, then student loans available **Owns a condo:** mortgage + HOA = $3,050/mo, net $1,300 after roommate August is the crunch mont…",
+        "extended": "runch month ($6,700 in one-time expenses) See source-budget-runway for full breakdown. - ~$25K self-funded by Connor · no outside capital, no angel - ~$150/mo AWS costs (too high, should be ~$5/mo per sean-becker) - ihor-romanchuk spend capped — no further payments authorized (April 2026) - Cursor IDE canceled ($70/mo saved) - Banking: explored Mercury as startup bank (FDIC up to $10M, free, treas…"
+      },
+      {
+        "bucket": "entities",
+        "path": "wiki/finance/draft-will.md",
+        "title": "Draft — Last Will and Testament of Connor B. Florczyk",
+        "age": "47m",
+        "words": 1538,
+        "lastEdited": "2026-05-11 09:40",
+        "tags": [
+          "estate-planning",
+          "will",
+          "draft",
+          "region/self",
+          "vibrance/aged"
+        ],
+        "connections": [
+          {
+            "label": "Briefly",
+            "target": "wiki/projects/briefly.md"
+          },
+          {
+            "label": "Personal financial statement",
+            "target": null
+          },
+          {
+            "label": "Braden florczyk",
+            "target": null
+          },
+          {
+            "label": "Mckenna florczyk",
+            "target": null
+          },
+          {
+            "label": "Joel florczyk",
+            "target": null
+          }
+        ],
+        "excerpt": "> **THIS IS A DRAFT. NOT LEGALLY EXECUTED. NOT LEGAL ADVICE.** > > To make this valid in Illinois, you must: > 1. Print the final document > 2. Sign it in the presence of **two disinterested adult witnesses** (not McKenna, not Braden, not Joel, not Michelle, not anyone else who inherits) > 3. Have witnesses sign in your presence > 4. Have all three signatures notarized via the…",
+        "extended": "self-proving affidavit at the end > > Recommended: run this through [Trust & Will](https://trustandwill.com) (~$199, state-validated, includes power of attorney + healthcare directive) or an Illinois estate attorney before signing. --- This Will is structured so Joel receives the condo as repayment-in-kind on the intra-family mortgage he holds (functionally what a bank with collateral would do), a…"
+      },
+      {
+        "bucket": "synthesis",
+        "path": "wiki/synthesis/synthesis-first-pass-connections.md",
+        "title": "First-pass connections",
+        "age": "47m",
+        "words": 119,
+        "lastEdited": "2026-05-11 09:40",
+        "tags": [
+          "synthesis",
+          "first-pass"
+        ],
+        "connections": [
+          {
+            "label": "Source 2d vs 3d implications on spatial memory",
+            "target": null
+          },
+          {
+            "label": "Source anthropics boris cherny why coding is solved and what comes next",
+            "target": null
+          }
+        ],
+        "excerpt": "These sources were ingested together and should be reviewed for shared concepts. source-2d-vs-3d-implications-on-spatial-memory — Page 1 2D vs 3D, Implications on Spatial Memory Monica Tavanti Department of Information Science, Uppsala University Sweden monica. tavanti@dis. source-anthropics-boris-cherny-why-coding-is-solved-and-what-comes-next — Source: YouTube — Sequoia AI As…",
+        "extended": "I Ascent 2026 Speakers: Boris Cherny (creator of Claude Code, Anthropic), Lauren Reeder (Sequoia) Format: Fireside chat + audience Q&A Captured: 2026-05-05 via youtube-transcript-api --- Okay, I'm excited to introduce our next speaker. Show of hands, w... - source-anthropics-boris-cherny-why-coding-is-solved-and-what-comes-next — [](https://www. youtube."
+      },
+      {
+        "bucket": "synthesis",
+        "path": "wiki/synthesis/synthesis.md",
+        "title": "Synthesis",
+        "age": "47m",
+        "words": 50,
+        "lastEdited": "2026-05-11 09:40",
+        "tags": [
+          "index",
+          "synthesis"
+        ],
+        "connections": [],
+        "excerpt": "Synthesis pages connect sources and concepts. Keep them labeled as synthesis unless the user confirms them as settled knowledge. Keep this overview short enough for an agent to scan first. Add only pages that belong in `synthesis/`. Update summaries when underlying source pages change.",
+        "extended": ""
+      },
+      {
+        "bucket": "synthesis",
+        "path": "wiki/queries/2026-05-07-margins-vs-smart-connections-differentiation.md",
+        "title": "Margins vs Smart Connections — genuine differentiation",
+        "age": "47m",
+        "words": 2019,
+        "lastEdited": "2026-05-11 09:40",
+        "tags": [
+          "synthesis",
+          "margins",
+          "smart-connections",
+          "mem",
+          "differentiation",
+          "gtm"
+        ],
+        "connections": [
+          {
+            "label": "2026 05 07 pkm ai tools deep research",
+            "target": null
+          },
+          {
+            "label": "2026 05 07 cowork impact on margins",
+            "target": null
+          },
+          {
+            "label": "2026 05 07 margins interaction flow",
+            "target": null
+          },
+          {
+            "label": "2026 05 06 margins positioning and tam",
+            "target": null
+          }
+        ],
+        "excerpt": "**Question.** What would actually make a Smart Connections user (or a new Obsidian-curious user) choose or add Margins? Not theoretical features, real user wants. **Answer in one line.** Smart Connections shows connections in your existing vault. Margins gives you the vault, opinionated and maintained, that the connections become useful in. **Pro:** Smart Graph (visual semantic…",
+        "extended": "device embedding model ships with the plugin (no API key required). Optional cloud providers (Claude, OpenAI, Gemini, Llama 3, plus 100+ via API) configurable in Smart Environment settings. Source-available core under Smart Plugins License. Minimal-dependency codebase (\"can be audited >3× faster than comparable AI plugins\"). **Core (free):** Smart Connections (semantic related notes), Smart Lookup…"
+      },
+      {
+        "bucket": "synthesis",
+        "path": "wiki/queries/2026-05-04-margins-karpathy-original-template.md",
+        "title": "Margins template: Karpathy Original",
+        "age": "47m",
+        "words": 1166,
+        "lastEdited": "2026-05-11 09:40",
+        "tags": [
+          "synthesis",
+          "margins",
+          "karpathy",
+          "llm-wiki",
+          "templates",
+          "local-first"
+        ],
+        "connections": [],
+        "excerpt": "Start Margins with one general starter template: **Karpathy Original**. This is not a file organizer. It is a raw-source-to-wiki compiler plus an LLM operating layer: ```text margins-vault/ raw_sources/ lecture-01.pdf transcript-sean-call.txt client-statement-q1.pdf wiki/ sources/ source-lecture-01.md source-sean-call.md concepts/ ai-native-workflow.md local-first-knowledge-bas…",
+        "extended": "e.md entities/ sean-becker.md anthropic.md synthesis/ why-local-first-changes-the-margins-v0-risk.md index.md graph.json operator-manual.md query-cookbook.md commands/ ingest.md compile.md query.md lint.md propose-edit.md apply-edit.md agents/ wiki-ingest.md wiki-compiler.md wiki-query.md wiki-editor.md .margins/ manifest.json index.db edit-log.jsonl margins.json ``` The **raw source folder** is t…"
+      },
+      {
+        "bucket": "synthesis",
+        "path": "wiki/queries/2026-05-05-claude-margins-product-demo.md",
+        "title": "2026 05 05 claude margins product demo",
+        "age": "47m",
+        "words": 937,
+        "lastEdited": "2026-05-11 09:40",
+        "tags": [
+          "synthesis",
+          "margins",
+          "product-design",
+          "claude-draft",
+          "ui",
+          "region/briefly"
+        ],
+        "connections": [
+          {
+            "label": "2026 05 05 claude margins product demo",
+            "target": null
+          },
+          {
+            "label": "Margins v2",
+            "target": null
+          },
+          {
+            "label": "Bob casey",
+            "target": "wiki/projects/bob-casey.md"
+          },
+          {
+            "label": "Ellis rutili",
+            "target": "wiki/projects/ellis-rutili.md"
+          },
+          {
+            "label": "Briefly",
+            "target": "wiki/projects/briefly.md"
+          },
+          {
+            "label": "Centric wm",
+            "target": "wiki/projects/centric-wm.md"
+          }
+        ],
+        "excerpt": "> [!claude-note]+ Drafted by Claude (Opus 4.7) on 2026-05-05 > This page and the companion HTML demo were written by Claude in a strategic conversation with Connor on May 5, 2026. The four-screen architecture decision is Connor-confirmed; the specific UI choices (terracotta palette, streaming reveal, vibrance dots, file-tree-with-preview) are Claude's draft and not yet Connor-c…",
+        "extended": "onfirmed. Open the live demo: margins — product demo (HTML) Direct path: `wiki/queries/2026-05-05-claude-margins-product-demo.html` A clickable HTML mockup of margins-v2 showing three of the four product screens — Activity, Entities, and Files. Chat is intentionally absent; Connor said \"don't want to chat\" during the build session. The demo uses Connor's actual wiki entities (bob-casey, ellis-ruti…"
+      },
+      {
+        "bucket": "synthesis",
+        "path": "wiki/queries/2026-05-02-ai-second-brain-landscape.md",
+        "title": "AI Second-Brain / Context-Platform Competitive Landscape (May 2026)",
+        "age": "47m",
+        "words": 3613,
+        "lastEdited": "2026-05-11 09:40",
+        "tags": [
+          "synthesis",
+          "competitive-landscape",
+          "ai-second-brain",
+          "context-platform",
+          "vertical-saas",
+          "briefly"
+        ],
+        "connections": [
+          {
+            "label": "Obsidian llm thesis",
+            "target": null
+          },
+          {
+            "label": "Briefly",
+            "target": "wiki/projects/briefly.md"
+          },
+          {
+            "label": "Centric wm",
+            "target": "wiki/projects/centric-wm.md"
+          },
+          {
+            "label": "Braden florczyk",
+            "target": null
+          },
+          {
+            "label": "Mckenna florczyk",
+            "target": null
+          },
+          {
+            "label": "Ben testani",
+            "target": null
+          }
+        ],
+        "excerpt": "**Asked:** \"This really seems like a great product, I could be the person to sell everyone their own internet brain and maybe companies. That would be amazing. I feel like this has to happen, but when? Are there other players? If so, who, I want a detailed competitive landscape. Why they're working or not working.\" Followed by: \"I want a better breakdown. I do not feel like you…",
+        "extended": "are finding real competitors or exposing the landscape in its current or expected states well.\" **Framing pushback:** The \"everyone gets a brain\" pitch is exactly the failure pattern obsidian-llm-thesis already maps. The synthesis below extends that page with current 2026 data showing the consumer market is closed at the top by model labs (Anthropic Memory free tier, ChatGPT Memory, Apple Intelli…"
+      },
+      {
+        "bucket": "synthesis",
+        "path": "wiki/queries/2026-05-06-margins-positioning-and-tam.md",
+        "title": "Margins — positioning, GTM, TAM (end-to-end)",
+        "age": "47m",
+        "words": 2549,
+        "lastEdited": "2026-05-11 09:40",
+        "tags": [
+          "synthesis",
+          "margins",
+          "briefly",
+          "positioning",
+          "gtm",
+          "tam"
+        ],
+        "connections": [
+          {
+            "label": "Margins",
+            "target": "wiki/projects/margins.md"
+          },
+          {
+            "label": "Briefly",
+            "target": "wiki/projects/briefly.md"
+          },
+          {
+            "label": "2026 05 04 margins briefly vision board",
+            "target": null
+          },
+          {
+            "label": "2026 05 04 margins briefly branch map",
+            "target": null
+          },
+          {
+            "label": "2026 05 03 margins mcp connector architecture decision",
+            "target": null
+          },
+          {
+            "label": "2026 05 02 ai second brain landscape",
+            "target": null
+          }
+        ],
+        "excerpt": "**Asked:** Pressure-test \"Margins for students\" against NotebookLM. Then: where does Margins actually win? What is the GTM plan? What's the realistic TAM and the VC-pitch TAM? Can this become an enterprise / universal play? **Decision held during the session:** Margins is a separate product alongside Briefly, parallel build, content-led self-serve GTM, no field sales (Briefly a…",
+        "extended": "lready consumes that bandwidth). Memory `project_margins_strategic_shift_may2026` (\"Margins primary, Briefly maintenance\") stands. --- NotebookLM's surface is broader than \"make study guides.\" It ingests PDFs/Docs/Slides/web/YouTube/audio, generates study guides + FAQs + briefing docs + timelines, ships Audio Overview (\"podcast\" with two AI hosts), Mind Maps, Video Overview, source discovery, shar…"
+      },
+      {
+        "bucket": "synthesis",
+        "path": "wiki/queries/2026-05-03-margins-mcp-connector-architecture-decision.md",
+        "title": "Margins architecture: MCP connector vs subscription chat vs BYOK",
+        "age": "47m",
+        "words": 1984,
+        "lastEdited": "2026-05-11 09:40",
+        "tags": [
+          "synthesis",
+          "margins",
+          "architecture",
+          "mcp",
+          "anthropic",
+          "openai"
+        ],
+        "connections": [
+          {
+            "label": "Margins templates market spec",
+            "target": null
+          },
+          {
+            "label": "2026 05 02 ai second brain landscape",
+            "target": null
+          },
+          {
+            "label": "Briefly",
+            "target": "wiki/projects/briefly.md"
+          }
+        ],
+        "excerpt": "**Asked:** Connor was planning to convert Margins from the single-file static HTML demo into TypeScript + a real web app for the future Margins product. He initially assumed users could \"log in with their Claude or ChatGPT account\" to bypass API keys (because \"normal people do not know what an API key is\"). He asked for deep research on which architectural pathway actually make…",
+        "extended": "s sense in May 2026. **Neither provider lets third-party apps bill inference to the user's chat subscription.** Anthropic explicitly prohibited third-party use of Claude Pro/Max OAuth tokens in its Feb 20, 2026 ToS update — using those tokens in any product other than Claude.ai or Claude Code is a Consumer ToS violation, fully enforced as of April 4, 2026 (killed OpenClaw and similar harnesses). O…"
+      },
+      {
+        "bucket": "career",
+        "path": "wiki/career/competitor-vyzer-2026-04.md",
+        "title": "Competitor - Vyzer",
+        "age": "47m",
+        "words": 775,
+        "lastEdited": "2026-05-11 09:40",
+        "tags": [
+          "concept",
+          "company",
+          "competitive-analysis",
+          "wealth-tech",
+          "riviera",
+          "vyzer"
+        ],
+        "connections": [
+          {
+            "label": "Riviera competitive analysis 2026 04",
+            "target": "wiki/career/riviera-competitive-analysis-2026-04.md"
+          },
+          {
+            "label": "Riviera",
+            "target": "wiki/career/riviera.md"
+          },
+          {
+            "label": "Bob casey",
+            "target": "wiki/projects/bob-casey.md"
+          },
+          {
+            "label": "Competitor kubera 2026 04",
+            "target": "wiki/career/competitor-kubera-2026-04.md"
+          },
+          {
+            "label": "Competitor familyoffice bot 2026 04",
+            "target": "wiki/career/competitor-familyoffice-bot-2026-04.md"
+          },
+          {
+            "label": "Competitor atg autonomous 2026 04",
+            "target": "wiki/career/competitor-atg-autonomous-2026-04.md"
+          }
+        ],
+        "excerpt": "> [!claude-note]+ Claude synthesis — not Connor-confirmed > Lighter-depth page. Surfaced during 2026-04-20 Tier E sweep (v4). Written from vyzer.co landing page + margin mentions. Pricing, founders, current funding not surfaced in this research cycle — research gaps. Part of riviera-competitive-analysis-2026-04. See parent for Tier F classification. **Founded** 2020 **HQ** Midd…",
+        "extended": "Middletown, Delaware - **Target customers** dual positioning: - **HNW individual investors** (primary) - **RIAs, family offices, multi-family offices** (secondary) - Customer testimonials reference \"private investors,\" \"LP & real estate investors,\" \"RIA founders\" - **Funding** Research gap — raised capital but amount not surfaced - **Pricing** Research gap — not disclosed on landing page - Intelli…"
+      },
+      {
+        "bucket": "career",
+        "path": "wiki/career/competitor-familyoffice-bot-2026-04.md",
+        "title": "Competitor - FamilyOffice.bot",
+        "age": "47m",
+        "words": 883,
+        "lastEdited": "2026-05-11 09:40",
+        "tags": [
+          "concept",
+          "company",
+          "competitive-analysis",
+          "family-office",
+          "wealth-tech",
+          "riviera"
+        ],
+        "connections": [
+          {
+            "label": "Riviera competitive analysis 2026 04",
+            "target": "wiki/career/riviera-competitive-analysis-2026-04.md"
+          },
+          {
+            "label": "Riviera",
+            "target": "wiki/career/riviera.md"
+          },
+          {
+            "label": "Bob casey",
+            "target": "wiki/projects/bob-casey.md"
+          },
+          {
+            "label": "Competitor atg autonomous 2026 04",
+            "target": "wiki/career/competitor-atg-autonomous-2026-04.md"
+          },
+          {
+            "label": "Competitor kubera 2026 04",
+            "target": "wiki/career/competitor-kubera-2026-04.md"
+          },
+          {
+            "label": "Competitor vyzer 2026 04",
+            "target": "wiki/career/competitor-vyzer-2026-04.md"
+          }
+        ],
+        "excerpt": "> [!claude-note]+ Claude synthesis — not Connor-confirmed > Lighter-depth page. Surfaced during 2026-04-20 Tier E sweep (v4). Written from the familyoffice.bot landing page only — no third-party coverage surfaced in this research cycle. Part of riviera-competitive-analysis-2026-04. See parent for Tier F classification (bottom-up AI-native principal-direct). **Publisher** Quinla…",
+        "extended": "lan Software, LLC © 2026 - **Product positioning** *\"A private AI instance configured specifically for your family, your entities, and your goals\"* - **Target customer** Families with **$2M-$50M** in assets - **Stated market gap** *\"Complexity demands professional management, but a traditional family office costs $200K to $500K per year\"* - **Pricing** - **$1,999/month** (cancel anytime) - **$20,0…"
+      },
+      {
+        "bucket": "career",
+        "path": "wiki/career/competitor-aleta-2026-04.md",
+        "title": "Competitor - Aleta",
+        "age": "47m",
+        "words": 1998,
+        "lastEdited": "2026-05-11 09:40",
+        "tags": [
+          "concept",
+          "company",
+          "competitive-analysis",
+          "family-office",
+          "wealth-tech",
+          "riviera"
+        ],
+        "connections": [
+          {
+            "label": "Riviera competitive analysis 2026 04",
+            "target": "wiki/career/riviera-competitive-analysis-2026-04.md"
+          },
+          {
+            "label": "Riviera",
+            "target": "wiki/career/riviera.md"
+          },
+          {
+            "label": "Bob casey",
+            "target": "wiki/projects/bob-casey.md"
+          },
+          {
+            "label": "Competitor copia 2026 04",
+            "target": "wiki/career/competitor-copia-2026-04.md"
+          },
+          {
+            "label": "Competitor ridgeline 2026 04",
+            "target": "wiki/career/competitor-ridgeline-2026-04.md"
+          },
+          {
+            "label": "Competitor altoo 2026 04",
+            "target": "wiki/career/competitor-altoo-2026-04.md"
+          }
+        ],
+        "excerpt": "> [!claude-note]+ Claude synthesis — not Connor-confirmed > Written from public Aleta marketing, comparison pages, and one Nordic Fintech Magazine write-up. No direct customer diligence. Treat the strategic read as interpretation, the feature list as what Aleta claims in 2026 marketing. Part of riviera-competitive-analysis-2026-04. See parent for the cross-competitor synthesis.…",
+        "extended": "- **Founded** \"more than 15 years ago\" per their Our Story page. No precise founding year disclosed; implied around 2009-2010 - **Name** From Greek *aletheia* meaning \"truth, sincerity, not hidden.\" Data-truth as explicit brand DNA - **CEO + Co-founder** Ken Gamskjaer. 15+ years in fintech. Still leads the company - **Offices** New York (HQ per some sources), Aarhus (Denmark, main engineering), B…"
+      },
+      {
+        "bucket": "career",
+        "path": "wiki/career/competitor-canoe-2026-04.md",
+        "title": "Competitor - Canoe Intelligence",
+        "age": "47m",
+        "words": 1243,
+        "lastEdited": "2026-05-11 09:40",
+        "tags": [
+          "concept",
+          "company",
+          "competitive-analysis",
+          "alts-data",
+          "wealth-tech",
+          "riviera"
+        ],
+        "connections": [
+          {
+            "label": "Riviera competitive analysis 2026 04",
+            "target": "wiki/career/riviera-competitive-analysis-2026-04.md"
+          },
+          {
+            "label": "Riviera",
+            "target": "wiki/career/riviera.md"
+          },
+          {
+            "label": "Bob casey",
+            "target": "wiki/projects/bob-casey.md"
+          },
+          {
+            "label": "Competitor arch 2026 04",
+            "target": "wiki/career/competitor-arch-2026-04.md"
+          },
+          {
+            "label": "Competitor eton 2026 04",
+            "target": "wiki/career/competitor-eton-2026-04.md"
+          },
+          {
+            "label": "Competitor masttro 2026 04",
+            "target": "wiki/career/competitor-masttro-2026-04.md"
+          }
+        ],
+        "excerpt": "> [!claude-note]+ Claude synthesis — not Connor-confirmed > Part of the alts-data-infrastructure tier. Upgraded from margin-mention to full page during 2026-04-20 second-pass sweep. Written from Canoe's own site, Businesswire Series C announcement, Oak HC/FT thesis on Arch, SEI newsroom, Family Wealth Report, and AndSimple profile. Part of riviera-competitive-analysis-2026-04.…",
+        "extended": "See parent for Tier Infrastructure classification. - **CTO (known leadership)** Noel Calhoun (other leadership not surfaced cleanly in this sweep) - **Scale** - **$11T+ in assets under administration** across ecosystem - **44,000+ funds** ingested into the system - **325 institutional investors, capital allocators, wealth managers, family offices, asset servicing firms** - **75+ family offices** s…"
+      },
+      {
+        "bucket": "career",
+        "path": "wiki/career/competitor-asseta-2026-04.md",
+        "title": "Competitor - Asseta AI",
+        "age": "47m",
+        "words": 1412,
+        "lastEdited": "2026-05-11 09:40",
+        "tags": [
+          "concept",
+          "company",
+          "competitive-analysis",
+          "family-office",
+          "wealth-tech",
+          "riviera"
+        ],
+        "connections": [
+          {
+            "label": "Riviera competitive analysis 2026 04",
+            "target": "wiki/career/riviera-competitive-analysis-2026-04.md"
+          },
+          {
+            "label": "Riviera",
+            "target": "wiki/career/riviera.md"
+          },
+          {
+            "label": "Bob casey",
+            "target": "wiki/projects/bob-casey.md"
+          },
+          {
+            "label": "Competitor eton 2026 04",
+            "target": "wiki/career/competitor-eton-2026-04.md"
+          },
+          {
+            "label": "Competitor ridgeline 2026 04",
+            "target": "wiki/career/competitor-ridgeline-2026-04.md"
+          },
+          {
+            "label": "Competitor copia 2026 04",
+            "target": "wiki/career/competitor-copia-2026-04.md"
+          }
+        ],
+        "excerpt": "> [!claude-note]+ Claude synthesis — not Connor-confirmed > Surfaced during 2026-04-20 Tier E + broader sweep (v4 pass). Written from Asseta's own site, their November 2025 seed announcement, and search-surfaced material from AndSimple / Family Office Exchange. Not cross-checked with direct customer references. Part of riviera-competitive-analysis-2026-04. See parent for Tier C…",
+        "extended": "classification (GL / accounting, Bob's exclusion). **Important nuance:** Asseta is the AI-native modern entrant in a tier Bob explicitly dismissed. That tier may not stay dismissible. Bob explicitly excluded the GL tier on 4/15: *\"we're not gonna sell against Archway and total return and intact and asset vantage, etcetera.\"* The named incumbents are legacy accounting systems. **Asseta is the 2025…"
+      },
+      {
+        "bucket": "career",
+        "path": "wiki/career/bradley-bernard.md",
+        "title": "Bradley Bernard",
+        "age": "47m",
+        "words": 366,
+        "lastEdited": "2026-05-11 09:40",
+        "tags": [
+          "person",
+          "wealth-management",
+          "bbr-partners",
+          "career",
+          "region/sbm",
+          "vibrance/recent"
+        ],
+        "connections": [
+          {
+            "label": "David ryan",
+            "target": "wiki/career/david-ryan.md"
+          },
+          {
+            "label": "Source 2026 04 23 connor david ryan",
+            "target": "wiki/career/source-2026-04-23-connor-david-ryan.md"
+          },
+          {
+            "label": "Bob casey",
+            "target": "wiki/projects/bob-casey.md"
+          },
+          {
+            "label": "Career",
+            "target": "wiki/career/career.md"
+          }
+        ],
+        "excerpt": "**BBR Partners** — Partner, Director of Portfolio and Wealth Advisory (Jan 2026 – present). BBR is a New York multi-family office serving UHNW clients; just closed its 25th year. Co-founded by Brett Barth. Bradley reports up into the PWA function. **AUM ~$50B per David Ryan 2026-04-23** (source-2026-04-23-connor-david-ryan) — unverified independently; Dave's framing in his own…",
+        "extended": "multi-family office serving UHNW clients; just closed its 25th year. Co-founded by Brett Barth. Bradley reports up into the PWA function. **AUM ~$50B per David Ryan 2026-04-23** (source-2026-04-23-connor-david-ryan) — unverified independently; Dave's framing in his own sentence: \"BBR has got a... they're a $50 billion multifamily office\" Career inside BBR has been long and continuous: - Director…"
+      },
+      {
+        "bucket": "career",
+        "path": "wiki/career/source-2026-04-23-bob-call-prep-answers.md",
+        "title": "Source: Connor — Bob Call Prep Answers (2026-04-23)",
+        "age": "47m",
+        "words": 2991,
+        "lastEdited": "2026-05-11 09:40",
+        "tags": [
+          "source",
+          "prep",
+          "connor-voice",
+          "briefly",
+          "riviera",
+          "sbm"
+        ],
+        "connections": [
+          {
+            "label": "Bob casey",
+            "target": "wiki/projects/bob-casey.md"
+          },
+          {
+            "label": "Riviera",
+            "target": "wiki/career/riviera.md"
+          },
+          {
+            "label": "Source 2026 04 24 connor bob casey",
+            "target": "wiki/career/source-2026-04-24-connor-bob-casey.md"
+          },
+          {
+            "label": "Source 2026 04 15 connor bob casey",
+            "target": "wiki/career/source-2026-04-15-connor-bob-casey.md"
+          },
+          {
+            "label": "Career fork 2026 04",
+            "target": "wiki/career/career-fork-2026-04.md"
+          },
+          {
+            "label": "Larry abrahams",
+            "target": "wiki/projects/larry-abrahams.md"
+          }
+        ],
+        "excerpt": "Raw file: `raw/bob-call-prep-2026-04-23.xlsx`. Self-authored prep doc Connor wrote ahead of the bob-casey / riviera founding-team call originally scheduled for 2026-04-23, slipped to 2026-04-24 (see source-2026-04-24-connor-bob-casey for what actually happened on the call). 38 questions across 8 categories that Connor anticipated Bob would test him on, paired with Connor's firs…",
+        "extended": "t-draft answers in his own voice. Connor's written answers to topgrading-style behavioral questions are primary-source material on how he frames his own career, traction, and commitment level at a specific moment. Future-Claude reading \"how does Connor talk about his MS years\" or \"what's Connor's stance on Booth deferral\" or \"what would make Connor say no to Riviera\" should read these answers dire…"
+      },
+      {
+        "bucket": "career",
+        "path": "wiki/career/competitor-masttro-2026-04.md",
+        "title": "Competitor - Masttro",
+        "age": "47m",
+        "words": 2222,
+        "lastEdited": "2026-05-11 09:40",
+        "tags": [
+          "concept",
+          "company",
+          "competitive-analysis",
+          "family-office",
+          "wealth-tech",
+          "riviera"
+        ],
+        "connections": [
+          {
+            "label": "Riviera competitive analysis 2026 04",
+            "target": "wiki/career/riviera-competitive-analysis-2026-04.md"
+          },
+          {
+            "label": "Riviera",
+            "target": "wiki/career/riviera.md"
+          },
+          {
+            "label": "Bob casey",
+            "target": "wiki/projects/bob-casey.md"
+          },
+          {
+            "label": "Competitor copia 2026 04",
+            "target": "wiki/career/competitor-copia-2026-04.md"
+          },
+          {
+            "label": "Competitor ridgeline 2026 04",
+            "target": "wiki/career/competitor-ridgeline-2026-04.md"
+          },
+          {
+            "label": "Competitor wealth com 2026 04",
+            "target": "wiki/career/competitor-wealth-com-2026-04.md"
+          }
+        ],
+        "excerpt": "> [!claude-note]+ Claude synthesis — not Connor-confirmed > Written from Masttro marketing, Masttro-vs-Addepar self-comparison, International Adviser, Wealth Solutions Report, and one PitchBook summary. Vendor-provided claims about security and non-employee data access are not independently verified. Part of riviera-competitive-analysis-2026-04. See parent for the cross-competi…",
+        "extended": "tor synthesis. - **Founded** 2010 by a global multi-generational family office with 25+ years of proprietary wealth-reporting technology built for internal use - **Origin shape** Family office spins out its own software. Exactly the Riviera + SBM playbook, 15 years earlier - **CEO** Padman Perumal. Joined May 2020. Before Masttro: 11 years at Credit Suisse Private Bank (2005-2016) using Masttro's…"
+      }
+    ];
+
+    const BUCKETS = [
+      { key: 'entities',  label: 'Entities' },
+      { key: 'concepts',  label: 'Concepts' },
+      { key: 'sources',   label: 'Sources' },
+      { key: 'synthesis', label: 'Synthesis' },
+      { key: 'career',    label: 'Career' },
+      { key: 'meta',      label: 'Logs & meta' },
+    ];
+    const BUCKET_LABEL = Object.fromEntries(BUCKETS.map(b => [b.key, b.label]));
+    const TAG_VISIBLE_LIMIT = 3;
+
+    function fmtNum(n) { return n.toLocaleString('en-US'); }
+    function esc(s) {
+      return String(s).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+    function tagClass(t) {
+      const k = t.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+      return 'tag-' + k;
+    }
+
+    // ===== Build Index (left) =====
+    const indexStack = document.getElementById('indexStack');
+
+    BUCKETS.forEach(b => {
+      const files = FILES.filter(f => f.bucket === b.key).sort((a, c) => c.words - a.words);
+      if (!files.length) return;
+
+      const div = document.createElement('div');
+      div.className = `bucket b-${b.key}`;
+      div.innerHTML = `
+        <div class="bucket-head" data-bucket="${b.key}" data-label="${b.label}">
+          <h3 class="bucket-name">${b.label}</h3>
+          <span class="bucket-count">${files.length}</span>
+        </div>
+        <ul class="bucket-list">
+          ${files.map(f => `
+            <li class="bucket-item" data-path="${f.path}" data-title="${esc(f.title)}">
+              <span>
+                <span class="item-title">${esc(f.title)}</span>
+                <span class="item-path">${f.path}</span>
+              </span>
+              <span class="item-age">${f.age}</span>
+            </li>`).join('')}
+        </ul>
+      `;
+      indexStack.appendChild(div);
+    });
+
+    // ===== Preview pane logic =====
+    const preview       = document.getElementById('preview');
+    const previewActive = document.getElementById('previewActive');
+    let pinnedPath = null;
+    let hoverTimer = null;
+    const HOVER_DELAY = 200;
+    const fileByPath = Object.fromEntries(FILES.map(f => [f.path, f]));
+
+    function renderTagRow(tags) {
+      if (!tags || !tags.length) return '';
+      const visible = tags.slice(0, TAG_VISIBLE_LIMIT);
+      const overflow = tags.slice(TAG_VISIBLE_LIMIT);
+      const visibleHtml = visible.map(t => `<span class="tag ${tagClass(t)}">${esc(t)}</span>`).join('');
+      const overflowHtml = overflow.length
+        ? `<span class="tag tag-overflow" data-overflow="1" title="Show ${overflow.length} more">+${overflow.length} more</span>`
+        : '';
+      const overflowHidden = overflow.map(t =>
+        `<span class="tag ${tagClass(t)}" data-overflow-tag="1" style="display:none">${esc(t)}</span>`
+      ).join('');
+      return visibleHtml + overflowHidden + overflowHtml;
+    }
+
+    function renderPreview(file) {
+      previewActive.innerHTML = `
+        <div class="preview-actions">
+          <button class="more-btn" id="moreBtn" type="button">Read more</button>
+          <button class="pin-btn" id="pinBtn" type="button" title="${pinnedPath === file.path ? 'Unpin' : 'Pin'}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 17v5"></path>
+              <path d="M9 10.76V6a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v4.76a2 2 0 0 0 .59 1.41l1.7 1.7A1 1 0 0 1 17 15.6V16a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1v-.4a1 1 0 0 1 .29-.71l1.7-1.7A2 2 0 0 0 9 10.76Z"></path>
+            </svg>
+          </button>
+        </div>
+        <h2 class="preview-title">${esc(file.title)}</h2>
+        <div class="preview-path">${file.path}</div>
+        <p class="preview-excerpt">${esc(file.excerpt)}</p>
+        <div class="preview-extended">${esc(file.extended)}</div>
+        <div class="preview-meta-row">
+          ${renderTagRow(file.tags)}
+          <span class="meta-dot"></span>
+          <span class="meta-text">Edited <strong>${file.age}</strong> ago</span>
+          <span class="meta-dot"></span>
+          <span class="meta-text"><strong>${fmtNum(file.words)}</strong> words</span>
+        </div>
+        <div class="preview-connect">
+          <div class="connect-label">Connects to</div>
+          <div class="connect-row">
+            ${file.connections.length
+              ? file.connections.map(c => {
+                  const hasFile = !!c.target;
+                  return `<button class="conn-pill ${hasFile ? '' : 'no-file'}"
+                            data-target="${hasFile ? c.target : ''}">${esc(c.label)}</button>`;
+                }).join('')
+              : `<span class="conn-empty">No outbound links yet.</span>`}
+          </div>
+        </div>
+      `;
+      preview.classList.remove('is-expanded');
+      preview.classList.add('has-file');
+      preview.classList.toggle('is-pinned', pinnedPath === file.path);
+
+      // Pin handler
+      document.getElementById('pinBtn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (pinnedPath === file.path) {
+          pinnedPath = null;
+          preview.classList.remove('is-pinned');
+        } else {
+          pinnedPath = file.path;
+          preview.classList.add('is-pinned');
+        }
+      });
+
+      // Read more
+      document.getElementById('moreBtn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        preview.classList.toggle('is-expanded');
+      });
+
+      // Tag overflow expand
+      const overflowChip = previewActive.querySelector('.tag-overflow');
+      if (overflowChip) {
+        overflowChip.addEventListener('click', (e) => {
+          e.stopPropagation();
+          previewActive.querySelectorAll('[data-overflow-tag]').forEach(el => {
+            el.style.display = '';
+          });
+          overflowChip.style.display = 'none';
+        });
+      }
+
+      // Connection pills: hover highlights matching index row; click pins target
+      previewActive.querySelectorAll('.conn-pill').forEach(p => {
+        p.addEventListener('mouseenter', () => {
+          const target = p.dataset.target;
+          if (!target) return;
+          const row = document.querySelector(`.bucket-item[data-path="${target}"]`);
+          if (row) row.classList.add('conn-highlight');
+        });
+        p.addEventListener('mouseleave', () => {
+          document.querySelectorAll('.bucket-item.conn-highlight')
+                  .forEach(r => r.classList.remove('conn-highlight'));
+        });
+        p.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const target = p.dataset.target;
+          if (!target) return;
+          const f = fileByPath[target];
+          if (!f) return;
+          pinnedPath = f.path;
+          renderPreview(f);
+          markActive(f.path);
+        });
+      });
+    }
+
+    function markActive(path) {
+      document.querySelectorAll('.bucket-item').forEach(el => {
+        el.classList.toggle('is-active', el.dataset.path === path);
+      });
+    }
+
+    // Click anywhere in the preview pane (outside specific controls) acts as "open" → pin behavior
+    preview.addEventListener('click', (e) => {
+      if (e.target.closest('.conn-pill') || e.target.closest('.pin-btn') ||
+          e.target.closest('.more-btn') || e.target.closest('.tag-overflow')) return;
+      // If a file is showing and not yet pinned, pin it.
+      if (preview.classList.contains('has-file') && !preview.classList.contains('is-pinned')) {
+        const activeRow = document.querySelector('.bucket-item.is-active');
+        if (activeRow) {
+          pinnedPath = activeRow.dataset.path;
+          preview.classList.add('is-pinned');
+        }
+      }
+    });
+
+    // Index hover/click handlers
+    document.querySelectorAll('.bucket-item').forEach(el => {
+      el.addEventListener('mouseenter', () => {
+        if (pinnedPath) return;
+        clearTimeout(hoverTimer);
+        hoverTimer = setTimeout(() => {
+          const file = fileByPath[el.dataset.path];
+          if (file) {
+            renderPreview(file);
+            markActive(file.path);
+          }
+        }, HOVER_DELAY);
+      });
+      el.addEventListener('mouseleave', () => {
+        clearTimeout(hoverTimer);
+      });
+      el.addEventListener('click', () => {
+        const file = fileByPath[el.dataset.path];
+        if (!file) return;
+        pinnedPath = file.path;
+        renderPreview(file);
+        markActive(file.path);
+      });
+    });
+
+    // ===== Search (in-line, left index) =====
+    const searchInput = document.getElementById('searchInput');
+    function runSearch(q) {
+      const term = q.trim().toLowerCase();
+      const items = document.querySelectorAll('.bucket-item');
+      if (!term) {
+        items.forEach(it => { it.classList.remove('dim'); it.classList.remove('glow'); });
+        return;
+      }
+      items.forEach(it => {
+        const file = fileByPath[it.dataset.path];
+        const hay = (file.title + ' ' + file.path + ' ' + file.tags.join(' ')).toLowerCase();
+        const hit = hay.includes(term);
+        it.classList.toggle('glow', hit);
+        it.classList.toggle('dim',  !hit);
+      });
+    }
+    searchInput.addEventListener('input', e => runSearch(e.target.value));
+
+    // ===== Keyboard: / focus search, Cmd+K palette, Esc =====
+    const paletteShroud  = document.getElementById('paletteShroud');
+    const paletteInput   = document.getElementById('paletteInput');
+    const paletteResults = document.getElementById('paletteResults');
+
+    function openPalette() {
+      paletteShroud.classList.add('show');
+      paletteInput.value = '';
+      runPaletteSearch('');
+      setTimeout(() => paletteInput.focus(), 10);
+    }
+    function closePalette() {
+      paletteShroud.classList.remove('show');
+    }
+    function runPaletteSearch(q) {
+      const term = q.trim().toLowerCase();
+      const matches = FILES.filter(f => {
+        if (!term) return true;
+        const hay = (f.title + ' ' + f.path + ' ' + f.tags.join(' ')).toLowerCase();
+        return hay.includes(term);
+      });
+      paletteResults.innerHTML = matches.length
+        ? matches.map((f, i) => `
+            <div class="palette-result pr-${f.bucket} ${i === 0 ? 'kbd-active' : ''}" data-path="${f.path}">
+              <span class="pr-dot"></span>
+              <span class="pr-title">${esc(f.title)}</span>
+              <span class="pr-path">${f.path}</span>
+            </div>
+          `).join('')
+        : `<div class="palette-empty">No matches.</div>`;
+
+      paletteResults.querySelectorAll('.palette-result').forEach(r => {
+        r.addEventListener('click', () => {
+          const file = fileByPath[r.dataset.path];
+          if (!file) return;
+          pinnedPath = file.path;
+          closePalette();
+          renderPreview(file);
+          markActive(file.path);
+          document.getElementById('spread').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+        r.addEventListener('mouseenter', () => {
+          paletteResults.querySelectorAll('.palette-result').forEach(x => x.classList.remove('kbd-active'));
+          r.classList.add('kbd-active');
+        });
+      });
+    }
+    paletteInput.addEventListener('input', e => runPaletteSearch(e.target.value));
+    paletteInput.addEventListener('keydown', e => {
+      const items = paletteResults.querySelectorAll('.palette-result');
+      if (!items.length) return;
+      let idx = [...items].findIndex(x => x.classList.contains('kbd-active'));
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        items[idx]?.classList.remove('kbd-active');
+        const next = items[Math.min(idx + 1, items.length - 1)];
+        next?.classList.add('kbd-active');
+        next?.scrollIntoView({ block: 'nearest' });
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        items[idx]?.classList.remove('kbd-active');
+        const prev = items[Math.max(idx - 1, 0)];
+        prev?.classList.add('kbd-active');
+        prev?.scrollIntoView({ block: 'nearest' });
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        const active = paletteResults.querySelector('.palette-result.kbd-active');
+        active?.click();
+      }
+    });
+
+    paletteShroud.addEventListener('click', e => {
+      if (e.target === paletteShroud) closePalette();
+    });
+
+    document.addEventListener('keydown', e => {
+      if (e.key === '/' && document.activeElement.tagName !== 'INPUT') {
+        e.preventDefault();
+        searchInput.focus();
+        searchInput.select();
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        openPalette();
+      } else if (e.key === 'Escape') {
+        if (paletteShroud.classList.contains('show')) closePalette();
+        else if (helpPopover.classList.contains('show')) helpPopover.classList.remove('show');
+        else if (document.activeElement === searchInput) {
+          searchInput.value = '';
+          runSearch('');
+          searchInput.blur();
+        }
+      }
+    });
+
+    // Help popover (keyboard hints on demand)
+    const helpToggle  = document.getElementById('helpToggle');
+    const helpPopover = document.getElementById('helpPopover');
+    helpToggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      helpPopover.classList.toggle('show');
+    });
+    document.addEventListener('click', (e) => {
+      if (!helpPopover.contains(e.target) && e.target !== helpToggle) {
+        helpPopover.classList.remove('show');
+      }
+    });
+  </script>
+</body>
+</html>

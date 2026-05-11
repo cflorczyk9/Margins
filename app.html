@@ -387,28 +387,59 @@
       </section>
 
       <section id="wiki-view" class="view">
-        <div class="files-head">
-          <div class="page-head">
-            <div>
-              <h2>Files</h2>
-              <div class="meta-row">Your local vault as plain markdown.</div>
-            </div>
+        <div class="qfiles-shell">
+          <header class="qfiles-header">
+            <h2>Files</h2>
+            <div class="qfiles-meta" id="qfiles-pullquote">Open a vault to browse files.</div>
+          </header>
+
+          <div class="qfiles-spread">
+            <!-- Left: bucket Index -->
+            <section class="qfiles-index" aria-label="File index">
+              <label class="qfiles-search">
+                <input id="qfiles-search" type="search" placeholder="Search files, tags, paths..." autocomplete="off">
+                <span class="qfiles-search-hint" aria-hidden="true">⌘K</span>
+              </label>
+              <div id="qfiles-index-body" class="qfiles-index-body">Open a vault to browse files.</div>
+            </section>
+
+            <!-- Right: sticky preview pane -->
+            <section class="qfiles-preview" id="qfiles-preview" aria-label="File preview">
+              <div class="qfiles-preview-empty" id="qfiles-preview-empty">
+                <div class="qfiles-empty-headline">Hover a file to preview</div>
+                <div class="qfiles-empty-sub" id="qfiles-empty-stats">No vault loaded yet.</div>
+              </div>
+              <article class="qfiles-preview-content" id="qfiles-preview-content" hidden>
+                <h3 class="qfiles-preview-title" id="qfiles-preview-title"></h3>
+                <div class="qfiles-preview-path" id="qfiles-preview-path"></div>
+                <p class="qfiles-preview-excerpt" id="qfiles-preview-excerpt"></p>
+                <p class="qfiles-preview-extended" id="qfiles-preview-extended" hidden></p>
+                <button type="button" class="qfiles-preview-more" id="qfiles-preview-more" hidden>Read more</button>
+                <div class="qfiles-preview-row qfiles-preview-meta-row">
+                  <span id="qfiles-preview-edited"></span>
+                  <span class="qfiles-preview-dot" aria-hidden="true">·</span>
+                  <span id="qfiles-preview-words"></span>
+                </div>
+                <div class="qfiles-preview-tags" id="qfiles-preview-tags"></div>
+                <div class="qfiles-preview-connections" id="qfiles-preview-connections" hidden>
+                  <span class="qfiles-preview-conn-label">Connects to</span>
+                  <div class="qfiles-preview-conn-pills" id="qfiles-preview-conn-pills"></div>
+                </div>
+                <div class="qfiles-preview-actions">
+                  <button type="button" id="qfiles-preview-edit-btn" class="qfiles-preview-edit-btn">Edit</button>
+                  <button type="button" id="qfiles-preview-pin-btn" class="qfiles-preview-pin-btn" title="Pin this file">Pin</button>
+                </div>
+              </article>
+            </section>
           </div>
-          <label class="vault-search">
-            <span aria-hidden="true"></span>
-            <input id="vault-search" type="search" placeholder="Search files..." autocomplete="off">
-          </label>
-        </div>
-        <div class="split vault-workspace">
-          <div class="tree vault-navigator">
-            <div class="vault-panel-title">
-              <h3>Files</h3>
-              <span id="vault-tree-count">0 files</span>
+
+          <!-- Edit mode — hidden by default; the renderer toggles when user clicks Edit.
+               Contains the existing doc-* elements so save/delete/keyboard plumbing in app.js still works. -->
+          <div id="qfiles-edit-mode" class="qfiles-edit-mode" hidden>
+            <div class="qfiles-edit-head">
+              <button type="button" id="qfiles-edit-back" class="qfiles-edit-back">← Back to preview</button>
+              <div id="doc-path" class="doc-path">Vault</div>
             </div>
-            <div id="wiki-tree" class="tree-list empty">Open a vault to browse files.</div>
-          </div>
-          <article class="document vault-document">
-            <div id="doc-path" class="doc-path">Vault</div>
             <div class="doc-toolbar">
               <div class="doc-heading">
                 <div id="doc-title" class="doc-title">No file selected</div>
@@ -423,7 +454,16 @@
               <pre id="doc-highlight" class="doc-highlight" aria-hidden="true"></pre>
               <textarea id="doc-body" class="doc-body vault-editor" spellcheck="false">Open a source file or wiki note, then choose a file.</textarea>
             </div>
-          </article>
+          </div>
+
+          <!-- ⌘K palette overlay -->
+          <div class="qfiles-palette" id="qfiles-palette" hidden role="dialog" aria-modal="true">
+            <div class="qfiles-palette-backdrop" id="qfiles-palette-backdrop" aria-hidden="true"></div>
+            <div class="qfiles-palette-card">
+              <input id="qfiles-palette-input" type="search" placeholder="Search files..." autocomplete="off" autofocus>
+              <div id="qfiles-palette-results" class="qfiles-palette-results"></div>
+            </div>
+          </div>
         </div>
       </section>
 

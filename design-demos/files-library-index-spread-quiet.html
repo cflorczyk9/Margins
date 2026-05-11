@@ -1,0 +1,1259 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Files — Spread · Quiet</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #faf7f2;
+      --paper: #ffffff;
+      --paper-soft: #f5f1ea;
+      --ink: #1a1612;
+      --ink-2: #4a423a;
+      --muted: #847a6b;
+      --faint: #a89e8d;
+      --line: #ece6da;
+      --line-strong: #ddd5c4;
+      --accent: #d63a2f;
+      --accent-soft: rgba(214, 58, 47, 0.10);
+      --accent-line: rgba(214, 58, 47, 0.22);
+
+      /* polychrome tokens unchanged (do not modify token values),
+         but Index headings use the -quiet variants below for 25% desat */
+      --vermillion: #d63a2f;
+      --cobalt:     #2c5aa0;
+      --mustard:    #c79a26;
+      --violet:     #6a4f8c;
+      --green-poly: #5d9656;
+      --ink-poly:   #1a1612;
+
+      /* Desaturated heading colors (~25% less chroma) — used ONLY on bucket headings.
+         Tag pills, connection pills, and bucket dots keep the saturated tokens. */
+      --vermillion-quiet: #b35148;
+      --cobalt-quiet:     #506f9c;
+      --mustard-quiet:    #a89047;
+      --violet-quiet:     #7c6c91;
+      --green-quiet:      #71926d;
+      --ink-quiet:        #3a342c;
+
+      --vermillion-soft: rgba(214, 58, 47, 0.08);
+      --cobalt-soft:     rgba(44, 90, 160, 0.08);
+      --mustard-soft:    rgba(199, 154, 38, 0.10);
+      --violet-soft:     rgba(106, 79, 140, 0.09);
+      --green-soft:      rgba(93, 150, 86, 0.09);
+      --ink-soft:        rgba(26, 22, 18, 0.05);
+
+      --r-sm: 6px;
+      --r-md: 8px;
+      --r-lg: 12px;
+      --r-pill: 999px;
+
+      --focus-ring: 0 0 0 3px rgba(214, 58, 47, 0.10);
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif;
+      font-weight: 400;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      line-height: 1.5;
+    }
+    .page {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 56px 32px 120px;
+    }
+
+    /* ==== Header ==== */
+    .lib-head { margin-bottom: 36px; }
+    .lib-kicker {
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .lib-kicker::after {
+      content: ""; flex: 1; height: 1px;
+      background: var(--line); margin-left: 6px;
+    }
+    .lib-title {
+      font-family: 'Manrope', sans-serif;
+      font-size: 44px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      margin: 0;
+      line-height: 1.05;
+    }
+
+    /* ==== Spread layout ==== */
+    .spread {
+      display: grid;
+      grid-template-columns: 520px 640px;
+      gap: 48px;
+      margin: 36px 0 0;
+      padding: 36px 0 0;
+      border-top: 1px solid var(--line);
+      align-items: start;
+    }
+
+    /* ---- LEFT: Index ---- */
+    .index-col { min-width: 0; }
+
+    .index-toprow {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .index-eyebrow {
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--muted);
+      flex-shrink: 0;
+    }
+    .index-search {
+      flex: 1;
+      position: relative;
+    }
+    .index-search input {
+      width: 100%;
+      font-family: inherit;
+      font-size: 13px;
+      color: var(--ink);
+      padding: 7px 12px 7px 30px;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: var(--r-pill);
+      outline: none;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    .index-search input::placeholder { color: var(--faint); }
+    .index-search input:focus {
+      border-color: var(--accent-line);
+      box-shadow: var(--focus-ring);
+    }
+    .index-search .search-icon {
+      position: absolute;
+      left: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 13px; height: 13px;
+      color: var(--faint);
+      pointer-events: none;
+    }
+
+    /* One-line, italic pull-quote — bare facts only */
+    .index-pull {
+      font-family: 'Manrope', sans-serif;
+      font-style: italic;
+      font-size: 13px;
+      line-height: 1.4;
+      color: var(--muted);
+      margin: 6px 0 36px;
+      letter-spacing: -0.005em;
+    }
+
+    .index-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 36px;
+    }
+    .bucket { min-width: 0; }
+    .bucket-head {
+      cursor: pointer;
+      user-select: none;
+      display: inline-flex;
+      align-items: baseline;
+      gap: 10px;
+      position: relative;
+      padding-bottom: 2px;
+    }
+    .bucket-name {
+      font-family: 'Manrope', sans-serif;
+      font-size: 19px;
+      font-weight: 600;
+      letter-spacing: -0.015em;
+      margin: 0;
+      line-height: 1.15;
+    }
+    /* Desaturated polychrome for bucket headings */
+    .b-entities  .bucket-name { color: var(--cobalt-quiet); }
+    .b-concepts  .bucket-name { color: var(--violet-quiet); }
+    .b-sources   .bucket-name { color: var(--mustard-quiet); }
+    .b-synthesis .bucket-name { color: var(--vermillion-quiet); }
+    .b-career    .bucket-name { color: var(--green-quiet); }
+    .b-meta      .bucket-name { color: var(--ink-quiet); }
+
+    .bucket-head::after {
+      content: "";
+      position: absolute;
+      left: 50%; right: 50%;
+      bottom: -2px;
+      height: 1px;
+      background: currentColor;
+      transition: left 0.25s ease, right 0.25s ease, opacity 0.2s ease;
+      opacity: 0;
+    }
+    .bucket-head:hover::after { left: 0; right: 0; opacity: 0.6; }
+
+    .bucket-count {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--faint);
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.01em;
+      white-space: nowrap;
+    }
+
+    .bucket-list {
+      list-style: none;
+      padding: 14px 0 0;
+      margin: 0;
+    }
+    .bucket-item {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: baseline;
+      gap: 12px;
+      padding: 6px 10px;
+      margin: 0 -10px;
+      border-radius: var(--r-sm);
+      cursor: pointer;
+      transition: background 0.15s ease, transform 0.18s ease, opacity 0.18s ease;
+      color: var(--ink);
+      position: relative;
+    }
+    .bucket-item:hover { transform: translateX(3px); }
+    .b-entities  .bucket-item:hover { background: var(--cobalt-soft); }
+    .b-concepts  .bucket-item:hover { background: var(--violet-soft); }
+    .b-sources   .bucket-item:hover { background: var(--mustard-soft); }
+    .b-synthesis .bucket-item:hover { background: var(--vermillion-soft); }
+    .b-career    .bucket-item:hover { background: var(--green-soft); }
+    .b-meta      .bucket-item:hover { background: var(--ink-soft); }
+
+    .bucket-item.is-active {
+      background: var(--paper) !important;
+      box-shadow: inset 2px 0 0 currentColor;
+    }
+    .b-entities  .bucket-item.is-active { color: var(--cobalt); }
+    .b-concepts  .bucket-item.is-active { color: var(--violet); }
+    .b-sources   .bucket-item.is-active { color: var(--mustard); }
+    .b-synthesis .bucket-item.is-active { color: var(--vermillion); }
+    .b-career    .bucket-item.is-active { color: var(--green-poly); }
+    .b-meta      .bucket-item.is-active { color: var(--ink-poly); }
+
+    .bucket-item.is-active .item-title { color: inherit; font-weight: 600; }
+
+    .item-title {
+      font-family: 'Manrope', sans-serif;
+      font-size: 14px;
+      font-weight: 400;
+      letter-spacing: -0.005em;
+      color: var(--ink);
+      line-height: 1.3;
+      display: block;
+    }
+    .item-path {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: var(--faint);
+      letter-spacing: -0.01em;
+      margin-top: 2px;
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .item-age {
+      font-size: 11px;
+      color: var(--faint);
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.01em;
+      white-space: nowrap;
+      align-self: start;
+      padding-top: 3px;
+    }
+
+    /* search dim / glow */
+    .bucket-item.dim { opacity: 0.28; }
+    .bucket-item.glow {
+      background: var(--accent-soft) !important;
+      box-shadow: inset 2px 0 0 var(--accent);
+    }
+    .bucket-item.glow .item-title { color: var(--accent); font-weight: 600; }
+
+    /* connection-pill hover highlight */
+    .bucket-item.conn-highlight {
+      background: var(--accent-soft) !important;
+      transform: translateX(3px);
+    }
+
+    /* ---- RIGHT: Preview pane ---- */
+    .preview-col { min-width: 0; }
+    .preview {
+      position: sticky;
+      top: 24px;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: var(--r-lg);
+      padding: 36px 36px 28px;
+      min-height: 520px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .preview-empty {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      color: var(--muted);
+      padding: 40px 20px;
+    }
+    .preview-empty .empty-mark {
+      width: 40px; height: 40px;
+      border: 1px dashed var(--line-strong);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--faint);
+      margin-bottom: 20px;
+    }
+    .preview-empty .empty-prompt {
+      font-family: 'Manrope', sans-serif;
+      font-style: italic;
+      font-size: 16px;
+      color: var(--ink-2);
+      margin: 0;
+      letter-spacing: -0.005em;
+    }
+
+    .preview-active { display: none; flex-direction: column; flex: 1; }
+    .preview.has-file .preview-empty { display: none; }
+    .preview.has-file .preview-active { display: flex; }
+
+    .preview-title {
+      font-family: 'Manrope', sans-serif;
+      font-size: 27px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      margin: 0 0 4px;
+      color: var(--ink);
+    }
+    .preview-path {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11.5px;
+      color: var(--faint);
+      letter-spacing: -0.01em;
+      margin: 0 0 26px;
+    }
+
+    .preview-excerpt {
+      font-size: 16px;
+      line-height: 1.65;
+      color: var(--ink-2);
+      margin: 0;
+      max-width: 540px;
+    }
+    .preview-extended {
+      display: none;
+      font-size: 15px;
+      line-height: 1.65;
+      color: var(--ink-2);
+      margin: 16px 0 0;
+      padding-left: 14px;
+      border-left: 1px solid var(--accent-line);
+      max-width: 540px;
+    }
+    .preview.is-expanded .preview-extended { display: block; }
+
+    /* Hover-revealed actions: only visible when cursor is in the preview pane */
+    .preview-actions {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      opacity: 0;
+      transform: translateY(-2px);
+      transition: opacity 0.18s ease, transform 0.18s ease;
+      pointer-events: none;
+    }
+    .preview:hover .preview-actions,
+    .preview:focus-within .preview-actions,
+    .preview.is-pinned .preview-actions {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+    .more-btn,
+    .pin-btn {
+      background: transparent;
+      border: 1px solid var(--line);
+      border-radius: var(--r-pill);
+      font-family: inherit;
+      font-size: 11.5px;
+      font-weight: 500;
+      color: var(--muted);
+      cursor: pointer;
+      padding: 4px 10px;
+      transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+    }
+    .more-btn:hover { color: var(--ink); border-color: var(--line-strong); }
+    .pin-btn {
+      width: 28px; height: 28px;
+      padding: 0;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .pin-btn svg { width: 12px; height: 12px; }
+    .pin-btn:hover { color: var(--ink); border-color: var(--line-strong); }
+    .preview.is-pinned .pin-btn {
+      background: var(--accent-soft);
+      border-color: var(--accent-line);
+      color: var(--accent);
+      transform: rotate(-25deg);
+    }
+    .preview.is-expanded .more-btn { color: var(--accent); border-color: var(--accent-line); }
+
+    .preview-meta-row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px 10px;
+      margin: 28px 0 0;
+      padding-top: 22px;
+      border-top: 1px solid var(--line);
+    }
+    .meta-text {
+      font-size: 12px;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+    .meta-text strong { color: var(--ink-2); font-weight: 600; }
+    .meta-dot {
+      width: 3px; height: 3px;
+      border-radius: 50%;
+      background: var(--line-strong);
+    }
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 10px;
+      border-radius: var(--r-pill);
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+      border: 1px solid transparent;
+      white-space: nowrap;
+    }
+    .tag-career         { color: var(--green-poly); background: rgba(93,150,86,0.10);  border-color: rgba(93,150,86,0.22); }
+    .tag-advisor        { color: var(--green-poly); background: rgba(93,150,86,0.06);  border-color: rgba(93,150,86,0.16); }
+    .tag-consulting     { color: var(--green-poly); background: rgba(93,150,86,0.06);  border-color: rgba(93,150,86,0.16); }
+    .tag-product        { color: var(--violet);     background: rgba(106,79,140,0.08); border-color: rgba(106,79,140,0.18); }
+    .tag-security       { color: var(--violet);     background: rgba(106,79,140,0.05); border-color: rgba(106,79,140,0.14); }
+    .tag-briefly-vision { color: var(--violet);     background: rgba(106,79,140,0.05); border-color: rgba(106,79,140,0.14); }
+    .tag-strategy       { color: var(--vermillion); background: rgba(214,58,47,0.08);  border-color: rgba(214,58,47,0.18); }
+    .tag-architecture   { color: var(--vermillion); background: rgba(214,58,47,0.05);  border-color: rgba(214,58,47,0.14); }
+    .tag-briefly        { color: var(--vermillion); background: rgba(214,58,47,0.05);  border-color: rgba(214,58,47,0.14); }
+    .tag-firm           { color: var(--cobalt);     background: rgba(44,90,160,0.08);  border-color: rgba(44,90,160,0.18); }
+    .tag-prospect       { color: var(--cobalt);     background: rgba(44,90,160,0.05);  border-color: rgba(44,90,160,0.14); }
+    .tag-centric        { color: var(--cobalt);     background: rgba(44,90,160,0.05);  border-color: rgba(44,90,160,0.14); }
+    .tag-source         { color: var(--mustard);    background: rgba(199,154,38,0.12); border-color: rgba(199,154,38,0.24); }
+    .tag-meeting        { color: var(--mustard);    background: rgba(199,154,38,0.10); border-color: rgba(199,154,38,0.22); }
+    .tag-pricing        { color: var(--mustard);    background: rgba(199,154,38,0.08); border-color: rgba(199,154,38,0.18); }
+    .tag-mentor         { color: var(--violet);     background: rgba(106,79,140,0.08); border-color: rgba(106,79,140,0.18); }
+    .tag-riviera        { color: var(--violet);     background: rgba(106,79,140,0.05); border-color: rgba(106,79,140,0.14); }
+    .tag-log            { color: var(--muted);      background: var(--paper-soft);     border-color: var(--line); }
+    .tag-meta           { color: var(--muted);      background: var(--paper-soft);     border-color: var(--line); }
+    .tag-default        { color: var(--ink-2);      background: var(--paper-soft);     border-color: var(--line); }
+
+    /* Tag overflow chip — same shape, neutral palette */
+    .tag-overflow {
+      cursor: pointer;
+      color: var(--muted);
+      background: var(--paper-soft);
+      border-color: var(--line);
+      font-weight: 500;
+    }
+    .tag-overflow:hover { color: var(--ink); border-color: var(--line-strong); }
+
+    .preview-connect {
+      margin-top: 28px;
+    }
+    .connect-label {
+      font-size: 10.5px;
+      font-weight: 500;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+    .connect-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .conn-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 12px 5px 11px;
+      border-radius: var(--r-pill);
+      background: var(--paper);
+      border: 1px solid var(--line);
+      font-size: 12.5px;
+      font-weight: 500;
+      color: var(--ink-2);
+      cursor: pointer;
+      transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+      text-decoration: none;
+      font-family: inherit;
+    }
+    .conn-pill::before {
+      content: "→";
+      color: var(--faint);
+      font-size: 11px;
+      line-height: 1;
+    }
+    .conn-pill:hover {
+      border-color: var(--accent-line);
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+    .conn-pill:hover::before { color: var(--accent); }
+    .conn-pill.no-file {
+      color: var(--muted);
+      font-style: italic;
+    }
+    .conn-empty {
+      font-size: 13px;
+      color: var(--faint);
+      font-style: italic;
+    }
+
+    /* ==== Command palette (Cmd+K) — still wired, just not advertised ==== */
+    .palette-shroud {
+      position: fixed;
+      inset: 0;
+      background: rgba(26, 22, 18, 0.32);
+      backdrop-filter: blur(2px);
+      z-index: 50;
+      display: none;
+      align-items: flex-start;
+      justify-content: center;
+      padding-top: 18vh;
+    }
+    .palette-shroud.show { display: flex; }
+    .palette {
+      width: 540px;
+      max-width: calc(100vw - 32px);
+      background: var(--paper);
+      border-radius: var(--r-lg);
+      box-shadow: 0 16px 60px rgba(26,22,18,0.20);
+      border: 1px solid var(--line);
+      overflow: hidden;
+    }
+    .palette-input-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--line);
+    }
+    .palette-input-row svg {
+      width: 16px; height: 16px;
+      color: var(--faint);
+      flex-shrink: 0;
+    }
+    .palette-input-row input {
+      flex: 1;
+      font-family: inherit;
+      font-size: 15px;
+      color: var(--ink);
+      border: none;
+      outline: none;
+      background: transparent;
+    }
+    .palette-input-row input::placeholder { color: var(--faint); }
+    .palette-results {
+      max-height: 400px;
+      overflow-y: auto;
+      padding: 6px 0;
+    }
+    .palette-result {
+      display: grid;
+      grid-template-columns: 8px 1fr auto;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 18px;
+      cursor: pointer;
+      transition: background 0.1s ease;
+    }
+    .palette-result:hover,
+    .palette-result.kbd-active { background: var(--paper-soft); }
+    .palette-result .pr-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+    }
+    .pr-entities  .pr-dot { background: var(--cobalt); }
+    .pr-concepts  .pr-dot { background: var(--violet); }
+    .pr-sources   .pr-dot { background: var(--mustard); }
+    .pr-synthesis .pr-dot { background: var(--vermillion); }
+    .pr-career    .pr-dot { background: var(--green-poly); }
+    .pr-meta      .pr-dot { background: var(--ink-poly); }
+    .palette-result .pr-title {
+      font-size: 14px;
+      color: var(--ink);
+    }
+    .palette-result .pr-path {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10.5px;
+      color: var(--faint);
+    }
+    .palette-empty {
+      padding: 24px 18px;
+      text-align: center;
+      color: var(--faint);
+      font-size: 13px;
+      font-style: italic;
+    }
+
+    /* ==== Help icon: keyboard hints on demand ==== */
+    .help-toggle {
+      position: fixed;
+      right: 22px;
+      bottom: 22px;
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: color 0.15s ease, border-color 0.15s ease;
+      z-index: 40;
+    }
+    .help-toggle:hover { color: var(--ink); border-color: var(--line-strong); }
+    .help-popover {
+      position: fixed;
+      right: 22px;
+      bottom: 58px;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: var(--r-md);
+      box-shadow: 0 10px 30px rgba(26,22,18,0.12);
+      padding: 14px 16px;
+      font-size: 12px;
+      color: var(--ink-2);
+      line-height: 1.7;
+      display: none;
+      z-index: 40;
+    }
+    .help-popover.show { display: block; }
+    .help-popover kbd {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10.5px;
+      background: var(--paper-soft);
+      border: 1px solid var(--line);
+      padding: 1px 6px;
+      border-radius: 4px;
+      color: var(--ink-2);
+      margin: 0 2px;
+    }
+
+    /* ==== Responsive ==== */
+    @media (max-width: 1100px) {
+      .spread {
+        grid-template-columns: 1fr;
+        gap: 36px;
+      }
+      .preview {
+        position: static;
+        min-height: 380px;
+      }
+    }
+    @media (max-width: 600px) {
+      .page { padding: 32px 20px 100px; }
+      .lib-title { font-size: 34px; }
+      .preview { padding: 26px 22px 22px; }
+      .preview-title { font-size: 24px; }
+      .preview-excerpt { font-size: 15px; }
+      .bucket-name { font-size: 18px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="lib-head">
+      <div class="lib-kicker">Margins · Files</div>
+      <h1 class="lib-title">Library</h1>
+    </header>
+
+    <!-- ============ SPREAD ============ -->
+    <section class="spread" id="spread">
+
+      <!-- LEFT: Index -->
+      <div class="index-col">
+        <div class="index-toprow">
+          <div class="index-eyebrow">Index</div>
+          <div class="index-search">
+            <input type="text" id="searchInput" placeholder="Search titles, tags, paths…" autocomplete="off">
+            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="7"></circle>
+              <line x1="20" y1="20" x2="16.65" y2="16.65"></line>
+            </svg>
+          </div>
+        </div>
+
+        <div class="index-pull">
+          <em>14 files · 22,400 words · last touched 2h ago</em>
+        </div>
+
+        <div class="index-stack" id="indexStack"></div>
+      </div>
+
+      <!-- RIGHT: Preview pane -->
+      <div class="preview-col">
+        <div class="preview" id="preview">
+          <div class="preview-empty">
+            <div class="empty-mark">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 5v14M5 12h14"></path>
+              </svg>
+            </div>
+            <p class="empty-prompt">Hover a file.</p>
+          </div>
+          <div class="preview-active" id="previewActive"></div>
+        </div>
+      </div>
+
+    </section>
+  </main>
+
+  <!-- Help popover (keyboard hints on demand) -->
+  <button class="help-toggle" id="helpToggle" aria-label="Keyboard shortcuts">?</button>
+  <div class="help-popover" id="helpPopover">
+    <kbd>/</kbd> search &nbsp; <kbd>⌘</kbd><kbd>K</kbd> palette &nbsp; <kbd>Esc</kbd> close
+  </div>
+
+  <!-- Command palette overlay -->
+  <div class="palette-shroud" id="paletteShroud">
+    <div class="palette">
+      <div class="palette-input-row">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="7"></circle>
+          <line x1="20" y1="20" x2="16.65" y2="16.65"></line>
+        </svg>
+        <input type="text" id="paletteInput" placeholder="Search the vault…" autocomplete="off">
+      </div>
+      <div class="palette-results" id="paletteResults"></div>
+    </div>
+  </div>
+
+  <script>
+    // ===== File data (unchanged) =====
+    const FILES = [
+      {
+        bucket: 'meta', path: 'wiki/log.md', title: 'Operations log', age: '1h',
+        words: 5400, lastEdited: '2026-05-10 09:14',
+        tags: ['log'],
+        connections: [],
+        excerpt: "Ingested two source files this morning — the Ellis meeting transcript and the pricing-deck feedback from Larry. Updated the centric-wm overview with the $50–100 pilot anchor and pushed three drift flags into the synthesis queue. Linted overnight; one stale concept remains on briefly-strategic-direction. The log doubles as a write-ahead buffer for the wiki, so every ingest, compile, query, and update lands here before anything downstream touches it.",
+        extended: "Recent ops, in order: 5/10 ingest (ellis-meeting source promoted into wiki/sources/); 5/09 compile (eight backlink suggestions, six accepted); 5/08 query — \"what's the right price for centric\" — resolved into a synthesis edit; 5/07 update on briefly-competitive-landscape adding Affinity as the pricing anchor; 5/06 prune of one dead concept page that hadn't been backlinked in 90 days."
+      },
+      {
+        bucket: 'career', path: 'wiki/career/alex-wolf.md', title: 'Alex Wolf', age: '2h',
+        words: 380, lastEdited: '2026-05-10 08:02',
+        tags: ['career', 'advisor'],
+        connections: [
+          { label: 'Briefly', target: null },
+          { label: 'Morgan Stanley', target: 'wiki/career/morgan-stanley.md' }
+        ],
+        excerpt: "MS PWM colleague from the 2022–2024 stretch, now an FA in Chicago at a mid-size independent. Reached out 5/8 after seeing the Riviera close-out post on LinkedIn — warm but cautious, very much not a buyer. The useful intel is on advisor adoption of Jump and Hazel inside MS's tech-allow list, plus the rhythm of the Naperville FA cluster. Predates Briefly by years; protect accordingly.",
+        extended: "Could be a quiet door-opener to two FA teams in Naperville if Briefly ever decides to pursue MS-affiliated independents. Connor's read is that Alex would make a soft intro but won't push; the move is to keep the relationship in personal-tier rotation and never put him in a pipeline tab."
+      },
+      {
+        bucket: 'entities', path: 'wiki/entities/ellis-rutili.md', title: 'Ellis Rutili', age: '3h',
+        words: 1580, lastEdited: '2026-05-10 07:30',
+        tags: ['prospect', 'centric'],
+        connections: [
+          { label: 'Centric WM', target: 'wiki/entities/centric-wm.md' },
+          { label: 'Virgil Rutili', target: null }
+        ],
+        excerpt: "Champion at Centric Wealth Management — operations role, three years at the firm, nephew of founder Virgil Rutili. Named action-item routing as his #1 pilot ask in the 4/15 on-site, which reranked the whole pilot scope away from pre-meeting briefs. Current pilot anchor: Ellis plus one or two advisors at $125/seat, 60–90 days. He sits one level below the real buyer, so the right frame is \"let me think about it\" — don't try to leapfrog him to Virgil.",
+        extended: "Ex-Northwestern econ. Three years at Centric across operations and client service. Trusted by Virgil for vendor evaluation but not signing authority. Strong reader, prefers async product demos to live calls. Coffee notes from 4/15 captured his real worry: post-meeting CRM time, not pre-meeting brief quality. That insight is the pivot point for the whole Centric pitch."
+      },
+      {
+        bucket: 'entities', path: 'wiki/entities/centric-wm.md', title: 'Centric Wealth Management', age: '3h',
+        words: 740, lastEdited: '2026-05-10 07:25',
+        tags: ['firm', 'prospect'],
+        connections: [
+          { label: 'Ellis Rutili', target: 'wiki/entities/ellis-rutili.md' }
+        ],
+        excerpt: "Chicago-based RIA, roughly $300M AUM, split between a standard FSC-SMB book and one $300M family-office household. Reporting stack is Orion for everyone except the meat-family — that one runs on Mastro. First-firm pilot anchor for Briefly at $50–100 per seat, framed deliberately as a first-partner discount against the $200 full-price floor. Tech-curious leadership; willing to be first on a vendor if the founder relationship is strong.",
+        extended: "Founded 2014 by Virgil Rutili. Around twelve staff including Ellis. Compliance posture is light by virtue of size; no third-party-AI block list. The Mastro deployment for the family-office slice is a tell — if Briefly ever extends to family-office, there's a natural wedge here. But that's post-pilot; the current scope is brief-only against the Orion book."
+      },
+      {
+        bucket: 'concepts', path: 'wiki/concepts/relationship-graph.md', title: 'Relationship graph', age: '5h',
+        words: 920, lastEdited: '2026-05-10 05:40',
+        tags: ['product', 'briefly-vision'],
+        connections: [
+          { label: 'Briefly', target: null },
+          { label: 'Margins', target: null }
+        ],
+        excerpt: "The substrate underneath Briefly. Every advisor interaction, household, referral, vendor edge, family relationship, and asset link as a typed node. Five-year optionality for vertical extension across legal, accounting, insurance, anything relationship-heavy. The graph is committed; the live debate is whether to surface it visibly in the advisor UI or keep it backend-only with a narrative positioning play. Affinity is the proof-of-concept analog at $2K per user per year across 1,700 customers.",
+        extended: "Pricing anchor for Briefly should sit near Affinity, not near Wealthbox or Jump. Connor's lean is backend-only at pilot, narrative-only in sales, and revisit visible-UI after firm #2 is signed. Visible graphs sell well but invite scope arguments; narrative graphs let the product stay focused on briefs and action-items while the substrate compounds quietly."
+      },
+      {
+        bucket: 'concepts', path: 'wiki/concepts/audio-retention-privacy.md', title: 'Audio retention as a privacy pitch', age: '1d',
+        words: 460, lastEdited: '2026-05-09 18:10',
+        tags: ['product', 'security'],
+        connections: [
+          { label: 'Briefly', target: null }
+        ],
+        excerpt: "v1 default deletes the raw audio file the moment AssemblyAI returns a transcript. It started as a dev convenience — no S3 bucket to babysit — but the reframe in client materials is the deliberate privacy and security feature. Per-firm retention is configurable but not the default. The compliance angle is real but it's not the lead story; the lead is \"we don't keep your clients' voices around.\" Surfacing this in the Centric deck distinguishes Briefly from Jump and Zocks, both of which retain recordings.",
+        extended: "The configurability matters for the family-office tier eventually — those households sometimes want to keep audio for their own archives. But every Centric-class RIA Connor has spoken to so far prefers the deletion default. Push the privacy story; let the retention story be a back-pocket answer to the one prospect who asks."
+      },
+      {
+        bucket: 'career', path: 'wiki/career/morgan-stanley.md', title: 'Morgan Stanley', age: '2d',
+        words: 1240, lastEdited: '2026-05-08 14:22',
+        tags: ['career'],
+        connections: [
+          { label: 'Alex Wolf', target: 'wiki/career/alex-wolf.md' },
+          { label: 'Joel Florczyk', target: null }
+        ],
+        excerpt: "Connor's prior firm — Private Wealth analyst, 2021 through 2024. The MS PWM rolodex is mostly former coworkers, not prospects, and it's been a recurring failure mode to treat them as a pipeline. Compliance posture at MS proper: third-party AI vendors blocked at the firm level, FA-side workflow tools allowed only if they don't touch client data. Briefly can't sell into MS, only to MS-affiliated independents who've left the platform.",
+        extended: "Joel Florczyk worked there decades earlier in a different division — the family connection is historical, not current. The right framing for MS contacts is relationship-maintenance, not BD. Periodic outreach, no asks, no demos. If a name from the MS list ever leaves for an independent shop, then the conversation changes; until then, keep them warm and stop measuring them against pipeline criteria."
+      },
+      {
+        bucket: 'meta', path: 'wiki/index.md', title: 'Vault index', age: '3d',
+        words: 720, lastEdited: '2026-05-07 11:00',
+        tags: ['meta'],
+        connections: [],
+        excerpt: "Map of the wiki. Folders: career, concepts, entities, sources, synthesis, ideas, outbound. This page exists to orient any new agent — human or model — returning to the vault after a long gap. Quick links lead to ingest-tracker, log, wiki-stats, operator-manual, and query-cookbook. Update this page when a new bucket is added; the sources of truth should always be one click away.",
+        extended: "Recently added: a queries/ subfolder for permanent synthesis pages filed via the file-query workflow, and an outbound/ folder for sent artifacts (cold emails, decks, drafted replies). The two new folders aren't reflected in the main bucket polychrome yet — todo for the next compile pass."
+      },
+      {
+        bucket: 'synthesis', path: 'wiki/synthesis/briefly-strategic-direction-apr2026.md', title: 'Briefly strategic direction — Apr 2026', age: '4d',
+        words: 1260, lastEdited: '2026-05-06 16:45',
+        tags: ['strategy', 'briefly'],
+        connections: [
+          { label: 'Briefly', target: null },
+          { label: 'Margins', target: null },
+          { label: 'Anthropic memory', target: null }
+        ],
+        excerpt: "Connor's lean as of April: partner with a few small RIAs, customize per firm, pull the relationship graph forward as the underlying vision. Not horizontal SaaS. Anthropic's March memory ship narrowed the broad \"AI memory for advisors\" pitch into a portability-plus-vertical-posture story. The three premium-earn defenses that survive scrutiny are customization, founder-led relationship, and firm-voice tuning. The three rationalizations to avoid are data-portability alone, compliance alone, and UX alone.",
+        extended: "Open fork: customize for Centric first and extend, or build multi-tenant customization from day one. Connor is leaning toward the Centric-first path because it's the only one that produces a paying customer this quarter. The multi-tenant version is the right long-term architecture but the wrong short-term spend."
+      },
+      {
+        bucket: 'career', path: 'wiki/career/oliver-wyman.md', title: 'Oliver Wyman', age: '6d',
+        words: 620, lastEdited: '2026-05-04 09:30',
+        tags: ['career', 'consulting'],
+        connections: [],
+        excerpt: "Pre-MS consulting stint, FS strategy practice. Useful as a credentialing line on the Briefly site and in Booth-deferral conversations, but not a relationship cluster — most projects were short, most partners have rotated. Two FS-partner contacts remain warm; neither is a buyer, but both are credible referrers for small-RIA owner intros if the moment ever calls for that.",
+        extended: "The project pattern was wealth-segment growth strategy for large banks — exactly the buyer-side perspective Briefly is selling against now. Don't lead with OW credentials in cold emails to small RIAs; it reads as overweight, like an enterprise vendor showing up to a five-person firm. Keep it in the bio paragraph, not the pitch."
+      },
+      {
+        bucket: 'synthesis', path: 'wiki/synthesis/margins-briefly-consolidation.md', title: 'Margins and Briefly are the same architecture', age: '7d',
+        words: 1920, lastEdited: '2026-05-03 20:15',
+        tags: ['strategy', 'architecture'],
+        connections: [
+          { label: 'Briefly', target: null },
+          { label: 'Margins', target: null }
+        ],
+        excerpt: "Margins is the architecture — the vault, the operator manual, the ingest pipeline, the relationship graph. Briefly is the vertical product on top of that architecture for RIAs. Don't treat them as parallel projects competing for time. This consolidation is also the pricing argument: $40K services pricing for the firm-customized Briefly build is justifiable precisely because Margins is the underlying platform doing the heavy lifting.",
+        extended: "As of 5/2: Margins is the lead build (Repo-MVP first), Briefly enters formal maintenance, the Ihor freeze is real. The traction signal that reopens Briefly product investment is ten or more Margins users or a paying Margins customer — whichever comes first. Until then, Briefly gets bug fixes and Centric pilot support only."
+      },
+      {
+        bucket: 'entities', path: 'wiki/entities/bob-casey.md', title: 'Bob Casey', age: '8d',
+        words: 2100, lastEdited: '2026-05-02 22:00',
+        tags: ['mentor', 'riviera'],
+        connections: [
+          { label: 'Santa Barbara Management', target: null }
+        ],
+        excerpt: "Founder of Santa Barbara Management — Chicago-based despite the name, the SBM identity is IGSB-legacy. Booth lecturer. Extended a founding-team offer to Connor in early April, then slowed the timeline 5/1 (eight weeks to eight months, no guarantee). Connor accepted gracefully 5/2; Bob acknowledged 5/3. Relationship moves to stay-in-touch. Connor plans to share Margins as a personal-productivity tool; any business fold-in stays gated until Bob asks.",
+        extended: "Mentor pattern is deep, slow, deliberate. Won't be rushed into a yes or a no, and won't reward attempts to rush him. Predates Briefly by a couple of years. Travels heavily for the SBM book; best reach time is Wednesday mornings Chicago. Knows the Booth deferral landscape cold and is the right person to ask when the September decision gets closer."
+      },
+      {
+        bucket: 'sources', path: 'wiki/sources/2026-04-28-pricing-deck-feedback.md', title: 'Pricing deck feedback — 4/28', age: '12d',
+        words: 1840, lastEdited: '2026-04-28 17:00',
+        tags: ['source', 'pricing'],
+        connections: [
+          { label: 'Briefly', target: null }
+        ],
+        excerpt: "Larry's review of the Centric pilot pricing slide. The anchor at $50–100 per seat reads correctly as a first-partner discount — not desperation — if it's framed against the $200 per seat full-price floor. Pull the Affinity comparison forward in the deck; drop the Jump and Zocks delta entirely because it reads as defensive. Larry suggested adding a \"what changes at full price\" slide so Ellis can see the value gradient explicitly rather than infer it.",
+        extended: "Three premium tiers landed cleanly in the revised structure: standard, firm-customized, and full graph-substrate. Connor flagged that the graph-substrate tier is aspirational and shouldn't appear in the pilot deck — only in the post-pilot conversation. Larry agreed. The revised deck has been filed in outbound/ and is ready to share with Ellis after the 5/3 pilot agreement gets drafted."
+      },
+      {
+        bucket: 'sources', path: 'wiki/sources/2026-04-15-ellis-meeting.md', title: 'Ellis meeting — 4/15 Centric WM visit', age: '24d',
+        words: 3200, lastEdited: '2026-04-16 08:30',
+        tags: ['meeting', 'source'],
+        connections: [
+          { label: 'Ellis Rutili', target: 'wiki/entities/ellis-rutili.md' },
+          { label: 'Centric WM', target: 'wiki/entities/centric-wm.md' }
+        ],
+        excerpt: "Ninety-minute on-site at Centric WM in Chicago. Ellis named action-item routing as the #1 pilot ask, ranking it above the pre-meeting brief feature Connor had expected to lead with — which reshaped the whole pilot scope on the train ride home. Pilot ask landed: Ellis plus one or two advisors, $125 per seat, 60–90 days. Virgil mentioned once in passing, not introduced, which confirms the champion-and-buyer separation.",
+        extended: "Three follow-ups assigned to Connor and tracked in Linear: send the pilot agreement draft (due 5/3, in flight), share the Affinity comparison (filed in outbound/), and set up an Orion read-only sandbox (blocked pending Centric IT). Ellis prefers async demos to live calls. Compliance concerns at Centric's size are minimal; no third-party block list to navigate."
+      },
+    ];
+
+    const BUCKETS = [
+      { key: 'entities',  label: 'Entities' },
+      { key: 'concepts',  label: 'Concepts' },
+      { key: 'sources',   label: 'Sources' },
+      { key: 'synthesis', label: 'Synthesis' },
+      { key: 'career',    label: 'Career' },
+      { key: 'meta',      label: 'Logs & meta' },
+    ];
+    const BUCKET_LABEL = Object.fromEntries(BUCKETS.map(b => [b.key, b.label]));
+    const TAG_VISIBLE_LIMIT = 3;
+
+    function fmtNum(n) { return n.toLocaleString('en-US'); }
+    function esc(s) {
+      return String(s).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+    function tagClass(t) {
+      const k = t.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+      return 'tag-' + k;
+    }
+
+    // ===== Build Index (left) =====
+    const indexStack = document.getElementById('indexStack');
+
+    BUCKETS.forEach(b => {
+      const files = FILES.filter(f => f.bucket === b.key).sort((a, c) => c.words - a.words);
+      if (!files.length) return;
+
+      const div = document.createElement('div');
+      div.className = `bucket b-${b.key}`;
+      div.innerHTML = `
+        <div class="bucket-head" data-bucket="${b.key}" data-label="${b.label}">
+          <h3 class="bucket-name">${b.label}</h3>
+          <span class="bucket-count">${files.length}</span>
+        </div>
+        <ul class="bucket-list">
+          ${files.map(f => `
+            <li class="bucket-item" data-path="${f.path}" data-title="${esc(f.title)}">
+              <span>
+                <span class="item-title">${esc(f.title)}</span>
+                <span class="item-path">${f.path}</span>
+              </span>
+              <span class="item-age">${f.age}</span>
+            </li>`).join('')}
+        </ul>
+      `;
+      indexStack.appendChild(div);
+    });
+
+    // ===== Preview pane logic =====
+    const preview       = document.getElementById('preview');
+    const previewActive = document.getElementById('previewActive');
+    let pinnedPath = null;
+    let hoverTimer = null;
+    const HOVER_DELAY = 200;
+    const fileByPath = Object.fromEntries(FILES.map(f => [f.path, f]));
+
+    function renderTagRow(tags) {
+      if (!tags || !tags.length) return '';
+      const visible = tags.slice(0, TAG_VISIBLE_LIMIT);
+      const overflow = tags.slice(TAG_VISIBLE_LIMIT);
+      const visibleHtml = visible.map(t => `<span class="tag ${tagClass(t)}">${esc(t)}</span>`).join('');
+      const overflowHtml = overflow.length
+        ? `<span class="tag tag-overflow" data-overflow="1" title="Show ${overflow.length} more">+${overflow.length} more</span>`
+        : '';
+      const overflowHidden = overflow.map(t =>
+        `<span class="tag ${tagClass(t)}" data-overflow-tag="1" style="display:none">${esc(t)}</span>`
+      ).join('');
+      return visibleHtml + overflowHidden + overflowHtml;
+    }
+
+    function renderPreview(file) {
+      previewActive.innerHTML = `
+        <div class="preview-actions">
+          <button class="more-btn" id="moreBtn" type="button">Read more</button>
+          <button class="pin-btn" id="pinBtn" type="button" title="${pinnedPath === file.path ? 'Unpin' : 'Pin'}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 17v5"></path>
+              <path d="M9 10.76V6a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v4.76a2 2 0 0 0 .59 1.41l1.7 1.7A1 1 0 0 1 17 15.6V16a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1v-.4a1 1 0 0 1 .29-.71l1.7-1.7A2 2 0 0 0 9 10.76Z"></path>
+            </svg>
+          </button>
+        </div>
+        <h2 class="preview-title">${esc(file.title)}</h2>
+        <div class="preview-path">${file.path}</div>
+        <p class="preview-excerpt">${esc(file.excerpt)}</p>
+        <div class="preview-extended">${esc(file.extended)}</div>
+        <div class="preview-meta-row">
+          ${renderTagRow(file.tags)}
+          <span class="meta-dot"></span>
+          <span class="meta-text">Edited <strong>${file.age}</strong> ago</span>
+          <span class="meta-dot"></span>
+          <span class="meta-text"><strong>${fmtNum(file.words)}</strong> words</span>
+        </div>
+        <div class="preview-connect">
+          <div class="connect-label">Connects to</div>
+          <div class="connect-row">
+            ${file.connections.length
+              ? file.connections.map(c => {
+                  const hasFile = !!c.target;
+                  return `<button class="conn-pill ${hasFile ? '' : 'no-file'}"
+                            data-target="${hasFile ? c.target : ''}">${esc(c.label)}</button>`;
+                }).join('')
+              : `<span class="conn-empty">No outbound links yet.</span>`}
+          </div>
+        </div>
+      `;
+      preview.classList.remove('is-expanded');
+      preview.classList.add('has-file');
+      preview.classList.toggle('is-pinned', pinnedPath === file.path);
+
+      // Pin handler
+      document.getElementById('pinBtn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (pinnedPath === file.path) {
+          pinnedPath = null;
+          preview.classList.remove('is-pinned');
+        } else {
+          pinnedPath = file.path;
+          preview.classList.add('is-pinned');
+        }
+      });
+
+      // Read more
+      document.getElementById('moreBtn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        preview.classList.toggle('is-expanded');
+      });
+
+      // Tag overflow expand
+      const overflowChip = previewActive.querySelector('.tag-overflow');
+      if (overflowChip) {
+        overflowChip.addEventListener('click', (e) => {
+          e.stopPropagation();
+          previewActive.querySelectorAll('[data-overflow-tag]').forEach(el => {
+            el.style.display = '';
+          });
+          overflowChip.style.display = 'none';
+        });
+      }
+
+      // Connection pills: hover highlights matching index row; click pins target
+      previewActive.querySelectorAll('.conn-pill').forEach(p => {
+        p.addEventListener('mouseenter', () => {
+          const target = p.dataset.target;
+          if (!target) return;
+          const row = document.querySelector(`.bucket-item[data-path="${target}"]`);
+          if (row) row.classList.add('conn-highlight');
+        });
+        p.addEventListener('mouseleave', () => {
+          document.querySelectorAll('.bucket-item.conn-highlight')
+                  .forEach(r => r.classList.remove('conn-highlight'));
+        });
+        p.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const target = p.dataset.target;
+          if (!target) return;
+          const f = fileByPath[target];
+          if (!f) return;
+          pinnedPath = f.path;
+          renderPreview(f);
+          markActive(f.path);
+        });
+      });
+    }
+
+    function markActive(path) {
+      document.querySelectorAll('.bucket-item').forEach(el => {
+        el.classList.toggle('is-active', el.dataset.path === path);
+      });
+    }
+
+    // Click anywhere in the preview pane (outside specific controls) acts as "open" → pin behavior
+    preview.addEventListener('click', (e) => {
+      if (e.target.closest('.conn-pill') || e.target.closest('.pin-btn') ||
+          e.target.closest('.more-btn') || e.target.closest('.tag-overflow')) return;
+      // If a file is showing and not yet pinned, pin it.
+      if (preview.classList.contains('has-file') && !preview.classList.contains('is-pinned')) {
+        const activeRow = document.querySelector('.bucket-item.is-active');
+        if (activeRow) {
+          pinnedPath = activeRow.dataset.path;
+          preview.classList.add('is-pinned');
+        }
+      }
+    });
+
+    // Index hover/click handlers
+    document.querySelectorAll('.bucket-item').forEach(el => {
+      el.addEventListener('mouseenter', () => {
+        if (pinnedPath) return;
+        clearTimeout(hoverTimer);
+        hoverTimer = setTimeout(() => {
+          const file = fileByPath[el.dataset.path];
+          if (file) {
+            renderPreview(file);
+            markActive(file.path);
+          }
+        }, HOVER_DELAY);
+      });
+      el.addEventListener('mouseleave', () => {
+        clearTimeout(hoverTimer);
+      });
+      el.addEventListener('click', () => {
+        const file = fileByPath[el.dataset.path];
+        if (!file) return;
+        pinnedPath = file.path;
+        renderPreview(file);
+        markActive(file.path);
+      });
+    });
+
+    // ===== Search (in-line, left index) =====
+    const searchInput = document.getElementById('searchInput');
+    function runSearch(q) {
+      const term = q.trim().toLowerCase();
+      const items = document.querySelectorAll('.bucket-item');
+      if (!term) {
+        items.forEach(it => { it.classList.remove('dim'); it.classList.remove('glow'); });
+        return;
+      }
+      items.forEach(it => {
+        const file = fileByPath[it.dataset.path];
+        const hay = (file.title + ' ' + file.path + ' ' + file.tags.join(' ')).toLowerCase();
+        const hit = hay.includes(term);
+        it.classList.toggle('glow', hit);
+        it.classList.toggle('dim',  !hit);
+      });
+    }
+    searchInput.addEventListener('input', e => runSearch(e.target.value));
+
+    // ===== Keyboard: / focus search, Cmd+K palette, Esc =====
+    const paletteShroud  = document.getElementById('paletteShroud');
+    const paletteInput   = document.getElementById('paletteInput');
+    const paletteResults = document.getElementById('paletteResults');
+
+    function openPalette() {
+      paletteShroud.classList.add('show');
+      paletteInput.value = '';
+      runPaletteSearch('');
+      setTimeout(() => paletteInput.focus(), 10);
+    }
+    function closePalette() {
+      paletteShroud.classList.remove('show');
+    }
+    function runPaletteSearch(q) {
+      const term = q.trim().toLowerCase();
+      const matches = FILES.filter(f => {
+        if (!term) return true;
+        const hay = (f.title + ' ' + f.path + ' ' + f.tags.join(' ')).toLowerCase();
+        return hay.includes(term);
+      });
+      paletteResults.innerHTML = matches.length
+        ? matches.map((f, i) => `
+            <div class="palette-result pr-${f.bucket} ${i === 0 ? 'kbd-active' : ''}" data-path="${f.path}">
+              <span class="pr-dot"></span>
+              <span class="pr-title">${esc(f.title)}</span>
+              <span class="pr-path">${f.path}</span>
+            </div>
+          `).join('')
+        : `<div class="palette-empty">No matches.</div>`;
+
+      paletteResults.querySelectorAll('.palette-result').forEach(r => {
+        r.addEventListener('click', () => {
+          const file = fileByPath[r.dataset.path];
+          if (!file) return;
+          pinnedPath = file.path;
+          closePalette();
+          renderPreview(file);
+          markActive(file.path);
+          document.getElementById('spread').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+        r.addEventListener('mouseenter', () => {
+          paletteResults.querySelectorAll('.palette-result').forEach(x => x.classList.remove('kbd-active'));
+          r.classList.add('kbd-active');
+        });
+      });
+    }
+    paletteInput.addEventListener('input', e => runPaletteSearch(e.target.value));
+    paletteInput.addEventListener('keydown', e => {
+      const items = paletteResults.querySelectorAll('.palette-result');
+      if (!items.length) return;
+      let idx = [...items].findIndex(x => x.classList.contains('kbd-active'));
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        items[idx]?.classList.remove('kbd-active');
+        const next = items[Math.min(idx + 1, items.length - 1)];
+        next?.classList.add('kbd-active');
+        next?.scrollIntoView({ block: 'nearest' });
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        items[idx]?.classList.remove('kbd-active');
+        const prev = items[Math.max(idx - 1, 0)];
+        prev?.classList.add('kbd-active');
+        prev?.scrollIntoView({ block: 'nearest' });
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        const active = paletteResults.querySelector('.palette-result.kbd-active');
+        active?.click();
+      }
+    });
+
+    paletteShroud.addEventListener('click', e => {
+      if (e.target === paletteShroud) closePalette();
+    });
+
+    document.addEventListener('keydown', e => {
+      if (e.key === '/' && document.activeElement.tagName !== 'INPUT') {
+        e.preventDefault();
+        searchInput.focus();
+        searchInput.select();
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        openPalette();
+      } else if (e.key === 'Escape') {
+        if (paletteShroud.classList.contains('show')) closePalette();
+        else if (helpPopover.classList.contains('show')) helpPopover.classList.remove('show');
+        else if (document.activeElement === searchInput) {
+          searchInput.value = '';
+          runSearch('');
+          searchInput.blur();
+        }
+      }
+    });
+
+    // Help popover (keyboard hints on demand)
+    const helpToggle  = document.getElementById('helpToggle');
+    const helpPopover = document.getElementById('helpPopover');
+    helpToggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      helpPopover.classList.toggle('show');
+    });
+    document.addEventListener('click', (e) => {
+      if (!helpPopover.contains(e.target) && e.target !== helpToggle) {
+        helpPopover.classList.remove('show');
+      }
+    });
+  </script>
+</body>
+</html>
