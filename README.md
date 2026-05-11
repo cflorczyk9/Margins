@@ -2,6 +2,8 @@
 
 Margins is a local-first source-to-wiki compiler for LLMs.
 
+For the product direction from local web app to Claude/ChatGPT connector, see [`PRODUCT-ROADMAP.md`](./PRODUCT-ROADMAP.md) or the readable HTML view at [`PRODUCT-ROADMAP.html`](./PRODUCT-ROADMAP.html).
+
 It turns:
 
 ```text
