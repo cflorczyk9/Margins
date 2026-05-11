@@ -466,6 +466,14 @@ const els = {
   saveApiKeyBtn: document.getElementById("save-api-key-btn"),
   clearApiKeyBtn: document.getElementById("clear-api-key-btn"),
   apiKeyStatus: document.getElementById("api-key-status"),
+  noKeyBanner: document.getElementById("no-key-banner"),
+  noKeyBannerCta: document.getElementById("no-key-banner-cta"),
+  advancedPanel: document.querySelector("details.advanced-panel"),
+  dropCopyDefault: document.getElementById("drop-copy-default"),
+  dropCopyConnect: document.getElementById("drop-copy-connect"),
+  connectPromptTitle: document.getElementById("connect-prompt-title"),
+  connectPromptDetail: document.getElementById("connect-prompt-detail"),
+  connectPromptBtn: document.getElementById("connect-prompt-btn"),
   apiGuardEnabled: document.getElementById("api-guard-enabled"),
   apiMaxRequests: document.getElementById("api-max-requests"),
   apiMaxOutputTokens: document.getElementById("api-max-output-tokens"),
@@ -767,6 +775,27 @@ document.addEventListener("keydown", (event) => {
 els.graphOpenNodeBtn?.addEventListener("click", openSelectedGraphNode);
 els.saveApiKeyBtn.addEventListener("click", saveApiControls);
 els.clearApiKeyBtn.addEventListener("click", clearApiControls);
+els.noKeyBannerCta?.addEventListener("click", () => {
+  if (els.advancedPanel) els.advancedPanel.open = true;
+  if (els.apiKey) {
+    els.apiKey.focus();
+    els.apiKey.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+});
+
+// Drop-zone connect/reconnect CTA. FS Access requires the permission
+// round-trip be the first awaited call inside the click handler, so we
+// dispatch directly to reconnectRememberedVault / openVault without
+// any wrapping busy guard.
+els.connectPromptBtn?.addEventListener("click", (event) => {
+  // Prevent the drop zone's click handler from also firing.
+  event.stopPropagation();
+  if (state.rememberedVaultHandle && !state.vaultHandle) {
+    reconnectRememberedVault();
+  } else if (!state.vaultHandle) {
+    openVault();
+  }
+});
 els.apiGuardEnabled?.addEventListener("change", saveApiGuardControls);
 els.apiMaxRequests?.addEventListener("change", saveApiGuardControls);
 els.apiMaxOutputTokens?.addEventListener("change", saveApiGuardControls);
@@ -783,17 +812,27 @@ els.apiProvider.addEventListener("change", () => {
 });
 els.apiModel?.addEventListener("change", renderApiGuardStatus);
 
+// When the drop zone is in "connect" mode (no active vault), all the
+// drag/drop/click bindings short-circuit — the only useful action is
+// the Reconnect / Choose-a-folder button, which has its own listener.
+function dropZoneIsLocked() {
+  return els.sourceDropZone?.classList.contains("connect-mode");
+}
+
 els.sourceDropZone.addEventListener("dragover", (event) => {
+  if (dropZoneIsLocked()) return;
   event.preventDefault();
   els.sourceDropZone.classList.add("dragging");
 });
 
 els.sourceDropZone.addEventListener("click", (event) => {
+  if (dropZoneIsLocked()) return;
   if (event.target.closest("button, input, label, select, textarea, a")) return;
   els.fileInput.click();
 });
 
 els.sourceDropZone.addEventListener("keydown", (event) => {
+  if (dropZoneIsLocked()) return;
   if (event.key !== "Enter" && event.key !== " ") return;
   event.preventDefault();
   els.fileInput.click();
@@ -804,6 +843,7 @@ els.sourceDropZone.addEventListener("dragleave", () => {
 });
 
 els.sourceDropZone.addEventListener("drop", async (event) => {
+  if (dropZoneIsLocked()) return;
   event.preventDefault();
   els.sourceDropZone.classList.remove("dragging");
   await withBusyOperation("source import", () => setSourceFiles([...event.dataTransfer.files]));
@@ -913,6 +953,17 @@ function renderApiStatus(message = "") {
   els.apiKeyStatus.textContent = message || (secret || settings.hasApiKey
     ? `${provider} · ${model} · ${maskSecret(secret) || settings.maskedApiKey}`
     : "Optional. Stored only in this browser for model-generated filing questions.");
+  updateNoKeyBanner();
+}
+
+// Show a yellow "add your AI key" banner at the top of the inbox when
+// the user has reached app.html without a stored model key (e.g. they
+// took the "Open Margins" fast path on a fresh browser). Hides once a
+// key is saved.
+function updateNoKeyBanner() {
+  if (!els.noKeyBanner) return;
+  const hasKey = Boolean(state.apiSecret) || Boolean(state.apiSettings?.hasApiKey);
+  els.noKeyBanner.hidden = hasKey;
 }
 
 function hydrateApiGuardControls() {
@@ -9174,6 +9225,42 @@ function updateWorkflowState() {
   els.workflowGuidance.textContent = step.guidance;
   els.workflowBtn.textContent = step.label;
   els.workflowBtn.disabled = !!step.disabled;
+  updateDropZoneMode();
+}
+
+// Drop zone has two modes:
+//   - default (connected): "Drag and drop here" + file/folder pickers
+//   - connect:   "Reconnect your folder" (or "Connect a folder") + single CTA
+// We swap which `.drop-copy` block is visible based on whether the
+// vault is currently connected. The CTA in connect mode synchronously
+// calls the picker / permission round-trip so FS Access keeps its
+// user-gesture requirement intact.
+function updateDropZoneMode() {
+  if (!els.dropCopyDefault || !els.dropCopyConnect) return;
+
+  const connected = Boolean(state.vaultHandle);
+  els.dropCopyDefault.hidden = !connected;
+  els.dropCopyConnect.hidden = connected;
+  els.sourceDropZone?.classList.toggle("connect-mode", !connected);
+
+  if (connected) return;
+
+  if (state.rememberedVaultHandle) {
+    if (els.connectPromptTitle) els.connectPromptTitle.textContent = "Reconnect your folder";
+    if (els.connectPromptDetail) {
+      const name = state.rememberedVaultHandle.name || "your vault";
+      els.connectPromptDetail.textContent =
+        `Your browser asked us to confirm access to "${name}" again. One click and your files load.`;
+    }
+    if (els.connectPromptBtn) els.connectPromptBtn.textContent = "Reconnect";
+  } else {
+    if (els.connectPromptTitle) els.connectPromptTitle.textContent = "Connect a folder";
+    if (els.connectPromptDetail) {
+      els.connectPromptDetail.textContent =
+        "Pick the local folder Margins should keep updated. You can change it anytime.";
+    }
+    if (els.connectPromptBtn) els.connectPromptBtn.textContent = "Choose a folder";
+  }
 }
 
 function workflowStep() {

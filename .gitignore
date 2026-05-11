@@ -4,3 +4,4 @@ sample/output/
 .env
 .env.*
 !.env.example
+.claude/
