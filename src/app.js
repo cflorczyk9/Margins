@@ -370,7 +370,13 @@ const PENDING_SOURCE_PAGE_SIZE = 6;
 // DREAM_LOG_PATH, DREAM_MODES, DREAM_STAGES → core/dream-stats.js
 // RAW_SOURCE_DIR, LEGACY_RAW_SOURCE_DIR → core/vault.js
 const INGEST_PROGRESS_STEP_DELAYS_MS = [0, 1400, 4400, 12000];
-const INGEST_REVIEW_OUTPUT_TOKEN_FLOOR = 32768;
+// Output cap for the main ingest review. A 32K cap encouraged the
+// model to fill every optional field at maximum length — typical
+// response was 25K+ tokens and 100+ seconds of generation. 12K keeps
+// the schema's required fields comfortable + room for thorough
+// optional content, while cutting generation time by ~60%. If the
+// model hits the cap, the compact-retry path still fires.
+const INGEST_REVIEW_OUTPUT_TOKEN_FLOOR = 12288;
 const INGEST_REVIEW_COMPACT_RETRY_OUTPUT_TOKEN_FLOOR = 32768;
 const DREAM_HELPER_OUTPUT_TOKEN_FLOOR = 12288;
 const DREAM_HELPER_RETRY_OUTPUT_TOKEN_FLOOR = 12288;
@@ -3642,6 +3648,7 @@ Contract:
 - Do not include transcript dumps, unprocessed YAML/frontmatter, embed syntax, or generic filing questions.
 - Do not apply special handling for document classes. Infer durable patterns from current wiki context, and explain any structural gap before proposing new tags or pages.
 - Review mode is ${reviewModeLabel(mode)}. Question budget: ${budget}.
+- Length: be thorough but tight. Target ~6-10K output tokens. Skip optional fields the source does not strongly support. Don't pad sentences. Prefer fewer high-signal bullets over many low-signal ones.
 
 Return JSON in this shape:
 {
