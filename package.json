@@ -9,7 +9,9 @@
     "test": "node --test",
     "test:browser": "MARGINS_BROWSER_TEST=1 node --test tests/browser/*.test.js",
     "typecheck": "tsc -p . --noEmit",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "smoke:landing": "node scripts/smoke-landing.mjs",
+    "smoke:all": "node scripts/smoke-landing.mjs && node scripts/smoke.mjs"
   },
   "dependencies": {
     "mammoth": "^1.12.0",
