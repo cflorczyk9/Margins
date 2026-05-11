@@ -469,9 +469,17 @@ const els = {
   saveApiKeyBtn: document.getElementById("save-api-key-btn"),
   clearApiKeyBtn: document.getElementById("clear-api-key-btn"),
   apiKeyStatus: document.getElementById("api-key-status"),
-  noKeyBanner: document.getElementById("no-key-banner"),
-  noKeyBannerCta: document.getElementById("no-key-banner-cta"),
   advancedPanel: document.querySelector("details.advanced-panel"),
+  apiGate: document.getElementById("api-gate"),
+  apiGateForm: document.getElementById("api-gate-form"),
+  apiGateError: document.getElementById("api-gate-error"),
+  gateProvider: document.getElementById("gate-provider"),
+  gateModel: document.getElementById("gate-model"),
+  gateApiKey: document.getElementById("gate-api-key"),
+  gateKeyLink: document.getElementById("gate-key-link"),
+  gateMaxRequestUsd: document.getElementById("gate-max-request-usd"),
+  gateMaxSessionUsd: document.getElementById("gate-max-session-usd"),
+  gateMaxOutputTokens: document.getElementById("gate-max-output-tokens"),
   dropCopyDefault: document.getElementById("drop-copy-default"),
   dropCopyConnect: document.getElementById("drop-copy-connect"),
   connectPromptTitle: document.getElementById("connect-prompt-title"),
@@ -709,10 +717,38 @@ initTimingModule({
   }
 });
 
+// Provider catalogue for the API gate modal. Declared before any code
+// that touches it (hydrateGateFromState → applyGateProviderToUi runs
+// during module init below). Keep in sync with src/core/api.js defaults.
+const GATE_PROVIDERS = {
+  gemini: {
+    label: "Gemini",
+    defaultModel: "gemini-2.5-flash",
+    endpoint: "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+    keyLink: "https://aistudio.google.com/apikey",
+    keyLinkLabel: "Get a free Gemini key →"
+  },
+  openai: {
+    label: "OpenAI",
+    defaultModel: "gpt-5-mini",
+    endpoint: "https://api.openai.com/v1/chat/completions",
+    keyLink: "https://platform.openai.com/api-keys",
+    keyLinkLabel: "Create an OpenAI API key →"
+  },
+  anthropic: {
+    label: "Anthropic",
+    defaultModel: "claude-3-5-haiku-latest",
+    endpoint: "https://api.anthropic.com/v1/messages",
+    keyLink: "https://console.anthropic.com/settings/keys",
+    keyLinkLabel: "Create an Anthropic API key →"
+  }
+};
+
 els.themeToggle.checked = state.theme === "dark";
 updateThemeToggleLabel();
 hydrateApiControls();
 hydrateApiGuardControls();
+hydrateGateFromState();
 ensureApiSecretReady();
 els.folderInput.addEventListener("change", handleSourceSelection);
 els.fileInput.addEventListener("change", handleSourceSelection);
@@ -778,12 +814,9 @@ document.addEventListener("keydown", (event) => {
 els.graphOpenNodeBtn?.addEventListener("click", openSelectedGraphNode);
 els.saveApiKeyBtn.addEventListener("click", saveApiControls);
 els.clearApiKeyBtn.addEventListener("click", clearApiControls);
-els.noKeyBannerCta?.addEventListener("click", () => {
-  if (els.advancedPanel) els.advancedPanel.open = true;
-  if (els.apiKey) {
-    els.apiKey.focus();
-    els.apiKey.scrollIntoView({ behavior: "smooth", block: "center" });
-  }
+els.apiGateForm?.addEventListener("submit", handleGateSubmit);
+els.gateProvider?.addEventListener("change", (event) => {
+  applyGateProviderToUi(event.target.value);
 });
 
 // Drop-zone connect/reconnect CTA. FS Access requires the permission
@@ -959,14 +992,86 @@ function renderApiStatus(message = "") {
   updateNoKeyBanner();
 }
 
-// Show a yellow "add your AI key" banner at the top of the inbox when
-// the user has reached app.html without a stored model key (e.g. they
-// took the "Open Margins" fast path on a fresh browser). Hides once a
-// key is saved.
+// API gate. Replaces the old soft "no-key" banner with a hard modal
+// that blocks the inbox/process flow until a model key is saved.
+// Once saved, the gate hides and the rest of the app is usable.
 function updateNoKeyBanner() {
-  if (!els.noKeyBanner) return;
+  if (!els.apiGate) return;
   const hasKey = Boolean(state.apiSecret) || Boolean(state.apiSettings?.hasApiKey);
-  els.noKeyBanner.hidden = hasKey;
+  els.apiGate.hidden = hasKey;
+}
+
+function applyGateProviderToUi(providerId) {
+  const provider = GATE_PROVIDERS[providerId] || GATE_PROVIDERS.gemini;
+  if (els.gateModel) els.gateModel.placeholder = provider.defaultModel;
+  if (els.gateKeyLink) {
+    els.gateKeyLink.href = provider.keyLink;
+    els.gateKeyLink.textContent = provider.keyLinkLabel;
+  }
+}
+
+function hydrateGateFromState() {
+  if (!els.apiGate) return;
+  const settings = state.apiSettings || {};
+  const guard = state.apiGuardSettings || {};
+  const currentProvider = providerValue(settings.providerLabel) || "gemini";
+  if (els.gateProvider) els.gateProvider.value = currentProvider;
+  if (els.gateModel) els.gateModel.value = settings.model || "";
+  if (els.gateApiKey) els.gateApiKey.value = "";
+  if (els.gateMaxRequestUsd && guard.maxRequestUsd) els.gateMaxRequestUsd.value = guard.maxRequestUsd;
+  if (els.gateMaxSessionUsd && guard.maxSessionUsd) els.gateMaxSessionUsd.value = guard.maxSessionUsd;
+  if (els.gateMaxOutputTokens && guard.maxOutputTokens) els.gateMaxOutputTokens.value = guard.maxOutputTokens;
+  applyGateProviderToUi(currentProvider);
+  if (els.apiGateError) {
+    els.apiGateError.hidden = true;
+    els.apiGateError.textContent = "";
+  }
+}
+
+function handleGateSubmit(event) {
+  event.preventDefault();
+  const provider = els.gateProvider?.value || "gemini";
+  const model = (els.gateModel?.value || "").trim() ||
+    defaultModelForProvider(provider);
+  const apiKey = (els.gateApiKey?.value || "").trim();
+
+  if (!apiKey) {
+    if (els.apiGateError) {
+      els.apiGateError.textContent = "Paste an API key from your provider's console to continue.";
+      els.apiGateError.hidden = false;
+    }
+    els.gateApiKey?.focus();
+    return;
+  }
+
+  // Save provider/model/key into the canonical apiSettings + apiSecret
+  // shape that the rest of the app reads.
+  saveApiSettings({
+    providerLabel: providerLabel(provider),
+    endpointUrl: defaultEndpointForProvider(provider),
+    model,
+    apiKey
+  });
+  state.apiSettings = loadApiSettings();
+  state.apiSecret = apiKey;
+  localStorage.setItem(STORAGE_KEYS.apiSecret, apiKey);
+
+  // Merge the three exposed spend limits with the existing guard
+  // settings; everything else keeps its current value.
+  const guard = {
+    ...state.apiGuardSettings,
+    maxRequestUsd: positiveNumber(els.gateMaxRequestUsd?.value, state.apiGuardSettings.maxRequestUsd),
+    maxSessionUsd: positiveNumber(els.gateMaxSessionUsd?.value, state.apiGuardSettings.maxSessionUsd),
+    maxOutputTokens: positiveInteger(els.gateMaxOutputTokens?.value, state.apiGuardSettings.maxOutputTokens)
+  };
+  state.apiGuardSettings = normalizeApiGuardSettings(guard);
+  localStorage.setItem(STORAGE_KEYS.apiGuard, JSON.stringify(state.apiGuardSettings));
+
+  if (els.apiProvider) els.apiProvider.value = provider;
+  if (els.apiModel) els.apiModel.value = model;
+  hydrateApiControls();
+  hydrateApiGuardControls();
+  renderApiStatus();
 }
 
 function hydrateApiGuardControls() {
