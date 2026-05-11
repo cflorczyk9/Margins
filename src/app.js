@@ -470,6 +470,10 @@ const els = {
   clearApiKeyBtn: document.getElementById("clear-api-key-btn"),
   apiKeyStatus: document.getElementById("api-key-status"),
   advancedPanel: document.querySelector("details.advanced-panel"),
+  usageMeter: document.getElementById("usage-meter"),
+  usageMeterHeadline: document.getElementById("usage-meter-headline"),
+  usageMeterDetail: document.getElementById("usage-meter-detail"),
+  usageMeterSession: document.getElementById("usage-meter-session"),
   apiGate: document.getElementById("api-gate"),
   apiGateForm: document.getElementById("api-gate-form"),
   apiGateError: document.getElementById("api-gate-error"),
@@ -898,12 +902,103 @@ async function withBusyOperation(label, run) {
 
   activeOperation = label;
   updateActionState();
+  startUsageMeter(label);
   try {
     return await run();
   } finally {
     activeOperation = "";
     updateActionState();
+    stopUsageMeter();
   }
+}
+
+// Usage meter — shows a live elapsed-time + session-tokens pill at the
+// top of the inbox while a Process operation is running. After the call
+// completes, the pill keeps the session total visible (tokens + $)
+// until the user reloads or clears local data. Non-streaming for V1,
+// so per-call token counts only land in the meter when each model call
+// returns.
+let usageMeterTickHandle = null;
+let usageMeterStartedAt = 0;
+let usageMeterBaseline = null;
+
+function startUsageMeter(label = "Processing…") {
+  if (!els.usageMeter) return;
+  if (!labelTouchesModel(label)) return;
+  usageMeterStartedAt = Date.now();
+  usageMeterBaseline = {
+    requests: state.apiUsage?.requests || 0,
+    tokens: state.apiUsage?.totalTokens || 0,
+    usd: state.apiUsage?.estimatedUsd || 0
+  };
+  els.usageMeter.hidden = false;
+  els.usageMeter.classList.remove("is-idle");
+  if (els.usageMeterHeadline) {
+    els.usageMeterHeadline.textContent = label
+      ? `${label.charAt(0).toUpperCase()}${label.slice(1)}…`
+      : "Processing…";
+  }
+  renderUsageMeterTick();
+  if (usageMeterTickHandle) clearInterval(usageMeterTickHandle);
+  usageMeterTickHandle = setInterval(renderUsageMeterTick, 250);
+}
+
+function stopUsageMeter() {
+  if (usageMeterTickHandle) {
+    clearInterval(usageMeterTickHandle);
+    usageMeterTickHandle = null;
+  }
+  if (!els.usageMeter || usageMeterStartedAt === 0) return;
+  const totalCalls = (state.apiUsage?.requests || 0) - (usageMeterBaseline?.requests || 0);
+  const totalTokens = (state.apiUsage?.totalTokens || 0) - (usageMeterBaseline?.tokens || 0);
+  const elapsed = (Date.now() - usageMeterStartedAt) / 1000;
+  if (totalCalls > 0) {
+    // Keep the meter visible after the run with the final tally.
+    els.usageMeter.classList.add("is-idle");
+    if (els.usageMeterHeadline) els.usageMeterHeadline.textContent = "Done";
+    if (els.usageMeterDetail) {
+      els.usageMeterDetail.textContent =
+        `${formatStatNumber(totalTokens)} tokens · ${elapsed.toFixed(1)}s elapsed`;
+    }
+    renderUsageMeterSession();
+  } else {
+    // No model calls happened (e.g. local-only operation). Hide.
+    els.usageMeter.hidden = true;
+  }
+  usageMeterStartedAt = 0;
+  usageMeterBaseline = null;
+}
+
+function renderUsageMeterTick() {
+  if (!els.usageMeter || usageMeterStartedAt === 0) return;
+  const elapsed = (Date.now() - usageMeterStartedAt) / 1000;
+  const tokensSoFar = (state.apiUsage?.totalTokens || 0) - (usageMeterBaseline?.tokens || 0);
+  if (els.usageMeterDetail) {
+    els.usageMeterDetail.textContent = tokensSoFar > 0
+      ? `${elapsed.toFixed(1)}s elapsed · ${formatStatNumber(tokensSoFar)} tokens`
+      : `${elapsed.toFixed(1)}s elapsed`;
+  }
+  renderUsageMeterSession();
+}
+
+function renderUsageMeterSession() {
+  if (!els.usageMeterSession) return;
+  const usage = state.apiUsage || {};
+  if (!usage.totalTokens) {
+    els.usageMeterSession.textContent = "";
+    return;
+  }
+  const tokens = formatStatNumber(usage.totalTokens);
+  const usd = (usage.estimatedUsd || 0).toFixed(2);
+  els.usageMeterSession.textContent = `session: ${tokens} tokens · $${usd}`;
+}
+
+function labelTouchesModel(label) {
+  if (!label) return false;
+  // Operations that actually call the model. Skip pure local work like
+  // "vault save" or "file deletion" so the meter doesn't flash for
+  // non-API operations.
+  return /process|ingest|review|maintenance|cleanup|llm|model|helper/i.test(label);
 }
 
 function isBusyOperation() {
