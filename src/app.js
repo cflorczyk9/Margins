@@ -982,13 +982,22 @@ function writeMeterValues(meter, elapsed, tokens, usd) {
   const elapsedEl = meter.querySelector("[data-meter-elapsed]");
   const tokensEl = meter.querySelector("[data-meter-tokens]");
   const costEl = meter.querySelector("[data-meter-cost]");
+  // While a stream is in flight but tokens haven't been reported yet
+  // (provider buffers usage until the end, or response is buffered by
+  // an intermediate hop), show "receiving…" so the user knows the
+  // call is running rather than seeing a static "—".
+  const streaming = !!state.activeStreamUsage;
   if (elapsedEl) elapsedEl.innerHTML = `<strong>${elapsed.toFixed(1)}s</strong>`;
   if (tokensEl) tokensEl.innerHTML = tokens > 0
     ? `<strong>${formatStatNumber(tokens)}</strong> tokens`
-    : "<span>—</span>";
+    : streaming
+      ? `<span>receiving…</span>`
+      : "<span>—</span>";
   if (costEl) costEl.innerHTML = usd > 0
     ? `<strong>$${usd.toFixed(3)}</strong>`
-    : "<span>—</span>";
+    : streaming
+      ? `<span>—</span>`
+      : "<span>—</span>";
 }
 
 function labelTouchesModel(label) {
@@ -2243,11 +2252,19 @@ async function runCompactGeminiIngestRetry(runGeminiIngestReview) {
 // updates through onUpdate (which writes to state.activeStreamUsage
 // and ticks the processing-card meter).
 async function streamSseModelResponse(response, extractEvent, { onUpdate, model } = {}) {
+  const debug = (() => {
+    try { return localStorage.getItem("margins.streamDebug") === "1"; }
+    catch { return false; }
+  })();
+  const log = (...args) => { if (debug) console.log("[stream]", ...args); };
+
   if (!response.body || typeof response.body.getReader !== "function") {
-    // Fallback to non-streaming JSON for environments without ReadableStream.
+    log("no ReadableStream — falling back to .json()");
     const json = await response.json();
     return { content: "", inputTokens: 0, outputTokens: 0, fallbackJson: json };
   }
+  log("starting stream", { contentType: response.headers.get("content-type") });
+
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -2255,31 +2272,55 @@ async function streamSseModelResponse(response, extractEvent, { onUpdate, model 
   let inputTokens = 0;
   let outputTokens = 0;
   let finishReason = "";
+  let eventCount = 0;
+  let parsedCount = 0;
+  let firstChunkAt = 0;
 
   const ping = () => {
     const liveOutput = outputTokens || Math.ceil(assembledText.length / 4);
     onUpdate?.(inputTokens, liveOutput, model);
   };
 
+  // Tolerate the JSON-array streaming format some providers fall back to
+  // (each chunk separated by `\n` instead of SSE `data:` + `\n\n`).
+  // We try SSE first per event-block; if no events parse from the buffer
+  // for a while, the "json-array" fallback below kicks in after the
+  // stream closes.
+
   while (true) {
     const { value, done } = await reader.read();
     if (done) break;
+    if (!firstChunkAt) firstChunkAt = performance.now();
     buffer += decoder.decode(value, { stream: true });
 
     let eventEnd;
     while ((eventEnd = buffer.indexOf("\n\n")) !== -1) {
       const raw = buffer.slice(0, eventEnd);
       buffer = buffer.slice(eventEnd + 2);
+      eventCount += 1;
       const dataParts = raw
         .split("\n")
         .filter((line) => line.startsWith("data:"))
         .map((line) => line.slice(5).trim());
-      if (!dataParts.length) continue;
+      if (!dataParts.length) {
+        log("event with no data: lines", raw.slice(0, 200));
+        continue;
+      }
       const dataStr = dataParts.join("");
       if (dataStr === "[DONE]") continue;
       let payload;
-      try { payload = JSON.parse(dataStr); } catch { continue; }
+      try {
+        payload = JSON.parse(dataStr);
+      } catch (err) {
+        log("JSON parse failed", err.message, dataStr.slice(0, 200));
+        continue;
+      }
+      parsedCount += 1;
       const result = extractEvent(payload) || {};
+      log(`event #${parsedCount}`, {
+        keys: Object.keys(payload),
+        extracted: { hasDelta: !!result.delta, deltaLen: result.delta?.length, inputTokens: result.inputTokens, outputTokens: result.outputTokens, finishReason: result.finishReason }
+      });
       if (result.delta) assembledText += result.delta;
       if (typeof result.inputTokens === "number" && result.inputTokens > 0) {
         inputTokens = result.inputTokens;
@@ -2291,6 +2332,40 @@ async function streamSseModelResponse(response, extractEvent, { onUpdate, model 
       ping();
     }
   }
+
+  // Fallback: if the body was buffered as a single JSON array (or
+  // a non-SSE single JSON object), parse the leftover buffer and emit
+  // any events we missed. This recovers tokens/cost even when the
+  // wire format isn't strictly SSE.
+  const leftover = buffer.trim();
+  if (parsedCount === 0 && leftover.length > 0) {
+    log("no SSE events parsed; trying JSON-array fallback", { leftoverLen: leftover.length });
+    try {
+      const parsed = JSON.parse(leftover);
+      const items = Array.isArray(parsed) ? parsed : [parsed];
+      for (const payload of items) {
+        const result = extractEvent(payload) || {};
+        if (result.delta) assembledText += result.delta;
+        if (typeof result.inputTokens === "number" && result.inputTokens > 0) inputTokens = result.inputTokens;
+        if (typeof result.outputTokens === "number" && result.outputTokens > 0) outputTokens = result.outputTokens;
+        if (result.finishReason) finishReason = result.finishReason;
+      }
+      ping();
+    } catch (err) {
+      log("JSON-array fallback also failed", err.message, leftover.slice(0, 200));
+    }
+  }
+
+  log("stream done", {
+    events: eventCount,
+    parsedEvents: parsedCount,
+    assembledChars: assembledText.length,
+    inputTokens,
+    outputTokens,
+    finishReason,
+    timeToFirstChunkMs: firstChunkAt ? performance.now() - firstChunkAt : null
+  });
+
   ping();
   return { content: assembledText, inputTokens, outputTokens, finishReason };
 }
