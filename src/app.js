@@ -2644,7 +2644,7 @@ async function generateOpenAiCompatibleJsonContent(provider, model, prompt, trac
       estimated: !stream.inputTokens
     };
     recordApiUsage({ provider, model, ...usage });
-    const content = stream.content || "";
+    let content = stream.content || "";
     finishModelTiming(timing, { ok: true, usage, contentChars: content.length });
     return content;
   } catch (error) {
@@ -2793,7 +2793,7 @@ async function generateAnthropicJsonContent(model, prompt, tracking = {}) {
       onUpdate: (it, ot, m) => updateActiveStreamUsage(it, ot, m)
     });
     clearActiveStreamUsage();
-    const content = stream.content || "";
+    let content = stream.content || "";
     const usage = {
       inputTokens: stream.inputTokens || budget.inputTokens,
       outputTokens: stream.outputTokens || Math.ceil(content.length / 4) || budget.outputTokenLimit,
@@ -3087,7 +3087,7 @@ async function generateGeminiJsonContent(model, prompt, extraParts = [], trackin
     });
     markIngestPhase(`stream done (${stream.content?.length || 0} chars, ${stream.inputTokens || 0}/${stream.outputTokens || 0} tokens)`);
     clearActiveStreamUsage();
-    const content = stream.content || "";
+    let content = stream.content || "";
     const usage = {
       inputTokens: stream.inputTokens || budget.inputTokens,
       outputTokens: stream.outputTokens || Math.ceil(content.length / 4) || budget.outputTokenLimit,
