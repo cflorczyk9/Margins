@@ -76,3 +76,14 @@ npm test
 - No Margins-owned chat surface.
 - Source ingest requires a configured model key.
 - Write-back is proposal-first, never silent.
+
+## Project status
+
+Margins is a fast-built MVP partway through a single-file → modules refactor. I'm tracking that work honestly here rather than letting the shape surprise anyone reading the code:
+
+- `src/app.js` was the only file for a while and is still ~11K lines as I peel pieces off. Recent extractions live under `src/core/` (state, vault, utilities, templates, timing, review-parser) and `src/views/` (Files tab, Entities, Graph, LLM, Inbox). Next splits: the Inbox flow and the Dream tab.
+- `styles.css` is one monolithic stylesheet. Component-co-located styles are deferred until the JS module split stabilizes — splitting both at once would cause too much churn.
+- `wizard.html` is the onboarding wizard, structurally separate from `app.html` so each route owns its own bundle. The single-file inline-style/inline-script shape is legacy and pending its own extraction.
+- The Files-tab Quiet redesign (May 2026) is the most recent extraction pass — new `src/views/filesQuietHelpers.js` is the shape future view modules should follow.
+
+If you're a reviewer: the code is loud about what's done well (BYOK boundary, FS Access API integration, review-first ingest, source-grounded wiki structure) and loud about what isn't (file size, CSS structure). Both are intentional snapshots of an ongoing refactor, not stopping points.

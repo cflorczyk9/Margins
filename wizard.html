@@ -1,4 +1,20 @@
 <!DOCTYPE html>
+<!--
+  Margins setup wizard.
+
+  Multi-step onboarding that scaffolds a vault folder, picks a starter
+  template, configures personas/folder mapping, then routes to app.html
+  for actual use. Linked from index.html's "Set it up" CTA via
+  `wizard.html#wizard`; the anti-flash <script> in <head> auto-shows
+  the wizard step immediately on direct entry.
+
+  Structurally separate from index.html (landing) and app.html (app)
+  so each route owns its own bundle and the landing stays light. The
+  single-file inline-style + inline-script shape is legacy — this
+  page predates the May 2026 src/views/ extraction work. Splitting
+  the wizard's JS/CSS into proper modules is tracked alongside the
+  rest of the refactor in PRODUCT-ROADMAP.md.
+-->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
