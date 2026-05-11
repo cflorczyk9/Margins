@@ -1757,10 +1757,13 @@ async function prepareInboxSave(fileName = "", options = {}) {
   startIngestProgress(targetFiles);
   renderSources();
 
+  startIngestTiming(`prepareInboxSave (${targetFiles.length} file${targetFiles.length === 1 ? "" : "s"})`);
   await savePendingRawSourcesImmediately(targetFiles);
   markProcessTimingPhase(targetFiles, "rawSavedMs");
+  markIngestPhase("savePendingRawSourcesImmediately");
   await prepareSourcesForProcessing(targetFiles);
   markProcessTimingPhase(targetFiles, "textReadyMs");
+  markIngestPhase("prepareSourcesForProcessing (PDF/DOCX extract)");
 
   const existingFileMap = new Map(state.currentFileMap || []);
   await prepareIngestReviews(
@@ -2166,7 +2169,9 @@ async function generateApiReviewQuestions(fileMap, files) {
 async function generateApiIngestReview(file, fileMap, mode) {
   const provider = els.apiProvider?.value || providerValue(state.apiSettings.providerLabel) || "gemini";
   const model = els.apiModel?.value.trim() || defaultModelForProvider(provider);
+  markIngestPhase(`buildApiIngestReviewPrompt start (provider=${provider})`);
   const prompt = buildApiIngestReviewPrompt(file, fileMap, mode);
+  markIngestPhase(`buildApiIngestReviewPrompt end (${prompt.length} chars)`);
   const timing = {
     purpose: "ingest_review",
     fileName: file.name,
@@ -2178,6 +2183,7 @@ async function generateApiIngestReview(file, fileMap, mode) {
 
   if (provider === "gemini") {
     const sourceParts = await geminiSourceParts(file);
+    markIngestPhase(`geminiSourceParts (${sourceParts.length} attachment${sourceParts.length === 1 ? "" : "s"})`);
     const compactPrompt = buildCompactApiIngestReviewPrompt(file, fileMap, mode);
     const fullSchema = geminiIngestReviewResponseSchema();
     const compactSchema = geminiCompactIngestReviewResponseSchema();
@@ -2251,6 +2257,36 @@ async function runCompactGeminiIngestRetry(runGeminiIngestReview) {
 // assembles the text deltas, tracks running token counts, and pushes
 // updates through onUpdate (which writes to state.activeStreamUsage
 // and ticks the processing-card meter).
+// Per-ingest timing tracker. Logs phase deltas + cumulative totals to
+// console when localStorage["margins.streamDebug"] === "1". Reset at
+// the start of each ingest. Margins ingests one source at a time, so
+// stateful tracking on a module-scoped variable is safe.
+let ingestTimingTracker = null;
+
+function startIngestTiming(label) {
+  let debug = false;
+  try { debug = localStorage.getItem("margins.streamDebug") === "1"; } catch {}
+  if (!debug) {
+    ingestTimingTracker = null;
+    return;
+  }
+  const start = performance.now();
+  console.log(`[ingest] ─── start: ${label} ───`);
+  ingestTimingTracker = {
+    start,
+    last: start,
+    mark(phase) {
+      const now = performance.now();
+      console.log(`[ingest] ${phase.padEnd(36, " ")} +${(now - this.last).toFixed(0).padStart(5)}ms  total ${(now - this.start).toFixed(0).padStart(6)}ms`);
+      this.last = now;
+    }
+  };
+}
+
+function markIngestPhase(phase) {
+  ingestTimingTracker?.mark(phase);
+}
+
 async function streamSseModelResponse(response, extractEvent, { onUpdate, model } = {}) {
   const debug = (() => {
     try { return localStorage.getItem("margins.streamDebug") === "1"; }
@@ -2846,6 +2882,7 @@ async function generateGeminiJsonContent(model, prompt, extraParts = [], trackin
     extraParts,
     outputTokenLimit
   });
+  markIngestPhase(`reserveApiBudget (input~${budget.inputTokens}, output cap ${budget.outputTokenLimit})`);
   const timing = beginModelTiming({
     ...tracking,
     provider: "gemini",
@@ -2858,9 +2895,11 @@ async function generateGeminiJsonContent(model, prompt, extraParts = [], trackin
   });
   tracking.record = timing;
   await waitForApiThrottle("gemini");
+  markIngestPhase(`waitForApiThrottle (${timing.throttleMs?.toFixed(0) || "?"}ms — wait done)`);
   timing.throttleMs = elapsedSince(timing.throttleStartedAt);
   timing.requestStartedAt = performance.now();
   try {
+    markIngestPhase(`fetch start (Gemini :streamGenerateContent)`);
     const response = await fetch(endpoint, {
       method: "POST",
       headers: {
@@ -2887,6 +2926,7 @@ async function generateGeminiJsonContent(model, prompt, extraParts = [], trackin
       }
       })
     });
+    markIngestPhase(`fetch headers received (HTTP ${response.status})`);
     timing.httpStatus = response.status;
     if (!response.ok) {
       const error = await apiErrorFromResponse(response, "Gemini");
@@ -2897,6 +2937,7 @@ async function generateGeminiJsonContent(model, prompt, extraParts = [], trackin
       model,
       onUpdate: (it, ot, m) => updateActiveStreamUsage(it, ot, m)
     });
+    markIngestPhase(`stream done (${stream.content?.length || 0} chars, ${stream.inputTokens || 0}/${stream.outputTokens || 0} tokens)`);
     clearActiveStreamUsage();
     const content = stream.content || "";
     const usage = {
@@ -3557,6 +3598,19 @@ function buildApiIngestReviewPrompt(file, fileMap, mode) {
   const askInstruction = mode === "auto"
     ? "Return no asks in auto mode."
     : `Return 0-${budget} specific Yes/No asks. Each ask MUST be phrasable as a yes/no decision; the user answers Yes, No, or Ignore (no free-form text). Ask when the answer changes bucket/path, type tag, promotion, propagation, sensitivity, priority, or follow-up.`;
+
+  // Extract the three slow context-building calls so we can time them
+  // individually when streamDebug is on. wikiContextForIngestPrompt
+  // scores every wiki page; for a large vault this can be the dominant
+  // cost. operatingContextForPrompt reads operator-manual + cookbook.
+  // sourceTextForModelPrompt may truncate large source bodies.
+  const sourceText = sourceTextForModelPrompt(file);
+  markIngestPhase(`  sourceTextForModelPrompt (${sourceText.length} chars)`);
+  const wikiCtx = wikiContextForIngestPrompt(fileMap, file);
+  markIngestPhase(`  wikiContextForIngestPrompt (${wikiCtx.length} chars, ${fileMap?.size || 0} wiki files)`);
+  const operatingCtx = operatingContextForPrompt(fileMap);
+  markIngestPhase(`  operatingContextForPrompt (${operatingCtx.length} chars)`);
+
   return `Review this uploaded source for Margins, a local-first source-to-wiki compiler. Return a filing judgment plus a compact pending-card review.
 
 The original file is already saved in raw/. Margins will show your JSON on the pending inbox card before writing the wiki.
@@ -3616,13 +3670,13 @@ Name: ${file.name}
 Type: ${file.type}
 Words: ${wordCount(file.text || "")}
 Text:
-${sourceTextForModelPrompt(file)}
+${sourceText}
 
 Current wiki context:
-${wikiContextForIngestPrompt(fileMap, file)}
+${wikiCtx}
 
 Operating guardrails:
-${operatingContextForPrompt(fileMap)}`;
+${operatingCtx}`;
 }
 
 function buildCompactApiIngestReviewPrompt(file, fileMap, mode) {
