@@ -370,8 +370,17 @@ const PENDING_SOURCE_PAGE_SIZE = 6;
 // DREAM_LOG_PATH, DREAM_MODES, DREAM_STAGES → core/dream-stats.js
 // RAW_SOURCE_DIR, LEGACY_RAW_SOURCE_DIR → core/vault.js
 const INGEST_PROGRESS_STEP_DELAYS_MS = [0, 1400, 4400, 12000];
-const INGEST_REVIEW_OUTPUT_TOKEN_FLOOR = 32768;
-const INGEST_REVIEW_COMPACT_RETRY_OUTPUT_TOKEN_FLOOR = 32768;
+// Output cap for the main ingest review. A 32K cap encouraged the
+// model to fill every optional field at maximum length — typical
+// response was 25K+ tokens and 100+ seconds of generation. 12K keeps
+// the schema's required fields comfortable + room for thorough
+// optional content, while cutting generation time by ~60%. If the
+// model hits the cap, the compact-retry path still fires.
+const INGEST_REVIEW_OUTPUT_TOKEN_FLOOR = 12288;
+// Compact retry should be MORE conservative than the full call so it
+// doesn't hit MAX_TOKENS and re-throw the same truncation error. The
+// compact prompt asks for a much smaller schema; 8K output is plenty.
+const INGEST_REVIEW_COMPACT_RETRY_OUTPUT_TOKEN_FLOOR = 8192;
 const DREAM_HELPER_OUTPUT_TOKEN_FLOOR = 12288;
 const DREAM_HELPER_RETRY_OUTPUT_TOKEN_FLOOR = 12288;
 const DREAM_BROKEN_LINK_DEFAULT_MAX_LINKS = 10;
@@ -420,6 +429,12 @@ Object.assign(state, {
   apiSecret: localStorage.getItem(STORAGE_KEYS.apiSecret) || "",
   apiGuardSettings: loadApiGuardSettings(),
   apiUsage: emptyApiUsage(),
+  // Set during a streaming model call; null otherwise. Drives the
+  // live token + cost display in the processing-card meter.
+  activeStreamUsage: null,
+  // True while loadExistingVault is in flight. Render functions show
+  // a single "Loading vault…" overlay instead of partial state.
+  vaultLoading: false,
   apiQuestionSource: "",
   ingestReviews: new Map(),
   ingestAnswers: new Map(),
@@ -469,9 +484,17 @@ const els = {
   saveApiKeyBtn: document.getElementById("save-api-key-btn"),
   clearApiKeyBtn: document.getElementById("clear-api-key-btn"),
   apiKeyStatus: document.getElementById("api-key-status"),
-  noKeyBanner: document.getElementById("no-key-banner"),
-  noKeyBannerCta: document.getElementById("no-key-banner-cta"),
   advancedPanel: document.querySelector("details.advanced-panel"),
+  apiGate: document.getElementById("api-gate"),
+  apiGateForm: document.getElementById("api-gate-form"),
+  apiGateError: document.getElementById("api-gate-error"),
+  gateProvider: document.getElementById("gate-provider"),
+  gateModel: document.getElementById("gate-model"),
+  gateApiKey: document.getElementById("gate-api-key"),
+  gateKeyLink: document.getElementById("gate-key-link"),
+  gateMaxRequestUsd: document.getElementById("gate-max-request-usd"),
+  gateMaxSessionUsd: document.getElementById("gate-max-session-usd"),
+  gateMaxOutputTokens: document.getElementById("gate-max-output-tokens"),
   dropCopyDefault: document.getElementById("drop-copy-default"),
   dropCopyConnect: document.getElementById("drop-copy-connect"),
   connectPromptTitle: document.getElementById("connect-prompt-title"),
@@ -709,10 +732,38 @@ initTimingModule({
   }
 });
 
+// Provider catalogue for the API gate modal. Declared before any code
+// that touches it (hydrateGateFromState → applyGateProviderToUi runs
+// during module init below). Keep in sync with src/core/api.js defaults.
+const GATE_PROVIDERS = {
+  gemini: {
+    label: "Gemini",
+    defaultModel: "gemini-2.5-flash",
+    endpoint: "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+    keyLink: "https://aistudio.google.com/apikey",
+    keyLinkLabel: "Get a free Gemini key →"
+  },
+  openai: {
+    label: "OpenAI",
+    defaultModel: "gpt-5-mini",
+    endpoint: "https://api.openai.com/v1/chat/completions",
+    keyLink: "https://platform.openai.com/api-keys",
+    keyLinkLabel: "Create an OpenAI API key →"
+  },
+  anthropic: {
+    label: "Anthropic",
+    defaultModel: "claude-3-5-haiku-latest",
+    endpoint: "https://api.anthropic.com/v1/messages",
+    keyLink: "https://console.anthropic.com/settings/keys",
+    keyLinkLabel: "Create an Anthropic API key →"
+  }
+};
+
 els.themeToggle.checked = state.theme === "dark";
 updateThemeToggleLabel();
 hydrateApiControls();
 hydrateApiGuardControls();
+hydrateGateFromState();
 ensureApiSecretReady();
 els.folderInput.addEventListener("change", handleSourceSelection);
 els.fileInput.addEventListener("change", handleSourceSelection);
@@ -778,12 +829,9 @@ document.addEventListener("keydown", (event) => {
 els.graphOpenNodeBtn?.addEventListener("click", openSelectedGraphNode);
 els.saveApiKeyBtn.addEventListener("click", saveApiControls);
 els.clearApiKeyBtn.addEventListener("click", clearApiControls);
-els.noKeyBannerCta?.addEventListener("click", () => {
-  if (els.advancedPanel) els.advancedPanel.open = true;
-  if (els.apiKey) {
-    els.apiKey.focus();
-    els.apiKey.scrollIntoView({ behavior: "smooth", block: "center" });
-  }
+els.apiGateForm?.addEventListener("submit", handleGateSubmit);
+els.gateProvider?.addEventListener("change", (event) => {
+  applyGateProviderToUi(event.target.value);
 });
 
 // Drop-zone connect/reconnect CTA. FS Access requires the permission
@@ -865,12 +913,111 @@ async function withBusyOperation(label, run) {
 
   activeOperation = label;
   updateActionState();
+  startUsageMeter(label);
   try {
     return await run();
   } finally {
     activeOperation = "";
     updateActionState();
+    stopUsageMeter();
   }
+}
+
+// Processing meter — lives in the bottom-right of the source card
+// that's currently being processed. Shows live elapsed time + tokens
+// burned for this run + estimated cost. The renderer plants the meter
+// DOM in renderProcessingMeter(file); the interval here finds it via
+// data-meter-file selector and writes textContent. Non-streaming for
+// V1, so per-call token deltas land in the meter when each model call
+// returns; elapsed time is live every 250ms.
+let usageMeterTickHandle = null;
+let usageMeterStartedAt = 0;
+let usageMeterBaseline = null;
+
+function startUsageMeter(label = "Processing…") {
+  if (!labelTouchesModel(label)) return;
+  usageMeterStartedAt = Date.now();
+  usageMeterBaseline = {
+    requests: state.apiUsage?.requests || 0,
+    tokens: state.apiUsage?.totalTokens || 0,
+    usd: state.apiUsage?.estimatedUsd || 0
+  };
+  renderUsageMeterTick();
+  if (usageMeterTickHandle) clearInterval(usageMeterTickHandle);
+  usageMeterTickHandle = setInterval(renderUsageMeterTick, 250);
+}
+
+function stopUsageMeter() {
+  if (usageMeterTickHandle) {
+    clearInterval(usageMeterTickHandle);
+    usageMeterTickHandle = null;
+  }
+  if (usageMeterStartedAt === 0) return;
+  // Final tick — write the completed elapsed/token/cost values into
+  // whichever processing meter is still on the page. The renderer may
+  // have swapped the card to a completed receipt by now; in that case
+  // the selector finds nothing and we silently move on.
+  const meter = document.querySelector(".processing-meter");
+  if (meter) {
+    meter.classList.add("is-idle");
+    const elapsed = (Date.now() - usageMeterStartedAt) / 1000;
+    const tokens = (state.apiUsage?.totalTokens || 0) - (usageMeterBaseline?.tokens || 0);
+    const usd = (state.apiUsage?.estimatedUsd || 0) - (usageMeterBaseline?.usd || 0);
+    writeMeterValues(meter, elapsed, tokens, usd);
+  }
+  usageMeterStartedAt = 0;
+  usageMeterBaseline = null;
+}
+
+function renderUsageMeterTick() {
+  if (usageMeterStartedAt === 0) return;
+  const meter = document.querySelector(".processing-meter");
+  if (!meter) return;
+  const elapsed = (Date.now() - usageMeterStartedAt) / 1000;
+  // While streaming: tokens + cost come from state.activeStreamUsage,
+  // which the SSE reader updates on every event. Once the stream
+  // closes, fall back to (post-call session delta vs baseline).
+  let tokens = 0;
+  let usd = 0;
+  const live = state.activeStreamUsage;
+  if (live) {
+    tokens = live.totalTokens || 0;
+    usd = estimateModelCostUsd(live.model, live.inputTokens || 0, live.outputTokens || 0);
+  } else {
+    tokens = (state.apiUsage?.totalTokens || 0) - (usageMeterBaseline?.tokens || 0);
+    usd = (state.apiUsage?.estimatedUsd || 0) - (usageMeterBaseline?.usd || 0);
+  }
+  writeMeterValues(meter, elapsed, tokens, usd);
+}
+
+function writeMeterValues(meter, elapsed, tokens, usd) {
+  const elapsedEl = meter.querySelector("[data-meter-elapsed]");
+  const tokensEl = meter.querySelector("[data-meter-tokens]");
+  const costEl = meter.querySelector("[data-meter-cost]");
+  // While a stream is in flight but tokens haven't been reported yet
+  // (provider buffers usage until the end, or response is buffered by
+  // an intermediate hop), show "receiving…" so the user knows the
+  // call is running rather than seeing a static "—".
+  const streaming = !!state.activeStreamUsage;
+  if (elapsedEl) elapsedEl.innerHTML = `<strong>${elapsed.toFixed(1)}s</strong>`;
+  if (tokensEl) tokensEl.innerHTML = tokens > 0
+    ? `<strong>${formatStatNumber(tokens)}</strong> tokens`
+    : streaming
+      ? `<span>receiving…</span>`
+      : "<span>—</span>";
+  if (costEl) costEl.innerHTML = usd > 0
+    ? `<strong>$${usd.toFixed(3)}</strong>`
+    : streaming
+      ? `<span>—</span>`
+      : "<span>—</span>";
+}
+
+function labelTouchesModel(label) {
+  if (!label) return false;
+  // Operations that actually call the model. Skip pure local work like
+  // "vault save" or "file deletion" so the meter doesn't flash for
+  // non-API operations.
+  return /process|ingest|review|maintenance|cleanup|llm|model|helper/i.test(label);
 }
 
 function isBusyOperation() {
@@ -959,14 +1106,86 @@ function renderApiStatus(message = "") {
   updateNoKeyBanner();
 }
 
-// Show a yellow "add your AI key" banner at the top of the inbox when
-// the user has reached app.html without a stored model key (e.g. they
-// took the "Open Margins" fast path on a fresh browser). Hides once a
-// key is saved.
+// API gate. Replaces the old soft "no-key" banner with a hard modal
+// that blocks the inbox/process flow until a model key is saved.
+// Once saved, the gate hides and the rest of the app is usable.
 function updateNoKeyBanner() {
-  if (!els.noKeyBanner) return;
+  if (!els.apiGate) return;
   const hasKey = Boolean(state.apiSecret) || Boolean(state.apiSettings?.hasApiKey);
-  els.noKeyBanner.hidden = hasKey;
+  els.apiGate.hidden = hasKey;
+}
+
+function applyGateProviderToUi(providerId) {
+  const provider = GATE_PROVIDERS[providerId] || GATE_PROVIDERS.gemini;
+  if (els.gateModel) els.gateModel.placeholder = provider.defaultModel;
+  if (els.gateKeyLink) {
+    els.gateKeyLink.href = provider.keyLink;
+    els.gateKeyLink.textContent = provider.keyLinkLabel;
+  }
+}
+
+function hydrateGateFromState() {
+  if (!els.apiGate) return;
+  const settings = state.apiSettings || {};
+  const guard = state.apiGuardSettings || {};
+  const currentProvider = providerValue(settings.providerLabel) || "gemini";
+  if (els.gateProvider) els.gateProvider.value = currentProvider;
+  if (els.gateModel) els.gateModel.value = settings.model || "";
+  if (els.gateApiKey) els.gateApiKey.value = "";
+  if (els.gateMaxRequestUsd && guard.maxRequestUsd) els.gateMaxRequestUsd.value = guard.maxRequestUsd;
+  if (els.gateMaxSessionUsd && guard.maxSessionUsd) els.gateMaxSessionUsd.value = guard.maxSessionUsd;
+  if (els.gateMaxOutputTokens && guard.maxOutputTokens) els.gateMaxOutputTokens.value = guard.maxOutputTokens;
+  applyGateProviderToUi(currentProvider);
+  if (els.apiGateError) {
+    els.apiGateError.hidden = true;
+    els.apiGateError.textContent = "";
+  }
+}
+
+function handleGateSubmit(event) {
+  event.preventDefault();
+  const provider = els.gateProvider?.value || "gemini";
+  const model = (els.gateModel?.value || "").trim() ||
+    defaultModelForProvider(provider);
+  const apiKey = (els.gateApiKey?.value || "").trim();
+
+  if (!apiKey) {
+    if (els.apiGateError) {
+      els.apiGateError.textContent = "Paste an API key from your provider's console to continue.";
+      els.apiGateError.hidden = false;
+    }
+    els.gateApiKey?.focus();
+    return;
+  }
+
+  // Save provider/model/key into the canonical apiSettings + apiSecret
+  // shape that the rest of the app reads.
+  saveApiSettings({
+    providerLabel: providerLabel(provider),
+    endpointUrl: defaultEndpointForProvider(provider),
+    model,
+    apiKey
+  });
+  state.apiSettings = loadApiSettings();
+  state.apiSecret = apiKey;
+  localStorage.setItem(STORAGE_KEYS.apiSecret, apiKey);
+
+  // Merge the three exposed spend limits with the existing guard
+  // settings; everything else keeps its current value.
+  const guard = {
+    ...state.apiGuardSettings,
+    maxRequestUsd: positiveNumber(els.gateMaxRequestUsd?.value, state.apiGuardSettings.maxRequestUsd),
+    maxSessionUsd: positiveNumber(els.gateMaxSessionUsd?.value, state.apiGuardSettings.maxSessionUsd),
+    maxOutputTokens: positiveInteger(els.gateMaxOutputTokens?.value, state.apiGuardSettings.maxOutputTokens)
+  };
+  state.apiGuardSettings = normalizeApiGuardSettings(guard);
+  localStorage.setItem(STORAGE_KEYS.apiGuard, JSON.stringify(state.apiGuardSettings));
+
+  if (els.apiProvider) els.apiProvider.value = provider;
+  if (els.apiModel) els.apiModel.value = model;
+  hydrateApiControls();
+  hydrateApiGuardControls();
+  renderApiStatus();
 }
 
 function hydrateApiGuardControls() {
@@ -1550,10 +1769,13 @@ async function prepareInboxSave(fileName = "", options = {}) {
   startIngestProgress(targetFiles);
   renderSources();
 
+  startIngestTiming(`prepareInboxSave (${targetFiles.length} file${targetFiles.length === 1 ? "" : "s"})`);
   await savePendingRawSourcesImmediately(targetFiles);
   markProcessTimingPhase(targetFiles, "rawSavedMs");
+  markIngestPhase("savePendingRawSourcesImmediately");
   await prepareSourcesForProcessing(targetFiles);
   markProcessTimingPhase(targetFiles, "textReadyMs");
+  markIngestPhase("prepareSourcesForProcessing (PDF/DOCX extract)");
 
   const existingFileMap = new Map(state.currentFileMap || []);
   await prepareIngestReviews(
@@ -1959,7 +2181,9 @@ async function generateApiReviewQuestions(fileMap, files) {
 async function generateApiIngestReview(file, fileMap, mode) {
   const provider = els.apiProvider?.value || providerValue(state.apiSettings.providerLabel) || "gemini";
   const model = els.apiModel?.value.trim() || defaultModelForProvider(provider);
+  markIngestPhase(`buildApiIngestReviewPrompt start (provider=${provider})`);
   const prompt = buildApiIngestReviewPrompt(file, fileMap, mode);
+  markIngestPhase(`buildApiIngestReviewPrompt end (${prompt.length} chars)`);
   const timing = {
     purpose: "ingest_review",
     fileName: file.name,
@@ -1971,6 +2195,7 @@ async function generateApiIngestReview(file, fileMap, mode) {
 
   if (provider === "gemini") {
     const sourceParts = await geminiSourceParts(file);
+    markIngestPhase(`geminiSourceParts (${sourceParts.length} attachment${sourceParts.length === 1 ? "" : "s"})`);
     const compactPrompt = buildCompactApiIngestReviewPrompt(file, fileMap, mode);
     const fullSchema = geminiIngestReviewResponseSchema();
     const compactSchema = geminiCompactIngestReviewResponseSchema();
@@ -1992,8 +2217,38 @@ async function generateApiIngestReview(file, fileMap, mode) {
     }
   } else if (provider === "openai" || provider === "local") {
     content = await generateOpenAiCompatibleJsonContent(provider, model, prompt, timing);
+  } else if (provider === "anthropic") {
+    content = await generateAnthropicJsonContent(model, prompt, timing);
   } else {
-    throw new Error("Direct browser calls are wired for Gemini and OpenAI-compatible endpoints right now.");
+    throw new Error("Direct browser calls are wired for Gemini, OpenAI, and Anthropic right now.");
+  }
+
+  // Debug aid: log the last 200 chars of `content` AND the first
+  // 200 chars + the specific JSON parse error so we can see exactly
+  // why parseApiIngestReview is rejecting it.
+  if (ingestTimingTracker) {
+    try {
+      const text = String(content || "");
+      const head = text.slice(0, 200);
+      const tail = text.slice(-200);
+      console.log(`[ingest] content head (first ${head.length} chars):`, head);
+      console.log(`[ingest] content tail (last ${tail.length} chars):`, tail);
+      // Try a raw JSON.parse to capture the exact error location.
+      try {
+        JSON.parse(text);
+        console.log("[ingest] raw JSON.parse: SUCCESS (content is valid JSON)");
+      } catch (parseErr) {
+        console.log(`[ingest] raw JSON.parse FAILED: ${parseErr.message}`);
+        // The error message in V8 includes "at position N" — slice
+        // around that position to see what's wrong.
+        const m = /position (\d+)/.exec(parseErr.message);
+        if (m) {
+          const pos = Number(m[1]);
+          const around = text.slice(Math.max(0, pos - 80), pos + 80);
+          console.log(`[ingest] content around position ${pos}:`, around);
+        }
+      }
+    } catch {}
   }
 
   try {
@@ -2001,6 +2256,9 @@ async function generateApiIngestReview(file, fileMap, mode) {
     review.modelTiming = publicModelTiming(timing.record);
     return review;
   } catch (error) {
+    if (ingestTimingTracker) {
+      console.log(`[ingest] parseApiIngestReview threw: code=${error?.code || "?"}, retry=${isModelOutputTruncatedError(error) ? "YES" : "no"}`);
+    }
     if (provider === "gemini" && runGeminiIngestReview && isModelOutputTruncatedError(error) && !retriedAfterTruncation) {
       markModelTimingParseFailure(timing.record, error);
       retriedAfterTruncation = true;
@@ -2036,6 +2294,290 @@ async function runCompactGeminiIngestRetry(runGeminiIngestReview) {
   }
 }
 
+// Shared SSE-stream reader for live token meters. Each provider has
+// its own SSE event shape; we pass an extractor that pulls the right
+// {delta, inputTokens, outputTokens} out of each event. The reader
+// assembles the text deltas, tracks running token counts, and pushes
+// updates through onUpdate (which writes to state.activeStreamUsage
+// and ticks the processing-card meter).
+// Per-ingest timing tracker. Logs phase deltas + cumulative totals to
+// console when localStorage["margins.streamDebug"] === "1". Reset at
+// the start of each ingest. Margins ingests one source at a time, so
+// stateful tracking on a module-scoped variable is safe.
+let ingestTimingTracker = null;
+
+function startIngestTiming(label) {
+  let debug = false;
+  try { debug = localStorage.getItem("margins.streamDebug") === "1"; } catch {}
+  if (!debug) {
+    ingestTimingTracker = null;
+    return;
+  }
+  const start = performance.now();
+  console.log(`[ingest] ─── start: ${label} ───`);
+  ingestTimingTracker = {
+    start,
+    last: start,
+    mark(phase) {
+      const now = performance.now();
+      console.log(`[ingest] ${phase.padEnd(36, " ")} +${(now - this.last).toFixed(0).padStart(5)}ms  total ${(now - this.start).toFixed(0).padStart(6)}ms`);
+      this.last = now;
+    }
+  };
+}
+
+function markIngestPhase(phase) {
+  ingestTimingTracker?.mark(phase);
+}
+
+// Attempt to repair a partially-truncated JSON string. The model
+// finished mid-output; the prefix may still contain a usable shape.
+// Walks the text tracking string state and bracket depth, then
+// closes any hanging quote, drops trailing colons/commas, and
+// appends the right sequence of `}` and `]` closers. Returns the
+// repaired string if it now parses, null otherwise.
+function repairTruncatedJson(text) {
+  const source = String(text || "");
+  if (!source.trim()) return null;
+  const stack = [];
+  let inString = false;
+  let escaped = false;
+  for (const ch of source) {
+    if (escaped) { escaped = false; continue; }
+    if (ch === "\\") { escaped = true; continue; }
+    if (ch === "\"") { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === "{") stack.push("}");
+    else if (ch === "[") stack.push("]");
+    else if (ch === "}" || ch === "]") {
+      if (stack[stack.length - 1] === ch) stack.pop();
+    }
+  }
+  let repaired = source;
+  // Close an unterminated string.
+  if (inString) repaired += "\"";
+  // Strip a trailing colon or comma — those leave the JSON in an
+  // intermediate state that no closer can fix.
+  repaired = repaired.replace(/[\s]*[,:]\s*$/, "");
+  // Close every still-open bracket/brace, deepest first.
+  while (stack.length) repaired += stack.pop();
+  try { JSON.parse(repaired); return repaired; }
+  catch { return null; }
+}
+
+async function streamSseModelResponse(response, extractEvent, { onUpdate, model } = {}) {
+  const debug = (() => {
+    try { return localStorage.getItem("margins.streamDebug") === "1"; }
+    catch { return false; }
+  })();
+  const log = (...args) => { if (debug) console.log("[stream]", ...args); };
+
+  if (!response.body || typeof response.body.getReader !== "function") {
+    log("no ReadableStream — falling back to .json()");
+    const json = await response.json();
+    return { content: "", inputTokens: 0, outputTokens: 0, fallbackJson: json };
+  }
+  log("starting stream", { contentType: response.headers.get("content-type") });
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let assembledText = "";
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let finishReason = "";
+  let eventCount = 0;
+  let parsedCount = 0;
+  let firstChunkAt = 0;
+
+  const ping = () => {
+    const liveOutput = outputTokens || Math.ceil(assembledText.length / 4);
+    onUpdate?.(inputTokens, liveOutput, model);
+  };
+
+  // Tolerate the JSON-array streaming format some providers fall back to
+  // (each chunk separated by `\n` instead of SSE `data:` + `\n\n`).
+  // We try SSE first per event-block; if no events parse from the buffer
+  // for a while, the "json-array" fallback below kicks in after the
+  // stream closes.
+
+  // Reusable per-event handler so the final-flush path below can reuse it.
+  const handleEvent = (raw) => {
+    eventCount += 1;
+    const dataParts = raw
+      .split("\n")
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trim());
+    if (!dataParts.length) {
+      log("event with no data: lines", raw.slice(0, 200));
+      return;
+    }
+    const dataStr = dataParts.join("\n");
+    if (dataStr === "[DONE]") return;
+    let payload;
+    try {
+      payload = JSON.parse(dataStr);
+    } catch (err) {
+      log("JSON parse failed", err.message, dataStr.slice(0, 200));
+      return;
+    }
+    parsedCount += 1;
+    const result = extractEvent(payload) || {};
+    log(`event #${parsedCount}`, {
+      keys: Object.keys(payload),
+      extracted: { hasDelta: !!result.delta, deltaLen: result.delta?.length, inputTokens: result.inputTokens, outputTokens: result.outputTokens, finishReason: result.finishReason }
+    });
+    if (result.delta) assembledText += result.delta;
+    if (typeof result.inputTokens === "number" && result.inputTokens > 0) {
+      inputTokens = result.inputTokens;
+    }
+    if (typeof result.outputTokens === "number" && result.outputTokens > 0) {
+      outputTokens = result.outputTokens;
+    }
+    if (result.finishReason) finishReason = result.finishReason;
+    ping();
+  };
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    if (!firstChunkAt) firstChunkAt = performance.now();
+    buffer += decoder.decode(value, { stream: true });
+    // Normalize all line endings to LF so the event-boundary search
+    // works whether the provider sends \n\n (LF), \r\n\r\n (CRLF),
+    // or \r\r (CR-only). Gemini's SSE arrives as CRLF, which is why
+    // the previous \n\n-only parser dropped every event.
+    buffer = buffer.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+    let eventEnd;
+    while ((eventEnd = buffer.indexOf("\n\n")) !== -1) {
+      const raw = buffer.slice(0, eventEnd);
+      buffer = buffer.slice(eventEnd + 2);
+      handleEvent(raw);
+    }
+  }
+
+  // Final flush. Two concerns:
+  // (1) TextDecoder's stream:true mode holds incomplete UTF-8 bytes;
+  //     call decode() with no args to release them.
+  // (2) The last SSE event often arrives without a trailing \n\n —
+  //     servers close the stream right after the final `data:` line.
+  //     Without this flush we'd silently drop the closing `}` of the
+  //     model's JSON, parseApiIngestReview would see unclosed JSON
+  //     and fire a needless compact retry. Re-use handleEvent so
+  //     it's parsed identically to in-loop events.
+  buffer += decoder.decode();
+  buffer = buffer.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  if (buffer.trim().length > 0 && buffer.includes("data:")) {
+    handleEvent(buffer);
+    buffer = "";
+  }
+
+  // Fallback: if the body was buffered as a single JSON array (or
+  // a non-SSE single JSON object), parse the leftover buffer and emit
+  // any events we missed. This recovers tokens/cost even when the
+  // wire format isn't strictly SSE.
+  const leftover = buffer.trim();
+  if (parsedCount === 0 && leftover.length > 0) {
+    log("no SSE events parsed; trying JSON-array fallback", { leftoverLen: leftover.length });
+    try {
+      const parsed = JSON.parse(leftover);
+      const items = Array.isArray(parsed) ? parsed : [parsed];
+      for (const payload of items) {
+        const result = extractEvent(payload) || {};
+        if (result.delta) assembledText += result.delta;
+        if (typeof result.inputTokens === "number" && result.inputTokens > 0) inputTokens = result.inputTokens;
+        if (typeof result.outputTokens === "number" && result.outputTokens > 0) outputTokens = result.outputTokens;
+        if (result.finishReason) finishReason = result.finishReason;
+      }
+      ping();
+    } catch (err) {
+      log("JSON-array fallback also failed", err.message, leftover.slice(0, 200));
+    }
+  }
+
+  log("stream done", {
+    events: eventCount,
+    parsedEvents: parsedCount,
+    assembledChars: assembledText.length,
+    inputTokens,
+    outputTokens,
+    finishReason,
+    timeToFirstChunkMs: firstChunkAt ? performance.now() - firstChunkAt : null
+  });
+
+  ping();
+  return { content: assembledText, inputTokens, outputTokens, finishReason };
+}
+
+function extractAnthropicSseEvent(payload) {
+  if (payload.type === "message_start") {
+    const usage = payload.message?.usage;
+    if (usage) return { inputTokens: usage.input_tokens, outputTokens: usage.output_tokens || 0 };
+    return {};
+  }
+  if (payload.type === "content_block_delta" && payload.delta?.type === "text_delta") {
+    return { delta: payload.delta.text || "" };
+  }
+  if (payload.type === "message_delta") {
+    const usage = payload.usage;
+    return {
+      outputTokens: usage?.output_tokens,
+      finishReason: payload.delta?.stop_reason || ""
+    };
+  }
+  return {};
+}
+
+function extractOpenAiSseEvent(payload) {
+  const result = {};
+  const choice = payload.choices?.[0];
+  if (choice?.delta?.content) result.delta = choice.delta.content;
+  if (choice?.finish_reason) result.finishReason = choice.finish_reason;
+  if (payload.usage) {
+    if (payload.usage.prompt_tokens) result.inputTokens = payload.usage.prompt_tokens;
+    if (payload.usage.completion_tokens) result.outputTokens = payload.usage.completion_tokens;
+  }
+  return result;
+}
+
+function extractGeminiSseEvent(payload) {
+  const result = {};
+  const candidate = payload.candidates?.[0];
+  if (candidate?.content?.parts) {
+    result.delta = candidate.content.parts.map((p) => p.text || "").join("");
+  }
+  if (candidate?.finishReason) result.finishReason = candidate.finishReason;
+  const usage = payload.usageMetadata;
+  if (usage) {
+    if (usage.promptTokenCount) result.inputTokens = usage.promptTokenCount;
+    const out = usage.candidatesTokenCount
+      || (usage.totalTokenCount && usage.promptTokenCount
+        ? usage.totalTokenCount - usage.promptTokenCount
+        : 0);
+    if (out > 0) result.outputTokens = out;
+  }
+  return result;
+}
+
+// Drives the live processing-card meter. Each SSE event from a
+// streaming model call calls this; clearing happens after the stream
+// closes so the post-call non-streaming display (delta vs. baseline)
+// can take over.
+function updateActiveStreamUsage(inputTokens, outputTokens, model) {
+  state.activeStreamUsage = {
+    inputTokens: inputTokens || 0,
+    outputTokens: outputTokens || 0,
+    totalTokens: (inputTokens || 0) + (outputTokens || 0),
+    model: model || ""
+  };
+  renderUsageMeterTick();
+}
+
+function clearActiveStreamUsage() {
+  state.activeStreamUsage = null;
+}
+
 async function generateOpenAiCompatibleJsonContent(provider, model, prompt, tracking = {}) {
   const endpoint = defaultEndpointForProvider(provider);
   const budget = reserveApiBudget({
@@ -2064,13 +2606,15 @@ async function generateOpenAiCompatibleJsonContent(provider, model, prompt, trac
       "Content-Type": "application/json"
     };
     if (state.apiSecret) headers.Authorization = `Bearer ${state.apiSecret}`;
-    const response = await fetchWithTimeout(endpoint, {
+    const response = await fetch(endpoint, {
       method: "POST",
       headers,
       body: JSON.stringify({
         model,
         temperature: 0.2,
         max_tokens: budget.outputTokenLimit,
+        stream: true,
+        stream_options: { include_usage: true },
         messages: [
           {
             role: "system",
@@ -2089,17 +2633,22 @@ async function generateOpenAiCompatibleJsonContent(provider, model, prompt, trac
       finishModelTiming(timing, { ok: false, error });
       throw error;
     }
-    const json = await response.json();
+    const stream = await streamSseModelResponse(response, extractOpenAiSseEvent, {
+      model,
+      onUpdate: (it, ot, m) => updateActiveStreamUsage(it, ot, m)
+    });
+    clearActiveStreamUsage();
     const usage = {
-      inputTokens: json.usage?.prompt_tokens || budget.inputTokens,
-      outputTokens: json.usage?.completion_tokens || budget.outputTokenLimit,
-      estimated: !json.usage
+      inputTokens: stream.inputTokens || budget.inputTokens,
+      outputTokens: stream.outputTokens || Math.ceil(stream.content.length / 4) || budget.outputTokenLimit,
+      estimated: !stream.inputTokens
     };
     recordApiUsage({ provider, model, ...usage });
-    const content = json.choices?.[0]?.message?.content || "";
+    let content = stream.content || "";
     finishModelTiming(timing, { ok: true, usage, contentChars: content.length });
     return content;
   } catch (error) {
+    clearActiveStreamUsage();
     if (!timing.finishedAt) finishModelTiming(timing, { ok: false, error });
     throw error;
   }
@@ -2182,6 +2731,84 @@ async function generateOpenAiCompatibleTextContent(provider, model, prompt, trac
     finishModelTiming(timing, { ok: true, usage, contentChars: content.length });
     return content;
   } catch (error) {
+    if (!timing.finishedAt) finishModelTiming(timing, { ok: false, error });
+    throw error;
+  }
+}
+
+// Streaming Anthropic ingest. Mirrors the Gemini/OpenAI JSON variants
+// — streams SSE so the processing-card meter sees live tokens, then
+// returns the assembled JSON text for parseApiIngestReview.
+async function generateAnthropicJsonContent(model, prompt, tracking = {}) {
+  const endpoint = defaultEndpointForProvider("anthropic");
+  const budget = reserveApiBudget({
+    provider: "anthropic",
+    model,
+    prompt,
+    extraParts: [],
+    outputTokenLimit: apiOutputTokenLimit()
+  });
+  const timing = beginModelTiming({
+    ...tracking,
+    provider: "anthropic",
+    model,
+    endpoint,
+    promptChars: prompt.length,
+    attachmentCount: 0,
+    attachmentBytes: 0,
+    outputTokenLimit: budget.outputTokenLimit
+  });
+  tracking.record = timing;
+  await waitForApiThrottle("anthropic");
+  timing.throttleMs = elapsedSince(timing.throttleStartedAt);
+  timing.requestStartedAt = performance.now();
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": state.apiSecret,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true"
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0.2,
+        max_tokens: budget.outputTokenLimit,
+        stream: true,
+        system: "You review one uploaded source for a local-first personal wiki. Return JSON only.",
+        messages: [
+          { role: "user", content: prompt }
+        ]
+      })
+    });
+    timing.httpStatus = response.status;
+    if (!response.ok) {
+      const error = await apiErrorFromResponse(response, "Anthropic");
+      finishModelTiming(timing, { ok: false, error });
+      throw error;
+    }
+    const stream = await streamSseModelResponse(response, extractAnthropicSseEvent, {
+      model,
+      onUpdate: (it, ot, m) => updateActiveStreamUsage(it, ot, m)
+    });
+    clearActiveStreamUsage();
+    let content = stream.content || "";
+    const usage = {
+      inputTokens: stream.inputTokens || budget.inputTokens,
+      outputTokens: stream.outputTokens || Math.ceil(content.length / 4) || budget.outputTokenLimit,
+      estimated: !stream.inputTokens
+    };
+    recordApiUsage({ provider: "anthropic", model, ...usage });
+    if (stream.finishReason === "max_tokens") {
+      const error = modelOutputTruncatedError("anthropic", content, stream.finishReason);
+      finishModelTiming(timing, { ok: false, usage, contentChars: content.length, error });
+      throw error;
+    }
+    finishModelTiming(timing, { ok: true, usage, contentChars: content.length });
+    return content;
+  } catch (error) {
+    clearActiveStreamUsage();
     if (!timing.finishedAt) finishModelTiming(timing, { ok: false, error });
     throw error;
   }
@@ -2340,8 +2967,27 @@ async function generateGeminiTextContent(model, prompt, tracking = {}, outputTok
 }
 
 async function generateGeminiJsonContent(model, prompt, extraParts = [], tracking = {}, options = {}) {
-  const endpoint = defaultEndpointForProvider("gemini").replace("{model}", encodeURIComponent(normalizeGeminiModel(model)));
-  const outputTokenLimit = positiveInteger(options.outputTokenLimit, apiOutputTokenLimit());
+  // Stream the response so the processing-card meter can show live
+  // token + cost updates as Gemini generates the JSON. Use
+  // streamGenerateContent?alt=sse instead of generateContent.
+  const safeModel = encodeURIComponent(normalizeGeminiModel(model));
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${safeModel}:streamGenerateContent?alt=sse`;
+  const baseLimit = positiveInteger(options.outputTokenLimit, apiOutputTokenLimit());
+  // Dynamic output cap: scale with input size so longer articles get
+  // enough room for their structured response. Floor at the baseline
+  // (so short sources still fit comfortably); ceil at 32K (Gemini's
+  // practical cap for a single response).
+  const inputTokenEstimate = estimateRequestInputTokens(prompt, extraParts);
+  const dynamicOutputLimit = Math.max(
+    baseLimit,
+    Math.min(32768, Math.ceil(inputTokenEstimate * 0.5))
+  );
+  // CoT budget: bounded so we get predictable accounting against
+  // maxOutputTokens. Reasoning helps quality but a few K is plenty
+  // for an ingest-review task. Gemini 2.5 Flash counts these tokens
+  // against maxOutputTokens, so the cap below is sized for both.
+  const thinkingBudget = 2048;
+  const outputTokenLimit = dynamicOutputLimit + thinkingBudget;
   const budget = reserveApiBudget({
     provider: "gemini",
     model,
@@ -2349,6 +2995,7 @@ async function generateGeminiJsonContent(model, prompt, extraParts = [], trackin
     extraParts,
     outputTokenLimit
   });
+  markIngestPhase(`reserveApiBudget (input~${budget.inputTokens}, output cap ${budget.outputTokenLimit})`);
   const timing = beginModelTiming({
     ...tracking,
     provider: "gemini",
@@ -2361,58 +3008,128 @@ async function generateGeminiJsonContent(model, prompt, extraParts = [], trackin
   });
   tracking.record = timing;
   await waitForApiThrottle("gemini");
+  markIngestPhase(`waitForApiThrottle (${timing.throttleMs?.toFixed(0) || "?"}ms — wait done)`);
   timing.throttleMs = elapsedSince(timing.throttleStartedAt);
   timing.requestStartedAt = performance.now();
-  try {
-    const response = await fetchWithTimeout(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": state.apiSecret
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            role: "user",
-            parts: [
-              {
-                text: prompt
-              },
-              ...extraParts
-            ]
-          }
-        ],
-      generationConfig: {
-        temperature: 0.2,
-        responseMimeType: "application/json",
-        responseSchema: options.responseSchema,
-        maxOutputTokens: budget.outputTokenLimit
+  // Request body is constructed once and re-sent on transient
+  // server-side failures (5xx / 429). Google's API gateway times
+  // out around 60s and returns 503; their docs say retry. We do
+  // one retry with a short backoff before surfacing the error to
+  // the user.
+  const requestBody = JSON.stringify({
+    contents: [
+      {
+        role: "user",
+        parts: [
+          { text: prompt },
+          ...extraParts
+        ]
       }
-      })
-    });
+    ],
+    generationConfig: {
+      temperature: 0.2,
+      responseMimeType: "application/json",
+      responseSchema: options.responseSchema,
+      maxOutputTokens: budget.outputTokenLimit,
+      // Bounded CoT budget. Gemini 2.5 Flash counts thinking
+      // tokens against maxOutputTokens, so the visibleCap =
+      // outputTokenLimit - thinkingBudget. Leaves CoT enabled
+      // (helps with multi-file filing decisions and contradiction
+      // detection) while keeping accounting predictable.
+      thinkingConfig: { thinkingBudget }
+    }
+  });
+  const requestInit = {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-goog-api-key": state.apiSecret
+    },
+    body: requestBody
+  };
+  try {
+    let response = null;
+    const maxAttempts = 2;
+    let attempt = 0;
+    while (attempt < maxAttempts) {
+      attempt += 1;
+      markIngestPhase(`fetch start (Gemini :streamGenerateContent, attempt ${attempt}/${maxAttempts})`);
+      response = await fetch(endpoint, requestInit);
+      markIngestPhase(`fetch headers received (HTTP ${response.status})`);
+      const transient = response.status === 429 || (response.status >= 500 && response.status < 600);
+      if (transient && attempt < maxAttempts) {
+        // Read + discard the body so the connection cleans up.
+        try { await response.text(); } catch {}
+        const backoffMs = response.status === 429 ? 30000 : 8000;
+        markIngestPhase(`transient ${response.status}; backing off ${backoffMs / 1000}s and retrying`);
+        await sleep(backoffMs);
+        continue;
+      }
+      break;
+    }
     timing.httpStatus = response.status;
     if (!response.ok) {
       const error = await apiErrorFromResponse(response, "Gemini");
+      // Annotate transient errors so the inbox UI can frame them
+      // as Google-side rather than user-data-side. The error
+      // message itself already mentions the HTTP code; the flag
+      // lets downstream code suggest "try again in a minute"
+      // rather than "check your data".
+      if (response.status === 429 || (response.status >= 500 && response.status < 600)) {
+        error.transient = true;
+      }
       finishModelTiming(timing, { ok: false, error });
       throw error;
     }
-    const json = await response.json();
-    const candidate = json.candidates?.[0] || {};
-    const content = candidate.content?.parts?.map((part) => part.text || "").join("\n") || "";
+    const stream = await streamSseModelResponse(response, extractGeminiSseEvent, {
+      model,
+      onUpdate: (it, ot, m) => updateActiveStreamUsage(it, ot, m)
+    });
+    markIngestPhase(`stream done (${stream.content?.length || 0} chars, ${stream.inputTokens || 0}/${stream.outputTokens || 0} tokens)`);
+    clearActiveStreamUsage();
+    let content = stream.content || "";
     const usage = {
-      inputTokens: json.usageMetadata?.promptTokenCount || budget.inputTokens,
-      outputTokens: geminiOutputTokenCount(json.usageMetadata) || budget.outputTokenLimit,
-      estimated: !json.usageMetadata
+      inputTokens: stream.inputTokens || budget.inputTokens,
+      outputTokens: stream.outputTokens || Math.ceil(content.length / 4) || budget.outputTokenLimit,
+      estimated: !stream.inputTokens
     };
     recordApiUsage({ provider: "gemini", model, ...usage });
-    if (isGeminiOutputTruncated(candidate, content)) {
-      const error = modelOutputTruncatedError("gemini", content, candidate.finishReason || "");
-      finishModelTiming(timing, { ok: false, usage, contentChars: content.length, error });
-      throw error;
+    if (stream.finishReason && stream.finishReason !== "STOP" && stream.finishReason !== "MAX_TOKENS_REACHED") {
+      // Treat other terminal reasons (SAFETY, RECITATION, OTHER) the same as truncation.
+    }
+    if (stream.finishReason === "MAX_TOKENS" || stream.finishReason === "MAX_TOKENS_REACHED") {
+      // Three cases:
+      // (1) Visible JSON closes cleanly even though Gemini said
+      //     MAX_TOKENS (CoT burned the budget, output completed).
+      //     → parse succeeds, use as-is.
+      // (2) Output was actually truncated mid-JSON but the prefix
+      //     contains usable content. → repair by closing hanging
+      //     strings/brackets/braces, then parse. If it parses,
+      //     use the repaired content. Caller gets a partial-but-
+      //     valid response instead of a 30s retry.
+      // (3) Repair also fails. → genuine truncation, throw.
+      let usable = null;
+      try { JSON.parse(content); usable = content; } catch {}
+      if (!usable) {
+        const repaired = repairTruncatedJson(content);
+        if (repaired) {
+          usable = repaired;
+          if (ingestTimingTracker) {
+            console.log(`[ingest] MAX_TOKENS but JSON repaired: original ${content.length} chars, repaired ${repaired.length} chars`);
+          }
+        }
+      }
+      if (!usable) {
+        const error = modelOutputTruncatedError("gemini", content, stream.finishReason);
+        finishModelTiming(timing, { ok: false, usage, contentChars: content.length, error });
+        throw error;
+      }
+      content = usable;
     }
     finishModelTiming(timing, { ok: true, usage, contentChars: content.length });
     return content;
   } catch (error) {
+    clearActiveStreamUsage();
     if (!timing.finishedAt) finishModelTiming(timing, { ok: false, error });
     throw error;
   }
@@ -3052,7 +3769,20 @@ function buildApiIngestReviewPrompt(file, fileMap, mode) {
   const budget = questionBudgetForMode(mode);
   const askInstruction = mode === "auto"
     ? "Return no asks in auto mode."
-    : `Return 0-${budget} specific asks. Ask when the answer changes bucket/path, type tag, promotion, propagation, sensitivity, priority, or follow-up.`;
+    : `Return 0-${budget} specific Yes/No asks. Each ask MUST be phrasable as a yes/no decision; the user answers Yes, No, or Ignore (no free-form text). Ask when the answer changes bucket/path, type tag, promotion, propagation, sensitivity, priority, or follow-up.`;
+
+  // Extract the three slow context-building calls so we can time them
+  // individually when streamDebug is on. wikiContextForIngestPrompt
+  // scores every wiki page; for a large vault this can be the dominant
+  // cost. operatingContextForPrompt reads operator-manual + cookbook.
+  // sourceTextForModelPrompt may truncate large source bodies.
+  const sourceText = sourceTextForModelPrompt(file);
+  markIngestPhase(`  sourceTextForModelPrompt (${sourceText.length} chars)`);
+  const wikiCtx = wikiContextForIngestPrompt(fileMap, file);
+  markIngestPhase(`  wikiContextForIngestPrompt (${wikiCtx.length} chars, ${fileMap?.size || 0} wiki files)`);
+  const operatingCtx = operatingContextForPrompt(fileMap);
+  markIngestPhase(`  operatingContextForPrompt (${operatingCtx.length} chars)`);
+
   return `Review this uploaded source for Margins, a local-first source-to-wiki compiler. Return a filing judgment plus a compact pending-card review.
 
 The original file is already saved in raw/. Margins will show your JSON on the pending inbox card before writing the wiki.
@@ -3084,6 +3814,7 @@ Contract:
 - Do not include transcript dumps, unprocessed YAML/frontmatter, embed syntax, or generic filing questions.
 - Do not apply special handling for document classes. Infer durable patterns from current wiki context, and explain any structural gap before proposing new tags or pages.
 - Review mode is ${reviewModeLabel(mode)}. Question budget: ${budget}.
+- Length: be thorough but tight. Target ~6-10K output tokens. Skip optional fields the source does not strongly support. Don't pad sentences. Prefer fewer high-signal bullets over many low-signal ones.
 
 Return JSON in this shape:
 {
@@ -3103,7 +3834,8 @@ Return JSON in this shape:
   "filingSteps": ["Reading PDF — 12 pages, ~3,200 words", "Detected 6 entities · 4 already in your brain", "Created Source Title as a new source", "Updated Existing Entity · concrete source-supported change", "Linked to Existing Page and Proposed Page", "Discovered: concrete contradiction or conflict", "Prepared source page · 3 entity updates · 1 item flagged for review"],
   "discoveries": [{"kind":"Contradiction","title":"Short label","detail":"What changed or conflicts.","severity":"review"}],
   "financialDetails": {"accounts":[],"figures":[],"holdings":[],"transactions":[],"caveats":[]},
-  "asks": [{"kind":"Follow-up|Identity|Priority|Sensitivity|Propagation","question":"Specific question.","whyAsk":"What answer changes.","recommendation":"My take: ...","options":["Recommended option","Alternative","Skip"]}]
+  "asks": [{"kind":"Follow-up|Identity|Priority|Sensitivity|Propagation","question":"Yes/no question phrased so user can answer Yes, No, or Ignore.","whyAsk":"What answer changes.","recommendation":"My take: yes/no with one-line reason."}]
+- Questions MUST be phrasable as Yes/No decisions. Margins shows three answer buttons (Yes / No / Ignore). Do not propose multi-choice or open-ended options — the user has no way to enter free-form text.
 }
 
 Uploaded source:
@@ -3111,20 +3843,20 @@ Name: ${file.name}
 Type: ${file.type}
 Words: ${wordCount(file.text || "")}
 Text:
-${sourceTextForModelPrompt(file)}
+${sourceText}
 
 Current wiki context:
-${wikiContextForIngestPrompt(fileMap, file)}
+${wikiCtx}
 
 Operating guardrails:
-${operatingContextForPrompt(fileMap)}`;
+${operatingCtx}`;
 }
 
 function buildCompactApiIngestReviewPrompt(file, fileMap, mode) {
   const budget = questionBudgetForMode(mode);
   const askInstruction = mode === "auto"
     ? "Return an empty asks array in auto mode."
-    : `Return 0-${Math.min(1, budget)} ask. Ask only if the answer changes the recommended filing path or sensitivity.`;
+    : `Return 0-${Math.min(1, budget)} Yes/No ask (user answers Yes/No/Ignore — no free-form). Ask only if the answer changes the recommended filing path or sensitivity.`;
   return `COMPACT RETRY: the previous Margins ingest review was cut off before complete JSON. Return a smaller complete JSON object. The LLM is still the only review engine; do not use placeholders or local heuristics.
 
 Contract:
@@ -3739,6 +4471,11 @@ function bindSourceListControls() {
 }
 
 function activeActivityFileMap() {
+  // Suppress activity while loadExistingVault is in flight; otherwise
+  // any incidental render call (workflow state, action state, etc.)
+  // would render the wiki portion immediately and surface staged
+  // results before the raw/ scan finishes.
+  if (state.vaultLoading) return new Map();
   return state.currentFileMap || state.loadedFileMap || new Map();
 }
 
@@ -5802,6 +6539,7 @@ function activityTimelineRecords(fileMap) {
     ...pendingActivityRecords()
   ].sort((left, right) => (
     right.sortTimestamp - left.sortTimestamp ||
+    String(right.path || "").localeCompare(String(left.path || "")) ||
     left.title.localeCompare(right.title)
   ));
 }
@@ -5833,7 +6571,7 @@ function activitySourceRecord(path, body, fileMap) {
     summary: clampSentence(summary || "Source note filed in the vault.", 260),
     rawPath,
     dateValue,
-    sortTimestamp: sourceActivitySortTimestamp(dateValue),
+    sortTimestamp: sourceActivitySortTimestamp(dateValue, fields),
     typeLabel: sourceActivityTypeLabel(rawPath || path),
     typeClass,
     links,
@@ -5915,7 +6653,16 @@ function sourceActivityDateValue(fields, path) {
   return cleanSummary(fields.updated || fields.created || fields.event_date || sourceDateFromPath(path));
 }
 
-function sourceActivitySortTimestamp(value) {
+// Activity sort needs sub-day precision so sources processed on the
+// same day appear in true chronological order (newest first). Prefer
+// the ISO `reviewed_at` stamp the compiler writes on every
+// model-reviewed source; fall back to the date-level value for older
+// sources written before this field existed.
+function sourceActivitySortTimestamp(value, fields = null) {
+  if (fields?.reviewed_at) {
+    const precise = activityDateValue(cleanSummary(fields.reviewed_at));
+    if (precise) return precise.getTime();
+  }
   return activityDateValue(value)?.getTime() || 0;
 }
 
@@ -6256,7 +7003,26 @@ function renderSourceProcessingChecklist(file) {
       ...line,
       settled: Boolean(line.done && !line.active)
     }));
-  return renderReceiptLog(lines, { processing: true });
+  return `
+    ${renderReceiptLog(lines, { processing: true })}
+    ${renderProcessingMeter(file)}
+  `;
+}
+
+// Card-anchored meter — bottom-right of the source card while
+// processing. Shows live elapsed time, tokens, and estimated cost.
+// Updated by the startUsageMeter / renderUsageMeterTick interval,
+// which queries by data-meter-file so the right card gets updated
+// even if the source list re-renders mid-flight.
+function renderProcessingMeter(file) {
+  return `
+    <div class="processing-meter" data-meter-file="${escapeHtml(file.name || "")}">
+      <span class="processing-meter-dot" aria-hidden="true"></span>
+      <span class="processing-meter-item" data-meter-elapsed>0.0s</span>
+      <span class="processing-meter-item" data-meter-tokens>—</span>
+      <span class="processing-meter-item" data-meter-cost>—</span>
+    </div>
+  `;
 }
 
 function renderSourceGeneratedChecklist(file, review) {
@@ -7268,12 +8034,14 @@ function renderSourcePropagation(file) {
   `;
 }
 
+// V1.1: every review question collapses to Yes / No / Ignore. The LLM
+// is prompted to phrase questions as yes/no decisions, and the UI
+// renders these three buttons regardless of any LLM-supplied options.
+// Answers are recorded locally — no follow-up model call needed.
 function questionOptionsWithSkip(question) {
-  const options = question.options?.length ? question.options : ["Yes", "No", "Use default"];
-  const optionsWithSkip = options.some((option) => String(option).toLowerCase() === "skip")
-    ? options
-    : [...options, "Skip"];
-  return uniqueBy(optionsWithSkip.map((option) => displayQuestionOption(question, option)).filter((option) => option.value), (option) => option.value.toLowerCase());
+  return ["Yes", "No", "Ignore"]
+    .map((option) => displayQuestionOption(question, option))
+    .filter((option) => option.value);
 }
 
 function sourceIngestSummary(file) {
