@@ -1,0 +1,788 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Margins — see the loop</title>
+<link rel="icon" href="../favicon.svg" type="image/svg+xml" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --vermillion: #d63a2f;
+    --cobalt: #2c5aa0;
+    --mustard: #f0c14b;
+    --violet: #6a4f8c;
+    --green-poly: #6fa863;
+    --ink: #1a1612;
+    --muted: #847a6b;
+    --line: #e8e2d6;
+    --paper: #ffffff;
+    --bg: #faf7f2;
+    --accent: var(--vermillion);
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Manrope', system-ui, -apple-system, sans-serif;
+    font-weight: 400;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .mono {
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 0.92em;
+  }
+
+  a { color: var(--ink); text-decoration: none; }
+  a:hover { color: var(--accent); }
+
+  /* ===================== shell ===================== */
+  .shell {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 28px 32px 80px;
+  }
+
+  /* ===================== top bar ===================== */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 32px;
+    border-bottom: 1px solid var(--line);
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 700;
+    font-size: 18px;
+    letter-spacing: -0.01em;
+  }
+  .brand-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 999px;
+    background: var(--vermillion);
+    display: inline-block;
+  }
+  .topnav {
+    display: flex;
+    gap: 22px;
+    font-size: 14px;
+    color: var(--muted);
+  }
+  .topnav a:hover { color: var(--ink); }
+
+  /* ===================== hero ===================== */
+  .hero {
+    padding: 88px 0 56px;
+    border-bottom: 1px solid var(--line);
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 56px;
+    align-items: center;
+  }
+  .hero-eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 18px;
+  }
+  .hero h1 {
+    font-size: 56px;
+    line-height: 1.04;
+    letter-spacing: -0.025em;
+    font-weight: 700;
+    margin: 0 0 22px;
+  }
+  .hero h1 .accent { color: var(--vermillion); }
+  .hero p.lede {
+    font-size: 19px;
+    line-height: 1.5;
+    color: var(--ink);
+    margin: 0 0 14px;
+    max-width: 38em;
+  }
+  .hero p.sub {
+    font-size: 15px;
+    color: var(--muted);
+    margin: 0 0 36px;
+    max-width: 36em;
+  }
+  .scroll-cue {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--muted);
+    border: 1px solid var(--line);
+    background: var(--paper);
+    padding: 10px 14px;
+    border-radius: 999px;
+  }
+  .scroll-cue .arrow {
+    width: 14px;
+    height: 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .scroll-cue .arrow svg { display: block; }
+  .scroll-cue:hover { color: var(--ink); border-color: var(--ink); }
+
+  .hero-actions {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 0 0 18px;
+  }
+  .hero-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 11px 18px;
+    border-radius: 10px;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    text-decoration: none;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: transform 0.12s ease, background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+  }
+  .hero-btn-primary {
+    background: var(--vermillion);
+    color: #fff;
+  }
+  .hero-btn-primary:hover { transform: translateY(-1px); background: #b22618; }
+  .hero-btn-ghost {
+    background: var(--paper);
+    color: var(--ink);
+    border-color: var(--line-strong, #d8d0bf);
+  }
+  .hero-btn-ghost:hover { border-color: var(--ink); }
+
+  /* hero illustration: a tiny composition with all five colors */
+  .hero-art {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    max-width: 360px;
+    justify-self: end;
+    width: 100%;
+  }
+  .hero-art svg { width: 100%; height: 100%; display: block; }
+
+  /* ===================== section heads ===================== */
+  .section-title {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--muted);
+    margin: 80px 0 28px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .section-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--line);
+  }
+
+  /* ===================== the loop ===================== */
+  .loop {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+  .step {
+    display: grid;
+    grid-template-columns: 80px 1fr 380px;
+    gap: 40px;
+    align-items: center;
+    padding: 56px 0;
+    border-bottom: 1px dashed var(--line);
+  }
+  .step:last-child { border-bottom: none; }
+
+  .step-num {
+    font-family: 'Manrope', sans-serif;
+    font-weight: 300;
+    font-size: 88px;
+    line-height: 1;
+    letter-spacing: -0.04em;
+    color: var(--ink);
+  }
+  .step h2 {
+    font-size: 28px;
+    line-height: 1.18;
+    letter-spacing: -0.015em;
+    font-weight: 700;
+    margin: 0 0 12px;
+  }
+  .step h2 .accent { color: var(--accent); }
+  .step p {
+    font-size: 16px;
+    line-height: 1.55;
+    color: var(--ink);
+    margin: 0 0 10px;
+    max-width: 38em;
+  }
+  .step p.aside {
+    color: var(--muted);
+    font-size: 14px;
+    margin-top: 8px;
+  }
+  .step .step-art {
+    aspect-ratio: 5 / 4;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    overflow: hidden;
+    position: relative;
+  }
+  .step .step-art svg { width: 100%; height: 100%; display: block; }
+
+  /* per-step accent dot before title */
+  .step-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+  .step-tag .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    background: var(--ink);
+    display: inline-block;
+  }
+  .step-1 .step-tag .dot { background: var(--mustard); }
+  .step-2 .step-tag .dot { background: var(--cobalt); }
+  .step-3 .step-tag .dot { background: var(--vermillion); }
+  .step-4 .step-tag .dot { background: var(--green-poly); }
+  .step-5 .step-tag .dot { background: var(--ink); }
+  .step-6 .step-tag .dot { background: var(--violet); }
+
+  /* ===================== three rules ===================== */
+  .rules {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 22px;
+  }
+  .rule {
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 24px 22px;
+  }
+  .rule h3 {
+    font-size: 16px;
+    margin: 0 0 10px;
+    font-weight: 700;
+    letter-spacing: -0.005em;
+  }
+  .rule p {
+    font-size: 14px;
+    color: var(--muted);
+    margin: 0;
+    line-height: 1.55;
+  }
+  .rule .pill {
+    display: inline-block;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--muted);
+    border: 1px solid var(--line);
+    padding: 3px 8px;
+    border-radius: 999px;
+    margin-bottom: 12px;
+  }
+
+  /* ===================== what it's for ===================== */
+  .for-block {
+    margin-top: 60px;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 32px 36px;
+  }
+  .for-block p {
+    margin: 0;
+    font-size: 16px;
+    line-height: 1.6;
+    max-width: 56em;
+    color: var(--ink);
+  }
+  .for-block p + p { margin-top: 14px; color: var(--muted); font-size: 14px; }
+  .for-block a { border-bottom: 1px solid var(--accent); color: var(--accent); }
+
+  /* ===================== footer ===================== */
+  footer {
+    margin-top: 80px;
+    padding: 28px 0 0;
+    border-top: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  footer a { color: var(--muted); }
+  footer a:hover { color: var(--ink); }
+  footer .foot-brand { display: flex; align-items: center; gap: 10px; }
+  footer .foot-brand .brand-dot { width: 10px; height: 10px; }
+
+  /* ===================== responsive ===================== */
+  @media (max-width: 880px) {
+    .hero {
+      grid-template-columns: 1fr;
+      gap: 36px;
+      padding: 56px 0 40px;
+    }
+    .hero h1 { font-size: 40px; }
+    .hero-art { max-width: 240px; }
+    .step {
+      grid-template-columns: 48px 1fr;
+      gap: 18px;
+      padding: 40px 0;
+    }
+    .step-num { font-size: 56px; }
+    .step .step-art {
+      grid-column: 1 / -1;
+      margin-top: 8px;
+    }
+    .rules { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- ===================== top bar ===================== -->
+  <div class="topbar">
+    <div class="brand">
+      <span class="brand-dot"></span>
+      <span>Margins</span>
+    </div>
+    <nav class="topnav">
+      <a href="#loop">The loop</a>
+      <a href="#rules">Rules</a>
+      <a href="#for">What it's for</a>
+      <a href="https://github.com/cflorczyk9/margins" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </div>
+
+  <!-- ===================== hero ===================== -->
+  <section class="hero">
+    <div>
+      <div class="hero-eyebrow">A product tour, not a pitch</div>
+      <h1>Drop files in. <span class="accent">Get a wiki out.</span> Files stay on your disk.</h1>
+      <p class="lede">Margins is a vault-builder. Hand it transcripts, PDFs, notes, screenshots. It drafts source pages, concept pages, and entity pages — and waits for you to approve them before anything lands.</p>
+      <p class="sub">Bring your own Gemini, OpenAI, or Anthropic key. Margins makes the call. The result is plain markdown in a folder you control.</p>
+      <div class="hero-actions">
+        <a class="hero-btn hero-btn-primary" href="../index.html#wizard">
+          Set it up
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+            <path d="M3 7h8M8 4l3 3-3 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </a>
+        <a class="hero-btn hero-btn-ghost" href="../app.html">
+          Open Margins
+        </a>
+      </div>
+      <a class="scroll-cue" href="#loop">
+        <span class="arrow">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M7 2v9M3 7l4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </span>
+        See the loop
+      </a>
+    </div>
+    <div class="hero-art" aria-hidden="true">
+      <svg viewBox="0 0 360 360">
+        <!-- mustard disc (step 1 color) -->
+        <circle cx="92" cy="100" r="56" fill="#f0c14b"/>
+        <!-- cobalt arc (step 2 color) -->
+        <path d="M70 220 A110 110 0 0 1 290 220" stroke="#2c5aa0" stroke-width="14" fill="none" stroke-linecap="round"/>
+        <!-- vermillion wake (step 3 color) -->
+        <path d="M40 280 C 120 250, 200 320, 320 270" stroke="#d63a2f" stroke-width="6" fill="none" stroke-linecap="round"/>
+        <!-- green-poly leaf (step 4 color) -->
+        <path d="M230 80 Q 280 60 310 110 Q 270 140 230 130 Z" fill="#6fa863"/>
+        <!-- ink page (step 5 color) -->
+        <rect x="180" y="180" width="80" height="100" rx="6" fill="#1a1612"/>
+        <rect x="190" y="198" width="60" height="3" rx="1.5" fill="#faf7f2"/>
+        <rect x="190" y="210" width="48" height="3" rx="1.5" fill="#faf7f2"/>
+        <rect x="190" y="222" width="56" height="3" rx="1.5" fill="#faf7f2"/>
+        <rect x="190" y="234" width="40" height="3" rx="1.5" fill="#faf7f2"/>
+        <!-- violet hint -->
+        <circle cx="50" cy="180" r="10" fill="#6a4f8c"/>
+      </svg>
+    </div>
+  </section>
+
+  <!-- ===================== the loop ===================== -->
+  <div class="section-title" id="loop">The loop</div>
+
+  <div class="loop">
+
+    <!-- ============ step 1: mustard ============ -->
+    <div class="step step-1">
+      <div class="step-num">01</div>
+      <div>
+        <div class="step-tag"><span class="dot"></span> ingest</div>
+        <h2>Drop a file or point at a folder.</h2>
+        <p>Drag in a Granola transcript, a YouTube link, a PDF, a screenshot, a thread you pasted into a <span class="mono">.txt</span>. Margins reads from your disk.</p>
+        <p class="aside">Nothing leaves your machine yet. Your originals get filed into <span class="mono">raw_sources/</span> — Margins never edits them.</p>
+      </div>
+      <div class="step-art" aria-hidden="true">
+        <svg viewBox="0 0 400 320">
+          <!-- soft paper -->
+          <rect x="0" y="0" width="400" height="320" fill="#faf7f2"/>
+          <!-- the mustard disc — anchor color -->
+          <circle cx="120" cy="160" r="64" fill="#f0c14b"/>
+          <!-- dropped files falling in -->
+          <g transform="translate(40,40)">
+            <rect x="0" y="0" width="46" height="58" rx="4" fill="#ffffff" stroke="#1a1612" stroke-width="1.4"/>
+            <rect x="6" y="10" width="28" height="2" fill="#847a6b"/>
+            <rect x="6" y="18" width="34" height="2" fill="#847a6b"/>
+            <rect x="6" y="26" width="22" height="2" fill="#847a6b"/>
+          </g>
+          <g transform="translate(70,70) rotate(-8 23 29)">
+            <rect x="0" y="0" width="46" height="58" rx="4" fill="#ffffff" stroke="#1a1612" stroke-width="1.4"/>
+            <rect x="6" y="10" width="32" height="2" fill="#847a6b"/>
+            <rect x="6" y="18" width="20" height="2" fill="#847a6b"/>
+            <rect x="6" y="26" width="28" height="2" fill="#847a6b"/>
+          </g>
+          <!-- folder receiving -->
+          <g transform="translate(220,180)">
+            <path d="M0 18 L0 90 L140 90 L140 8 L60 8 L48 18 Z" fill="#ffffff" stroke="#1a1612" stroke-width="1.6"/>
+            <text x="14" y="50" font-family="ui-monospace,Menlo,monospace" font-size="11" fill="#1a1612">raw_sources/</text>
+            <text x="14" y="68" font-family="ui-monospace,Menlo,monospace" font-size="10" fill="#847a6b">granola-2026-05-09.txt</text>
+            <text x="14" y="82" font-family="ui-monospace,Menlo,monospace" font-size="10" fill="#847a6b">karpathy-talk.md</text>
+          </g>
+          <!-- drop arrow -->
+          <path d="M140 130 Q 200 130 230 180" stroke="#1a1612" stroke-width="1.6" fill="none" stroke-dasharray="3 4"/>
+          <polygon points="225,174 235,186 222,188" fill="#1a1612"/>
+        </svg>
+      </div>
+    </div>
+
+    <!-- ============ step 2: cobalt ============ -->
+    <div class="step step-2">
+      <div class="step-num">02</div>
+      <div>
+        <div class="step-tag"><span class="dot"></span> draft</div>
+        <h2>Margins drafts what it would file.</h2>
+        <p>It reads the source through your AI key — Gemini, OpenAI, or Anthropic — and proposes pages: one source page, plus candidate concepts and entities mentioned inside.</p>
+        <p class="aside">You're paying the API. Margins makes the request and parses the response. No relay, no servers in the middle.</p>
+      </div>
+      <div class="step-art" aria-hidden="true">
+        <svg viewBox="0 0 400 320">
+          <rect x="0" y="0" width="400" height="320" fill="#faf7f2"/>
+          <!-- the cobalt arc — anchor color -->
+          <path d="M40 230 A 130 130 0 0 1 360 230" stroke="#2c5aa0" stroke-width="10" fill="none" stroke-linecap="round"/>
+          <!-- source on left, drafts on right -->
+          <g transform="translate(30,80)">
+            <rect x="0" y="0" width="80" height="100" rx="6" fill="#ffffff" stroke="#1a1612" stroke-width="1.6"/>
+            <rect x="10" y="14" width="60" height="3" fill="#847a6b"/>
+            <rect x="10" y="24" width="50" height="3" fill="#847a6b"/>
+            <rect x="10" y="34" width="58" height="3" fill="#847a6b"/>
+            <rect x="10" y="44" width="44" height="3" fill="#847a6b"/>
+            <rect x="10" y="54" width="56" height="3" fill="#847a6b"/>
+            <rect x="10" y="64" width="36" height="3" fill="#847a6b"/>
+            <text x="0" y="116" font-family="ui-monospace,Menlo,monospace" font-size="10" fill="#1a1612">source.txt</text>
+          </g>
+          <!-- arrow through API -->
+          <g transform="translate(120,120)">
+            <text x="0" y="-2" font-family="Manrope" font-size="10" fill="#2c5aa0" font-weight="600">your AI key</text>
+            <path d="M0 14 L 100 14" stroke="#2c5aa0" stroke-width="1.8" fill="none"/>
+            <polygon points="100,8 110,14 100,20" fill="#2c5aa0"/>
+          </g>
+          <!-- proposed pages, stacked -->
+          <g transform="translate(240,40)">
+            <rect x="6" y="6" width="120" height="44" rx="4" fill="#ffffff" stroke="#1a1612" stroke-width="1.4"/>
+            <text x="14" y="22" font-family="ui-monospace,Menlo,monospace" font-size="10" fill="#1a1612">sources/karpathy.md</text>
+            <text x="14" y="38" font-family="Manrope" font-size="9.5" fill="#847a6b">faithful source page</text>
+          </g>
+          <g transform="translate(240,98)">
+            <rect x="6" y="6" width="120" height="44" rx="4" fill="#ffffff" stroke="#1a1612" stroke-width="1.4"/>
+            <text x="14" y="22" font-family="ui-monospace,Menlo,monospace" font-size="10" fill="#1a1612">concepts/llm-os.md</text>
+            <text x="14" y="38" font-family="Manrope" font-size="9.5" fill="#847a6b">candidate concept</text>
+          </g>
+          <g transform="translate(240,156)">
+            <rect x="6" y="6" width="120" height="44" rx="4" fill="#ffffff" stroke="#1a1612" stroke-width="1.4"/>
+            <text x="14" y="22" font-family="ui-monospace,Menlo,monospace" font-size="10" fill="#1a1612">entities/karpathy.md</text>
+            <text x="14" y="38" font-family="Manrope" font-size="9.5" fill="#847a6b">entity, new</text>
+          </g>
+        </svg>
+      </div>
+    </div>
+
+    <!-- ============ step 3: vermillion ============ -->
+    <div class="step step-3">
+      <div class="step-num">03</div>
+      <div>
+        <div class="step-tag"><span class="dot"></span> review</div>
+        <h2>Review every page before it lands.</h2>
+        <p>You see every proposed page side-by-side with what's already in your vault. Approve, edit, or reject — per file. Nothing is written until you say so.</p>
+        <p class="aside">Originals stay in <span class="mono">raw_sources/</span> either way. Rejecting a draft costs you nothing.</p>
+      </div>
+      <div class="step-art" aria-hidden="true">
+        <svg viewBox="0 0 400 320">
+          <rect x="0" y="0" width="400" height="320" fill="#faf7f2"/>
+          <!-- the vermillion wake — anchor color -->
+          <path d="M20 280 C 110 260, 200 300, 380 250" stroke="#d63a2f" stroke-width="5" fill="none" stroke-linecap="round"/>
+          <!-- a review card -->
+          <g transform="translate(40,40)">
+            <rect x="0" y="0" width="320" height="200" rx="8" fill="#ffffff" stroke="#1a1612" stroke-width="1.6"/>
+            <!-- header -->
+            <rect x="0" y="0" width="320" height="32" rx="8" fill="#1a1612"/>
+            <rect x="0" y="20" width="320" height="12" fill="#1a1612"/>
+            <text x="14" y="21" font-family="Manrope" font-weight="600" font-size="11" fill="#faf7f2">concepts/llm-os.md  ·  proposed</text>
+            <text x="266" y="21" font-family="Manrope" font-size="11" fill="#f0c14b">3 of 7</text>
+            <!-- body lines -->
+            <text x="14" y="56" font-family="ui-monospace,Menlo,monospace" font-size="10" fill="#847a6b">---</text>
+            <text x="14" y="70" font-family="ui-monospace,Menlo,monospace" font-size="10" fill="#1a1612">title: LLM as operating system</text>
+            <text x="14" y="84" font-family="ui-monospace,Menlo,monospace" font-size="10" fill="#1a1612">type: concept</text>
+            <text x="14" y="98" font-family="ui-monospace,Menlo,monospace" font-size="10" fill="#1a1612">voice: claude-draft</text>
+            <text x="14" y="112" font-family="ui-monospace,Menlo,monospace" font-size="10" fill="#1a1612">sources: [karpathy.md]</text>
+            <text x="14" y="126" font-family="ui-monospace,Menlo,monospace" font-size="10" fill="#847a6b">---</text>
+            <text x="14" y="146" font-family="Manrope" font-size="11" fill="#1a1612">Karpathy frames the LLM as a kernel-like</text>
+            <text x="14" y="160" font-family="Manrope" font-size="11" fill="#1a1612">substrate that orchestrates tools and...</text>
+            <!-- buttons -->
+            <g transform="translate(14,176)">
+              <rect x="0" y="0" width="68" height="20" rx="4" fill="#6fa863"/>
+              <text x="34" y="14" text-anchor="middle" font-family="Manrope" font-weight="600" font-size="11" fill="#ffffff">approve</text>
+            </g>
+            <g transform="translate(90,176)">
+              <rect x="0" y="0" width="58" height="20" rx="4" fill="#ffffff" stroke="#1a1612" stroke-width="1.2"/>
+              <text x="29" y="14" text-anchor="middle" font-family="Manrope" font-weight="600" font-size="11" fill="#1a1612">edit</text>
+            </g>
+            <g transform="translate(156,176)">
+              <rect x="0" y="0" width="68" height="20" rx="4" fill="#ffffff" stroke="#d63a2f" stroke-width="1.2"/>
+              <text x="34" y="14" text-anchor="middle" font-family="Manrope" font-weight="600" font-size="11" fill="#d63a2f">reject</text>
+            </g>
+            <text x="248" y="190" font-family="Manrope" font-size="10" fill="#847a6b">skip →</text>
+          </g>
+        </svg>
+      </div>
+    </div>
+
+    <!-- ============ step 4: green-poly ============ -->
+    <div class="step step-4">
+      <div class="step-num">04</div>
+      <div>
+        <div class="step-tag"><span class="dot"></span> grow</div>
+        <h2>The vault grows.</h2>
+        <p>Approved pages land in <span class="mono">wiki/</span> — under <span class="mono">sources/</span>, <span class="mono">concepts/</span>, <span class="mono">entities/</span>, or <span class="mono">synthesis/</span>. Frontmatter, body, citations back to the source file. Plain markdown.</p>
+        <p class="aside">Each new page knows where it came from. Click a citation and you're back at the raw transcript.</p>
+      </div>
+      <div class="step-art" aria-hidden="true">
+        <svg viewBox="0 0 400 320">
+          <rect x="0" y="0" width="400" height="320" fill="#faf7f2"/>
+          <!-- the green-poly leaf — anchor color -->
+          <path d="M40 60 Q 90 30 140 70 Q 100 110 60 100 Z" fill="#6fa863"/>
+          <!-- tree of growing files -->
+          <g font-family="ui-monospace,Menlo,monospace" font-size="11" fill="#1a1612">
+            <text x="170" y="50">wiki/</text>
+            <text x="186" y="74">sources/</text>
+            <text x="204" y="92">karpathy.md</text>
+            <text x="204" y="108">granola-2026-05-09.md</text>
+            <text x="186" y="132">concepts/</text>
+            <text x="204" y="150">llm-os.md</text>
+            <text x="204" y="166" fill="#6fa863">memory-systems.md  ←  new</text>
+            <text x="186" y="190">entities/</text>
+            <text x="204" y="208">karpathy.md</text>
+            <text x="204" y="224" fill="#6fa863">openai.md  ←  new</text>
+            <text x="186" y="248">synthesis/</text>
+            <text x="204" y="266">may-2026-llm-os.md</text>
+          </g>
+          <!-- tree lines -->
+          <g stroke="#e8e2d6" stroke-width="1.2" fill="none">
+            <line x1="178" y1="58" x2="178" y2="266"/>
+            <line x1="178" y1="74" x2="186" y2="74"/>
+            <line x1="178" y1="132" x2="186" y2="132"/>
+            <line x1="178" y1="190" x2="186" y2="190"/>
+            <line x1="178" y1="248" x2="186" y2="248"/>
+            <line x1="196" y1="92" x2="204" y2="92"/>
+            <line x1="196" y1="108" x2="204" y2="108"/>
+            <line x1="196" y1="150" x2="204" y2="150"/>
+            <line x1="196" y1="166" x2="204" y2="166"/>
+            <line x1="196" y1="208" x2="204" y2="208"/>
+            <line x1="196" y1="224" x2="204" y2="224"/>
+            <line x1="196" y1="266" x2="204" y2="266"/>
+          </g>
+        </svg>
+      </div>
+    </div>
+
+    <!-- ============ step 5: ink ============ -->
+    <div class="step step-5">
+      <div class="step-num">05</div>
+      <div>
+        <div class="step-tag"><span class="dot"></span> own</div>
+        <h2>Read your vault in anything.</h2>
+        <p>It's a folder of markdown. Open it in Obsidian, VS Code, vim, Notes.app. Push it to git. Grep it. Back it up. Walk away from Margins entirely if you want to.</p>
+        <p class="aside">Frontmatter is YAML. Data files are JSON. No proprietary format, no lock-in, no export-button-as-favor.</p>
+      </div>
+      <div class="step-art" aria-hidden="true">
+        <svg viewBox="0 0 400 320">
+          <rect x="0" y="0" width="400" height="320" fill="#faf7f2"/>
+          <!-- the ink page — anchor color -->
+          <g transform="translate(70,40)">
+            <rect x="0" y="0" width="260" height="240" rx="8" fill="#1a1612"/>
+            <!-- gutter line -->
+            <line x1="32" y1="0" x2="32" y2="240" stroke="#2a241e" stroke-width="1"/>
+            <!-- line numbers -->
+            <g font-family="ui-monospace,Menlo,monospace" font-size="10" fill="#5a4f44">
+              <text x="22" y="22" text-anchor="end">1</text>
+              <text x="22" y="36" text-anchor="end">2</text>
+              <text x="22" y="50" text-anchor="end">3</text>
+              <text x="22" y="64" text-anchor="end">4</text>
+              <text x="22" y="78" text-anchor="end">5</text>
+              <text x="22" y="92" text-anchor="end">6</text>
+              <text x="22" y="106" text-anchor="end">7</text>
+              <text x="22" y="120" text-anchor="end">8</text>
+              <text x="22" y="134" text-anchor="end">9</text>
+              <text x="22" y="148" text-anchor="end">10</text>
+              <text x="22" y="162" text-anchor="end">11</text>
+              <text x="22" y="176" text-anchor="end">12</text>
+              <text x="22" y="190" text-anchor="end">13</text>
+            </g>
+            <!-- code -->
+            <g font-family="ui-monospace,Menlo,monospace" font-size="11">
+              <text x="40" y="22" fill="#847a6b">---</text>
+              <text x="40" y="36" fill="#f0c14b">title:</text><text x="78" y="36" fill="#faf7f2"> LLM as operating system</text>
+              <text x="40" y="50" fill="#f0c14b">type:</text><text x="74" y="50" fill="#faf7f2"> concept</text>
+              <text x="40" y="64" fill="#f0c14b">voice:</text><text x="80" y="64" fill="#faf7f2"> claude-draft</text>
+              <text x="40" y="78" fill="#f0c14b">sources:</text><text x="92" y="78" fill="#faf7f2"> [karpathy.md]</text>
+              <text x="40" y="92" fill="#f0c14b">created:</text><text x="92" y="92" fill="#faf7f2"> 2026-05-09</text>
+              <text x="40" y="106" fill="#847a6b">---</text>
+              <text x="40" y="120" fill="#2c5aa0">## What this is</text>
+              <text x="40" y="134" fill="#faf7f2">Karpathy frames the LLM as a</text>
+              <text x="40" y="148" fill="#faf7f2">kernel-like substrate that</text>
+              <text x="40" y="162" fill="#faf7f2">orchestrates tools, files, and</text>
+              <text x="40" y="176" fill="#faf7f2">other agents [[karpathy]].</text>
+            </g>
+          </g>
+        </svg>
+      </div>
+    </div>
+
+    <!-- ============ step 6: violet (operating layer) ============ -->
+    <div class="step step-6">
+      <div class="step-num">06</div>
+      <div>
+        <div class="step-tag"><span class="dot"></span> operate</div>
+        <h2>An operating layer ships with the vault.</h2>
+        <p>Every new vault includes <span class="mono">operator-manual.md</span>, <span class="mono">query-cookbook.md</span>, and folders of <span class="mono">commands/</span> and <span class="mono">agents/</span>. They tell any LLM how to read, write, and link inside this vault.</p>
+        <p class="aside">Point Claude Code, Cursor, or any agent at the folder. The agent reads the manual and behaves consistently. You didn't have to prompt-engineer it.</p>
+      </div>
+      <div class="step-art" aria-hidden="true">
+        <svg viewBox="0 0 400 320">
+          <rect x="0" y="0" width="400" height="320" fill="#faf7f2"/>
+          <!-- violet ribbon -->
+          <path d="M30 80 Q 200 30 370 90" stroke="#6a4f8c" stroke-width="6" fill="none" stroke-linecap="round"/>
+          <!-- four document tiles -->
+          <g transform="translate(40,120)">
+            <rect x="0" y="0" width="150" height="76" rx="6" fill="#ffffff" stroke="#1a1612" stroke-width="1.4"/>
+            <text x="12" y="22" font-family="ui-monospace,Menlo,monospace" font-size="11" fill="#1a1612">operator-manual.md</text>
+            <text x="12" y="42" font-family="Manrope" font-size="11" fill="#847a6b">how to ingest, link,</text>
+            <text x="12" y="56" font-family="Manrope" font-size="11" fill="#847a6b">and log changes</text>
+          </g>
+          <g transform="translate(210,120)">
+            <rect x="0" y="0" width="150" height="76" rx="6" fill="#ffffff" stroke="#1a1612" stroke-width="1.4"/>
+            <text x="12" y="22" font-family="ui-monospace,Menlo,monospace" font-size="11" fill="#1a1612">query-cookbook.md</text>
+            <text x="12" y="42" font-family="Manrope" font-size="11" fill="#847a6b">how to ask the vault</text>
+            <text x="12" y="56" font-family="Manrope" font-size="11" fill="#847a6b">questions, with shape</text>
+          </g>
+          <g transform="translate(40,210)">
+            <rect x="0" y="0" width="150" height="76" rx="6" fill="#ffffff" stroke="#1a1612" stroke-width="1.4"/>
+            <text x="12" y="22" font-family="ui-monospace,Menlo,monospace" font-size="11" fill="#1a1612">commands/</text>
+            <text x="12" y="42" font-family="Manrope" font-size="11" fill="#847a6b">ingest, compile, lint,</text>
+            <text x="12" y="56" font-family="Manrope" font-size="11" fill="#847a6b">file-query, enrich</text>
+          </g>
+          <g transform="translate(210,210)">
+            <rect x="0" y="0" width="150" height="76" rx="6" fill="#ffffff" stroke="#1a1612" stroke-width="1.4"/>
+            <text x="12" y="22" font-family="ui-monospace,Menlo,monospace" font-size="11" fill="#1a1612">agents/</text>
+            <text x="12" y="42" font-family="Manrope" font-size="11" fill="#847a6b">reviewer, librarian,</text>
+            <text x="12" y="56" font-family="Manrope" font-size="11" fill="#847a6b">domain experts</text>
+          </g>
+        </svg>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ===================== three rules ===================== -->
+  <div class="section-title" id="rules">Three rules Margins runs on</div>
+
+  <div class="rules">
+    <div class="rule">
+      <span class="pill">rule 01</span>
+      <h3>Two folders, one rule.</h3>
+      <p><span class="mono">raw_sources/</span> holds the originals you brought in. <span class="mono">wiki/</span> holds AI-generated pages. Margins writes only into <span class="mono">wiki/</span> — the sources are never edited.</p>
+    </div>
+    <div class="rule">
+      <span class="pill">rule 02</span>
+      <h3>Bring your own AI.</h3>
+      <p>Plug in a Gemini, OpenAI, or Anthropic key. Margins makes the API call from your machine. No Margins servers, no telemetry, no relay.</p>
+    </div>
+    <div class="rule">
+      <span class="pill">rule 03</span>
+      <h3>Reviewed-first ingest.</h3>
+      <p>Every page Margins drafts is shown to you first — sources, concepts, entities. Approve, edit, or reject per file before anything touches the vault.</p>
+    </div>
+  </div>
+
+  <!-- ===================== what it's for ===================== -->
+  <div class="section-title" id="for">What Margins is for</div>
+
+  <div class="for-block">
+    <p>Margins is the engine behind <a href="https://brieflywealth.com" target="_blank" rel="noopener">Briefly</a> — a meeting-prep tool for wealth advisors — but the vault itself is general. If you take a lot of notes, sit in a lot of meetings, and want the things you read and heard to compound into something you can search and trust, this is the loop.</p>
+    <p>If you want to see the format up close, the repo has a sample vault built from real source files.</p>
+    <div class="hero-actions" style="margin: 24px 0 0;">
+      <a class="hero-btn hero-btn-primary" href="../index.html#wizard">
+        Set it up
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+          <path d="M3 7h8M8 4l3 3-3 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </a>
+      <a class="hero-btn hero-btn-ghost" href="../app.html">Open Margins</a>
+    </div>
+  </div>
+
+  <!-- ===================== footer ===================== -->
+  <footer>
+    <div class="foot-brand">
+      <span class="brand-dot"></span>
+      <span>Margins</span>
+      <span style="color: var(--line);">·</span>
+      <span>built by <a href="https://brieflywealth.com" target="_blank" rel="noopener">Connor Florczyk</a></span>
+    </div>
+    <div>
+      <a href="https://github.com/cflorczyk9/margins" target="_blank" rel="noopener">GitHub →</a>
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>
