@@ -2329,6 +2329,43 @@ async function streamSseModelResponse(response, extractEvent, { onUpdate, model 
   // for a while, the "json-array" fallback below kicks in after the
   // stream closes.
 
+  // Reusable per-event handler so the final-flush path below can reuse it.
+  const handleEvent = (raw) => {
+    eventCount += 1;
+    const dataParts = raw
+      .split("\n")
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trim());
+    if (!dataParts.length) {
+      log("event with no data: lines", raw.slice(0, 200));
+      return;
+    }
+    const dataStr = dataParts.join("\n");
+    if (dataStr === "[DONE]") return;
+    let payload;
+    try {
+      payload = JSON.parse(dataStr);
+    } catch (err) {
+      log("JSON parse failed", err.message, dataStr.slice(0, 200));
+      return;
+    }
+    parsedCount += 1;
+    const result = extractEvent(payload) || {};
+    log(`event #${parsedCount}`, {
+      keys: Object.keys(payload),
+      extracted: { hasDelta: !!result.delta, deltaLen: result.delta?.length, inputTokens: result.inputTokens, outputTokens: result.outputTokens, finishReason: result.finishReason }
+    });
+    if (result.delta) assembledText += result.delta;
+    if (typeof result.inputTokens === "number" && result.inputTokens > 0) {
+      inputTokens = result.inputTokens;
+    }
+    if (typeof result.outputTokens === "number" && result.outputTokens > 0) {
+      outputTokens = result.outputTokens;
+    }
+    if (result.finishReason) finishReason = result.finishReason;
+    ping();
+  };
+
   while (true) {
     const { value, done } = await reader.read();
     if (done) break;
@@ -2344,41 +2381,24 @@ async function streamSseModelResponse(response, extractEvent, { onUpdate, model 
     while ((eventEnd = buffer.indexOf("\n\n")) !== -1) {
       const raw = buffer.slice(0, eventEnd);
       buffer = buffer.slice(eventEnd + 2);
-      eventCount += 1;
-      const dataParts = raw
-        .split("\n")
-        .filter((line) => line.startsWith("data:"))
-        .map((line) => line.slice(5).trim());
-      if (!dataParts.length) {
-        log("event with no data: lines", raw.slice(0, 200));
-        continue;
-      }
-      // SSE spec: multi-line `data:` values are joined with \n.
-      const dataStr = dataParts.join("\n");
-      if (dataStr === "[DONE]") continue;
-      let payload;
-      try {
-        payload = JSON.parse(dataStr);
-      } catch (err) {
-        log("JSON parse failed", err.message, dataStr.slice(0, 200));
-        continue;
-      }
-      parsedCount += 1;
-      const result = extractEvent(payload) || {};
-      log(`event #${parsedCount}`, {
-        keys: Object.keys(payload),
-        extracted: { hasDelta: !!result.delta, deltaLen: result.delta?.length, inputTokens: result.inputTokens, outputTokens: result.outputTokens, finishReason: result.finishReason }
-      });
-      if (result.delta) assembledText += result.delta;
-      if (typeof result.inputTokens === "number" && result.inputTokens > 0) {
-        inputTokens = result.inputTokens;
-      }
-      if (typeof result.outputTokens === "number" && result.outputTokens > 0) {
-        outputTokens = result.outputTokens;
-      }
-      if (result.finishReason) finishReason = result.finishReason;
-      ping();
+      handleEvent(raw);
     }
+  }
+
+  // Final flush. Two concerns:
+  // (1) TextDecoder's stream:true mode holds incomplete UTF-8 bytes;
+  //     call decode() with no args to release them.
+  // (2) The last SSE event often arrives without a trailing \n\n —
+  //     servers close the stream right after the final `data:` line.
+  //     Without this flush we'd silently drop the closing `}` of the
+  //     model's JSON, parseApiIngestReview would see unclosed JSON
+  //     and fire a needless compact retry. Re-use handleEvent so
+  //     it's parsed identically to in-loop events.
+  buffer += decoder.decode();
+  buffer = buffer.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  if (buffer.trim().length > 0 && buffer.includes("data:")) {
+    handleEvent(buffer);
+    buffer = "";
   }
 
   // Fallback: if the body was buffered as a single JSON array (or
