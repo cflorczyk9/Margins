@@ -6409,16 +6409,6 @@ button.type-tag.active {
   text-align: center;
 }
 .vault-loading[hidden] { display: none; }
-.vault-loading-spinner {
-  width: 44px;
-  height: 44px;
-  border: 4px solid var(--line-strong);
-  border-top-color: var(--accent);
-  border-right-color: var(--accent);
-  border-radius: 50%;
-  animation: vault-loading-spin 0.9s linear infinite;
-  flex: 0 0 auto;
-}
 .vault-loading-title {
   margin: 0;
   font-size: 18px;
@@ -6455,9 +6445,6 @@ button.type-tag.active {
   background: var(--accent);
   border-radius: 2px;
   animation: vault-loading-slide 1.4s ease-in-out infinite;
-}
-@keyframes vault-loading-spin {
-  to { transform: rotate(360deg); }
 }
 @keyframes vault-loading-dots {
   0%   { content: ""; }

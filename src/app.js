@@ -377,7 +377,10 @@ const INGEST_PROGRESS_STEP_DELAYS_MS = [0, 1400, 4400, 12000];
 // optional content, while cutting generation time by ~60%. If the
 // model hits the cap, the compact-retry path still fires.
 const INGEST_REVIEW_OUTPUT_TOKEN_FLOOR = 12288;
-const INGEST_REVIEW_COMPACT_RETRY_OUTPUT_TOKEN_FLOOR = 32768;
+// Compact retry should be MORE conservative than the full call so it
+// doesn't hit MAX_TOKENS and re-throw the same truncation error. The
+// compact prompt asks for a much smaller schema; 8K output is plenty.
+const INGEST_REVIEW_COMPACT_RETRY_OUTPUT_TOKEN_FLOOR = 8192;
 const DREAM_HELPER_OUTPUT_TOKEN_FLOOR = 12288;
 const DREAM_HELPER_RETRY_OUTPUT_TOKEN_FLOOR = 12288;
 const DREAM_BROKEN_LINK_DEFAULT_MAX_LINKS = 10;
@@ -2220,13 +2223,31 @@ async function generateApiIngestReview(file, fileMap, mode) {
     throw new Error("Direct browser calls are wired for Gemini, OpenAI, and Anthropic right now.");
   }
 
-  // Debug aid: log the last 200 chars of `content` so we can see if
-  // the JSON closes cleanly (`}`) or if there's something at the
-  // tail triggering the looksLikeTruncatedJson heuristic.
+  // Debug aid: log the last 200 chars of `content` AND the first
+  // 200 chars + the specific JSON parse error so we can see exactly
+  // why parseApiIngestReview is rejecting it.
   if (ingestTimingTracker) {
     try {
-      const tail = String(content || "").slice(-200);
+      const text = String(content || "");
+      const head = text.slice(0, 200);
+      const tail = text.slice(-200);
+      console.log(`[ingest] content head (first ${head.length} chars):`, head);
       console.log(`[ingest] content tail (last ${tail.length} chars):`, tail);
+      // Try a raw JSON.parse to capture the exact error location.
+      try {
+        JSON.parse(text);
+        console.log("[ingest] raw JSON.parse: SUCCESS (content is valid JSON)");
+      } catch (parseErr) {
+        console.log(`[ingest] raw JSON.parse FAILED: ${parseErr.message}`);
+        // The error message in V8 includes "at position N" — slice
+        // around that position to see what's wrong.
+        const m = /position (\d+)/.exec(parseErr.message);
+        if (m) {
+          const pos = Number(m[1]);
+          const around = text.slice(Math.max(0, pos - 80), pos + 80);
+          console.log(`[ingest] content around position ${pos}:`, around);
+        }
+      }
     } catch {}
   }
 
