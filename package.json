@@ -3,7 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "license": "MIT",
   "description": "Local-first raw-source-to-wiki compiler with an LLM operating layer.",
+  "homepage": "https://github.com/cflorczyk9/Margins",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cflorczyk9/Margins.git"
+  },
   "scripts": {
     "dev": "python3 -m http.server 5173",
     "test": "node --test",
