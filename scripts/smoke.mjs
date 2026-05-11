@@ -2,8 +2,11 @@
 // Walks all 7 tabs, captures any console errors, exits non-zero if any.
 //
 // Usage:
-//   1. Make sure `npm run dev` (or python3 -m http.server 5180) is running
+//   1. Make sure `npm run dev` is running (port 5173)
 //   2. node scripts/smoke.mjs
+//
+// Default URL is /app.html — the functional Margins app. The landing
+// + wizard at / are covered by scripts/smoke-landing.mjs.
 //
 // One-time setup (if Chromium isn't installed):
 //   npx playwright install chromium
@@ -16,7 +19,7 @@
 
 import { chromium } from "playwright-core";
 
-const URL = process.env.MARGINS_URL || "http://localhost:5180/";
+const URL = process.env.MARGINS_URL || "http://localhost:5173/app.html";
 const TABS = ["inbox", "dream", "entities", "wiki", "graph", "llm", "ops"];
 
 async function quickHttpCheck() {
