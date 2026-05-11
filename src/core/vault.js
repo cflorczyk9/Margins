@@ -686,13 +686,29 @@ export async function openVault() {
 }
 
 export async function loadExistingVault(handle) {
+  // Single batch render at the end; suppress every staged render in
+  // between via state.vaultLoading + body.is-vault-loading class.
+  // CRITICAL: also defer setting state.loadedFileMap until the very
+  // end. activeActivityFileMap() falls back to loadedFileMap, so any
+  // incidental render call mid-load would surface the wiki portion
+  // first — exactly the flicker we're trying to avoid.
+  state.vaultLoading = true;
+  document.body.classList.add("is-vault-loading");
+  const loadingEl = document.getElementById("vault-loading");
+  const loadingStatusEl = document.getElementById("vault-loading-status");
+  if (loadingEl) loadingEl.hidden = false;
+  if (loadingStatusEl) loadingStatusEl.textContent = "Reading wiki files";
+
   const fileMap = await readVaultFileMap(handle);
 
   state.vaultFiles = [];
   state.editedRawFiles = new Map();
-  state.loadedFileMap = new Map(fileMap);
   state.files = [];
-  applyLoadedVaultFileMap(fileMap);
+  if (loadingStatusEl) {
+    loadingStatusEl.textContent = fileMap.size
+      ? `Scanning ${fileMap.size} wiki file${fileMap.size === 1 ? "" : "s"} for sources`
+      : "Scanning vault for sources";
+  }
   if (els?.stats) {
     els.stats.textContent = fileMap.size
       ? `Opened ${state.vaultName}: ${fileMap.size} vault file${fileMap.size === 1 ? "" : "s"} loaded. Scanning raw/ sources...`
@@ -703,6 +719,11 @@ export async function loadExistingVault(handle) {
   try {
     rawFiles = await readRawSourcesFromVault(handle);
   } catch (error) {
+    state.vaultLoading = false;
+    document.body.classList.remove("is-vault-loading");
+    if (loadingEl) loadingEl.hidden = true;
+    state.loadedFileMap = new Map(fileMap);
+    applyLoadedVaultFileMap(fileMap);
     if (els?.stats) {
       els.stats.textContent = fileMap.size
         ? `Opened ${state.vaultName}: ${fileMap.size} vault file${fileMap.size === 1 ? "" : "s"} loaded. Raw scan failed: ${error.message || "unknown error"}`
@@ -712,9 +733,16 @@ export async function loadExistingVault(handle) {
     return;
   }
 
+  if (loadingStatusEl) loadingStatusEl.textContent = "Finishing up";
   state.vaultFiles = rawFiles;
   state.files = pendingRawSourcesFromVault(fileMap, rawFiles);
   state.hasSavedCurrent = fileMap.size > 0 || rawFiles.length > 0;
+  state.loadedFileMap = new Map(fileMap);
+  // Single batch render — applies the file map + raw files together.
+  state.vaultLoading = false;
+  document.body.classList.remove("is-vault-loading");
+  if (loadingEl) loadingEl.hidden = true;
+  applyLoadedVaultFileMap(fileMap);
   callbacks.renderSources?.();
   callbacks.renderVaultTree?.(fileMap);
   callbacks.updateSaveButtonState?.();
