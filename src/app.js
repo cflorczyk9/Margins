@@ -420,6 +420,9 @@ Object.assign(state, {
   apiSecret: localStorage.getItem(STORAGE_KEYS.apiSecret) || "",
   apiGuardSettings: loadApiGuardSettings(),
   apiUsage: emptyApiUsage(),
+  // Set during a streaming model call; null otherwise. Drives the
+  // live token + cost display in the processing-card meter.
+  activeStreamUsage: null,
   apiQuestionSource: "",
   ingestReviews: new Map(),
   ingestAnswers: new Map(),
@@ -959,8 +962,19 @@ function renderUsageMeterTick() {
   const meter = document.querySelector(".processing-meter");
   if (!meter) return;
   const elapsed = (Date.now() - usageMeterStartedAt) / 1000;
-  const tokens = (state.apiUsage?.totalTokens || 0) - (usageMeterBaseline?.tokens || 0);
-  const usd = (state.apiUsage?.estimatedUsd || 0) - (usageMeterBaseline?.usd || 0);
+  // While streaming: tokens + cost come from state.activeStreamUsage,
+  // which the SSE reader updates on every event. Once the stream
+  // closes, fall back to (post-call session delta vs baseline).
+  let tokens = 0;
+  let usd = 0;
+  const live = state.activeStreamUsage;
+  if (live) {
+    tokens = live.totalTokens || 0;
+    usd = estimateModelCostUsd(live.model, live.inputTokens || 0, live.outputTokens || 0);
+  } else {
+    tokens = (state.apiUsage?.totalTokens || 0) - (usageMeterBaseline?.tokens || 0);
+    usd = (state.apiUsage?.estimatedUsd || 0) - (usageMeterBaseline?.usd || 0);
+  }
   writeMeterValues(meter, elapsed, tokens, usd);
 }
 
@@ -2176,8 +2190,10 @@ async function generateApiIngestReview(file, fileMap, mode) {
     }
   } else if (provider === "openai" || provider === "local") {
     content = await generateOpenAiCompatibleJsonContent(provider, model, prompt, timing);
+  } else if (provider === "anthropic") {
+    content = await generateAnthropicJsonContent(model, prompt, timing);
   } else {
-    throw new Error("Direct browser calls are wired for Gemini and OpenAI-compatible endpoints right now.");
+    throw new Error("Direct browser calls are wired for Gemini, OpenAI, and Anthropic right now.");
   }
 
   try {
@@ -2220,6 +2236,133 @@ async function runCompactGeminiIngestRetry(runGeminiIngestReview) {
   }
 }
 
+// Shared SSE-stream reader for live token meters. Each provider has
+// its own SSE event shape; we pass an extractor that pulls the right
+// {delta, inputTokens, outputTokens} out of each event. The reader
+// assembles the text deltas, tracks running token counts, and pushes
+// updates through onUpdate (which writes to state.activeStreamUsage
+// and ticks the processing-card meter).
+async function streamSseModelResponse(response, extractEvent, { onUpdate, model } = {}) {
+  if (!response.body || typeof response.body.getReader !== "function") {
+    // Fallback to non-streaming JSON for environments without ReadableStream.
+    const json = await response.json();
+    return { content: "", inputTokens: 0, outputTokens: 0, fallbackJson: json };
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let assembledText = "";
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let finishReason = "";
+
+  const ping = () => {
+    const liveOutput = outputTokens || Math.ceil(assembledText.length / 4);
+    onUpdate?.(inputTokens, liveOutput, model);
+  };
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    let eventEnd;
+    while ((eventEnd = buffer.indexOf("\n\n")) !== -1) {
+      const raw = buffer.slice(0, eventEnd);
+      buffer = buffer.slice(eventEnd + 2);
+      const dataParts = raw
+        .split("\n")
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice(5).trim());
+      if (!dataParts.length) continue;
+      const dataStr = dataParts.join("");
+      if (dataStr === "[DONE]") continue;
+      let payload;
+      try { payload = JSON.parse(dataStr); } catch { continue; }
+      const result = extractEvent(payload) || {};
+      if (result.delta) assembledText += result.delta;
+      if (typeof result.inputTokens === "number" && result.inputTokens > 0) {
+        inputTokens = result.inputTokens;
+      }
+      if (typeof result.outputTokens === "number" && result.outputTokens > 0) {
+        outputTokens = result.outputTokens;
+      }
+      if (result.finishReason) finishReason = result.finishReason;
+      ping();
+    }
+  }
+  ping();
+  return { content: assembledText, inputTokens, outputTokens, finishReason };
+}
+
+function extractAnthropicSseEvent(payload) {
+  if (payload.type === "message_start") {
+    const usage = payload.message?.usage;
+    if (usage) return { inputTokens: usage.input_tokens, outputTokens: usage.output_tokens || 0 };
+    return {};
+  }
+  if (payload.type === "content_block_delta" && payload.delta?.type === "text_delta") {
+    return { delta: payload.delta.text || "" };
+  }
+  if (payload.type === "message_delta") {
+    const usage = payload.usage;
+    return {
+      outputTokens: usage?.output_tokens,
+      finishReason: payload.delta?.stop_reason || ""
+    };
+  }
+  return {};
+}
+
+function extractOpenAiSseEvent(payload) {
+  const result = {};
+  const choice = payload.choices?.[0];
+  if (choice?.delta?.content) result.delta = choice.delta.content;
+  if (choice?.finish_reason) result.finishReason = choice.finish_reason;
+  if (payload.usage) {
+    if (payload.usage.prompt_tokens) result.inputTokens = payload.usage.prompt_tokens;
+    if (payload.usage.completion_tokens) result.outputTokens = payload.usage.completion_tokens;
+  }
+  return result;
+}
+
+function extractGeminiSseEvent(payload) {
+  const result = {};
+  const candidate = payload.candidates?.[0];
+  if (candidate?.content?.parts) {
+    result.delta = candidate.content.parts.map((p) => p.text || "").join("");
+  }
+  if (candidate?.finishReason) result.finishReason = candidate.finishReason;
+  const usage = payload.usageMetadata;
+  if (usage) {
+    if (usage.promptTokenCount) result.inputTokens = usage.promptTokenCount;
+    const out = usage.candidatesTokenCount
+      || (usage.totalTokenCount && usage.promptTokenCount
+        ? usage.totalTokenCount - usage.promptTokenCount
+        : 0);
+    if (out > 0) result.outputTokens = out;
+  }
+  return result;
+}
+
+// Drives the live processing-card meter. Each SSE event from a
+// streaming model call calls this; clearing happens after the stream
+// closes so the post-call non-streaming display (delta vs. baseline)
+// can take over.
+function updateActiveStreamUsage(inputTokens, outputTokens, model) {
+  state.activeStreamUsage = {
+    inputTokens: inputTokens || 0,
+    outputTokens: outputTokens || 0,
+    totalTokens: (inputTokens || 0) + (outputTokens || 0),
+    model: model || ""
+  };
+  renderUsageMeterTick();
+}
+
+function clearActiveStreamUsage() {
+  state.activeStreamUsage = null;
+}
+
 async function generateOpenAiCompatibleJsonContent(provider, model, prompt, tracking = {}) {
   const endpoint = defaultEndpointForProvider(provider);
   const budget = reserveApiBudget({
@@ -2248,13 +2391,15 @@ async function generateOpenAiCompatibleJsonContent(provider, model, prompt, trac
       "Content-Type": "application/json"
     };
     if (state.apiSecret) headers.Authorization = `Bearer ${state.apiSecret}`;
-    const response = await fetchWithTimeout(endpoint, {
+    const response = await fetch(endpoint, {
       method: "POST",
       headers,
       body: JSON.stringify({
         model,
         temperature: 0.2,
         max_tokens: budget.outputTokenLimit,
+        stream: true,
+        stream_options: { include_usage: true },
         messages: [
           {
             role: "system",
@@ -2273,17 +2418,22 @@ async function generateOpenAiCompatibleJsonContent(provider, model, prompt, trac
       finishModelTiming(timing, { ok: false, error });
       throw error;
     }
-    const json = await response.json();
+    const stream = await streamSseModelResponse(response, extractOpenAiSseEvent, {
+      model,
+      onUpdate: (it, ot, m) => updateActiveStreamUsage(it, ot, m)
+    });
+    clearActiveStreamUsage();
     const usage = {
-      inputTokens: json.usage?.prompt_tokens || budget.inputTokens,
-      outputTokens: json.usage?.completion_tokens || budget.outputTokenLimit,
-      estimated: !json.usage
+      inputTokens: stream.inputTokens || budget.inputTokens,
+      outputTokens: stream.outputTokens || Math.ceil(stream.content.length / 4) || budget.outputTokenLimit,
+      estimated: !stream.inputTokens
     };
     recordApiUsage({ provider, model, ...usage });
-    const content = json.choices?.[0]?.message?.content || "";
+    const content = stream.content || "";
     finishModelTiming(timing, { ok: true, usage, contentChars: content.length });
     return content;
   } catch (error) {
+    clearActiveStreamUsage();
     if (!timing.finishedAt) finishModelTiming(timing, { ok: false, error });
     throw error;
   }
@@ -2366,6 +2516,84 @@ async function generateOpenAiCompatibleTextContent(provider, model, prompt, trac
     finishModelTiming(timing, { ok: true, usage, contentChars: content.length });
     return content;
   } catch (error) {
+    if (!timing.finishedAt) finishModelTiming(timing, { ok: false, error });
+    throw error;
+  }
+}
+
+// Streaming Anthropic ingest. Mirrors the Gemini/OpenAI JSON variants
+// — streams SSE so the processing-card meter sees live tokens, then
+// returns the assembled JSON text for parseApiIngestReview.
+async function generateAnthropicJsonContent(model, prompt, tracking = {}) {
+  const endpoint = defaultEndpointForProvider("anthropic");
+  const budget = reserveApiBudget({
+    provider: "anthropic",
+    model,
+    prompt,
+    extraParts: [],
+    outputTokenLimit: apiOutputTokenLimit()
+  });
+  const timing = beginModelTiming({
+    ...tracking,
+    provider: "anthropic",
+    model,
+    endpoint,
+    promptChars: prompt.length,
+    attachmentCount: 0,
+    attachmentBytes: 0,
+    outputTokenLimit: budget.outputTokenLimit
+  });
+  tracking.record = timing;
+  await waitForApiThrottle("anthropic");
+  timing.throttleMs = elapsedSince(timing.throttleStartedAt);
+  timing.requestStartedAt = performance.now();
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": state.apiSecret,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true"
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0.2,
+        max_tokens: budget.outputTokenLimit,
+        stream: true,
+        system: "You review one uploaded source for a local-first personal wiki. Return JSON only.",
+        messages: [
+          { role: "user", content: prompt }
+        ]
+      })
+    });
+    timing.httpStatus = response.status;
+    if (!response.ok) {
+      const error = await apiErrorFromResponse(response, "Anthropic");
+      finishModelTiming(timing, { ok: false, error });
+      throw error;
+    }
+    const stream = await streamSseModelResponse(response, extractAnthropicSseEvent, {
+      model,
+      onUpdate: (it, ot, m) => updateActiveStreamUsage(it, ot, m)
+    });
+    clearActiveStreamUsage();
+    const content = stream.content || "";
+    const usage = {
+      inputTokens: stream.inputTokens || budget.inputTokens,
+      outputTokens: stream.outputTokens || Math.ceil(content.length / 4) || budget.outputTokenLimit,
+      estimated: !stream.inputTokens
+    };
+    recordApiUsage({ provider: "anthropic", model, ...usage });
+    if (stream.finishReason === "max_tokens") {
+      const error = modelOutputTruncatedError("anthropic", content, stream.finishReason);
+      finishModelTiming(timing, { ok: false, usage, contentChars: content.length, error });
+      throw error;
+    }
+    finishModelTiming(timing, { ok: true, usage, contentChars: content.length });
+    return content;
+  } catch (error) {
+    clearActiveStreamUsage();
     if (!timing.finishedAt) finishModelTiming(timing, { ok: false, error });
     throw error;
   }
@@ -2524,7 +2752,11 @@ async function generateGeminiTextContent(model, prompt, tracking = {}, outputTok
 }
 
 async function generateGeminiJsonContent(model, prompt, extraParts = [], tracking = {}, options = {}) {
-  const endpoint = defaultEndpointForProvider("gemini").replace("{model}", encodeURIComponent(normalizeGeminiModel(model)));
+  // Stream the response so the processing-card meter can show live
+  // token + cost updates as Gemini generates the JSON. Use
+  // streamGenerateContent?alt=sse instead of generateContent.
+  const safeModel = encodeURIComponent(normalizeGeminiModel(model));
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${safeModel}:streamGenerateContent?alt=sse`;
   const outputTokenLimit = positiveInteger(options.outputTokenLimit, apiOutputTokenLimit());
   const budget = reserveApiBudget({
     provider: "gemini",
@@ -2548,7 +2780,7 @@ async function generateGeminiJsonContent(model, prompt, extraParts = [], trackin
   timing.throttleMs = elapsedSince(timing.throttleStartedAt);
   timing.requestStartedAt = performance.now();
   try {
-    const response = await fetchWithTimeout(endpoint, {
+    const response = await fetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -2580,23 +2812,30 @@ async function generateGeminiJsonContent(model, prompt, extraParts = [], trackin
       finishModelTiming(timing, { ok: false, error });
       throw error;
     }
-    const json = await response.json();
-    const candidate = json.candidates?.[0] || {};
-    const content = candidate.content?.parts?.map((part) => part.text || "").join("\n") || "";
+    const stream = await streamSseModelResponse(response, extractGeminiSseEvent, {
+      model,
+      onUpdate: (it, ot, m) => updateActiveStreamUsage(it, ot, m)
+    });
+    clearActiveStreamUsage();
+    const content = stream.content || "";
     const usage = {
-      inputTokens: json.usageMetadata?.promptTokenCount || budget.inputTokens,
-      outputTokens: geminiOutputTokenCount(json.usageMetadata) || budget.outputTokenLimit,
-      estimated: !json.usageMetadata
+      inputTokens: stream.inputTokens || budget.inputTokens,
+      outputTokens: stream.outputTokens || Math.ceil(content.length / 4) || budget.outputTokenLimit,
+      estimated: !stream.inputTokens
     };
     recordApiUsage({ provider: "gemini", model, ...usage });
-    if (isGeminiOutputTruncated(candidate, content)) {
-      const error = modelOutputTruncatedError("gemini", content, candidate.finishReason || "");
+    if (stream.finishReason && stream.finishReason !== "STOP" && stream.finishReason !== "MAX_TOKENS_REACHED") {
+      // Treat other terminal reasons (SAFETY, RECITATION, OTHER) the same as truncation.
+    }
+    if (stream.finishReason === "MAX_TOKENS" || stream.finishReason === "MAX_TOKENS_REACHED") {
+      const error = modelOutputTruncatedError("gemini", content, stream.finishReason);
       finishModelTiming(timing, { ok: false, usage, contentChars: content.length, error });
       throw error;
     }
     finishModelTiming(timing, { ok: true, usage, contentChars: content.length });
     return content;
   } catch (error) {
+    clearActiveStreamUsage();
     if (!timing.finishedAt) finishModelTiming(timing, { ok: false, error });
     throw error;
   }
