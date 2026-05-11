@@ -1,0 +1,1129 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Files — Library · Strata</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #faf7f2;
+      --paper: #ffffff;
+      --paper-soft: #f5f1ea;
+      --paper-softer: #efe9dd;
+      --ink: #1a1612;
+      --ink-2: #4a423a;
+      --muted: #847a6b;
+      --faint: #a89e8d;
+      --line: #e8e2d6;
+      --line-strong: #d8d0bf;
+      --accent: #d63a2f;
+      --accent-soft: rgba(214, 58, 47, 0.10);
+      --accent-line: rgba(214, 58, 47, 0.22);
+
+      --vermillion: #d63a2f;
+      --cobalt:     #2c5aa0;
+      --mustard:    #f0c14b;
+      --violet:     #6a4f8c;
+      --green-poly: #6fa863;
+      --ink-poly:   #1a1612;
+
+      --r-sm: 6px;
+      --r-md: 8px;
+      --r-lg: 12px;
+      --r-xl: 16px;
+      --r-pill: 999px;
+
+      --focus-ring: 0 0 0 3px rgba(214, 58, 47, 0.10);
+      --shadow-card: 0 1px 0 rgba(26,22,18,0.04), 0 4px 14px rgba(26,22,18,0.04);
+      --shadow-card-hover: 0 1px 0 rgba(26,22,18,0.06), 0 18px 40px rgba(26,22,18,0.08);
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif;
+      font-weight: 400;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      line-height: 1.5;
+    }
+
+    .page {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 56px 32px 120px;
+    }
+
+    /* ==== Header ==== */
+    .lib-head { margin-bottom: 32px; }
+    .lib-kicker {
+      font-size: 11px; font-weight: 700;
+      letter-spacing: 0.14em; text-transform: uppercase;
+      color: var(--muted); margin-bottom: 12px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .lib-kicker::after {
+      content: ""; flex: 1; height: 1px;
+      background: var(--line); margin-left: 6px;
+    }
+    .lib-title {
+      font-size: 44px; font-weight: 800;
+      letter-spacing: -0.02em;
+      margin: 0 0 8px; line-height: 1.05;
+    }
+    .lib-subtitle {
+      color: var(--muted); font-size: 16px;
+      margin: 0 0 28px; max-width: 600px;
+    }
+
+    /* ==== STRATA BAND ==== */
+    .strata {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: var(--r-lg);
+      padding: 18px 20px 14px;
+      margin-bottom: 32px;
+      position: relative;
+      box-shadow: 0 1px 0 rgba(26,22,18,0.03);
+    }
+    .strata-head {
+      display: flex; align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .strata-title {
+      font-size: 11px; font-weight: 700;
+      letter-spacing: 0.14em; text-transform: uppercase;
+      color: var(--ink-2); margin: 0;
+    }
+    .strata-legend {
+      font-size: 11px; color: var(--faint);
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .strata-legend strong { color: var(--muted); font-weight: 500; }
+
+    /* Sparkline (top histogram) */
+    .strata-spark {
+      display: flex;
+      align-items: flex-end;
+      gap: 2px;
+      height: 28px;
+      margin: 0 0 10px 78px; /* aligns with band content area, past left gutter */
+      margin-right: 12px;
+      padding-bottom: 2px;
+      border-bottom: 1px dashed var(--line);
+    }
+    .spark-bar {
+      flex: 1;
+      background: var(--line-strong);
+      border-radius: 1px 1px 0 0;
+      min-height: 1px;
+      transition: background 0.15s ease;
+    }
+    .spark-bar.has-activity { background: var(--ink-2); }
+    .spark-bar.today { background: var(--vermillion); }
+
+    /* Strata grid */
+    .strata-grid {
+      position: relative;
+      padding-left: 78px; /* left gutter for band labels */
+      padding-right: 12px;
+    }
+
+    .band {
+      position: relative;
+      height: 40px;
+      border-bottom: 1px solid var(--line);
+    }
+    .band:first-child { border-top: 1px solid var(--line); }
+
+    .band-label {
+      position: absolute;
+      left: -78px;
+      top: 0;
+      width: 70px;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      padding-right: 10px;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.10em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+    .band-count {
+      color: var(--faint);
+      font-weight: 500;
+      margin-left: 4px;
+    }
+
+    .band-track {
+      position: absolute;
+      inset: 0;
+    }
+
+    /* File rectangles */
+    .file-rect {
+      position: absolute;
+      top: 15%;
+      height: 70%;
+      border-radius: 3px;
+      cursor: pointer;
+      transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease;
+      box-shadow: 0 1px 0 rgba(26,22,18,0.10), 0 1px 2px rgba(26,22,18,0.06);
+      border: 1px solid transparent;
+    }
+    .file-rect:hover {
+      transform: translateY(-1px);
+      filter: saturate(2.2) brightness(0.95);
+      box-shadow: 0 2px 0 rgba(26,22,18,0.12), 0 6px 14px rgba(26,22,18,0.10);
+      z-index: 5;
+    }
+    .file-rect.selected {
+      filter: saturate(2.6) brightness(0.92);
+      border-color: var(--ink);
+      box-shadow: 0 0 0 1px var(--ink), 0 6px 14px rgba(26,22,18,0.12);
+    }
+
+    /* Bucket tints — low saturation; hover bumps via filter:saturate */
+    .file-rect.b-career    { background: rgba(44,90,160,0.28);   border-color: rgba(44,90,160,0.20); }
+    .file-rect.b-concepts  { background: rgba(106,79,140,0.28);  border-color: rgba(106,79,140,0.20); }
+    .file-rect.b-entities  { background: rgba(214,58,47,0.26);   border-color: rgba(214,58,47,0.20); }
+    .file-rect.b-sources   { background: rgba(111,168,99,0.32);  border-color: rgba(111,168,99,0.22); }
+    .file-rect.b-synthesis { background: rgba(240,193,75,0.40);  border-color: rgba(240,193,75,0.36); }
+    .file-rect.b-logs      { background: rgba(132,122,107,0.30); border-color: rgba(132,122,107,0.22); }
+
+    /* Time axis */
+    .time-axis {
+      position: relative;
+      height: 22px;
+      margin-left: 78px;
+      margin-right: 12px;
+      margin-top: 6px;
+    }
+    .tick {
+      position: absolute;
+      top: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      transform: translateX(-50%);
+      pointer-events: none;
+    }
+    .tick-mark {
+      width: 1px;
+      height: 5px;
+      background: var(--line-strong);
+    }
+    .tick-label {
+      font-size: 10px;
+      color: var(--faint);
+      font-family: 'Manrope', sans-serif;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+    }
+    .tick.today .tick-mark { background: var(--vermillion); height: 7px; width: 2px; }
+    .tick.today .tick-label { color: var(--vermillion); font-weight: 700; }
+
+    /* TODAY vertical line through bands */
+    .today-line {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 1px;
+      background: var(--vermillion);
+      opacity: 0.55;
+      pointer-events: none;
+      z-index: 3;
+    }
+    .today-line::before {
+      content: "";
+      position: absolute;
+      top: -4px;
+      left: -3px;
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--vermillion);
+    }
+
+    /* Tooltip */
+    .tooltip {
+      position: fixed;
+      pointer-events: none;
+      background: var(--ink);
+      color: var(--paper);
+      border-radius: var(--r-md);
+      padding: 10px 12px;
+      font-size: 12px;
+      line-height: 1.4;
+      max-width: 280px;
+      opacity: 0;
+      transition: opacity 0.12s ease;
+      z-index: 100;
+      box-shadow: 0 8px 22px rgba(26,22,18,0.18);
+    }
+    .tooltip.show { opacity: 1; }
+    .tooltip-title {
+      font-weight: 700;
+      margin-bottom: 4px;
+      font-size: 13px;
+    }
+    .tooltip-path {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: rgba(255,255,255,0.6);
+      margin-bottom: 6px;
+      word-break: break-all;
+    }
+    .tooltip-meta {
+      display: flex;
+      gap: 10px;
+      font-size: 11px;
+      color: rgba(255,255,255,0.78);
+      font-variant-numeric: tabular-nums;
+    }
+    .tooltip-meta span + span::before {
+      content: "·";
+      margin-right: 10px;
+      color: rgba(255,255,255,0.35);
+    }
+
+    /* Filter chip (from strata selection) */
+    .filter-chip-wrap {
+      display: none;
+      margin: 0 0 16px;
+    }
+    .filter-chip-wrap.active { display: flex; align-items: center; gap: 10px; }
+    .filter-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 6px 7px 14px;
+      border-radius: var(--r-pill);
+      background: var(--ink);
+      color: var(--paper);
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .filter-chip-label {
+      font-size: 11px;
+      color: rgba(255,255,255,0.55);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      font-weight: 600;
+      margin-right: -4px;
+    }
+    .filter-clear {
+      background: rgba(255,255,255,0.15);
+      border: none;
+      color: var(--paper);
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 13px;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s ease;
+    }
+    .filter-clear:hover { background: rgba(255,255,255,0.28); }
+
+    /* ==== Search ==== */
+    .search-wrap { position: relative; margin-bottom: 24px; }
+    .search-input {
+      width: 100%;
+      padding: 16px 20px 16px 52px;
+      border: 1px solid var(--line);
+      border-radius: var(--r-lg);
+      background: var(--paper);
+      font-family: inherit;
+      font-size: 16px;
+      color: var(--ink);
+      outline: none;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    .search-input:focus {
+      border-color: var(--accent);
+      box-shadow: var(--focus-ring);
+    }
+    .search-input::placeholder { color: var(--faint); }
+    .search-icon {
+      position: absolute;
+      left: 20px; top: 50%;
+      transform: translateY(-50%);
+      width: 18px; height: 18px;
+      pointer-events: none;
+      color: var(--muted);
+    }
+    .search-kbd {
+      position: absolute;
+      right: 16px; top: 50%;
+      transform: translateY(-50%);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--muted);
+      background: var(--paper-soft);
+      padding: 3px 8px;
+      border-radius: var(--r-sm);
+      border: 1px solid var(--line);
+    }
+
+    /* ==== Filter chips ==== */
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+    .chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 7px 14px;
+      border-radius: var(--r-pill);
+      border: 1px solid var(--line);
+      background: var(--paper);
+      color: var(--ink-2);
+      font-family: inherit; font-size: 13px; font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .chip:hover { border-color: var(--line-strong); background: var(--paper-soft); }
+    .chip.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+    .chip-count { font-size: 11px; font-weight: 600; color: var(--faint); font-variant-numeric: tabular-nums; }
+    .chip.active .chip-count { color: rgba(255,255,255,0.6); }
+
+    /* ==== Section ==== */
+    .section { margin-top: 48px; }
+    .section-head {
+      display: flex; align-items: baseline; gap: 14px;
+      margin-bottom: 4px; cursor: pointer; user-select: none;
+    }
+    .section-title {
+      font-size: 13px; font-weight: 700;
+      letter-spacing: 0.12em; text-transform: uppercase;
+      color: var(--ink); margin: 0;
+    }
+    .section-count { font-size: 12px; font-weight: 500; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .section-rule { flex: 1; height: 1px; background: var(--line); }
+    .section-toggle { width: 18px; height: 18px; color: var(--muted); transition: transform 0.2s ease; }
+    .section.collapsed .section-toggle { transform: rotate(-90deg); }
+    .section.collapsed .cards { display: none; }
+
+    /* ==== Card stack ==== */
+    .cards { display: flex; flex-direction: column; padding-top: 8px; }
+    .card {
+      position: relative;
+      padding: 24px 4px 28px;
+      border-bottom: 1px solid var(--line);
+      cursor: pointer;
+      transition: transform 0.2s ease, opacity 0.2s ease;
+    }
+    .card:last-child { border-bottom: none; }
+    .card:hover { transform: translateX(2px); }
+    .card.dimmed { opacity: 0.22; }
+    .card.highlight { background: linear-gradient(90deg, rgba(214,58,47,0.04), transparent 60%); }
+    .card-path {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--faint);
+      margin-bottom: 8px;
+      letter-spacing: -0.01em;
+    }
+    .card-title {
+      font-size: 22px; font-weight: 700;
+      letter-spacing: -0.015em; color: var(--ink);
+      margin: 0 0 10px; line-height: 1.2;
+    }
+    .card:hover .card-title { color: var(--accent); }
+    .card-snippet {
+      font-size: 15px; line-height: 1.55;
+      color: var(--ink-2); margin: 0 0 16px;
+      max-width: 640px;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .card-peek {
+      max-height: 0; overflow: hidden;
+      transition: max-height 0.3s ease, opacity 0.2s ease, margin 0.2s ease;
+      opacity: 0;
+      font-size: 14px; line-height: 1.6;
+      color: var(--ink-2); max-width: 640px;
+      border-left: 2px solid var(--accent-line);
+      padding-left: 14px;
+    }
+    .card:hover .card-peek { max-height: 200px; opacity: 1; margin: -4px 0 16px; }
+
+    .card-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .tag {
+      display: inline-flex; align-items: center;
+      padding: 3px 10px;
+      border-radius: var(--r-pill);
+      font-size: 11px; font-weight: 600;
+      letter-spacing: 0.02em;
+      border: 1px solid transparent;
+      white-space: nowrap;
+    }
+    .tag-career    { color: var(--cobalt);     background: rgba(44,90,160,0.08);  border-color: rgba(44,90,160,0.18); }
+    .tag-product   { color: var(--violet);     background: rgba(106,79,140,0.08); border-color: rgba(106,79,140,0.18); }
+    .tag-strategy  { color: var(--vermillion); background: rgba(214,58,47,0.08);  border-color: rgba(214,58,47,0.18); }
+    .tag-entity    { color: var(--cobalt);     background: rgba(44,90,160,0.08);  border-color: rgba(44,90,160,0.18); }
+    .tag-source    { color: var(--green-poly); background: rgba(111,168,99,0.10); border-color: rgba(111,168,99,0.22); }
+    .tag-meta      { color: var(--muted);      background: var(--paper-soft);     border-color: var(--line); }
+    .tag-meeting   { color: var(--mustard);    background: rgba(240,193,75,0.14); border-color: rgba(240,193,75,0.32); }
+    .tag-prospect  { color: var(--vermillion); background: rgba(214,58,47,0.08);  border-color: rgba(214,58,47,0.18); }
+    .tag-mentor    { color: var(--violet);     background: rgba(106,79,140,0.08); border-color: rgba(106,79,140,0.18); }
+    .tag-default   { color: var(--ink-2);      background: var(--paper-soft);     border-color: var(--line); }
+
+    .meta-dot { width: 3px; height: 3px; border-radius: 50%; background: var(--line-strong); }
+    .meta-text { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .meta-text strong { color: var(--ink-2); font-weight: 600; }
+
+    .connections {
+      display: flex; align-items: center; gap: 6px;
+      margin-top: 12px; flex-wrap: wrap;
+    }
+    .conn-label { font-size: 11px; color: var(--faint); letter-spacing: 0.02em; font-weight: 500; }
+    .conn-chip {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 3px 9px 3px 8px;
+      border-radius: var(--r-pill);
+      background: var(--paper);
+      border: 1px solid var(--line);
+      font-size: 11px; font-weight: 500; color: var(--ink-2);
+      cursor: pointer; transition: all 0.15s ease;
+      text-decoration: none;
+    }
+    .conn-chip:hover {
+      border-color: var(--accent-line);
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+    .conn-chip::before { content: "→"; color: var(--faint); font-size: 10px; line-height: 1; }
+    .conn-chip:hover::before { color: var(--accent); }
+
+    .footer-hint {
+      margin-top: 80px;
+      padding-top: 24px;
+      border-top: 1px solid var(--line);
+      font-size: 12px; color: var(--faint);
+      text-align: center;
+    }
+
+    @media (max-width: 760px) {
+      .page { padding: 32px 20px 80px; }
+      .lib-title { font-size: 34px; }
+      .strata-grid { padding-left: 56px; }
+      .band-label { left: -56px; width: 50px; padding-right: 6px; font-size: 9px; }
+      .strata-spark { margin-left: 56px; }
+      .time-axis { margin-left: 56px; }
+      .card-title { font-size: 19px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="lib-head">
+      <div class="lib-kicker">Margins · Files</div>
+      <h1 class="lib-title">Library</h1>
+      <p class="lib-subtitle">Your local vault as plain markdown — see the shape of your attention across thirty days, then read like a reader.</p>
+    </header>
+
+    <!-- ============ STRATA BAND ============ -->
+    <section class="strata" aria-label="Strata view of vault activity">
+      <div class="strata-head">
+        <h2 class="strata-title">Strata · last 30 days</h2>
+        <div class="strata-legend">
+          <strong>14 files</strong> · 22,400 words · width ∝ size · click a rect to filter
+        </div>
+      </div>
+
+      <!-- Daily activity sparkline (30 bars, oldest → today) -->
+      <div class="strata-spark" id="sparkline" aria-hidden="true"></div>
+
+      <!-- Six bucket bands -->
+      <div class="strata-grid" id="strataGrid">
+        <div class="band" data-bucket="career">
+          <span class="band-label">Career <span class="band-count">3</span></span>
+          <div class="band-track"></div>
+        </div>
+        <div class="band" data-bucket="concepts">
+          <span class="band-label">Concepts <span class="band-count">2</span></span>
+          <div class="band-track"></div>
+        </div>
+        <div class="band" data-bucket="entities">
+          <span class="band-label">Entities <span class="band-count">3</span></span>
+          <div class="band-track"></div>
+        </div>
+        <div class="band" data-bucket="sources">
+          <span class="band-label">Sources <span class="band-count">2</span></span>
+          <div class="band-track"></div>
+        </div>
+        <div class="band" data-bucket="synthesis">
+          <span class="band-label">Synthesis <span class="band-count">2</span></span>
+          <div class="band-track"></div>
+        </div>
+        <div class="band" data-bucket="logs">
+          <span class="band-label">Logs <span class="band-count">2</span></span>
+          <div class="band-track"></div>
+        </div>
+        <div class="today-line" id="todayLine"></div>
+      </div>
+
+      <!-- Time axis -->
+      <div class="time-axis" id="timeAxis"></div>
+    </section>
+
+    <!-- Filter chip surfaced from strata clicks -->
+    <div class="filter-chip-wrap" id="filterChipWrap">
+      <span class="filter-chip">
+        <span class="filter-chip-label">Filtering</span>
+        <span id="filterChipName">—</span>
+        <button class="filter-clear" id="filterClear" aria-label="Clear filter">×</button>
+      </span>
+    </div>
+
+    <div class="search-wrap">
+      <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="7"></circle>
+        <line x1="20" y1="20" x2="16.65" y2="16.65"></line>
+      </svg>
+      <input class="search-input" type="search" placeholder="Search the library — titles, tags, body text..." autocomplete="off">
+      <span class="search-kbd">/</span>
+    </div>
+
+    <div class="chips" role="tablist">
+      <button class="chip active" data-filter="all">All <span class="chip-count">14</span></button>
+      <button class="chip" data-filter="source">Sources <span class="chip-count">2</span></button>
+      <button class="chip" data-filter="entity">Entities <span class="chip-count">3</span></button>
+      <button class="chip" data-filter="concept">Concepts <span class="chip-count">2</span></button>
+      <button class="chip" data-filter="synthesis">Synthesis <span class="chip-count">2</span></button>
+      <button class="chip" data-filter="career">Career <span class="chip-count">3</span></button>
+      <button class="chip" data-filter="meta">Logs <span class="chip-count">2</span></button>
+    </div>
+
+    <!-- ============ ACTIVE THIS WEEK ============ -->
+    <section class="section" data-section>
+      <header class="section-head" onclick="toggleSection(this)">
+        <h2 class="section-title">Active this week</h2>
+        <span class="section-count">7 files</span>
+        <span class="section-rule"></span>
+        <svg class="section-toggle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </header>
+
+      <div class="cards">
+        <article class="card" data-id="log">
+          <div class="card-path">wiki/log.md</div>
+          <h3 class="card-title">Operations log</h3>
+          <p class="card-snippet">Ingested two source files this morning — Ellis meeting transcript and the pricing-deck feedback from Larry. Updated centric-wm overview with the $50–100 pilot anchor. Linted; one drift flag remaining on synthesis/briefly-strategic-direction.</p>
+          <div class="card-peek">Recent ops: 5/10 ingest (ellis-meeting source); 5/09 compile (8 backlink suggestions, 6 accepted); 5/08 query — "what's the right price for centric"; 5/07 update on briefly-competitive-landscape adding Affinity benchmark…</div>
+          <div class="card-meta">
+            <span class="tag tag-meta">log</span>
+            <span class="meta-dot"></span>
+            <span class="meta-text"><strong>1h</strong> ago</span>
+            <span class="meta-dot"></span>
+            <span class="meta-text">5,400 words</span>
+          </div>
+        </article>
+
+        <article class="card" data-id="alex-wolf">
+          <div class="card-path">wiki/career/alex-wolf.md</div>
+          <h3 class="card-title">Alex Wolf</h3>
+          <p class="card-snippet">MS PWM colleague, now FA in Chicago. Reached out 5/8 after seeing the Riviera close-out post. Warm but cautious — not a buyer; useful intel on advisor adoption of Jump and Hazel inside MS's tech-allow list.</p>
+          <div class="card-peek">Knows the MS internal compliance posture on third-party AI tools. Could be a door-opener to two FA teams in Naperville if Briefly ever pursues MS-affiliated independents. Predates Briefly — protect the relationship.</div>
+          <div class="card-meta">
+            <span class="tag tag-career">career</span>
+            <span class="tag tag-default">advisor</span>
+            <span class="meta-dot"></span>
+            <span class="meta-text"><strong>2h</strong> ago</span>
+            <span class="meta-dot"></span>
+            <span class="meta-text">380 words</span>
+          </div>
+          <div class="connections">
+            <span class="conn-label">Linked to</span>
+            <a class="conn-chip" href="#">Briefly</a>
+            <a class="conn-chip" href="#">Morgan Stanley</a>
+          </div>
+        </article>
+
+        <article class="card" data-id="ellis-rutili">
+          <div class="card-path">wiki/entities/ellis-rutili.md</div>
+          <h3 class="card-title">Ellis Rutili</h3>
+          <p class="card-snippet">Champion at Centric WM — operations role, nephew of founder Virgil. Named action-item routing as his #1 pilot ask. Pilot scoped at $125/seat × Ellis + 1–2 advisors, 60–90 days. He sits one level below the real buyer; don't surface Virgil yet.</p>
+          <div class="card-peek">Background: ex-NU econ, three years at Centric across ops and client service. Trusted by Virgil for vendor evaluation. Strong reader, prefers async demos to live calls. Coffee notes from 4/15: cares about reducing post-meeting CRM time more than pre-meeting brief quality…</div>
+          <div class="card-meta">
+            <span class="tag tag-prospect">prospect</span>
+            <span class="tag tag-entity">centric</span>
+            <span class="meta-dot"></span>
+            <span class="meta-text"><strong>3h</strong> ago</span>
+            <span class="meta-dot"></span>
+            <span class="meta-text">1,580 words</span>
+          </div>
+          <div class="connections">
+            <span class="conn-label">Linked to</span>
+            <a class="conn-chip" href="#">Centric WM</a>
+            <a class="conn-chip" href="#">Virgil Rutili</a>
+          </div>
+        </article>
+
+        <article class="card" data-id="centric-wm">
+          <div class="card-path">wiki/entities/centric-wm.md</div>
+          <h3 class="card-title">Centric Wealth Management</h3>
+          <p class="card-snippet">Chicago-based RIA, ~$300M AUM split across an FSC-SMB core book and one $300M family-office household (Mastro for that one, Orion for everyone else). First-firm pilot anchor for Briefly at $50–100/seat.</p>
+          <div class="card-peek">Founded 2014 by Virgil Rutili. ~12 staff. Reporting stack: Orion (default) plus a Mastro deployment for the meat-family. Tech-curious leadership; willing to be first on a vendor if the founder relationship is strong.</div>
+          <div class="card-meta">
+            <span class="tag tag-entity">firm</span>
+            <span class="tag tag-prospect">prospect</span>
+            <span class="meta-dot"></span>
+            <span class="meta-text"><strong>3h</strong> ago</span>
+            <span class="meta-dot"></span>
+            <span class="meta-text">740 words</span>
+          </div>
+          <div class="connections">
+            <span class="conn-label">Linked to</span>
+            <a class="conn-chip" href="#">Ellis Rutili</a>
+          </div>
+        </article>
+
+        <article class="card" data-id="relationship-graph">
+          <div class="card-path">wiki/concepts/relationship-graph.md</div>
+          <h3 class="card-title">Relationship graph</h3>
+          <p class="card-snippet">The substrate underneath Briefly — every advisor interaction, household, referral, and vendor edge as a typed node. Five-year optionality for vertical extension. Open question: surface it visibly in the advisor UI, or keep it backend-only with narrative positioning.</p>
+          <div class="card-peek">Affinity is the proof-of-concept analog at $2K/user/year, 1,700 customers. Pricing anchor should sit near Affinity, not Wealthbox/Jump. The graph is committed; UI surfacing is the live debate.</div>
+          <div class="card-meta">
+            <span class="tag tag-product">product</span>
+            <span class="tag tag-strategy">briefly-vision</span>
+            <span class="meta-dot"></span>
+            <span class="meta-text"><strong>5h</strong> ago</span>
+            <span class="meta-dot"></span>
+            <span class="meta-text">920 words</span>
+          </div>
+          <div class="connections">
+            <span class="conn-label">Linked to</span>
+            <a class="conn-chip" href="#">Briefly</a>
+            <a class="conn-chip" href="#">Margins</a>
+          </div>
+        </article>
+
+        <article class="card" data-id="audio-retention">
+          <div class="card-path">wiki/concepts/audio-retention-privacy.md</div>
+          <h3 class="card-title">Audio retention as a privacy pitch</h3>
+          <p class="card-snippet">v1 default deletes the raw audio file the moment AssemblyAI returns a transcript. Originally a dev convenience; reframe it in client materials as a deliberate privacy/security feature. Per-firm retention configurable but not the default.</p>
+          <div class="card-peek">Surfacing this in the Centric pilot deck distinguishes Briefly from Jump and Zocks, both of which keep recordings indefinitely on their own buckets. Compliance angle is real but not the lead story.</div>
+          <div class="card-meta">
+            <span class="tag tag-product">product</span>
+            <span class="tag tag-default">security</span>
+            <span class="meta-dot"></span>
+            <span class="meta-text"><strong>1d</strong> ago</span>
+            <span class="meta-dot"></span>
+            <span class="meta-text">460 words</span>
+          </div>
+          <div class="connections">
+            <span class="conn-label">Linked to</span>
+            <a class="conn-chip" href="#">Briefly</a>
+          </div>
+        </article>
+
+        <article class="card" data-id="morgan-stanley">
+          <div class="card-path">wiki/career/morgan-stanley.md</div>
+          <h3 class="card-title">Morgan Stanley</h3>
+          <p class="card-snippet">Connor's prior firm — Private Wealth analyst, 2021–2024. The MS PWM rolodex is mostly ex-coworkers, not buyers. Treat as a relationship cluster to maintain rather than a pipeline to mine.</p>
+          <div class="card-peek">Compliance posture inside MS WM: third-party AI vendors blocked at the firm level; FA-side workflow tools allowed only if they don't touch client data. Briefly cannot sell into MS proper — only to MS-affiliated independents who have left.</div>
+          <div class="card-meta">
+            <span class="tag tag-career">career</span>
+            <span class="tag tag-default">ms-pwm</span>
+            <span class="meta-dot"></span>
+            <span class="meta-text"><strong>2d</strong> ago</span>
+            <span class="meta-dot"></span>
+            <span class="meta-text">1,240 words</span>
+          </div>
+          <div class="connections">
+            <span class="conn-label">Linked to</span>
+            <a class="conn-chip" href="#">Alex Wolf</a>
+            <a class="conn-chip" href="#">Joel Florczyk</a>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- ============ LAST MONTH ============ -->
+    <section class="section" data-section>
+      <header class="section-head" onclick="toggleSection(this)">
+        <h2 class="section-title">Last month</h2>
+        <span class="section-count">5 files</span>
+        <span class="section-rule"></span>
+        <svg class="section-toggle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </header>
+
+      <div class="cards">
+        <article class="card" data-id="vault-index">
+          <div class="card-path">wiki/index.md</div>
+          <h3 class="card-title">Vault index</h3>
+          <p class="card-snippet">Map of the wiki. Folders: career, concepts, entities, sources, synthesis, ideas, outbound. Use this page to orient any new agent or future-Connor returning after a long gap.</p>
+          <div class="card-peek">Quick links: ingest-tracker, log, wiki-stats, operator-manual, query-cookbook. Update this when a new bucket is added — sources of truth should be one click away.</div>
+          <div class="card-meta">
+            <span class="tag tag-meta">meta</span>
+            <span class="meta-dot"></span>
+            <span class="meta-text"><strong>3d</strong> ago</span>
+            <span class="meta-dot"></span>
+            <span class="meta-text">720 words</span>
+          </div>
+        </article>
+
+        <article class="card" data-id="briefly-strategic-direction">
+          <div class="card-path">wiki/synthesis/briefly-strategic-direction-apr2026.md</div>
+          <h3 class="card-title">Briefly strategic direction — Apr 2026</h3>
+          <p class="card-snippet">Connor's lean: partner with a few small RIAs, customize per-firm, pull the relationship graph forward as the underlying vision. Not horizontal SaaS. Anthropic's March memory ship narrowed the broad "AI memory" pitch into a portability + vertical posture story.</p>
+          <div class="card-peek">Three premium-earn defenses (customization, founder-led relationship, firm-voice tuning) hold. Three rationalizations to avoid: data portability alone, compliance alone, UX alone. Open fork: customize for Centric and extend, or build multi-tenant customization from day one.</div>
+          <div class="card-meta">
+            <span class="tag tag-strategy">strategy</span>
+            <span class="tag tag-default">briefly</span>
+            <span class="meta-dot"></span>
+            <span class="meta-text"><strong>4d</strong> ago</span>
+            <span class="meta-dot"></span>
+            <span class="meta-text">1,260 words</span>
+          </div>
+          <div class="connections">
+            <span class="conn-label">Linked to</span>
+            <a class="conn-chip" href="#">Briefly</a>
+            <a class="conn-chip" href="#">Margins</a>
+            <a class="conn-chip" href="#">Anthropic memory</a>
+          </div>
+        </article>
+
+        <article class="card" data-id="oliver-wyman">
+          <div class="card-path">wiki/career/oliver-wyman.md</div>
+          <h3 class="card-title">Oliver Wyman</h3>
+          <p class="card-snippet">Pre-MS consulting stint, FS strategy. Useful credentialing line on the Briefly site and for Booth-deferral conversations. Two FS-partner contacts still warm; not buyers but credible referrers for RIA owner intros.</p>
+          <div class="card-peek">Project pattern was wealth-segment growth strategy for large banks — exactly the buyer-side perspective Briefly is now selling against. Don't mention OW credentials in cold emails to small RIAs; can read as overweight.</div>
+          <div class="card-meta">
+            <span class="tag tag-career">career</span>
+            <span class="tag tag-default">consulting</span>
+            <span class="meta-dot"></span>
+            <span class="meta-text"><strong>6d</strong> ago</span>
+            <span class="meta-dot"></span>
+            <span class="meta-text">620 words</span>
+          </div>
+        </article>
+
+        <article class="card" data-id="margins-briefly-consolidation">
+          <div class="card-path">wiki/synthesis/margins-briefly-consolidation.md</div>
+          <h3 class="card-title">Margins and Briefly are the same architecture</h3>
+          <p class="card-snippet">Margins is the architecture — vault, operator manual, ingest, graph. Briefly is the vertical product on top of it for RIAs. Don't treat them as parallel projects. This consolidation justifies $40K services pricing for the firm-customized build.</p>
+          <div class="card-peek">As of 5/2: Margins is lead build, Briefly enters formal maintenance, Ihor freeze real. Traction signal = 10+ users or a paying Margins customer before reopening Briefly product investment.</div>
+          <div class="card-meta">
+            <span class="tag tag-strategy">strategy</span>
+            <span class="tag tag-default">architecture</span>
+            <span class="meta-dot"></span>
+            <span class="meta-text"><strong>7d</strong> ago</span>
+            <span class="meta-dot"></span>
+            <span class="meta-text">1,920 words</span>
+          </div>
+          <div class="connections">
+            <span class="conn-label">Linked to</span>
+            <a class="conn-chip" href="#">Briefly</a>
+            <a class="conn-chip" href="#">Margins</a>
+          </div>
+        </article>
+
+        <article class="card" data-id="bob-casey">
+          <div class="card-path">wiki/entities/bob-casey.md</div>
+          <h3 class="card-title">Bob Casey</h3>
+          <p class="card-snippet">Founder of Santa Barbara Management (Chicago-based despite the name), Booth lecturer, founding-team offer extender. Closed out 5/3 — relationship moves to stay-in-touch. Plans to share Margins personal-productivity tool; business fold-in stays gated.</p>
+          <div class="card-peek">Mentor pattern: deep, slow, deliberate. Won't be rushed into a yes or a no. Predates Briefly. Travels heavily for the SBM book; best reach time is Wednesday mornings Chicago. Knows the Booth deferral landscape cold.</div>
+          <div class="card-meta">
+            <span class="tag tag-mentor">mentor</span>
+            <span class="tag tag-default">riviera</span>
+            <span class="meta-dot"></span>
+            <span class="meta-text"><strong>8d</strong> ago</span>
+            <span class="meta-dot"></span>
+            <span class="meta-text">2,100 words</span>
+          </div>
+          <div class="connections">
+            <span class="conn-label">Linked to</span>
+            <a class="conn-chip" href="#">Santa Barbara Management</a>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- ============ OLDER ============ -->
+    <section class="section collapsed" data-section>
+      <header class="section-head" onclick="toggleSection(this)">
+        <h2 class="section-title">Older</h2>
+        <span class="section-count">2 files</span>
+        <span class="section-rule"></span>
+        <svg class="section-toggle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </header>
+
+      <div class="cards">
+        <article class="card" data-id="pricing-deck">
+          <div class="card-path">wiki/sources/2026-04-28-pricing-deck-feedback.md</div>
+          <h3 class="card-title">Pricing deck feedback — 4/28</h3>
+          <p class="card-snippet">Larry's review of the Centric pilot pricing slide. Anchor at $50–100/seat reads correctly as first-partner discount, not desperation, if framed against $200/seat full price. Pull Affinity comparison forward; drop the Jump/Zocks delta — too defensive.</p>
+          <div class="card-peek">Larry suggested adding a "what changes at full price" slide so Ellis sees the value gradient clearly. Three premium tiers landed: standard, firm-customized, full graph-substrate. Connor flagged that the graph-substrate tier is aspirational and shouldn't appear in the pilot deck.</div>
+          <div class="card-meta">
+            <span class="tag tag-source">source</span>
+            <span class="tag tag-default">pricing</span>
+            <span class="meta-dot"></span>
+            <span class="meta-text"><strong>12d</strong> ago</span>
+            <span class="meta-dot"></span>
+            <span class="meta-text">1,840 words</span>
+          </div>
+          <div class="connections">
+            <span class="conn-label">Linked to</span>
+            <a class="conn-chip" href="#">Briefly</a>
+          </div>
+        </article>
+
+        <article class="card" data-id="ellis-meeting">
+          <div class="card-path">wiki/sources/2026-04-15-ellis-meeting.md</div>
+          <h3 class="card-title">Ellis meeting — 4/15 Centric WM visit</h3>
+          <p class="card-snippet">90-minute on-site at Centric. Ellis named action-item routing as the #1 pilot ask, ranking it above the pre-meeting brief feature that Connor expected to lead with. Pilot ask landed: Ellis + 1–2 advisors, $125/seat, 60–90 days.</p>
+          <div class="card-peek">Notes: Ellis prefers async demos. Compliance concerns minimal at Centric's size. Virgil mentioned once, not introduced — confirms champion/buyer separation. Three follow-ups assigned to Connor: send pilot agreement draft, share Affinity comparison, set up Orion read-only sandbox.</div>
+          <div class="card-meta">
+            <span class="tag tag-source">source</span>
+            <span class="tag tag-meeting">meeting</span>
+            <span class="meta-dot"></span>
+            <span class="meta-text"><strong>24d</strong> ago</span>
+            <span class="meta-dot"></span>
+            <span class="meta-text">3,200 words</span>
+          </div>
+          <div class="connections">
+            <span class="conn-label">Linked to</span>
+            <a class="conn-chip" href="#">Ellis Rutili</a>
+            <a class="conn-chip" href="#">Centric WM</a>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <div class="footer-hint">14 files · 22,400 words across the vault · backed by plain markdown in <code>~/Documents/connor_brain2/wiki/</code></div>
+  </main>
+
+  <!-- Hover tooltip -->
+  <div class="tooltip" id="tooltip" role="tooltip">
+    <div class="tooltip-title" id="ttTitle"></div>
+    <div class="tooltip-path" id="ttPath"></div>
+    <div class="tooltip-meta">
+      <span id="ttWords"></span>
+      <span id="ttTime"></span>
+    </div>
+  </div>
+
+  <script>
+    // ============ DATA ============
+    // "now" is 2026-05-11 00:00; hoursAgo converted from each file's "X ago" timestamp.
+    // bucket: career | concepts | entities | sources | synthesis | logs
+    const FILES = [
+      { id:'log',                          title:'Operations log',                          path:'wiki/log.md',                                            bucket:'logs',      words:5400, hoursAgo:1,    label:'1h' },
+      { id:'alex-wolf',                    title:'Alex Wolf',                               path:'wiki/career/alex-wolf.md',                               bucket:'career',    words:380,  hoursAgo:2,    label:'2h' },
+      { id:'ellis-rutili',                 title:'Ellis Rutili',                            path:'wiki/entities/ellis-rutili.md',                          bucket:'entities',  words:1580, hoursAgo:3,    label:'3h' },
+      { id:'centric-wm',                   title:'Centric Wealth Management',               path:'wiki/entities/centric-wm.md',                            bucket:'entities',  words:740,  hoursAgo:3,    label:'3h' },
+      { id:'relationship-graph',           title:'Relationship graph',                      path:'wiki/concepts/relationship-graph.md',                    bucket:'concepts',  words:920,  hoursAgo:5,    label:'5h' },
+      { id:'audio-retention',              title:'Audio retention as a privacy pitch',      path:'wiki/concepts/audio-retention-privacy.md',               bucket:'concepts',  words:460,  hoursAgo:24,   label:'1d' },
+      { id:'morgan-stanley',               title:'Morgan Stanley',                          path:'wiki/career/morgan-stanley.md',                          bucket:'career',    words:1240, hoursAgo:48,   label:'2d' },
+      { id:'vault-index',                  title:'Vault index',                             path:'wiki/index.md',                                          bucket:'logs',      words:720,  hoursAgo:72,   label:'3d' },
+      { id:'briefly-strategic-direction',  title:'Briefly strategic direction — Apr 2026',  path:'wiki/synthesis/briefly-strategic-direction-apr2026.md',  bucket:'synthesis', words:1260, hoursAgo:96,   label:'4d' },
+      { id:'oliver-wyman',                 title:'Oliver Wyman',                            path:'wiki/career/oliver-wyman.md',                            bucket:'career',    words:620,  hoursAgo:144,  label:'6d' },
+      { id:'margins-briefly-consolidation',title:'Margins and Briefly are the same architecture', path:'wiki/synthesis/margins-briefly-consolidation.md',  bucket:'synthesis', words:1920, hoursAgo:168,  label:'7d' },
+      { id:'bob-casey',                    title:'Bob Casey',                               path:'wiki/entities/bob-casey.md',                             bucket:'entities',  words:2100, hoursAgo:192,  label:'8d' },
+      { id:'pricing-deck',                 title:'Pricing deck feedback — 4/28',            path:'wiki/sources/2026-04-28-pricing-deck-feedback.md',       bucket:'sources',   words:1840, hoursAgo:288,  label:'12d' },
+      { id:'ellis-meeting',                title:'Ellis meeting — 4/15 Centric WM visit',   path:'wiki/sources/2026-04-15-ellis-meeting.md',               bucket:'sources',   words:3200, hoursAgo:576,  label:'24d' },
+    ];
+
+    const RANGE_DAYS = 30;
+    const RANGE_HOURS = RANGE_DAYS * 24;
+
+    // ============ STRATA RENDER ============
+    function renderStrata() {
+      const grid = document.getElementById('strataGrid');
+      const gridRect = grid.getBoundingClientRect();
+      // Track inner width — bands are positioned within strata-grid's content area
+      // We compute % positions relative to each band-track (which is inset:0)
+      // hoursAgo=0 → right edge (100%), hoursAgo=RANGE_HOURS → left edge (0%)
+      const tracks = {};
+      document.querySelectorAll('.band').forEach(b => {
+        tracks[b.dataset.bucket] = b.querySelector('.band-track');
+      });
+
+      FILES.forEach(f => {
+        const track = tracks[f.bucket];
+        if (!track) return;
+        const pct = 100 - (f.hoursAgo / RANGE_HOURS) * 100;
+        // Width scales with log(words)
+        const wWords = Math.max(8, Math.log(Math.max(50, f.words)) * 3.2); // px
+        const rect = document.createElement('div');
+        rect.className = `file-rect b-${f.bucket}`;
+        rect.dataset.id = f.id;
+        rect.style.left = `calc(${pct}% - ${wWords / 2}px)`;
+        rect.style.width = `${wWords}px`;
+        rect.setAttribute('role', 'button');
+        rect.setAttribute('tabindex', '0');
+        rect.setAttribute('aria-label', `${f.title}, ${f.words} words, ${f.label} ago`);
+        track.appendChild(rect);
+
+        // Hover handlers
+        rect.addEventListener('mouseenter', (e) => showTooltip(e, f));
+        rect.addEventListener('mousemove', (e) => moveTooltip(e));
+        rect.addEventListener('mouseleave', hideTooltip);
+        rect.addEventListener('click', () => toggleFileFilter(f));
+        rect.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleFileFilter(f); }
+        });
+      });
+    }
+
+    // ============ TIME AXIS ============
+    function renderTimeAxis() {
+      const axis = document.getElementById('timeAxis');
+      // Ticks every 7 days plus today. Now = 2026-05-11.
+      const ticks = [
+        { daysAgo: 0,  label: 'May 11', today: true },
+        { daysAgo: 7,  label: 'May 4' },
+        { daysAgo: 14, label: 'Apr 27' },
+        { daysAgo: 21, label: 'Apr 20' },
+        { daysAgo: 28, label: 'Apr 13' },
+      ];
+      ticks.forEach(t => {
+        const pct = 100 - (t.daysAgo / RANGE_DAYS) * 100;
+        const el = document.createElement('div');
+        el.className = 'tick' + (t.today ? ' today' : '');
+        el.style.left = `${pct}%`;
+        el.innerHTML = `<div class="tick-mark"></div><div class="tick-label">${t.label}</div>`;
+        axis.appendChild(el);
+      });
+    }
+
+    // ============ SPARKLINE ============
+    function renderSparkline() {
+      const spark = document.getElementById('sparkline');
+      // 30 day bins, index 0 = oldest, 29 = today
+      const bins = new Array(RANGE_DAYS).fill(0);
+      FILES.forEach(f => {
+        const day = Math.min(RANGE_DAYS - 1, RANGE_DAYS - 1 - Math.floor(f.hoursAgo / 24));
+        if (day >= 0) bins[day] += 1;
+      });
+      const max = Math.max(1, ...bins);
+      bins.forEach((v, i) => {
+        const bar = document.createElement('div');
+        const h = v === 0 ? 2 : Math.round((v / max) * 26);
+        bar.className = 'spark-bar' + (v > 0 ? ' has-activity' : '') + (i === RANGE_DAYS - 1 && v > 0 ? ' today' : '');
+        bar.style.height = `${h}px`;
+        bar.title = v ? `${v} file${v === 1 ? '' : 's'}` : '';
+        spark.appendChild(bar);
+      });
+    }
+
+    // ============ TODAY LINE ============
+    function positionTodayLine() {
+      // Today line sits at right edge of the band track area (which is the full grid right side)
+      const line = document.getElementById('todayLine');
+      // The grid has padding-left: 78px; padding-right: 12px.
+      // Right edge of track area = right: 12px from grid edge. left = calc(100% - 12px).
+      line.style.left = 'calc(100% - 12px)';
+    }
+
+    // ============ TOOLTIP ============
+    const tt = document.getElementById('tooltip');
+    const ttTitle = document.getElementById('ttTitle');
+    const ttPath = document.getElementById('ttPath');
+    const ttWords = document.getElementById('ttWords');
+    const ttTime = document.getElementById('ttTime');
+    function showTooltip(e, f) {
+      ttTitle.textContent = f.title;
+      ttPath.textContent = f.path;
+      ttWords.textContent = `${f.words.toLocaleString()} words`;
+      ttTime.textContent = `${f.label} ago`;
+      tt.classList.add('show');
+      moveTooltip(e);
+    }
+    function moveTooltip(e) {
+      const pad = 14;
+      let x = e.clientX + pad;
+      let y = e.clientY + pad;
+      const rect = tt.getBoundingClientRect();
+      if (x + rect.width > window.innerWidth - 8) x = e.clientX - rect.width - pad;
+      if (y + rect.height > window.innerHeight - 8) y = e.clientY - rect.height - pad;
+      tt.style.left = `${x}px`;
+      tt.style.top = `${y}px`;
+    }
+    function hideTooltip() { tt.classList.remove('show'); }
+
+    // ============ FILTER (strata → cards) ============
+    let activeFileId = null;
+    function toggleFileFilter(f) {
+      if (activeFileId === f.id) { clearFilter(); return; }
+      activeFileId = f.id;
+      document.querySelectorAll('.file-rect').forEach(r => {
+        r.classList.toggle('selected', r.dataset.id === f.id);
+      });
+      const wrap = document.getElementById('filterChipWrap');
+      wrap.classList.add('active');
+      document.getElementById('filterChipName').textContent = f.title;
+      document.querySelectorAll('.card').forEach(card => {
+        const match = card.dataset.id === f.id;
+        card.classList.toggle('dimmed', !match);
+        card.classList.toggle('highlight', match);
+      });
+      // Auto-expand any collapsed section that contains the matching card
+      document.querySelectorAll('.section').forEach(sec => {
+        const has = sec.querySelector(`.card[data-id="${f.id}"]`);
+        if (has) sec.classList.remove('collapsed');
+      });
+      // Scroll the matching card into view softly
+      const card = document.querySelector(`.card[data-id="${f.id}"]`);
+      if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    function clearFilter() {
+      activeFileId = null;
+      document.querySelectorAll('.file-rect.selected').forEach(r => r.classList.remove('selected'));
+      document.getElementById('filterChipWrap').classList.remove('active');
+      document.querySelectorAll('.card').forEach(card => {
+        card.classList.remove('dimmed', 'highlight');
+      });
+    }
+    document.getElementById('filterClear').addEventListener('click', clearFilter);
+
+    // ============ LIBRARY INTERACTIONS (preserved) ============
+    function toggleSection(headerEl) {
+      headerEl.parentElement.classList.toggle('collapsed');
+    }
+    document.querySelectorAll('.chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+      });
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === '/' && document.activeElement.tagName !== 'INPUT') {
+        e.preventDefault();
+        document.querySelector('.search-input').focus();
+      }
+      if (e.key === 'Escape' && activeFileId) clearFilter();
+    });
+
+    // ============ INIT ============
+    renderStrata();
+    renderTimeAxis();
+    renderSparkline();
+    positionTodayLine();
+    window.addEventListener('resize', () => {
+      // file-rect % positioning auto-adjusts; nothing to recompute
+    });
+  </script>
+</body>
+</html>

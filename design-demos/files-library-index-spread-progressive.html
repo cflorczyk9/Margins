@@ -1,0 +1,1904 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Files — Spread · Index + Preview</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #faf7f2;
+      --paper: #ffffff;
+      --paper-soft: #f5f1ea;
+      --ink: #1a1612;
+      --ink-2: #4a423a;
+      --muted: #847a6b;
+      --faint: #a89e8d;
+      --line: #e8e2d6;
+      --line-strong: #d8d0bf;
+      --accent: #d63a2f;
+      --accent-soft: rgba(214, 58, 47, 0.10);
+      --accent-line: rgba(214, 58, 47, 0.22);
+
+      --vermillion: #d63a2f;
+      --cobalt:     #2c5aa0;
+      --mustard:    #c79a26;
+      --violet:     #6a4f8c;
+      --green-poly: #5d9656;
+      --ink-poly:   #1a1612;
+
+      --vermillion-soft: rgba(214, 58, 47, 0.08);
+      --cobalt-soft:     rgba(44, 90, 160, 0.08);
+      --mustard-soft:    rgba(199, 154, 38, 0.10);
+      --violet-soft:     rgba(106, 79, 140, 0.09);
+      --green-soft:      rgba(93, 150, 86, 0.09);
+      --ink-soft:        rgba(26, 22, 18, 0.05);
+
+      --r-sm: 6px;
+      --r-md: 8px;
+      --r-lg: 12px;
+      --r-xl: 16px;
+      --r-pill: 999px;
+
+      --focus-ring: 0 0 0 3px rgba(214, 58, 47, 0.10);
+      --shadow-card: 0 1px 0 rgba(26,22,18,0.04), 0 4px 14px rgba(26,22,18,0.04);
+      --shadow-card-hover: 0 1px 0 rgba(26,22,18,0.06), 0 18px 40px rgba(26,22,18,0.08);
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif;
+      font-weight: 400;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      line-height: 1.5;
+    }
+    .page {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 56px 32px 120px;
+    }
+
+    /* ==== Header ==== */
+    .lib-head { margin-bottom: 32px; }
+    .lib-kicker {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .lib-kicker::after {
+      content: ""; flex: 1; height: 1px;
+      background: var(--line); margin-left: 6px;
+    }
+    .lib-title {
+      font-family: 'Manrope', sans-serif;
+      font-size: 44px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin: 0 0 8px;
+      line-height: 1.05;
+    }
+    .lib-subtitle {
+      color: var(--muted);
+      font-size: 16px;
+      margin: 0;
+      max-width: 620px;
+    }
+
+    /* ==== Spread layout ==== */
+    .spread {
+      display: grid;
+      grid-template-columns: 520px 640px;
+      gap: 40px;
+      margin: 28px 0 56px;
+      padding: 36px 0 32px;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      align-items: start;
+    }
+
+    /* ---- LEFT: Index ---- */
+    .index-col { min-width: 0; }
+
+    .index-toprow {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .index-eyebrow {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--muted);
+      flex-shrink: 0;
+    }
+    .index-search {
+      flex: 1;
+      position: relative;
+    }
+    .index-search input {
+      width: 100%;
+      font-family: inherit;
+      font-size: 13px;
+      color: var(--ink);
+      padding: 7px 12px 7px 30px;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: var(--r-pill);
+      outline: none;
+      transition: all 0.15s ease;
+    }
+    .index-search input::placeholder { color: var(--faint); }
+    .index-search input:focus {
+      border-color: var(--accent-line);
+      box-shadow: var(--focus-ring);
+    }
+    .index-search .search-icon {
+      position: absolute;
+      left: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 13px; height: 13px;
+      color: var(--faint);
+      pointer-events: none;
+    }
+    .index-search .kbd-hint {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: var(--faint);
+      background: var(--paper-soft);
+      border: 1px solid var(--line);
+      padding: 1px 6px;
+      border-radius: 4px;
+      pointer-events: none;
+    }
+    .index-search input:focus + .search-icon + .kbd-hint,
+    .index-search input:not(:placeholder-shown) + .search-icon + .kbd-hint {
+      display: none;
+    }
+
+    /* Quiet establishing line — smaller, lighter than the Spread default */
+    .index-pull {
+      font-family: 'Manrope', sans-serif;
+      font-style: italic;
+      font-size: 13px;
+      font-weight: 400;
+      line-height: 1.4;
+      color: var(--muted);
+      margin: 4px 0 24px;
+      letter-spacing: 0;
+    }
+    .index-pull em { color: var(--ink-2); font-style: italic; font-weight: 500; }
+    .index-pull .pull-sep { color: var(--faint); margin: 0 5px; font-style: normal; }
+
+    .index-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+    }
+    .bucket { min-width: 0; }
+    .bucket-head {
+      cursor: pointer;
+      user-select: none;
+      display: inline-block;
+      position: relative;
+      padding-bottom: 2px;
+    }
+    .bucket-name {
+      font-family: 'Manrope', sans-serif;
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.015em;
+      margin: 0;
+      line-height: 1.15;
+      display: inline-block;
+    }
+    .b-entities  .bucket-name { color: var(--cobalt); }
+    .b-concepts  .bucket-name { color: var(--violet); }
+    .b-sources   .bucket-name { color: var(--mustard); }
+    .b-synthesis .bucket-name { color: var(--vermillion); }
+    .b-career    .bucket-name { color: var(--green-poly); }
+    .b-meta      .bucket-name { color: var(--ink-poly); }
+
+    .bucket-head::after {
+      content: "";
+      position: absolute;
+      left: 50%; right: 50%;
+      bottom: -2px;
+      height: 2px;
+      background: currentColor;
+      transition: left 0.25s ease, right 0.25s ease, opacity 0.2s ease;
+      opacity: 0;
+    }
+    .b-entities  .bucket-head::after { background: var(--cobalt); }
+    .b-concepts  .bucket-head::after { background: var(--violet); }
+    .b-sources   .bucket-head::after { background: var(--mustard); }
+    .b-synthesis .bucket-head::after { background: var(--vermillion); }
+    .b-career    .bucket-head::after { background: var(--green-poly); }
+    .b-meta      .bucket-head::after { background: var(--ink-poly); }
+    .bucket-head:hover::after { left: 0; right: 0; opacity: 1; }
+
+    .bucket-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 10px;
+      margin-bottom: 2px;
+    }
+    .density-bar {
+      flex: 1;
+      height: 3px;
+      background: var(--line);
+      border-radius: 2px;
+      overflow: hidden;
+      max-width: 160px;
+    }
+    .density-fill {
+      height: 100%;
+      border-radius: 2px;
+      transition: transform 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
+      transform-origin: left center;
+    }
+    .b-entities  .density-fill { background: var(--cobalt); }
+    .b-concepts  .density-fill { background: var(--violet); }
+    .b-sources   .density-fill { background: var(--mustard); }
+    .b-synthesis .density-fill { background: var(--vermillion); }
+    .b-career    .density-fill { background: var(--green-poly); }
+    .b-meta      .density-fill { background: var(--ink-poly); }
+
+    .bucket-count {
+      font-size: 10.5px;
+      font-weight: 500;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.01em;
+      white-space: nowrap;
+    }
+    .bucket-count strong { color: var(--ink-2); font-weight: 600; }
+
+    .bucket-list {
+      list-style: none;
+      padding: 10px 0 0;
+      margin: 0;
+    }
+    .bucket-item {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: baseline;
+      gap: 12px;
+      padding: 6px 10px;
+      margin: 0 -10px;
+      border-radius: var(--r-sm);
+      cursor: pointer;
+      transition:
+        background 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+        transform 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+        opacity 0.18s ease;
+      color: var(--ink);
+      position: relative;
+    }
+    .bucket-item:hover { transform: translateX(3px); }
+    /* Warmed row — page remembers where you were briefly after cursor leaves */
+    .bucket-item.warm {
+      transition:
+        background 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+        transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .b-entities  .bucket-item.warm { background: rgba(44, 90, 160, 0.04); }
+    .b-concepts  .bucket-item.warm { background: rgba(106, 79, 140, 0.04); }
+    .b-sources   .bucket-item.warm { background: rgba(199, 154, 38, 0.05); }
+    .b-synthesis .bucket-item.warm { background: rgba(214, 58, 47, 0.04); }
+    .b-career    .bucket-item.warm { background: rgba(93, 150, 86, 0.04); }
+    .b-meta      .bucket-item.warm { background: rgba(26, 22, 18, 0.025); }
+
+    /* path slides in slightly on row hover */
+    .bucket-item .item-path {
+      transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+                  color 0.18s ease;
+    }
+    .bucket-item:hover .item-path { transform: translateY(1px); color: var(--muted); }
+    .b-entities  .bucket-item:hover { background: var(--cobalt-soft); }
+    .b-concepts  .bucket-item:hover { background: var(--violet-soft); }
+    .b-sources   .bucket-item:hover { background: var(--mustard-soft); }
+    .b-synthesis .bucket-item:hover { background: var(--vermillion-soft); }
+    .b-career    .bucket-item:hover { background: var(--green-soft); }
+    .b-meta      .bucket-item:hover { background: var(--ink-soft); }
+
+    .bucket-item.is-active {
+      background: var(--paper) !important;
+      box-shadow: inset 2px 0 0 currentColor;
+    }
+    .b-entities  .bucket-item.is-active { color: var(--cobalt); }
+    .b-concepts  .bucket-item.is-active { color: var(--violet); }
+    .b-sources   .bucket-item.is-active { color: var(--mustard); }
+    .b-synthesis .bucket-item.is-active { color: var(--vermillion); }
+    .b-career    .bucket-item.is-active { color: var(--green-poly); }
+    .b-meta      .bucket-item.is-active { color: var(--ink-poly); }
+
+    .bucket-item.is-active .item-title { color: inherit; font-weight: 600; }
+
+    .item-title {
+      font-family: 'Manrope', sans-serif;
+      font-size: 14px;
+      font-weight: 400;
+      letter-spacing: -0.005em;
+      color: var(--ink);
+      line-height: 1.3;
+      display: block;
+    }
+    .item-path {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: var(--faint);
+      letter-spacing: -0.01em;
+      margin-top: 2px;
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .item-age {
+      font-size: 11px;
+      color: var(--faint);
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.01em;
+      white-space: nowrap;
+      align-self: start;
+      padding-top: 3px;
+    }
+
+    /* search dim / glow — bloom in sequence */
+    .bucket-item .item-title {
+      transition: font-weight 0.12s cubic-bezier(0.22, 1, 0.36, 1),
+                  color 0.12s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .bucket-item {
+      --stagger: 0ms;
+    }
+    .bucket-item.dim {
+      opacity: 0.28;
+      transition: opacity 0.12s cubic-bezier(0.22, 1, 0.36, 1) var(--stagger),
+                  background 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+                  transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .bucket-item.glow {
+      background: var(--accent-soft) !important;
+      box-shadow: inset 2px 0 0 var(--accent);
+      transition: opacity 0.12s cubic-bezier(0.22, 1, 0.36, 1) var(--stagger),
+                  background 0.22s cubic-bezier(0.22, 1, 0.36, 1) var(--stagger),
+                  box-shadow 0.18s ease var(--stagger),
+                  transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .bucket-item.glow .item-title {
+      color: var(--accent);
+      font-weight: 600;
+      transition: font-weight 0.12s cubic-bezier(0.22, 1, 0.36, 1) var(--stagger),
+                  color 0.12s cubic-bezier(0.22, 1, 0.36, 1) var(--stagger);
+    }
+
+    /* connection-pill hover highlight */
+    .bucket-item.conn-highlight {
+      background: var(--accent-soft) !important;
+      transform: translateX(3px);
+    }
+
+    /* ---- RIGHT: Preview pane ---- */
+    .preview-col { min-width: 0; }
+    .preview {
+      position: sticky;
+      top: 24px;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: var(--r-lg);
+      padding: 32px 32px 24px;
+      box-shadow: var(--shadow-card);
+      min-height: 520px;
+      display: flex;
+      flex-direction: column;
+    }
+    /* Inner stacking context so empty-state can absolute-fill behind active */
+    .preview-stack {
+      position: relative;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ==== Default (calm) state — scale stats only, vertically centered ==== */
+    .preview-empty {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      color: var(--muted);
+      padding: 40px 20px;
+      opacity: 1;
+      transition: opacity 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .preview-empty .empty-stats {
+      font-family: 'Manrope', sans-serif;
+      font-style: italic;
+      font-size: 14px;
+      font-weight: 400;
+      color: var(--muted);
+      letter-spacing: 0;
+      line-height: 1.5;
+      margin: 0;
+    }
+    .preview-empty .empty-stats strong {
+      color: var(--ink-2);
+      font-weight: 500;
+      font-style: italic;
+    }
+    .preview-empty .empty-hint {
+      margin-top: 14px;
+      font-size: 12px;
+      color: var(--faint);
+      font-style: italic;
+      letter-spacing: 0.01em;
+    }
+    .preview-empty .empty-hint .arrow {
+      display: inline-block;
+      transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .preview:hover .preview-empty .empty-hint .arrow { transform: translateX(2px); }
+
+    /* Active layer fades on top */
+    .preview-active {
+      display: none;
+      flex-direction: column;
+      flex: 1;
+    }
+    .preview.has-file .preview-empty {
+      opacity: 0;
+      pointer-events: none;
+      position: absolute;
+      inset: 0;
+    }
+    .preview.has-file .preview-active { display: flex; }
+
+    /* Pin indicator label when pinned */
+    .pin-badge {
+      position: absolute;
+      top: 14px;
+      left: 14px;
+      display: none;
+      align-items: center;
+      gap: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent);
+      background: var(--accent-soft);
+      border: 1px solid var(--accent-line);
+      padding: 3px 8px 3px 7px;
+      border-radius: var(--r-pill);
+      z-index: 2;
+    }
+    .pin-badge::before {
+      content: "";
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+    .preview.is-pinned .pin-badge { display: inline-flex; }
+
+    /* ==== Staged reveal of preview content ==== */
+    /* Every stage starts at opacity 0, translateY 4px; .has-file triggers each
+       with a delayed transition. cubic-bezier(0.22, 1, 0.36, 1) settles. */
+    .stage {
+      opacity: 0;
+      transform: translateY(4px);
+      transition:
+        opacity 0.18s cubic-bezier(0.22, 1, 0.36, 1),
+        transform 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .preview.has-file .stage {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    /* Stage delays — title 0, bucket+path 120, body 240, meta 360, connect 480 */
+    .preview.has-file .stage-title { transition-delay: 0ms; }
+    .preview.has-file .stage-bucket { transition-delay: 120ms; }
+    .preview.has-file .stage-path { transition-delay: 120ms; }
+    .preview.has-file .stage-body { transition-delay: 240ms; }
+    .preview.has-file .stage-meta { transition-delay: 360ms; }
+    .preview.has-file .stage-connect { transition-delay: 480ms; }
+    .preview.has-file .stage-footer { transition-delay: 480ms; }
+
+    /* Fade-out: when has-file is removed, all stages fade together over 250ms
+       without stagger so the pane returns to calm in one motion */
+    .preview .stage {
+      transition:
+        opacity 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+        transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .preview.has-file .stage { /* re-override with stagger when entering */ }
+    .preview.has-file .stage-title  { transition: opacity 0.18s cubic-bezier(0.22, 1, 0.36, 1) 0ms,   transform 0.18s cubic-bezier(0.22, 1, 0.36, 1) 0ms; }
+    .preview.has-file .stage-bucket { transition: opacity 0.18s cubic-bezier(0.22, 1, 0.36, 1) 120ms, transform 0.18s cubic-bezier(0.22, 1, 0.36, 1) 120ms; }
+    .preview.has-file .stage-path   { transition: opacity 0.18s cubic-bezier(0.22, 1, 0.36, 1) 140ms, transform 0.18s cubic-bezier(0.22, 1, 0.36, 1) 140ms; }
+    .preview.has-file .stage-body   { transition: opacity 0.18s cubic-bezier(0.22, 1, 0.36, 1) 240ms, transform 0.18s cubic-bezier(0.22, 1, 0.36, 1) 240ms; }
+    .preview.has-file .stage-meta   { transition: opacity 0.18s cubic-bezier(0.22, 1, 0.36, 1) 360ms, transform 0.18s cubic-bezier(0.22, 1, 0.36, 1) 360ms; }
+    .preview.has-file .stage-connect{ transition: opacity 0.18s cubic-bezier(0.22, 1, 0.36, 1) 480ms, transform 0.18s cubic-bezier(0.22, 1, 0.36, 1) 480ms; }
+    .preview.has-file .stage-footer { transition: opacity 0.18s cubic-bezier(0.22, 1, 0.36, 1) 480ms, transform 0.18s cubic-bezier(0.22, 1, 0.36, 1) 480ms; }
+
+    /* ==== Hide chrome at rest — pin, open, "read more" appear only when ready ==== */
+    .pin-btn {
+      opacity: 0;
+      transition: opacity 0.2s cubic-bezier(0.22, 1, 0.36, 1) 240ms;
+    }
+    .preview.has-file .pin-btn { opacity: 1; }
+    .open-btn {
+      opacity: 0;
+      transition: opacity 0.2s cubic-bezier(0.22, 1, 0.36, 1) 480ms,
+                  background 0.15s ease, transform 0.15s ease;
+    }
+    .preview.has-file .open-btn { opacity: 1; }
+    .preview-excerpt .more-link {
+      opacity: 0;
+      transition: opacity 0.2s cubic-bezier(0.22, 1, 0.36, 1) 360ms,
+                  color 0.15s ease;
+    }
+    .preview.has-file .preview-excerpt .more-link { opacity: 1; }
+
+    /* Reduced-motion: skip all staging */
+    @media (prefers-reduced-motion: reduce) {
+      .stage, .preview .stage, .preview.has-file .stage,
+      .preview.has-file .stage-title, .preview.has-file .stage-bucket,
+      .preview.has-file .stage-path, .preview.has-file .stage-body,
+      .preview.has-file .stage-meta, .preview.has-file .stage-connect,
+      .preview.has-file .stage-footer,
+      .pin-btn, .open-btn, .preview-excerpt .more-link,
+      .preview-empty {
+        transition: none !important;
+        transform: none !important;
+      }
+      .stage { opacity: 0; }
+      .preview.has-file .stage,
+      .preview.has-file .pin-btn,
+      .preview.has-file .open-btn,
+      .preview.has-file .preview-excerpt .more-link { opacity: 1; }
+    }
+
+    .preview-bucket {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 10.5px;
+      font-weight: 700;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+    .preview-bucket .bdot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+    }
+    .pv-entities  .preview-bucket .bdot { background: var(--cobalt); }
+    .pv-concepts  .preview-bucket .bdot { background: var(--violet); }
+    .pv-sources   .preview-bucket .bdot { background: var(--mustard); }
+    .pv-synthesis .preview-bucket .bdot { background: var(--vermillion); }
+    .pv-career    .preview-bucket .bdot { background: var(--green-poly); }
+    .pv-meta      .preview-bucket .bdot { background: var(--ink-poly); }
+
+    .pv-entities  .preview-bucket { color: var(--cobalt); }
+    .pv-concepts  .preview-bucket { color: var(--violet); }
+    .pv-sources   .preview-bucket { color: var(--mustard); }
+    .pv-synthesis .preview-bucket { color: var(--vermillion); }
+    .pv-career    .preview-bucket { color: var(--green-poly); }
+    .pv-meta      .preview-bucket { color: var(--ink-poly); }
+
+    .preview-title-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      margin-bottom: 6px;
+    }
+    .preview-title {
+      font-family: 'Manrope', sans-serif;
+      font-size: 32px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      line-height: 1.12;
+      margin: 0;
+      color: var(--ink);
+      flex: 1;
+    }
+    .pin-btn {
+      flex-shrink: 0;
+      background: transparent;
+      border: 1px solid var(--line);
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      cursor: pointer;
+      color: var(--muted);
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.15s ease;
+      margin-top: 4px;
+    }
+    .pin-btn:hover { color: var(--ink); border-color: var(--line-strong); }
+    .pin-btn svg { width: 14px; height: 14px; }
+    .preview.is-pinned .pin-btn {
+      background: var(--accent-soft);
+      border-color: var(--accent-line);
+      color: var(--accent);
+      transform: rotate(-25deg);
+    }
+
+    .preview-path {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11.5px;
+      color: var(--muted);
+      letter-spacing: -0.01em;
+      margin: 0 0 22px;
+    }
+
+    .preview-excerpt {
+      font-size: 16px;
+      line-height: 1.65;
+      color: var(--ink-2);
+      margin: 0 0 4px;
+      max-width: 540px;
+    }
+    .preview-excerpt .more-link {
+      background: none;
+      border: none;
+      padding: 0;
+      font-family: inherit;
+      font-size: 13px;
+      color: var(--accent);
+      cursor: pointer;
+      margin-left: 4px;
+      text-decoration: underline;
+      text-decoration-thickness: 1px;
+      text-underline-offset: 2px;
+    }
+    .preview-excerpt .more-link:hover { color: var(--ink); }
+    /* Read-more reveal — animated max-height + opacity for smooth slide-down */
+    .preview-extended {
+      font-size: 15px;
+      line-height: 1.65;
+      color: var(--ink-2);
+      margin: 0;
+      padding-left: 14px;
+      border-left: 2px solid var(--accent-line);
+      max-width: 540px;
+      max-height: 0;
+      opacity: 0;
+      overflow: hidden;
+      transition:
+        max-height 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+        opacity 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+        margin 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .preview.is-expanded .preview-extended {
+      max-height: 600px;
+      opacity: 1;
+      margin: 14px 0 0;
+    }
+    .preview.is-expanded .more-link { display: none; }
+    @media (prefers-reduced-motion: reduce) {
+      .preview-extended { transition: none; }
+    }
+
+    .preview-meta-row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px 10px;
+      margin: 24px 0 18px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+    }
+    .meta-text {
+      font-size: 12px;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+    .meta-text strong { color: var(--ink-2); font-weight: 600; }
+    .meta-dot {
+      width: 3px; height: 3px;
+      border-radius: 50%;
+      background: var(--line-strong);
+    }
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 10px;
+      border-radius: var(--r-pill);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      border: 1px solid transparent;
+      white-space: nowrap;
+    }
+    .tag-career         { color: var(--green-poly); background: rgba(93,150,86,0.10);  border-color: rgba(93,150,86,0.22); }
+    .tag-advisor        { color: var(--green-poly); background: rgba(93,150,86,0.06);  border-color: rgba(93,150,86,0.16); }
+    .tag-consulting     { color: var(--green-poly); background: rgba(93,150,86,0.06);  border-color: rgba(93,150,86,0.16); }
+    .tag-product        { color: var(--violet);     background: rgba(106,79,140,0.08); border-color: rgba(106,79,140,0.18); }
+    .tag-security       { color: var(--violet);     background: rgba(106,79,140,0.05); border-color: rgba(106,79,140,0.14); }
+    .tag-briefly-vision { color: var(--violet);     background: rgba(106,79,140,0.05); border-color: rgba(106,79,140,0.14); }
+    .tag-strategy       { color: var(--vermillion); background: rgba(214,58,47,0.08);  border-color: rgba(214,58,47,0.18); }
+    .tag-architecture   { color: var(--vermillion); background: rgba(214,58,47,0.05);  border-color: rgba(214,58,47,0.14); }
+    .tag-briefly        { color: var(--vermillion); background: rgba(214,58,47,0.05);  border-color: rgba(214,58,47,0.14); }
+    .tag-firm           { color: var(--cobalt);     background: rgba(44,90,160,0.08);  border-color: rgba(44,90,160,0.18); }
+    .tag-prospect       { color: var(--cobalt);     background: rgba(44,90,160,0.05);  border-color: rgba(44,90,160,0.14); }
+    .tag-centric        { color: var(--cobalt);     background: rgba(44,90,160,0.05);  border-color: rgba(44,90,160,0.14); }
+    .tag-source         { color: var(--mustard);    background: rgba(199,154,38,0.12); border-color: rgba(199,154,38,0.24); }
+    .tag-meeting        { color: var(--mustard);    background: rgba(199,154,38,0.10); border-color: rgba(199,154,38,0.22); }
+    .tag-pricing        { color: var(--mustard);    background: rgba(199,154,38,0.08); border-color: rgba(199,154,38,0.18); }
+    .tag-mentor         { color: var(--violet);     background: rgba(106,79,140,0.08); border-color: rgba(106,79,140,0.18); }
+    .tag-riviera        { color: var(--violet);     background: rgba(106,79,140,0.05); border-color: rgba(106,79,140,0.14); }
+    .tag-log            { color: var(--muted);      background: var(--paper-soft);     border-color: var(--line); }
+    .tag-meta           { color: var(--muted);      background: var(--paper-soft);     border-color: var(--line); }
+    .tag-default        { color: var(--ink-2);      background: var(--paper-soft);     border-color: var(--line); }
+
+    .preview-connect {
+      margin-top: 0;
+      padding-top: 0;
+    }
+    .connect-label {
+      font-size: 10.5px;
+      font-weight: 700;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+    .connect-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .conn-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 12px 5px 11px;
+      border-radius: var(--r-pill);
+      background: var(--paper);
+      border: 1px solid var(--line);
+      font-size: 12.5px;
+      font-weight: 500;
+      color: var(--ink-2);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      text-decoration: none;
+      font-family: inherit;
+    }
+    .conn-pill::before {
+      content: "→";
+      color: var(--faint);
+      font-size: 11px;
+      line-height: 1;
+    }
+    .conn-pill:hover {
+      border-color: var(--accent-line);
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+    .conn-pill:hover::before { color: var(--accent); }
+    .conn-pill.no-file {
+      color: var(--muted);
+      font-style: italic;
+    }
+    .conn-empty {
+      font-size: 13px;
+      color: var(--faint);
+      font-style: italic;
+    }
+
+    .preview-footer {
+      margin-top: auto;
+      padding-top: 24px;
+      border-top: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .footer-where {
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 0.01em;
+    }
+    .footer-where strong { color: var(--ink-2); font-weight: 600; }
+    .open-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      background: var(--ink);
+      color: var(--paper);
+      border: none;
+      border-radius: var(--r-md);
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .open-btn:hover { background: var(--accent); transform: translateY(-1px); }
+    .open-btn svg { width: 13px; height: 13px; }
+
+    /* ==== Command palette (Cmd+K) ==== */
+    .palette-shroud {
+      position: fixed;
+      inset: 0;
+      background: rgba(26, 22, 18, 0.32);
+      backdrop-filter: blur(2px);
+      z-index: 50;
+      display: none;
+      align-items: flex-start;
+      justify-content: center;
+      padding-top: 18vh;
+    }
+    .palette-shroud.show { display: flex; }
+    .palette {
+      width: 540px;
+      max-width: calc(100vw - 32px);
+      background: var(--paper);
+      border-radius: var(--r-lg);
+      box-shadow: 0 24px 80px rgba(26,22,18,0.28);
+      border: 1px solid var(--line);
+      overflow: hidden;
+    }
+    .palette-input-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--line);
+    }
+    .palette-input-row svg {
+      width: 16px; height: 16px;
+      color: var(--faint);
+      flex-shrink: 0;
+    }
+    .palette-input-row input {
+      flex: 1;
+      font-family: inherit;
+      font-size: 15px;
+      color: var(--ink);
+      border: none;
+      outline: none;
+      background: transparent;
+    }
+    .palette-input-row input::placeholder { color: var(--faint); }
+    .palette-input-row .esc {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: var(--faint);
+      background: var(--paper-soft);
+      border: 1px solid var(--line);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .palette-results {
+      max-height: 400px;
+      overflow-y: auto;
+      padding: 6px 0;
+    }
+    .palette-result {
+      display: grid;
+      grid-template-columns: 8px 1fr auto;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 18px;
+      cursor: pointer;
+      transition: background 0.1s ease;
+    }
+    .palette-result:hover,
+    .palette-result.kbd-active { background: var(--paper-soft); }
+    .palette-result .pr-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+    }
+    .pr-entities  .pr-dot { background: var(--cobalt); }
+    .pr-concepts  .pr-dot { background: var(--violet); }
+    .pr-sources   .pr-dot { background: var(--mustard); }
+    .pr-synthesis .pr-dot { background: var(--vermillion); }
+    .pr-career    .pr-dot { background: var(--green-poly); }
+    .pr-meta      .pr-dot { background: var(--ink-poly); }
+    .palette-result .pr-title {
+      font-size: 14px;
+      color: var(--ink);
+    }
+    .palette-result .pr-path {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10.5px;
+      color: var(--faint);
+    }
+    .palette-empty {
+      padding: 24px 18px;
+      text-align: center;
+      color: var(--faint);
+      font-size: 13px;
+      font-style: italic;
+    }
+
+    /* ==== Feed (below spread) — collapsed by default ==== */
+    .feed-wrap {
+      max-width: 880px;
+      margin: 0 auto;
+    }
+    .feed-toggle {
+      width: 100%;
+      background: transparent;
+      border: 1px solid var(--line);
+      border-radius: var(--r-md);
+      padding: 14px 20px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--muted);
+      letter-spacing: 0.01em;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .feed-toggle:hover {
+      color: var(--ink-2);
+      border-color: var(--line-strong);
+      background: var(--paper);
+    }
+    .feed-toggle .chev {
+      display: inline-block;
+      width: 12px; height: 12px;
+      transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .feed-body {
+      max-height: 0;
+      opacity: 0;
+      overflow: hidden;
+      transition:
+        max-height 0.42s cubic-bezier(0.22, 1, 0.36, 1),
+        opacity 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+        margin-top 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+      margin-top: 0;
+    }
+    .feed-wrap.expanded .feed-body {
+      max-height: 4000px;
+      opacity: 1;
+      margin-top: 28px;
+    }
+    .feed-wrap.expanded .feed-toggle .chev { transform: rotate(180deg); }
+    .feed-wrap.expanded .feed-toggle { color: var(--ink-2); }
+    @media (prefers-reduced-motion: reduce) {
+      .feed-body, .feed-toggle .chev { transition: none; }
+    }
+    .feed-header {
+      margin-bottom: 4px;
+    }
+    .feed-eyebrow {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    .feed-title {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.015em;
+      margin: 0 0 28px;
+    }
+    .active-filter {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      margin: 0 0 20px;
+      padding: 10px 14px;
+      border-radius: var(--r-md);
+      background: var(--paper);
+      border: 1px solid var(--line);
+      font-size: 13px;
+      color: var(--ink-2);
+    }
+    .active-filter.show { display: inline-flex; }
+    .active-filter strong { font-weight: 600; color: var(--ink); }
+    .active-filter .filter-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--ink);
+    }
+    .filter-dot.k-entities  { background: var(--cobalt); }
+    .filter-dot.k-concepts  { background: var(--violet); }
+    .filter-dot.k-sources   { background: var(--mustard); }
+    .filter-dot.k-synthesis { background: var(--vermillion); }
+    .filter-dot.k-career    { background: var(--green-poly); }
+    .filter-dot.k-meta      { background: var(--ink-poly); }
+    .active-filter .filter-clear {
+      background: none; border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 14px;
+      padding: 0 0 0 6px;
+      line-height: 1;
+    }
+    .active-filter .filter-clear:hover { color: var(--accent); }
+
+    .section { margin-top: 36px; }
+    .section-head {
+      display: flex;
+      align-items: baseline;
+      gap: 14px;
+      margin-bottom: 4px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .section-title {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--ink);
+      margin: 0;
+    }
+    .section-count {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+    .section-rule { flex: 1; height: 1px; background: var(--line); }
+    .section-toggle {
+      width: 18px; height: 18px;
+      color: var(--muted);
+      transition: transform 0.2s ease;
+    }
+    .section.collapsed .section-toggle { transform: rotate(-90deg); }
+    .section.collapsed .cards { display: none; }
+
+    .cards { display: flex; flex-direction: column; padding-top: 8px; }
+    .card {
+      position: relative;
+      padding: 18px 4px 22px;
+      border-bottom: 1px solid var(--line);
+      cursor: pointer;
+      transition: transform 0.2s ease;
+    }
+    .card.hidden { display: none; }
+    .card:last-child { border-bottom: none; }
+    .card:hover { transform: translateX(2px); }
+    .card-path {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--faint);
+      margin-bottom: 6px;
+    }
+    .card-title {
+      font-family: 'Manrope', sans-serif;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.015em;
+      color: var(--ink);
+      margin: 0 0 8px;
+      line-height: 1.25;
+    }
+    .card:hover .card-title { color: var(--accent); }
+    .card-meta {
+      display: flex; align-items: center;
+      gap: 10px; flex-wrap: wrap;
+    }
+
+    .footer-hint {
+      margin-top: 60px;
+      padding-top: 24px;
+      border-top: 1px solid var(--line);
+      font-size: 12px;
+      color: var(--faint);
+      text-align: center;
+    }
+    .footer-hint code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    /* ==== Responsive ==== */
+    @media (max-width: 1100px) {
+      .spread {
+        grid-template-columns: 1fr;
+        gap: 32px;
+      }
+      .preview {
+        position: static;
+        min-height: 380px;
+      }
+    }
+    @media (max-width: 600px) {
+      .page { padding: 32px 20px 100px; }
+      .lib-title { font-size: 34px; }
+      .preview { padding: 24px 20px 20px; }
+      .preview-title { font-size: 26px; }
+      .preview-excerpt { font-size: 15px; }
+      .bucket-name { font-size: 18px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="lib-head">
+      <div class="lib-kicker">Margins · Files · Spread · Progressive</div>
+      <h1 class="lib-title">Library</h1>
+      <p class="lib-subtitle">Two-page spread. Index on the left, live preview on the right. Hover a row to reveal in stages; click to pin.</p>
+    </header>
+
+    <!-- ============ SPREAD ============ -->
+    <section class="spread" id="spread">
+
+      <!-- LEFT: Index -->
+      <div class="index-col">
+        <div class="index-toprow">
+          <div class="index-eyebrow">Index</div>
+          <div class="index-search">
+            <input type="text" id="searchInput" placeholder="Search titles, tags, paths…" autocomplete="off">
+            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="7"></circle>
+              <line x1="20" y1="20" x2="16.65" y2="16.65"></line>
+            </svg>
+            <span class="kbd-hint">/</span>
+          </div>
+        </div>
+
+        <div class="index-pull">
+          <em>14 files</em> <span class="pull-sep">·</span> <em>22,400 words</em> <span class="pull-sep">·</span> hover to peek
+        </div>
+
+        <div class="index-stack" id="indexStack"></div>
+      </div>
+
+      <!-- RIGHT: Preview pane -->
+      <div class="preview-col">
+        <div class="preview" id="preview">
+          <span class="pin-badge" id="pinBadge">Pinned</span>
+          <div class="preview-stack">
+            <div class="preview-empty">
+              <p class="empty-stats">
+                <strong>14 files</strong> · <strong>22,400 words</strong> · last touched <strong>2h ago</strong>
+              </p>
+              <div class="empty-hint">Hover a file to peek <span class="arrow">→</span></div>
+            </div>
+            <div class="preview-active" id="previewActive"></div>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ============ FEED (collapsed by default) ============ -->
+    <div class="feed-wrap" id="feedWrap">
+      <button class="feed-toggle" id="feedToggle" type="button" aria-expanded="false" aria-controls="feedBody">
+        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+        <span id="feedToggleLabel">Show recent activity feed</span>
+      </button>
+
+      <div class="feed-body" id="feedBody">
+        <header class="feed-header" style="margin-top: 8px;">
+          <div class="feed-eyebrow">Recent activity</div>
+          <h2 class="feed-title">By time touched</h2>
+        </header>
+
+        <div class="active-filter" id="activeFilter">
+        <span class="filter-dot" id="filterDot"></span>
+        <span>Filtering: <strong id="filterLabel"></strong></span>
+        <button class="filter-clear" id="filterClear" aria-label="Clear filter">×</button>
+      </div>
+
+      <section class="section" data-section data-bin="week">
+        <header class="section-head" onclick="toggleSection(this)">
+          <h2 class="section-title">Active this week</h2>
+          <span class="section-count" id="countWeek">7 files</span>
+          <span class="section-rule"></span>
+          <svg class="section-toggle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </header>
+        <div class="cards" id="cardsWeek"></div>
+      </section>
+
+      <section class="section" data-section data-bin="month">
+        <header class="section-head" onclick="toggleSection(this)">
+          <h2 class="section-title">Last month</h2>
+          <span class="section-count" id="countMonth">5 files</span>
+          <span class="section-rule"></span>
+          <svg class="section-toggle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </header>
+        <div class="cards" id="cardsMonth"></div>
+      </section>
+
+      <section class="section collapsed" data-section data-bin="older">
+        <header class="section-head" onclick="toggleSection(this)">
+          <h2 class="section-title">Older</h2>
+          <span class="section-count" id="countOlder">2 files</span>
+          <span class="section-rule"></span>
+          <svg class="section-toggle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </header>
+        <div class="cards" id="cardsOlder"></div>
+      </section>
+      </div><!-- /.feed-body -->
+
+      <div class="footer-hint">14 files · 22,400 words across the vault · backed by plain markdown in <code>~/Documents/connor_brain2/wiki/</code></div>
+    </div>
+  </main>
+
+  <!-- Command palette overlay -->
+  <div class="palette-shroud" id="paletteShroud">
+    <div class="palette">
+      <div class="palette-input-row">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="7"></circle>
+          <line x1="20" y1="20" x2="16.65" y2="16.65"></line>
+        </svg>
+        <input type="text" id="paletteInput" placeholder="Search the vault…" autocomplete="off">
+        <span class="esc">esc</span>
+      </div>
+      <div class="palette-results" id="paletteResults"></div>
+    </div>
+  </div>
+
+  <script>
+    // ===== File data =====
+    const FILES = [
+      {
+        bucket: 'meta', path: 'wiki/log.md', title: 'Operations log', age: '1h', ageBin: 'week',
+        words: 5400, lastEdited: '2026-05-10 09:14',
+        tags: ['log'],
+        connections: [],
+        excerpt: "Ingested two source files this morning — the Ellis meeting transcript and the pricing-deck feedback from Larry. Updated the centric-wm overview with the $50–100 pilot anchor and pushed three drift flags into the synthesis queue. Linted overnight; one stale concept remains on briefly-strategic-direction. The log doubles as a write-ahead buffer for the wiki, so every ingest, compile, query, and update lands here before anything downstream touches it.",
+        extended: "Recent ops, in order: 5/10 ingest (ellis-meeting source promoted into wiki/sources/); 5/09 compile (eight backlink suggestions, six accepted); 5/08 query — \"what's the right price for centric\" — resolved into a synthesis edit; 5/07 update on briefly-competitive-landscape adding Affinity as the pricing anchor; 5/06 prune of one dead concept page that hadn't been backlinked in 90 days.",
+        whereSeen: ['Logs & meta · root']
+      },
+      {
+        bucket: 'career', path: 'wiki/career/alex-wolf.md', title: 'Alex Wolf', age: '2h', ageBin: 'week',
+        words: 380, lastEdited: '2026-05-10 08:02',
+        tags: ['career', 'advisor'],
+        connections: [
+          { label: 'Briefly', target: null },
+          { label: 'Morgan Stanley', target: 'wiki/career/morgan-stanley.md' }
+        ],
+        excerpt: "MS PWM colleague from the 2022–2024 stretch, now an FA in Chicago at a mid-size independent. Reached out 5/8 after seeing the Riviera close-out post on LinkedIn — warm but cautious, very much not a buyer. The useful intel is on advisor adoption of Jump and Hazel inside MS's tech-allow list, plus the rhythm of the Naperville FA cluster. Predates Briefly by years; protect accordingly.",
+        extended: "Could be a quiet door-opener to two FA teams in Naperville if Briefly ever decides to pursue MS-affiliated independents. Connor's read is that Alex would make a soft intro but won't push; the move is to keep the relationship in personal-tier rotation and never put him in a pipeline tab.",
+        whereSeen: ['Career', 'Advisors']
+      },
+      {
+        bucket: 'entities', path: 'wiki/entities/ellis-rutili.md', title: 'Ellis Rutili', age: '3h', ageBin: 'week',
+        words: 1580, lastEdited: '2026-05-10 07:30',
+        tags: ['prospect', 'centric'],
+        connections: [
+          { label: 'Centric WM', target: 'wiki/entities/centric-wm.md' },
+          { label: 'Virgil Rutili', target: null }
+        ],
+        excerpt: "Champion at Centric Wealth Management — operations role, three years at the firm, nephew of founder Virgil Rutili. Named action-item routing as his #1 pilot ask in the 4/15 on-site, which reranked the whole pilot scope away from pre-meeting briefs. Current pilot anchor: Ellis plus one or two advisors at $125/seat, 60–90 days. He sits one level below the real buyer, so the right frame is \"let me think about it\" — don't try to leapfrog him to Virgil.",
+        extended: "Ex-Northwestern econ. Three years at Centric across operations and client service. Trusted by Virgil for vendor evaluation but not signing authority. Strong reader, prefers async product demos to live calls. Coffee notes from 4/15 captured his real worry: post-meeting CRM time, not pre-meeting brief quality. That insight is the pivot point for the whole Centric pitch.",
+        whereSeen: ['Entities · People', 'Centric pilot']
+      },
+      {
+        bucket: 'entities', path: 'wiki/entities/centric-wm.md', title: 'Centric Wealth Management', age: '3h', ageBin: 'week',
+        words: 740, lastEdited: '2026-05-10 07:25',
+        tags: ['firm', 'prospect'],
+        connections: [
+          { label: 'Ellis Rutili', target: 'wiki/entities/ellis-rutili.md' }
+        ],
+        excerpt: "Chicago-based RIA, roughly $300M AUM, split between a standard FSC-SMB book and one $300M family-office household. Reporting stack is Orion for everyone except the meat-family — that one runs on Mastro. First-firm pilot anchor for Briefly at $50–100 per seat, framed deliberately as a first-partner discount against the $200 full-price floor. Tech-curious leadership; willing to be first on a vendor if the founder relationship is strong.",
+        extended: "Founded 2014 by Virgil Rutili. Around twelve staff including Ellis. Compliance posture is light by virtue of size; no third-party-AI block list. The Mastro deployment for the family-office slice is a tell — if Briefly ever extends to family-office, there's a natural wedge here. But that's post-pilot; the current scope is brief-only against the Orion book.",
+        whereSeen: ['Entities · Firms', 'Centric pilot']
+      },
+      {
+        bucket: 'concepts', path: 'wiki/concepts/relationship-graph.md', title: 'Relationship graph', age: '5h', ageBin: 'week',
+        words: 920, lastEdited: '2026-05-10 05:40',
+        tags: ['product', 'briefly-vision'],
+        connections: [
+          { label: 'Briefly', target: null },
+          { label: 'Margins', target: null }
+        ],
+        excerpt: "The substrate underneath Briefly. Every advisor interaction, household, referral, vendor edge, family relationship, and asset link as a typed node. Five-year optionality for vertical extension across legal, accounting, insurance, anything relationship-heavy. The graph is committed; the live debate is whether to surface it visibly in the advisor UI or keep it backend-only with a narrative positioning play. Affinity is the proof-of-concept analog at $2K per user per year across 1,700 customers.",
+        extended: "Pricing anchor for Briefly should sit near Affinity, not near Wealthbox or Jump. Connor's lean is backend-only at pilot, narrative-only in sales, and revisit visible-UI after firm #2 is signed. Visible graphs sell well but invite scope arguments; narrative graphs let the product stay focused on briefs and action-items while the substrate compounds quietly.",
+        whereSeen: ['Concepts', 'Product vision']
+      },
+      {
+        bucket: 'concepts', path: 'wiki/concepts/audio-retention-privacy.md', title: 'Audio retention as a privacy pitch', age: '1d', ageBin: 'week',
+        words: 460, lastEdited: '2026-05-09 18:10',
+        tags: ['product', 'security'],
+        connections: [
+          { label: 'Briefly', target: null }
+        ],
+        excerpt: "v1 default deletes the raw audio file the moment AssemblyAI returns a transcript. It started as a dev convenience — no S3 bucket to babysit — but the reframe in client materials is the deliberate privacy and security feature. Per-firm retention is configurable but not the default. The compliance angle is real but it's not the lead story; the lead is \"we don't keep your clients' voices around.\" Surfacing this in the Centric deck distinguishes Briefly from Jump and Zocks, both of which retain recordings.",
+        extended: "The configurability matters for the family-office tier eventually — those households sometimes want to keep audio for their own archives. But every Centric-class RIA Connor has spoken to so far prefers the deletion default. Push the privacy story; let the retention story be a back-pocket answer to the one prospect who asks.",
+        whereSeen: ['Concepts', 'Pilot decks']
+      },
+      {
+        bucket: 'career', path: 'wiki/career/morgan-stanley.md', title: 'Morgan Stanley', age: '2d', ageBin: 'week',
+        words: 1240, lastEdited: '2026-05-08 14:22',
+        tags: ['career'],
+        connections: [
+          { label: 'Alex Wolf', target: 'wiki/career/alex-wolf.md' },
+          { label: 'Joel Florczyk', target: null }
+        ],
+        excerpt: "Connor's prior firm — Private Wealth analyst, 2021 through 2024. The MS PWM rolodex is mostly former coworkers, not prospects, and it's been a recurring failure mode to treat them as a pipeline. Compliance posture at MS proper: third-party AI vendors blocked at the firm level, FA-side workflow tools allowed only if they don't touch client data. Briefly can't sell into MS, only to MS-affiliated independents who've left the platform.",
+        extended: "Joel Florczyk worked there decades earlier in a different division — the family connection is historical, not current. The right framing for MS contacts is relationship-maintenance, not BD. Periodic outreach, no asks, no demos. If a name from the MS list ever leaves for an independent shop, then the conversation changes; until then, keep them warm and stop measuring them against pipeline criteria.",
+        whereSeen: ['Career', 'Firms']
+      },
+      {
+        bucket: 'meta', path: 'wiki/index.md', title: 'Vault index', age: '3d', ageBin: 'week',
+        words: 720, lastEdited: '2026-05-07 11:00',
+        tags: ['meta'],
+        connections: [],
+        excerpt: "Map of the wiki. Folders: career, concepts, entities, sources, synthesis, ideas, outbound. This page exists to orient any new agent — human or model — returning to the vault after a long gap. Quick links lead to ingest-tracker, log, wiki-stats, operator-manual, and query-cookbook. Update this page when a new bucket is added; the sources of truth should always be one click away.",
+        extended: "Recently added: a queries/ subfolder for permanent synthesis pages filed via the file-query workflow, and an outbound/ folder for sent artifacts (cold emails, decks, drafted replies). The two new folders aren't reflected in the main bucket polychrome yet — todo for the next compile pass.",
+        whereSeen: ['Logs & meta · root']
+      },
+      {
+        bucket: 'synthesis', path: 'wiki/synthesis/briefly-strategic-direction-apr2026.md', title: 'Briefly strategic direction — Apr 2026', age: '4d', ageBin: 'month',
+        words: 1260, lastEdited: '2026-05-06 16:45',
+        tags: ['strategy', 'briefly'],
+        connections: [
+          { label: 'Briefly', target: null },
+          { label: 'Margins', target: null },
+          { label: 'Anthropic memory', target: null }
+        ],
+        excerpt: "Connor's lean as of April: partner with a few small RIAs, customize per firm, pull the relationship graph forward as the underlying vision. Not horizontal SaaS. Anthropic's March memory ship narrowed the broad \"AI memory for advisors\" pitch into a portability-plus-vertical-posture story. The three premium-earn defenses that survive scrutiny are customization, founder-led relationship, and firm-voice tuning. The three rationalizations to avoid are data-portability alone, compliance alone, and UX alone.",
+        extended: "Open fork: customize for Centric first and extend, or build multi-tenant customization from day one. Connor is leaning toward the Centric-first path because it's the only one that produces a paying customer this quarter. The multi-tenant version is the right long-term architecture but the wrong short-term spend.",
+        whereSeen: ['Synthesis', 'Briefly strategy thread']
+      },
+      {
+        bucket: 'career', path: 'wiki/career/oliver-wyman.md', title: 'Oliver Wyman', age: '6d', ageBin: 'month',
+        words: 620, lastEdited: '2026-05-04 09:30',
+        tags: ['career', 'consulting'],
+        connections: [],
+        excerpt: "Pre-MS consulting stint, FS strategy practice. Useful as a credentialing line on the Briefly site and in Booth-deferral conversations, but not a relationship cluster — most projects were short, most partners have rotated. Two FS-partner contacts remain warm; neither is a buyer, but both are credible referrers for small-RIA owner intros if the moment ever calls for that.",
+        extended: "The project pattern was wealth-segment growth strategy for large banks — exactly the buyer-side perspective Briefly is selling against now. Don't lead with OW credentials in cold emails to small RIAs; it reads as overweight, like an enterprise vendor showing up to a five-person firm. Keep it in the bio paragraph, not the pitch.",
+        whereSeen: ['Career', 'Pre-MS']
+      },
+      {
+        bucket: 'synthesis', path: 'wiki/synthesis/margins-briefly-consolidation.md', title: 'Margins and Briefly are the same architecture', age: '7d', ageBin: 'month',
+        words: 1920, lastEdited: '2026-05-03 20:15',
+        tags: ['strategy', 'architecture'],
+        connections: [
+          { label: 'Briefly', target: null },
+          { label: 'Margins', target: null }
+        ],
+        excerpt: "Margins is the architecture — the vault, the operator manual, the ingest pipeline, the relationship graph. Briefly is the vertical product on top of that architecture for RIAs. Don't treat them as parallel projects competing for time. This consolidation is also the pricing argument: $40K services pricing for the firm-customized Briefly build is justifiable precisely because Margins is the underlying platform doing the heavy lifting.",
+        extended: "As of 5/2: Margins is the lead build (Repo-MVP first), Briefly enters formal maintenance, the Ihor freeze is real. The traction signal that reopens Briefly product investment is ten or more Margins users or a paying Margins customer — whichever comes first. Until then, Briefly gets bug fixes and Centric pilot support only.",
+        whereSeen: ['Synthesis', 'Strategy thread']
+      },
+      {
+        bucket: 'entities', path: 'wiki/entities/bob-casey.md', title: 'Bob Casey', age: '8d', ageBin: 'month',
+        words: 2100, lastEdited: '2026-05-02 22:00',
+        tags: ['mentor', 'riviera'],
+        connections: [
+          { label: 'Santa Barbara Management', target: null }
+        ],
+        excerpt: "Founder of Santa Barbara Management — Chicago-based despite the name, the SBM identity is IGSB-legacy. Booth lecturer. Extended a founding-team offer to Connor in early April, then slowed the timeline 5/1 (eight weeks to eight months, no guarantee). Connor accepted gracefully 5/2; Bob acknowledged 5/3. Relationship moves to stay-in-touch. Connor plans to share Margins as a personal-productivity tool; any business fold-in stays gated until Bob asks.",
+        extended: "Mentor pattern is deep, slow, deliberate. Won't be rushed into a yes or a no, and won't reward attempts to rush him. Predates Briefly by a couple of years. Travels heavily for the SBM book; best reach time is Wednesday mornings Chicago. Knows the Booth deferral landscape cold and is the right person to ask when the September decision gets closer.",
+        whereSeen: ['Entities · People', 'Mentors']
+      },
+      {
+        bucket: 'sources', path: 'wiki/sources/2026-04-28-pricing-deck-feedback.md', title: 'Pricing deck feedback — 4/28', age: '12d', ageBin: 'older',
+        words: 1840, lastEdited: '2026-04-28 17:00',
+        tags: ['source', 'pricing'],
+        connections: [
+          { label: 'Briefly', target: null }
+        ],
+        excerpt: "Larry's review of the Centric pilot pricing slide. The anchor at $50–100 per seat reads correctly as a first-partner discount — not desperation — if it's framed against the $200 per seat full-price floor. Pull the Affinity comparison forward in the deck; drop the Jump and Zocks delta entirely because it reads as defensive. Larry suggested adding a \"what changes at full price\" slide so Ellis can see the value gradient explicitly rather than infer it.",
+        extended: "Three premium tiers landed cleanly in the revised structure: standard, firm-customized, and full graph-substrate. Connor flagged that the graph-substrate tier is aspirational and shouldn't appear in the pilot deck — only in the post-pilot conversation. Larry agreed. The revised deck has been filed in outbound/ and is ready to share with Ellis after the 5/3 pilot agreement gets drafted.",
+        whereSeen: ['Sources · 2026-04', 'Pricing thread']
+      },
+      {
+        bucket: 'sources', path: 'wiki/sources/2026-04-15-ellis-meeting.md', title: 'Ellis meeting — 4/15 Centric WM visit', age: '24d', ageBin: 'older',
+        words: 3200, lastEdited: '2026-04-16 08:30',
+        tags: ['meeting', 'source'],
+        connections: [
+          { label: 'Ellis Rutili', target: 'wiki/entities/ellis-rutili.md' },
+          { label: 'Centric WM', target: 'wiki/entities/centric-wm.md' }
+        ],
+        excerpt: "Ninety-minute on-site at Centric WM in Chicago. Ellis named action-item routing as the #1 pilot ask, ranking it above the pre-meeting brief feature Connor had expected to lead with — which reshaped the whole pilot scope on the train ride home. Pilot ask landed: Ellis plus one or two advisors, $125 per seat, 60–90 days. Virgil mentioned once in passing, not introduced, which confirms the champion-and-buyer separation.",
+        extended: "Three follow-ups assigned to Connor and tracked in Linear: send the pilot agreement draft (due 5/3, in flight), share the Affinity comparison (filed in outbound/), and set up an Orion read-only sandbox (blocked pending Centric IT). Ellis prefers async demos to live calls. Compliance concerns at Centric's size are minimal; no third-party block list to navigate.",
+        whereSeen: ['Sources · 2026-04', 'Centric pilot']
+      },
+    ];
+
+    const BUCKETS = [
+      { key: 'entities',  label: 'Entities' },
+      { key: 'concepts',  label: 'Concepts' },
+      { key: 'sources',   label: 'Sources' },
+      { key: 'synthesis', label: 'Synthesis' },
+      { key: 'career',    label: 'Career' },
+      { key: 'meta',      label: 'Logs & meta' },
+    ];
+    const BUCKET_LABEL = Object.fromEntries(BUCKETS.map(b => [b.key, b.label]));
+
+    function fmtNum(n) { return n.toLocaleString('en-US'); }
+    function esc(s) {
+      return String(s).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+    function tagClass(t) {
+      const k = t.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+      return 'tag-' + k;
+    }
+
+    // ===== Build Index (left) =====
+    const indexStack = document.getElementById('indexStack');
+    const totalsByBucket = {};
+    BUCKETS.forEach(b => {
+      totalsByBucket[b.key] = FILES.filter(f => f.bucket === b.key)
+                                    .reduce((s, f) => s + f.words, 0);
+    });
+    const maxBucketWords = Math.max(...Object.values(totalsByBucket));
+
+    BUCKETS.forEach(b => {
+      const files = FILES.filter(f => f.bucket === b.key).sort((a, c) => c.words - a.words);
+      if (!files.length) return;
+      const total = totalsByBucket[b.key];
+      const ratio = total / maxBucketWords;
+
+      const div = document.createElement('div');
+      div.className = `bucket b-${b.key}`;
+      div.innerHTML = `
+        <div class="bucket-head" data-bucket="${b.key}" data-label="${b.label}">
+          <h3 class="bucket-name">${b.label}</h3>
+        </div>
+        <div class="bucket-meta">
+          <div class="density-bar"><div class="density-fill" style="transform: scaleX(${ratio.toFixed(3)})"></div></div>
+          <div class="bucket-count"><strong>${files.length}</strong> ${files.length === 1 ? 'file' : 'files'} · ${fmtNum(total)} words</div>
+        </div>
+        <ul class="bucket-list">
+          ${files.map(f => `
+            <li class="bucket-item" data-path="${f.path}" data-title="${esc(f.title)}">
+              <span>
+                <span class="item-title">${esc(f.title)}</span>
+                <span class="item-path">${f.path}</span>
+              </span>
+              <span class="item-age">${f.age}</span>
+            </li>`).join('')}
+        </ul>
+      `;
+      indexStack.appendChild(div);
+    });
+
+    // ===== Build Feed (below) =====
+    const filesByBin = { week: [], month: [], older: [] };
+    FILES.forEach(f => filesByBin[f.ageBin].push(f));
+    function renderFeed(bin, mountId) {
+      const mount = document.getElementById(mountId);
+      mount.innerHTML = filesByBin[bin].map(f => `
+        <article class="card" data-path="${f.path}" data-bucket="${f.bucket}">
+          <div class="card-path">${f.path}</div>
+          <h3 class="card-title">${esc(f.title)}</h3>
+          <div class="card-meta">
+            ${f.tags.map(t => `<span class="tag ${tagClass(t)}">${esc(t)}</span>`).join('')}
+            <span class="meta-dot"></span>
+            <span class="meta-text"><strong>${f.age}</strong> ago</span>
+            <span class="meta-dot"></span>
+            <span class="meta-text">${fmtNum(f.words)} words</span>
+          </div>
+        </article>
+      `).join('');
+    }
+    renderFeed('week',  'cardsWeek');
+    renderFeed('month', 'cardsMonth');
+    renderFeed('older', 'cardsOlder');
+    document.getElementById('countWeek').textContent  = filesByBin.week.length  + ' files';
+    document.getElementById('countMonth').textContent = filesByBin.month.length + ' files';
+    document.getElementById('countOlder').textContent = filesByBin.older.length + ' files';
+
+    // ===== Preview pane logic =====
+    const preview       = document.getElementById('preview');
+    const previewActive = document.getElementById('previewActive');
+    let pinnedPath = null;
+    let hoverTimer = null;
+    const HOVER_DELAY = 200;
+    const fileByPath = Object.fromEntries(FILES.map(f => [f.path, f]));
+
+    function renderPreview(file) {
+      preview.classList.remove('pv-entities','pv-concepts','pv-sources','pv-synthesis','pv-career','pv-meta');
+      preview.classList.add('pv-' + file.bucket);
+      preview.classList.remove('is-expanded');
+
+      const connRow = file.connections.length
+        ? file.connections.map(c => {
+            const hasFile = !!c.target;
+            return `<button class="conn-pill ${hasFile ? '' : 'no-file'}"
+                      data-target="${hasFile ? c.target : ''}">${esc(c.label)}</button>`;
+          }).join('')
+        : `<span class="conn-empty">No outbound links yet.</span>`;
+
+      previewActive.innerHTML = `
+        <div class="preview-bucket stage stage-bucket"><span class="bdot"></span><span>${BUCKET_LABEL[file.bucket]}</span></div>
+        <div class="preview-title-row stage stage-title">
+          <h2 class="preview-title">${esc(file.title)}</h2>
+          <button class="pin-btn" id="pinBtn" title="${pinnedPath === file.path ? 'Unpin' : 'Pin to preview'}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 17v5"></path>
+              <path d="M9 10.76V6a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v4.76a2 2 0 0 0 .59 1.41l1.7 1.7A1 1 0 0 1 17 15.6V16a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1v-.4a1 1 0 0 1 .29-.71l1.7-1.7A2 2 0 0 0 9 10.76Z"></path>
+            </svg>
+          </button>
+        </div>
+        <div class="preview-path stage stage-path">${file.path}</div>
+        <p class="preview-excerpt stage stage-body">
+          ${esc(file.excerpt)}
+          <button class="more-link" id="moreBtn">Read more</button>
+        </p>
+        <div class="preview-extended">${esc(file.extended)}</div>
+        <div class="preview-meta-row stage stage-meta">
+          ${file.tags.map(t => `<span class="tag ${tagClass(t)}">${esc(t)}</span>`).join('')}
+          <span class="meta-dot"></span>
+          <span class="meta-text">Edited <strong>${file.age}</strong> ago</span>
+          <span class="meta-dot"></span>
+          <span class="meta-text"><strong>${fmtNum(file.words)}</strong> words</span>
+          <span class="meta-dot"></span>
+          <span class="meta-text">${file.lastEdited}</span>
+        </div>
+        <div class="preview-connect stage stage-connect">
+          <div class="connect-label">Connects to</div>
+          <div class="connect-row">${connRow}</div>
+        </div>
+        <div class="preview-footer stage stage-footer">
+          <div class="footer-where">Appears in: <strong>${file.whereSeen.join(' · ')}</strong></div>
+          <button class="open-btn">
+            Open file
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+              <polyline points="12 5 19 12 12 19"></polyline>
+            </svg>
+          </button>
+        </div>
+      `;
+      // Force reflow before adding has-file so the stage transition actually plays.
+      // Without this, swapping innerHTML and adding the class in the same frame
+      // skips the 0→1 opacity transition.
+      void preview.offsetHeight;
+      preview.classList.add('has-file');
+      preview.classList.toggle('is-pinned', pinnedPath === file.path);
+
+      // Pin handler — toggles persistent reveal. On unpin, fade back to calm.
+      document.getElementById('pinBtn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (pinnedPath === file.path) {
+          pinnedPath = null;
+          preview.classList.remove('is-pinned');
+          fadeToCalm();
+        } else {
+          pinnedPath = file.path;
+          preview.classList.add('is-pinned');
+        }
+      });
+
+      // Read more
+      document.getElementById('moreBtn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        preview.classList.toggle('is-expanded');
+      });
+
+      // Connection pills: hover highlights matching index row
+      previewActive.querySelectorAll('.conn-pill').forEach(p => {
+        p.addEventListener('mouseenter', () => {
+          const target = p.dataset.target;
+          if (!target) return;
+          const row = document.querySelector(`.bucket-item[data-path="${target}"]`);
+          if (row) row.classList.add('conn-highlight');
+        });
+        p.addEventListener('mouseleave', () => {
+          document.querySelectorAll('.bucket-item.conn-highlight')
+                  .forEach(r => r.classList.remove('conn-highlight'));
+        });
+        p.addEventListener('click', () => {
+          const target = p.dataset.target;
+          if (!target) return;
+          const file = fileByPath[target];
+          if (!file) return;
+          pinnedPath = file.path;
+          renderPreview(file);
+          markActive(file.path);
+          applyFilter({ path: file.path, label: file.title, bucket: file.bucket });
+        });
+      });
+    }
+
+    function markActive(path) {
+      document.querySelectorAll('.bucket-item').forEach(el => {
+        el.classList.toggle('is-active', el.dataset.path === path);
+      });
+    }
+
+    // ===== Index hover/click handlers — progressive reveal with fade-out =====
+    let unrevealTimer = null;
+    let warmTimer = null;
+    const UNREVEAL_DELAY = 120; // gives user a moment to move toward preview before fading
+
+    function fadeToCalm() {
+      // Only fade out if not pinned. The fade is part of the calm feeling — don't snap.
+      if (pinnedPath) return;
+      preview.classList.remove('has-file');
+      preview.classList.remove('is-expanded');
+      document.querySelectorAll('.bucket-item.is-active').forEach(el => el.classList.remove('is-active'));
+    }
+
+    document.querySelectorAll('.bucket-item').forEach(el => {
+      el.addEventListener('mouseenter', () => {
+        clearTimeout(unrevealTimer);
+        if (pinnedPath) return;
+        clearTimeout(hoverTimer);
+        hoverTimer = setTimeout(() => {
+          const file = fileByPath[el.dataset.path];
+          if (file) {
+            renderPreview(file);
+            markActive(file.path);
+          }
+        }, HOVER_DELAY);
+      });
+      el.addEventListener('mouseleave', () => {
+        clearTimeout(hoverTimer);
+        // Mark this row as "warmed" — page remembers where you were for 200ms after leaving
+        el.classList.add('warm');
+        clearTimeout(warmTimer);
+        warmTimer = setTimeout(() => {
+          document.querySelectorAll('.bucket-item.warm').forEach(r => r.classList.remove('warm'));
+        }, 220);
+        // Schedule fade back to calm — but only if cursor doesn't land on another row or the preview itself
+        if (pinnedPath) return;
+        unrevealTimer = setTimeout(fadeToCalm, UNREVEAL_DELAY);
+      });
+      el.addEventListener('click', () => {
+        const file = fileByPath[el.dataset.path];
+        if (!file) return;
+        pinnedPath = file.path;
+        renderPreview(file);
+        markActive(file.path);
+        applyFilter({ path: file.path, label: file.title, bucket: file.bucket });
+      });
+    });
+
+    // Hovering the preview itself keeps the reveal — prevents accidental fade
+    // when user is reading and cursor moves out of the index column.
+    preview.addEventListener('mouseenter', () => clearTimeout(unrevealTimer));
+    preview.addEventListener('mouseleave', () => {
+      if (pinnedPath) return;
+      unrevealTimer = setTimeout(fadeToCalm, UNREVEAL_DELAY);
+    });
+
+    // Bucket-head click → filter feed, auto-expand if collapsed
+    document.querySelectorAll('.bucket-head').forEach(h => {
+      h.addEventListener('click', () => {
+        applyFilter({ bucket: h.dataset.bucket, label: h.dataset.label });
+        const fw = document.getElementById('feedWrap');
+        if (!fw.classList.contains('expanded')) {
+          fw.classList.add('expanded');
+          document.getElementById('feedToggle').setAttribute('aria-expanded', 'true');
+          document.getElementById('feedToggleLabel').textContent = 'Hide recent activity feed';
+        }
+        fw.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
+
+    // ===== Feed filter =====
+    const filterEl = document.getElementById('activeFilter');
+    const filterLabel = document.getElementById('filterLabel');
+    const filterDot = document.getElementById('filterDot');
+    const filterClear = document.getElementById('filterClear');
+
+    function applyFilter({ bucket, path, label }) {
+      filterEl.classList.add('show');
+      filterLabel.textContent = label;
+      filterDot.className = 'filter-dot' + (bucket ? ` k-${bucket}` : '');
+
+      document.querySelectorAll('.card').forEach(c => {
+        let match = true;
+        if (path) match = c.dataset.path === path;
+        else if (bucket) match = c.dataset.bucket === bucket;
+        c.classList.toggle('hidden', !match);
+      });
+      document.querySelectorAll('.section').forEach(s => {
+        s.classList.remove('collapsed');
+        const visible = s.querySelectorAll('.card:not(.hidden)').length;
+        s.style.display = visible === 0 ? 'none' : '';
+      });
+    }
+    function clearFilter() {
+      filterEl.classList.remove('show');
+      document.querySelectorAll('.card').forEach(c => c.classList.remove('hidden'));
+      document.querySelectorAll('.section').forEach(s => s.style.display = '');
+    }
+    filterClear.addEventListener('click', clearFilter);
+
+    // Feed card click → pin to preview
+    document.querySelectorAll('.card').forEach(c => {
+      c.addEventListener('click', () => {
+        const file = fileByPath[c.dataset.path];
+        if (!file) return;
+        pinnedPath = file.path;
+        renderPreview(file);
+        markActive(file.path);
+        document.getElementById('spread').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
+
+    // ===== Search (in-line, left index) — staggered bloom =====
+    const searchInput = document.getElementById('searchInput');
+    function runSearch(q) {
+      const term = q.trim().toLowerCase();
+      const items = document.querySelectorAll('.bucket-item');
+      if (!term) {
+        items.forEach(it => {
+          it.classList.remove('dim');
+          it.classList.remove('glow');
+          it.style.setProperty('--stagger', '0ms');
+        });
+        return;
+      }
+      // Match in document order. Stagger matching items by 60ms each, up to 8.
+      let matchIdx = 0;
+      items.forEach(it => {
+        const file = fileByPath[it.dataset.path];
+        const hay = (file.title + ' ' + file.path + ' ' + file.tags.join(' ')).toLowerCase();
+        const hit = hay.includes(term);
+        if (hit) {
+          it.style.setProperty('--stagger', `${Math.min(matchIdx, 7) * 60}ms`);
+          matchIdx++;
+        } else {
+          it.style.setProperty('--stagger', '0ms');
+        }
+        it.classList.toggle('glow', hit);
+        it.classList.toggle('dim',  !hit);
+      });
+      // Scroll the first match into view smoothly
+      const first = document.querySelector('.bucket-item.glow');
+      if (first) {
+        first.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
+    searchInput.addEventListener('input', e => runSearch(e.target.value));
+
+    // ===== Section toggle =====
+    function toggleSection(headerEl) { headerEl.parentElement.classList.toggle('collapsed'); }
+    window.toggleSection = toggleSection;
+
+    // ===== Keyboard: / focus search, Cmd+K palette, Esc =====
+    const paletteShroud  = document.getElementById('paletteShroud');
+    const paletteInput   = document.getElementById('paletteInput');
+    const paletteResults = document.getElementById('paletteResults');
+    let paletteKbdIdx = 0;
+
+    function openPalette() {
+      paletteShroud.classList.add('show');
+      paletteInput.value = '';
+      runPaletteSearch('');
+      setTimeout(() => paletteInput.focus(), 10);
+    }
+    function closePalette() {
+      paletteShroud.classList.remove('show');
+    }
+    function runPaletteSearch(q) {
+      const term = q.trim().toLowerCase();
+      const matches = FILES.filter(f => {
+        if (!term) return true;
+        const hay = (f.title + ' ' + f.path + ' ' + f.tags.join(' ')).toLowerCase();
+        return hay.includes(term);
+      });
+      paletteKbdIdx = 0;
+      paletteResults.innerHTML = matches.length
+        ? matches.map((f, i) => `
+            <div class="palette-result pr-${f.bucket} ${i === 0 ? 'kbd-active' : ''}" data-path="${f.path}">
+              <span class="pr-dot"></span>
+              <span class="pr-title">${esc(f.title)}</span>
+              <span class="pr-path">${f.path}</span>
+            </div>
+          `).join('')
+        : `<div class="palette-empty">No matches.</div>`;
+
+      paletteResults.querySelectorAll('.palette-result').forEach(r => {
+        r.addEventListener('click', () => {
+          const file = fileByPath[r.dataset.path];
+          if (!file) return;
+          pinnedPath = file.path;
+          closePalette();
+          renderPreview(file);
+          markActive(file.path);
+          document.getElementById('spread').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+        r.addEventListener('mouseenter', () => {
+          paletteResults.querySelectorAll('.palette-result').forEach(x => x.classList.remove('kbd-active'));
+          r.classList.add('kbd-active');
+        });
+      });
+    }
+    paletteInput.addEventListener('input', e => runPaletteSearch(e.target.value));
+    paletteInput.addEventListener('keydown', e => {
+      const items = paletteResults.querySelectorAll('.palette-result');
+      if (!items.length) return;
+      let idx = [...items].findIndex(x => x.classList.contains('kbd-active'));
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        items[idx]?.classList.remove('kbd-active');
+        const next = items[Math.min(idx + 1, items.length - 1)];
+        next?.classList.add('kbd-active');
+        next?.scrollIntoView({ block: 'nearest' });
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        items[idx]?.classList.remove('kbd-active');
+        const prev = items[Math.max(idx - 1, 0)];
+        prev?.classList.add('kbd-active');
+        prev?.scrollIntoView({ block: 'nearest' });
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        const active = paletteResults.querySelector('.palette-result.kbd-active');
+        active?.click();
+      }
+    });
+
+    paletteShroud.addEventListener('click', e => {
+      if (e.target === paletteShroud) closePalette();
+    });
+
+    document.addEventListener('keydown', e => {
+      if (e.key === '/' && document.activeElement.tagName !== 'INPUT') {
+        e.preventDefault();
+        searchInput.focus();
+        searchInput.select();
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        openPalette();
+      } else if (e.key === 'Escape') {
+        if (paletteShroud.classList.contains('show')) closePalette();
+        else if (document.activeElement === searchInput) {
+          searchInput.value = '';
+          runSearch('');
+          searchInput.blur();
+        } else if (pinnedPath) {
+          // Esc unpins — pane fades back to calm
+          pinnedPath = null;
+          preview.classList.remove('is-pinned');
+          fadeToCalm();
+        }
+      }
+    });
+
+    // ===== Feed toggle (collapsed by default) =====
+    const feedWrap = document.getElementById('feedWrap');
+    const feedToggle = document.getElementById('feedToggle');
+    const feedToggleLabel = document.getElementById('feedToggleLabel');
+    feedToggle.addEventListener('click', () => {
+      const expanded = feedWrap.classList.toggle('expanded');
+      feedToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+      feedToggleLabel.textContent = expanded
+        ? 'Hide recent activity feed'
+        : 'Show recent activity feed';
+    });
+  </script>
+</body>
+</html>
