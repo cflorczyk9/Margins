@@ -349,12 +349,15 @@ import {
   titleCaseLabel,
   transactionTypeFromText
 } from "./core/review-parser.js";
-import * as pdfjsLib from "../node_modules/pdfjs-dist/build/pdf.mjs";
+// pdfjs-dist is served from jsdelivr CDN so production deploys don't
+// depend on a build step shipping `node_modules/`. Pinned to the
+// version declared in package.json. jsdelivr returns the right CORS
+// headers, so the worker can be loaded cross-origin and pdfjs wraps
+// it in a same-origin blob internally.
+import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@5.7.284/build/pdf.mjs";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  "../node_modules/pdfjs-dist/build/pdf.worker.mjs",
-  import.meta.url
-).toString();
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  "https://cdn.jsdelivr.net/npm/pdfjs-dist@5.7.284/build/pdf.worker.mjs";
 
 const initialTheme = localStorage.getItem(STORAGE_KEYS.theme) || "light";
 document.documentElement.dataset.theme = initialTheme;
@@ -10111,9 +10114,9 @@ async function extractPdfText(file) {
   const pdf = await pdfjsLib.getDocument({
     data,
     cMapPacked: true,
-    cMapUrl: new URL("../node_modules/pdfjs-dist/cmaps/", import.meta.url).toString(),
-    standardFontDataUrl: new URL("../node_modules/pdfjs-dist/standard_fonts/", import.meta.url).toString(),
-    wasmUrl: new URL("../node_modules/pdfjs-dist/wasm/", import.meta.url).toString()
+    cMapUrl: "https://cdn.jsdelivr.net/npm/pdfjs-dist@5.7.284/cmaps/",
+    standardFontDataUrl: "https://cdn.jsdelivr.net/npm/pdfjs-dist@5.7.284/standard_fonts/",
+    wasmUrl: "https://cdn.jsdelivr.net/npm/pdfjs-dist@5.7.284/wasm/"
   }).promise;
   const pages = [];
 
