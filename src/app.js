@@ -5802,6 +5802,7 @@ function activityTimelineRecords(fileMap) {
     ...pendingActivityRecords()
   ].sort((left, right) => (
     right.sortTimestamp - left.sortTimestamp ||
+    String(right.path || "").localeCompare(String(left.path || "")) ||
     left.title.localeCompare(right.title)
   ));
 }
@@ -5833,7 +5834,7 @@ function activitySourceRecord(path, body, fileMap) {
     summary: clampSentence(summary || "Source note filed in the vault.", 260),
     rawPath,
     dateValue,
-    sortTimestamp: sourceActivitySortTimestamp(dateValue),
+    sortTimestamp: sourceActivitySortTimestamp(dateValue, fields),
     typeLabel: sourceActivityTypeLabel(rawPath || path),
     typeClass,
     links,
@@ -5915,7 +5916,16 @@ function sourceActivityDateValue(fields, path) {
   return cleanSummary(fields.updated || fields.created || fields.event_date || sourceDateFromPath(path));
 }
 
-function sourceActivitySortTimestamp(value) {
+// Activity sort needs sub-day precision so sources processed on the
+// same day appear in true chronological order (newest first). Prefer
+// the ISO `reviewed_at` stamp the compiler writes on every
+// model-reviewed source; fall back to the date-level value for older
+// sources written before this field existed.
+function sourceActivitySortTimestamp(value, fields = null) {
+  if (fields?.reviewed_at) {
+    const precise = activityDateValue(cleanSummary(fields.reviewed_at));
+    if (precise) return precise.getTime();
+  }
   return activityDateValue(value)?.getTime() || 0;
 }
 
