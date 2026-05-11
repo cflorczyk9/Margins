@@ -2985,7 +2985,19 @@ async function generateGeminiJsonContent(model, prompt, extraParts = [], trackin
         temperature: 0.2,
         responseMimeType: "application/json",
         responseSchema: options.responseSchema,
-        maxOutputTokens: budget.outputTokenLimit
+        maxOutputTokens: budget.outputTokenLimit,
+        // Gemini 2.5 Flash counts "thinking" tokens against
+        // maxOutputTokens but doesn't surface them in
+        // candidatesTokenCount. With thinking on, the model could
+        // emit 8K visible tokens, burn ~4K hidden CoT tokens, hit
+        // 12K cap, and return finishReason: MAX_TOKENS even though
+        // the visible JSON is complete and well-formed. The
+        // structured-JSON ingest task doesn't need CoT —
+        // responseSchema already enforces structure — so disable
+        // thinking entirely. Belt + suspenders: the MAX_TOKENS
+        // check below also no-throws if the content parses as
+        // valid JSON.
+        thinkingConfig: { thinkingBudget: 0 }
       }
       })
     });
@@ -3013,9 +3025,16 @@ async function generateGeminiJsonContent(model, prompt, extraParts = [], trackin
       // Treat other terminal reasons (SAFETY, RECITATION, OTHER) the same as truncation.
     }
     if (stream.finishReason === "MAX_TOKENS" || stream.finishReason === "MAX_TOKENS_REACHED") {
-      const error = modelOutputTruncatedError("gemini", content, stream.finishReason);
-      finishModelTiming(timing, { ok: false, usage, contentChars: content.length, error });
-      throw error;
+      // Defensive: if Gemini says MAX_TOKENS but the content actually
+      // parses as valid JSON, the model finished cleanly even if it
+      // ran out of internal budget on its way there. Don't throw.
+      let usable = false;
+      try { JSON.parse(content); usable = true; } catch {}
+      if (!usable) {
+        const error = modelOutputTruncatedError("gemini", content, stream.finishReason);
+        finishModelTiming(timing, { ok: false, usage, contentChars: content.length, error });
+        throw error;
+      }
     }
     finishModelTiming(timing, { ok: true, usage, contentChars: content.length });
     return content;
