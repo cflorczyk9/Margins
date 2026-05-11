@@ -3236,7 +3236,7 @@ function buildApiIngestReviewPrompt(file, fileMap, mode) {
   const budget = questionBudgetForMode(mode);
   const askInstruction = mode === "auto"
     ? "Return no asks in auto mode."
-    : `Return 0-${budget} specific asks. Ask when the answer changes bucket/path, type tag, promotion, propagation, sensitivity, priority, or follow-up.`;
+    : `Return 0-${budget} specific Yes/No asks. Each ask MUST be phrasable as a yes/no decision; the user answers Yes, No, or Ignore (no free-form text). Ask when the answer changes bucket/path, type tag, promotion, propagation, sensitivity, priority, or follow-up.`;
   return `Review this uploaded source for Margins, a local-first source-to-wiki compiler. Return a filing judgment plus a compact pending-card review.
 
 The original file is already saved in raw/. Margins will show your JSON on the pending inbox card before writing the wiki.
@@ -3287,7 +3287,8 @@ Return JSON in this shape:
   "filingSteps": ["Reading PDF — 12 pages, ~3,200 words", "Detected 6 entities · 4 already in your brain", "Created Source Title as a new source", "Updated Existing Entity · concrete source-supported change", "Linked to Existing Page and Proposed Page", "Discovered: concrete contradiction or conflict", "Prepared source page · 3 entity updates · 1 item flagged for review"],
   "discoveries": [{"kind":"Contradiction","title":"Short label","detail":"What changed or conflicts.","severity":"review"}],
   "financialDetails": {"accounts":[],"figures":[],"holdings":[],"transactions":[],"caveats":[]},
-  "asks": [{"kind":"Follow-up|Identity|Priority|Sensitivity|Propagation","question":"Specific question.","whyAsk":"What answer changes.","recommendation":"My take: ...","options":["Recommended option","Alternative","Skip"]}]
+  "asks": [{"kind":"Follow-up|Identity|Priority|Sensitivity|Propagation","question":"Yes/no question phrased so user can answer Yes, No, or Ignore.","whyAsk":"What answer changes.","recommendation":"My take: yes/no with one-line reason."}]
+- Questions MUST be phrasable as Yes/No decisions. Margins shows three answer buttons (Yes / No / Ignore). Do not propose multi-choice or open-ended options — the user has no way to enter free-form text.
 }
 
 Uploaded source:
@@ -3308,7 +3309,7 @@ function buildCompactApiIngestReviewPrompt(file, fileMap, mode) {
   const budget = questionBudgetForMode(mode);
   const askInstruction = mode === "auto"
     ? "Return an empty asks array in auto mode."
-    : `Return 0-${Math.min(1, budget)} ask. Ask only if the answer changes the recommended filing path or sensitivity.`;
+    : `Return 0-${Math.min(1, budget)} Yes/No ask (user answers Yes/No/Ignore — no free-form). Ask only if the answer changes the recommended filing path or sensitivity.`;
   return `COMPACT RETRY: the previous Margins ingest review was cut off before complete JSON. Return a smaller complete JSON object. The LLM is still the only review engine; do not use placeholders or local heuristics.
 
 Contract:
@@ -7481,12 +7482,14 @@ function renderSourcePropagation(file) {
   `;
 }
 
+// V1.1: every review question collapses to Yes / No / Ignore. The LLM
+// is prompted to phrase questions as yes/no decisions, and the UI
+// renders these three buttons regardless of any LLM-supplied options.
+// Answers are recorded locally — no follow-up model call needed.
 function questionOptionsWithSkip(question) {
-  const options = question.options?.length ? question.options : ["Yes", "No", "Use default"];
-  const optionsWithSkip = options.some((option) => String(option).toLowerCase() === "skip")
-    ? options
-    : [...options, "Skip"];
-  return uniqueBy(optionsWithSkip.map((option) => displayQuestionOption(question, option)).filter((option) => option.value), (option) => option.value.toLowerCase());
+  return ["Yes", "No", "Ignore"]
+    .map((option) => displayQuestionOption(question, option))
+    .filter((option) => option.value);
 }
 
 function sourceIngestSummary(file) {
