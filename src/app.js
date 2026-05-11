@@ -2292,6 +2292,11 @@ async function streamSseModelResponse(response, extractEvent, { onUpdate, model 
     if (done) break;
     if (!firstChunkAt) firstChunkAt = performance.now();
     buffer += decoder.decode(value, { stream: true });
+    // Normalize all line endings to LF so the event-boundary search
+    // works whether the provider sends \n\n (LF), \r\n\r\n (CRLF),
+    // or \r\r (CR-only). Gemini's SSE arrives as CRLF, which is why
+    // the previous \n\n-only parser dropped every event.
+    buffer = buffer.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 
     let eventEnd;
     while ((eventEnd = buffer.indexOf("\n\n")) !== -1) {
@@ -2306,7 +2311,8 @@ async function streamSseModelResponse(response, extractEvent, { onUpdate, model 
         log("event with no data: lines", raw.slice(0, 200));
         continue;
       }
-      const dataStr = dataParts.join("");
+      // SSE spec: multi-line `data:` values are joined with \n.
+      const dataStr = dataParts.join("\n");
       if (dataStr === "[DONE]") continue;
       let payload;
       try {
