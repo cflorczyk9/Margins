@@ -2616,7 +2616,7 @@
     </div>
 
     <div class="nav-row">
-      <button class="cta ghost" onclick="goToHero()">Back</button>
+      <button class="cta ghost" onclick="window.location.href='index.html'">Back</button>
       <span class="step-counter">1 / 6</span>
       <button class="cta" onclick="next()" id="step1-next">Next</button>
     </div>
@@ -4565,7 +4565,12 @@ const state = {
 // ═══════════════════════════════════════════════════════════
 
 function setLandingVisible(visible) {
-  document.getElementById("hero").style.display = visible ? "block" : "none";
+  // The old hero / how-it-works / trust-band / final-cta sections were
+  // removed when wizard.html became wizard-only. All four queries below
+  // now miss in the new DOM, so each is guarded. Function becomes a
+  // no-op on this page; kept defined because goToWizard() still calls it.
+  const hero = document.getElementById("hero");
+  if (hero) hero.style.display = visible ? "block" : "none";
   const how = document.getElementById("how-it-works");
   if (how) how.style.display = visible ? "block" : "none";
   const trustBand = document.getElementById("trust-band");
