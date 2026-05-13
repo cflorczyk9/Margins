@@ -1,7 +1,6 @@
 node_modules/
-sample/output/
 .DS_Store
 .env
 .env.*
-!.env.example
 .claude/
+*.log
