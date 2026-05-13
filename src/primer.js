@@ -2,11 +2,8 @@ import { readdir } from "node:fs/promises";
 import path from "node:path";
 import { readVaultManual } from "./vault-manual.js";
 import { classifyVault, suggestionsForPersona } from "./persona.js";
-import {
-  samplePileBySnippets,
-  extractTopPhrases,
-  detectFilenamePatterns
-} from "./pile-sampler.js";
+import { samplePileBySnippets, detectFilenamePatterns } from "./pile-sampler.js";
+import { scanRawForCompile } from "./pile-scan.js";
 
 // Mode dispatch. Each persona maps to a response shape tuned for what that
 // user actually needs from Claude at the start of a conversation.
@@ -36,12 +33,20 @@ function modeFor(persona) {
 
 const GUIDANCE_BY_MODE = {
   pile:
-    "This vault is a pile of files with little structure. Read the sample to see " +
-    "what kind of content is here. Use topPhrases to spot recurring people and " +
-    "projects. Then either: (a) describe what you see in 2-3 sentences and offer " +
-    "to draft a folder structure (people/, projects/, journal/, etc.), or " +
-    "(b) propose entity pages for the top recurring names using propose_page. " +
-    "Always frame as a proposal — the user accepts via resolve_proposal.",
+    "This vault has files but little linking structure. If rawScan.priorityQueue " +
+    "is non-empty, the user dropped source files into raw/ — your best move is " +
+    "to start compiling the highest-priority ones into wiki source pages right " +
+    "away. Call propose_compile_from_raw on each priorityQueue entry IN PARALLEL " +
+    "in a single turn (read_page first to get the body, then propose_compile_from_raw " +
+    "with a structured summary). The original stays in raw/; a summary lands in " +
+    "wiki/sources/. After the first batch of proposals is staged, report back to " +
+    "the user (X source pages staged, N remaining) and ask whether to continue " +
+    "at this pace, focus on a specific topic, or stop. " +
+    "Skip files in rawScan.duplicateGroups (keep the oldest) and rawScan.likelyEmpty. " +
+    "If priorityQueue is empty (no raw/ folder, or everything already compiled), " +
+    "read the sample directly and describe what you see in 2-3 sentences, then " +
+    "offer concrete next moves: propose_wikilinks on a specific page, search_vault " +
+    "by topic, or draft a top-level page that catalogs the vault.",
   empty:
     "This vault is empty or nearly empty. Ask the user what they want to put in it " +
     "(research notes, journal, project docs) and offer to scaffold templates via " +
@@ -90,8 +95,8 @@ export function createPrimer(vault, { proposals, preferences } = {}) {
       summary.sample = pile.sample;
       summary.earliestMtime = pile.earliestMtime;
       summary.latestMtime = pile.latestMtime;
-      summary.topPhrases = extractTopPhrases(pile.sample.map((s) => s.snippet));
       summary.filenamePatterns = detectFilenamePatterns(relPaths);
+      summary.rawScan = await scanRawForCompile(vault, { topN: 5 });
     }
 
     return summary;
@@ -166,8 +171,37 @@ function formatPileSummary(summary) {
   lines.push(`Vault: ${summary.totalFiles} markdown files, dating ${earliest} → ${latest}.`);
   lines.push("");
 
+  if (summary.rawScan && summary.rawScan.totalRawFiles > 0) {
+    const rs = summary.rawScan;
+    lines.push(
+      `raw/: ${rs.totalRawFiles} files (${rs.uncompiledCount} uncompiled, ` +
+      `${rs.alreadyCompiledCount} already have a source page).`
+    );
+    if (rs.duplicateGroups.length) {
+      lines.push(`  Duplicate groups: ${rs.duplicateGroups.length} (will skip duplicates, keep oldest).`);
+    }
+    if (rs.likelyEmpty.length) {
+      lines.push(`  Likely empty (skip): ${rs.likelyEmpty.length} files.`);
+    }
+    if (rs.detectedPrefixes.length) {
+      const prefixSummary = rs.detectedPrefixes
+        .slice(0, 4)
+        .map((p) => `${p.prefix}- (${p.count})`)
+        .join(", ");
+      lines.push(`  Detected prefixes: ${prefixSummary}.`);
+    }
+    if (rs.priorityQueue.length) {
+      lines.push("");
+      lines.push(`Priority queue — start by compiling these ${rs.priorityQueue.length} files (call propose_compile_from_raw on each, in parallel):`);
+      for (const q of rs.priorityQueue) {
+        lines.push(`  [${q.score.toFixed(2)}] ${q.path}  (${q.reason})`);
+      }
+    }
+    lines.push("");
+  }
+
   if (summary.filenamePatterns?.length) {
-    lines.push("Filename patterns:");
+    lines.push("Filename patterns (across whole vault):");
     for (const p of summary.filenamePatterns) {
       const ex = p.examples[0] ? `   e.g. ${p.examples[0]}` : "";
       lines.push(`  ${p.pattern.padEnd(28)} ${String(p.count).padStart(4)} files${ex}`);
@@ -175,16 +209,8 @@ function formatPileSummary(summary) {
     lines.push("");
   }
 
-  if (summary.topPhrases?.length) {
-    lines.push("Top recurring capitalized phrases (in the sample):");
-    for (const p of summary.topPhrases) {
-      lines.push(`  ${p.phrase.padEnd(28)} ${p.count}x`);
-    }
-    lines.push("");
-  }
-
   if (summary.sample?.length) {
-    lines.push(`Sample of ${summary.sample.length} files (stratified across time):`);
+    lines.push(`Sample of ${summary.sample.length} vault files (stratified across time):`);
     lines.push("");
     for (const f of summary.sample) {
       const date = new Date(f.mtimeMs).toISOString().slice(0, 10);

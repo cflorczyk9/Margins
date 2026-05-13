@@ -4,11 +4,7 @@ import { mkdir, mkdtemp, rm, writeFile, utimes } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { createVault } from "../src/vault.js";
-import {
-  samplePileBySnippets,
-  extractTopPhrases,
-  detectFilenamePatterns
-} from "../src/pile-sampler.js";
+import { samplePileBySnippets, detectFilenamePatterns } from "../src/pile-sampler.js";
 
 let tmpRoot;
 let vault;
@@ -70,48 +66,6 @@ test("samplePileBySnippets respects snippetChars", async () => {
   await touch("a.md", "x".repeat(1000));
   const result = await samplePileBySnippets(vault, { count: 1, snippetChars: 50 });
   assert.equal(result.sample[0].snippet.length, 50);
-});
-
-test("extractTopPhrases finds repeated proper-noun-shaped phrases", async () => {
-  const texts = [
-    "Met with Sarah today about the Apex deal.",
-    "Sarah followed up with Mike on Apex pricing.",
-    "Mike and Sarah need to sync on Apex.",
-    "Random one-off: Quintilius mentioned later."
-  ];
-  const phrases = extractTopPhrases(texts);
-  const names = phrases.map((p) => p.phrase);
-  assert.ok(names.includes("Sarah"));
-  assert.ok(names.includes("Apex"));
-  assert.ok(names.includes("Mike"));
-  // Single mention should not appear (minCount default 2)
-  assert.ok(!names.includes("Quintilius"));
-});
-
-test("extractTopPhrases filters month/day/sentence-opener stopwords", async () => {
-  const texts = [
-    "January was busy. The team shipped two features.",
-    "January retrospective: Monday meeting, Tuesday standup.",
-    "When the January demo happened, Monday looked rough."
-  ];
-  const phrases = extractTopPhrases(texts);
-  const names = phrases.map((p) => p.phrase);
-  assert.ok(!names.includes("January"));
-  assert.ok(!names.includes("Monday"));
-  assert.ok(!names.includes("Tuesday"));
-  assert.ok(!names.includes("The"));
-  assert.ok(!names.includes("When"));
-});
-
-test("extractTopPhrases respects limit", async () => {
-  const names = [
-    "Aaron", "Beatrice", "Cyrus", "Daphne", "Edmund", "Fiona", "Gareth",
-    "Helena", "Isaac", "Juno", "Kieran", "Leona", "Marcus", "Nadia",
-    "Otis", "Petra", "Quinn", "Rhea", "Soren", "Tomas"
-  ];
-  const texts = names.flatMap((n) => [`${n} did something.`, `Then ${n} did more.`]);
-  const phrases = extractTopPhrases(texts, { limit: 5 });
-  assert.equal(phrases.length, 5);
 });
 
 test("detectFilenamePatterns groups dated daily notes", async () => {

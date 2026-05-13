@@ -82,14 +82,11 @@ test("formatSummary renders text without throwing for both empty and non-empty v
   assert.match(text, /Try asking me/);
 });
 
-test("pile mode triggers for A3 vault and includes sample + topPhrases + filenamePatterns", async () => {
+test("pile mode triggers for A3 vault and includes sample + filenamePatterns + rawScan", async () => {
   await mkdir(path.join(tmpRoot, ".obsidian"), { recursive: true });
-  // 25 unlinked files mentioning recurring names → A3 → pile mode.
+  // 25 unlinked files → A3 → pile mode.
   for (let i = 0; i < 25; i++) {
-    await touch(
-      `notes/file${i}.md`,
-      `Talked to Sarah about Apex today. Mike weighed in too. Sarah said yes.`
-    );
+    await touch(`notes/file${i}.md`, `Plain unlinked content about Apex and Sarah.`);
   }
   const vault = createVault(tmpRoot);
   const primer = createPrimer(vault);
@@ -97,12 +94,34 @@ test("pile mode triggers for A3 vault and includes sample + topPhrases + filenam
   assert.equal(summary.mode, "pile");
   assert.equal(summary.persona.code, "A3");
   assert.ok(Array.isArray(summary.sample) && summary.sample.length > 0);
-  assert.ok(Array.isArray(summary.topPhrases));
-  const phrases = summary.topPhrases.map((p) => p.phrase);
-  assert.ok(phrases.includes("Sarah"));
-  assert.ok(phrases.includes("Apex"));
   assert.ok(Array.isArray(summary.filenamePatterns) && summary.filenamePatterns.length > 0);
+  assert.ok(summary.rawScan && typeof summary.rawScan.totalRawFiles === "number");
+  assert.ok(Array.isArray(summary.rawScan.priorityQueue));
   assert.ok(summary.guidance.length > 0);
+});
+
+test("pile mode populates rawScan.priorityQueue when raw/ has source files", async () => {
+  await mkdir(path.join(tmpRoot, ".obsidian"), { recursive: true });
+  for (let i = 0; i < 20; i++) {
+    await touch(`vault-page-${i}.md`, "Unlinked content.");
+  }
+  // 8 raw source files of varying size
+  for (let i = 0; i < 8; i++) {
+    const body = "Meeting transcript: " + "Sarah discussed Apex pricing. ".repeat(20 + i * 10);
+    await touch(`raw/raw-doc-${i}.md`, body);
+  }
+  const vault = createVault(tmpRoot);
+  const primer = createPrimer(vault);
+  const summary = await primer.summarize();
+  assert.equal(summary.mode, "pile");
+  assert.equal(summary.rawScan.totalRawFiles, 8);
+  assert.ok(summary.rawScan.priorityQueue.length > 0);
+  assert.ok(summary.rawScan.priorityQueue.length <= 5);
+  for (const q of summary.rawScan.priorityQueue) {
+    assert.ok(q.path.startsWith("raw/"));
+    assert.ok(typeof q.score === "number");
+    assert.ok(typeof q.reason === "string");
+  }
 });
 
 test("pile mode formatSummary renders sample snippets and guidance", async () => {
@@ -115,7 +134,7 @@ test("pile mode formatSummary renders sample snippets and guidance", async () =>
   const summary = await primer.summarize();
   const text = formatSummary(summary);
   assert.match(text, /Mode: pile/);
-  assert.match(text, /Sample of \d+ files/);
+  assert.match(text, /Sample of \d+/);
   assert.match(text, /Guidance:/);
 });
 
