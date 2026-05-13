@@ -52,11 +52,17 @@ The model can read your vault, propose new pages, propose edits to existing ones
 
 ## Tools
 
+### Context (call once per conversation)
+
+| Tool | Purpose |
+|------|---------|
+| `margins_start` | Vault stats + pending proposals + uningested raw files + recent preferences + the vault's `CLAUDE.md` if present. Claude's grounding for the whole conversation. |
+| `recall_preferences` | Read durable user preferences from `.margins/preferences.md` (filing conventions, naming patterns, prior corrections). Claude calls this before any propose. |
+
 ### Read
 
 | Tool | Purpose |
 |------|---------|
-| `margins_start` | Primer: vault stats + suggested queries. Call this first in a new conversation. |
 | `search_vault` | Full-text + filename search across the vault. |
 | `read_page` | Read one page by relative path. |
 | `list_recent` | Most recently modified pages. |
@@ -73,6 +79,12 @@ The model can read your vault, propose new pages, propose edits to existing ones
 | `propose_compile_from_raw` | Turn a raw transcript/note in `raw/` into a structured source page. |
 | `list_proposals` | List pending proposals + overwrite-risk flag per entry. |
 | `resolve_proposal` | `action: "accept"` lands the proposal; `action: "reject"` discards it. |
+
+### Learn
+
+| Tool | Purpose |
+|------|---------|
+| `record_preference` | Append a durable rule to `.margins/preferences.md`. Claude calls this when the user corrects a proposal in a way that should apply next time (filing path, naming, summary length, etc.). |
 
 ### How the proposal flow works
 
@@ -115,12 +127,22 @@ MARGINS_VAULT=/path/to/test/vault npm start
 
 The compiler (`src/compiler/`) was originally vendored from an earlier Margins web app. The web app and its landing page live on the `legacy-webapp` branch in this repo. Re-vendor with `scripts/vendor-compiler.sh` if you ever need to pull updates back from there.
 
+## How Margins gets smarter over time
+
+Two things compound:
+
+1. **Your vault's `CLAUDE.md`** is auto-loaded by `margins_start`. Drop vault-specific rules in there — filing conventions, voice, naming patterns — and Claude obeys them in every conversation. No copy-paste.
+2. **`.margins/preferences.md`** is a Margins-maintained file inside your vault. When you correct Claude ("no, that should be in projects, not personal"), Claude calls `record_preference` to remember the rule. Next conversation it reads them via `recall_preferences` before proposing writes. The file is plain Markdown — you can audit it, hand-edit it, delete sections that no longer apply.
+
+Both files live in the vault, so they travel with it. Switch machines, switch hosts (Claude Desktop → Claude Code → ChatGPT once that lands), and your conventions follow.
+
 ## Roadmap
 
-- v0.4: `get_citations` (semantic embedding search, opt-in dep).
-- v0.4: PDF/DOCX support for `propose_compile_from_raw`.
-- v0.5: HTTP / Streamable transport for claude.ai web and ChatGPT custom connectors.
-- v0.5+: Obsidian community plugin alongside MCP, if signal supports it.
+- v0.5: `get_citations` (semantic embedding search, opt-in dep).
+- v0.5: PDF/DOCX support for `propose_compile_from_raw`.
+- v0.6: HTTP / Streamable transport for claude.ai web and ChatGPT custom connectors.
+- v0.6+: Obsidian community plugin alongside MCP, if signal supports it.
+- v0.7+: file watcher / auto-scaffold on drop into `raw/`.
 
 ## License
 

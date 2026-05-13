@@ -7,19 +7,54 @@ import { detectIndexRoots } from "./index-roots.js";
 import { createPrimer, formatSummary } from "./primer.js";
 import { createCompile } from "./compile.js";
 import { loadTelemetry } from "./telemetry.js";
+import { createPreferences } from "./preferences.js";
+
+const OPERATOR_MANUAL = `Margins reads and proposes writes to a Markdown vault on the user's disk.
+
+START EVERY CONVERSATION by calling margins_start once. It returns vault
+stats, pending proposals, uningested raw files, recent user preferences,
+and the vault's CLAUDE.md if present. Use that context to ground your
+answers and follow the user's filing conventions.
+
+ANSWERING: cite specific file paths for every claim you make about the
+vault. "Based on wiki/career/career.md, ..." beats "based on your notes."
+If you make a claim without a citation, the user can't verify you.
+
+WRITING (everything is a proposal — nothing lands until the user accepts):
+- Before propose_edit, call read_page to see current content.
+- Before propose_page, call search_vault to check for existing similar pages.
+- Before any propose_*, call recall_preferences to follow the user's filing
+  conventions and naming patterns. The user's CLAUDE.md and preferences are
+  authoritative; your defaults are not.
+
+LEARNING: when the user corrects a proposal (changes the path you picked,
+renames a slug, asks for shorter takeaways, etc.), call record_preference
+with a one-line rule capturing the correction. Margins remembers it for
+next time. Don't record every minor disagreement; record durable rules
+about filing conventions, naming patterns, structural rules.
+
+INGESTING: raw transcripts and notes live in raw/<filename>. To file one
+into the vault, call propose_compile_from_raw with a summary you generate
+by reading the file.
+
+TOOLS:
+- Context: margins_start, recall_preferences
+- Read: search_vault, read_page, list_recent, get_backlinks
+- Propose writes: propose_page, propose_edit, append_to, propose_compile_from_raw
+- Manage proposals: list_proposals, resolve_proposal
+- Learn: record_preference
+- ChatGPT Deep Research: search, fetch`;
 
 export function buildServer(vault, options = {}) {
   const proposals = createProposals(vault);
-  const primer = createPrimer(vault);
+  const preferences = createPreferences(vault);
+  const primer = createPrimer(vault, { proposals, preferences });
   const compile = createCompile(vault, proposals);
   const telemetry = options.telemetry || { fireAndForget: () => {}, enabled: false };
   const trackToolCall = (toolName) => telemetry.fireAndForget(`/tool/${toolName}`);
   const server = new McpServer(
-    { name: "margins", version: "0.3.0" },
-    {
-      instructions:
-        "Margins vault tools. START HERE: call margins_start to see what's in the user's vault and get suggested queries. READ: search_vault, read_page, list_recent, get_backlinks. WRITE: writes are proposals — propose_page, propose_edit, and append_to all stage to proposed/<path>. The user (or an MCP client) calls list_proposals to see what's pending and resolve_proposal to accept or reject. Nothing lands in the vault until accepted. ChatGPT Deep Research clients should call search + fetch."
-    }
+    { name: "margins", version: "0.4.0" },
+    { instructions: OPERATOR_MANUAL }
   );
 
   // Wrapper that mirrors server.registerTool but tracks each call via telemetry.
@@ -34,7 +69,7 @@ export function buildServer(vault, options = {}) {
     "margins_start",
     {
       description:
-        "Primer for a new conversation. Returns vault stats (file count, top folders) and 2-3 suggested queries to try. Call this first if you don't know what's in the user's vault.",
+        "Conversation-start primer. Returns vault stats (file count, top folders), pending proposals, uningested files in raw/, the user's most recent preferences, and the vault's CLAUDE.md if present. Call this once at the start of every vault-relevant conversation so you ground your answers in the actual vault state.",
       inputSchema: {},
       annotations: { readOnlyHint: true }
     },
@@ -43,6 +78,70 @@ export function buildServer(vault, options = {}) {
       return {
         content: [{ type: "text", text: formatSummary(summary) }],
         structuredContent: summary
+      };
+    }
+  );
+
+  register(
+    "recall_preferences",
+    {
+      description:
+        "Read the user's vault-scoped preferences file (.margins/preferences.md). Returns durable rules the user has stated or that you've recorded via record_preference. Call this before any propose_* tool so your proposals follow the user's filing conventions, naming patterns, and prior corrections.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true }
+    },
+    async () => {
+      const body = await preferences.read();
+      if (!body) {
+        return {
+          content: [
+            {
+              type: "text",
+              text:
+                "No preferences recorded yet. When the user corrects a proposal, call record_preference to remember the correction. The file lives at " +
+                preferences.relPath + " in the vault."
+            }
+          ],
+          structuredContent: { body: "", path: preferences.relPath }
+        };
+      }
+      return {
+        content: [{ type: "text", text: body }],
+        structuredContent: { body, path: preferences.relPath }
+      };
+    }
+  );
+
+  register(
+    "record_preference",
+    {
+      description:
+        "Append a durable user preference, convention, or correction to the vault's preferences file. Call this when the user corrects a proposal in a way that should apply next time (filing path, naming pattern, summary length, link style, etc.). Do NOT record one-off disagreements or transient feedback. Aim for one-line rules.",
+      inputSchema: {
+        observation: z
+          .string()
+          .describe(
+            "One-line rule capturing the durable preference. Example: 'Mark Loh meeting notes file under wiki/projects/ not wiki/personal/.'"
+          ),
+        category: z
+          .string()
+          .optional()
+          .describe(
+            "Optional category tag. Examples: 'filing', 'naming', 'voice', 'structure'."
+          )
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false }
+    },
+    async ({ observation, category }) => {
+      const result = await preferences.append(observation, { category });
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Recorded preference (${result.date}): ${result.observation}${result.category ? ` [${result.category}]` : ""}. Saved to ${result.path}.`
+          }
+        ],
+        structuredContent: result
       };
     }
   );
