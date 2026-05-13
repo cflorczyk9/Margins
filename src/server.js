@@ -6,7 +6,7 @@ import { createProposals } from "./proposals.js";
 import { detectIndexRoots } from "./index-roots.js";
 import { createPrimer, formatSummary } from "./primer.js";
 import { createCompile } from "./compile.js";
-import { loadTelemetry } from "./telemetry.js";
+import { loadTelemetry, writeConsent } from "./telemetry.js";
 import { createPreferences } from "./preferences.js";
 import { createWikilinks } from "./wikilinks.js";
 
@@ -72,7 +72,7 @@ export function buildServer(vault, options = {}) {
   const server = new McpServer(
     {
       name: "margins",
-      version: "0.8.1",
+      version: "0.9.0",
       icons: [{ src: MARGINS_ICON_DATA_URI, mimeType: "image/svg+xml" }],
       websiteUrl: "https://margins.app",
       description:
@@ -143,6 +143,34 @@ export function buildServer(vault, options = {}) {
       return {
         content: [{ type: "text", text: body }],
         structuredContent: { body, path: preferences.relPath }
+      };
+    }
+  );
+
+  register(
+    "record_telemetry_consent",
+    {
+      description:
+        "Record the user's choice on anonymous telemetry. Call this exactly once, only when the margins_start response had telemetryConsentNeeded=true AND the user has answered the in-chat opt-in question. Pass enabled=true if they said yes, enabled=false if they said no. The choice persists in ~/.margins/consent.json and applies to all future Margins sessions.",
+      inputSchema: {
+        enabled: z
+          .boolean()
+          .describe("True if the user opted in, false if they declined.")
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false }
+    },
+    async ({ enabled }) => {
+      const record = await writeConsent({ enabled });
+      return {
+        content: [
+          {
+            type: "text",
+            text: enabled
+              ? `Telemetry: on. Recorded at ${record.choseAt}. The user can opt out later by editing ~/.margins/consent.json or setting MARGINS_TELEMETRY=off.`
+              : `Telemetry: off. Recorded at ${record.choseAt}. The user can opt in later by editing ~/.margins/consent.json.`
+          }
+        ],
+        structuredContent: record
       };
     }
   );

@@ -4,6 +4,8 @@ import { readVaultManual } from "./vault-manual.js";
 import { classifyVault, suggestionsForPersona } from "./persona.js";
 import { samplePileBySnippets, detectFilenamePatterns } from "./pile-sampler.js";
 import { scanRawForCompile } from "./pile-scan.js";
+import { checkForUpdate } from "./version-check.js";
+import { readConsent } from "./telemetry.js";
 
 // Mode dispatch. Each persona maps to a response shape tuned for what that
 // user actually needs from Claude at the start of a conversation.
@@ -98,6 +100,23 @@ export function createPrimer(vault, { proposals, preferences } = {}) {
       summary.filenamePatterns = detectFilenamePatterns(relPaths);
       summary.rawScan = await scanRawForCompile(vault, { topN: 5 });
     }
+
+    // Update check (silent on failure) — surfaces an updateAvailable hint
+    // when the installed version is behind the latest published on npm.
+    // Cached 24h per vault. Works for both npm and .mcpb install channels.
+    try {
+      const upd = await checkForUpdate(vault);
+      if (upd) summary.updateAvailable = upd;
+    } catch {
+      // never block startup
+    }
+
+    // Chat-flow telemetry consent fallback — used when a user installed via
+    // .mcpb double-click and never saw the CLI consent prompt. If no consent
+    // record exists, flag it; Claude relays the question in chat and calls
+    // record_telemetry_consent with the answer.
+    const consent = await readConsent();
+    if (!consent) summary.telemetryConsentNeeded = true;
 
     return summary;
   }
@@ -307,6 +326,23 @@ function appendCommonSections(lines, summary) {
 }
 
 function appendGuidance(lines, summary) {
+  if (summary.updateAvailable) {
+    lines.push("");
+    lines.push(
+      `[!] Margins update available: ${summary.updateAvailable.current} -> ${summary.updateAvailable.latest}. ` +
+        summary.updateAvailable.hint
+    );
+    lines.push("   Mention this to the user once at the start of the conversation.");
+  }
+  if (summary.telemetryConsentNeeded) {
+    lines.push("");
+    lines.push(
+      "[!] Telemetry consent not yet recorded. Ask the user once in chat: " +
+        "'Margins can send anonymous tool-use counts (no vault content, no file paths) " +
+        "to help guide what gets built next. Opt in?' Then call record_telemetry_consent " +
+        "with enabled=true or enabled=false based on their answer."
+    );
+  }
   if (summary.guidance) {
     lines.push("");
     lines.push("Guidance:");

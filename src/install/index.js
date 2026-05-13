@@ -22,11 +22,12 @@ export function detectInstallLocation(serverBin = SERVER_BIN) {
 }
 
 function parseArgs(argv) {
-  const args = { yes: false, vault: null, starterVault: null, force: false, hosts: null };
+  const args = { yes: false, vault: null, starterVault: null, force: false, hosts: null, update: false };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--yes" || arg === "-y") args.yes = true;
     else if (arg === "--force") args.force = true;
+    else if (arg === "--update") args.update = true;
     else if (arg === "--vault") args.vault = argv[++i];
     else if (arg.startsWith("--vault=")) args.vault = arg.slice("--vault=".length);
     else if (arg === "--starter-vault") args.starterVault = argv[++i];
@@ -81,6 +82,29 @@ export async function runInstaller(argv = [], { log = console.log, errlog = cons
   const args = parseArgs(argv);
   const prompter = createPrompter({ yes: args.yes });
   const result = { steps: [], errors: [] };
+
+  if (args.update) {
+    log("Updating margins-mcp via npm...");
+    try {
+      const { spawnSync } = await import("node:child_process");
+      const npmResult = spawnSync("npm", ["install", "-g", "margins-mcp@latest"], {
+        stdio: "inherit"
+      });
+      if (npmResult.status !== 0) {
+        errlog("npm install failed. If you installed via .mcpb (double-click), download the latest from https://margins.app instead.");
+        result.errors.push({ kind: "update-failed", exitCode: npmResult.status });
+        prompter.close();
+        return result;
+      }
+      log("margins-mcp updated. Re-running install to refresh host configs...");
+      result.steps.push({ kind: "updated-via-npm" });
+    } catch (err) {
+      errlog(`Update failed: ${err.message}`);
+      result.errors.push({ kind: "update-failed", message: err.message });
+      prompter.close();
+      return result;
+    }
+  }
 
   const location = detectInstallLocation();
   if (location === "npx-cache") {

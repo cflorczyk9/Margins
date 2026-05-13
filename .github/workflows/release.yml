@@ -1,0 +1,59 @@
+name: Release
+
+# Triggered on version tags. Builds the .mcpb bundle and attaches it to a
+# GitHub Release alongside the source tarball. The npm publish step is left
+# manual for now (requires OTP) — bump package.json + manifest.json, tag,
+# then run `npm publish` from a local terminal.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-mcpb:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Verify version sync
+        run: |
+          PKG_VER=$(node -p "require('./package.json').version")
+          MANIFEST_VER=$(node -p "require('./mcpb/manifest.json').version")
+          if [ "$PKG_VER" != "$MANIFEST_VER" ]; then
+            echo "package.json ($PKG_VER) and mcpb/manifest.json ($MANIFEST_VER) are out of sync"
+            exit 1
+          fi
+          echo "Versions in sync: $PKG_VER"
+
+      - name: Build .mcpb bundle
+        run: ./scripts/build-mcpb.sh
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/margins-mcp-*.mcpb
+          generate_release_notes: true
+          body: |
+            ## Install
+
+            **Claude Desktop (recommended):** download `margins-mcp-*.mcpb` below and double-click.
+
+            **Claude Code / CLI:** `npm install -g margins-mcp@${{ github.ref_name }}` then `margins-mcp install`.
+
+            **Already installed?** Margins surfaces an update hint in `margins_start` automatically. Run `margins-mcp install --update` (npm) or re-download the .mcpb (Desktop) when you see it.

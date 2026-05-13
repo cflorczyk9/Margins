@@ -1,0 +1,73 @@
+{
+  "mcpb_version": "0.2",
+  "name": "margins",
+  "display_name": "Margins",
+  "version": "0.9.0",
+  "description": "Use your Claude Pro/Max subscription on your Obsidian vault. Reads markdown, proposes writes back, and compiles raw source files into wiki source pages.",
+  "long_description": "Margins is an MCP connector that lets Claude read and propose writes to your local Markdown vault. All inference is paid for by your existing Claude subscription — no extra API key required. When you drop a folder of source files into raw/, Margins surfaces a priority queue and Claude compiles them into structured wiki source pages in ~90 seconds.",
+  "author": {
+    "name": "Connor Florczyk",
+    "email": "connor.florczyk@brieflywealth.com",
+    "url": "https://margins.app"
+  },
+  "homepage": "https://margins.app",
+  "documentation": "https://github.com/cflorczyk9/Margins",
+  "support": "https://github.com/cflorczyk9/Margins/issues",
+  "icon": "icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cflorczyk9/Margins"
+  },
+  "server": {
+    "type": "node",
+    "entry_point": "server/bin/margins-mcp.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server/bin/margins-mcp.js"],
+      "env": {
+        "MARGINS_VAULT": "${user_config.vault_path}"
+      }
+    }
+  },
+  "user_config": {
+    "vault_path": {
+      "type": "directory",
+      "title": "Vault path",
+      "description": "Absolute path to your Markdown / Obsidian vault. Margins reads from here and stages proposals under proposed/.",
+      "required": true
+    }
+  },
+  "tools": [
+    { "name": "margins_start", "description": "Conversation-start primer." },
+    { "name": "search_vault", "description": "Full-text + filename search." },
+    { "name": "read_page", "description": "Read a single vault page." },
+    { "name": "list_recent", "description": "Most recently modified files." },
+    { "name": "get_backlinks", "description": "Find pages linking to a target." },
+    { "name": "propose_wikilinks", "description": "Suggest wikilinks for a page." },
+    { "name": "propose_page", "description": "Stage a new vault page." },
+    { "name": "propose_edit", "description": "Stage an edit to an existing page." },
+    { "name": "append_to", "description": "Stage an append to a page." },
+    { "name": "propose_compile_from_raw", "description": "Compile raw/ source into a wiki page." },
+    { "name": "list_proposals", "description": "List pending proposals." },
+    { "name": "resolve_proposal", "description": "Accept or reject a proposal." },
+    { "name": "recall_preferences", "description": "Read user's vault preferences." },
+    { "name": "record_preference", "description": "Save a durable user preference." },
+    { "name": "record_telemetry_consent", "description": "Record telemetry opt-in choice." }
+  ],
+  "keywords": [
+    "obsidian",
+    "markdown",
+    "personal-knowledge-management",
+    "second-brain",
+    "claude",
+    "mcp"
+  ],
+  "license": "MIT",
+  "compatibility": {
+    "claude_desktop": ">=0.10.0",
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {
+      "node": ">=18.0.0"
+    }
+  }
+}
