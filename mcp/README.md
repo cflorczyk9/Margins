@@ -7,7 +7,7 @@
 ## Install
 
 ```sh
-npx @margins/mcp install --vault /path/to/your/vault
+npx margins-mcp install --vault /path/to/your/vault
 ```
 
 That's it. The installer detects Claude Desktop and Claude Code, writes the right config files, and runs a verification probe. Restart Claude Desktop (Cmd-Q on macOS, not just close), or in Claude Code run `/mcp` to see Margins listed.
@@ -15,7 +15,7 @@ That's it. The installer detects Claude Desktop and Claude Code, writes the righ
 Don't have an Obsidian vault yet? Scaffold a Margins-shaped one:
 
 ```sh
-npx @margins/mcp install --starter-vault ~/notes
+npx margins-mcp install --starter-vault ~/notes
 ```
 
 ### Manual install
