@@ -6,20 +6,31 @@ import { createProposals } from "./proposals.js";
 import { detectIndexRoots } from "./index-roots.js";
 import { createPrimer, formatSummary } from "./primer.js";
 import { createCompile } from "./compile.js";
+import { loadTelemetry } from "./telemetry.js";
 
-export function buildServer(vault) {
+export function buildServer(vault, options = {}) {
   const proposals = createProposals(vault);
   const primer = createPrimer(vault);
   const compile = createCompile(vault, proposals);
+  const telemetry = options.telemetry || { fireAndForget: () => {}, enabled: false };
+  const trackToolCall = (toolName) => telemetry.fireAndForget(`/tool/${toolName}`);
   const server = new McpServer(
-    { name: "margins", version: "0.2.0" },
+    { name: "margins", version: "0.3.0" },
     {
       instructions:
         "Margins vault tools. START HERE: call margins_start to see what's in the user's vault and get suggested queries. READ: search_vault, read_page, list_recent, get_backlinks. WRITE: writes are proposals — propose_page, propose_edit, and append_to all stage to proposed/<path>. The user (or an MCP client) calls list_proposals to see what's pending and resolve_proposal to accept or reject. Nothing lands in the vault until accepted. ChatGPT Deep Research clients should call search + fetch."
     }
   );
 
-  server.registerTool(
+  // Wrapper that mirrors server.registerTool but tracks each call via telemetry.
+  function register(name, config, handler) {
+    return server.registerTool(name, config, async (args, extra) => {
+      trackToolCall(name);
+      return handler(args, extra);
+    });
+  }
+
+  register(
     "margins_start",
     {
       description:
@@ -36,7 +47,7 @@ export function buildServer(vault) {
     }
   );
 
-  server.registerTool(
+  register(
     "search_vault",
     {
       description:
@@ -62,7 +73,7 @@ export function buildServer(vault) {
     }
   );
 
-  server.registerTool(
+  register(
     "read_page",
     {
       description: "Read a single vault page by relative path (e.g. 'wiki/career/career.md').",
@@ -84,7 +95,7 @@ export function buildServer(vault) {
     }
   );
 
-  server.registerTool(
+  register(
     "list_recent",
     {
       description:
@@ -106,7 +117,7 @@ export function buildServer(vault) {
     }
   );
 
-  server.registerTool(
+  register(
     "get_backlinks",
     {
       description:
@@ -129,7 +140,7 @@ export function buildServer(vault) {
     }
   );
 
-  server.registerTool(
+  register(
     "propose_page",
     {
       description:
@@ -159,7 +170,7 @@ export function buildServer(vault) {
     }
   );
 
-  server.registerTool(
+  register(
     "propose_edit",
     {
       description:
@@ -185,7 +196,7 @@ export function buildServer(vault) {
     }
   );
 
-  server.registerTool(
+  register(
     "append_to",
     {
       description:
@@ -207,7 +218,7 @@ export function buildServer(vault) {
     }
   );
 
-  server.registerTool(
+  register(
     "propose_compile_from_raw",
     {
       description:
@@ -263,7 +274,7 @@ export function buildServer(vault) {
     }
   );
 
-  server.registerTool(
+  register(
     "list_proposals",
     {
       description:
@@ -292,7 +303,7 @@ export function buildServer(vault) {
     }
   );
 
-  server.registerTool(
+  register(
     "resolve_proposal",
     {
       description:
@@ -316,7 +327,7 @@ export function buildServer(vault) {
     }
   );
 
-  server.registerTool(
+  register(
     "search",
     {
       description:
@@ -338,7 +349,7 @@ export function buildServer(vault) {
     }
   );
 
-  server.registerTool(
+  register(
     "fetch",
     {
       description:
@@ -382,11 +393,13 @@ export async function runStdio({ vaultRoot } = {}) {
     process.env.MARGINS_INDEX_ROOTS
   );
   const vault = createVault(root, { indexRoots: roots, skipDirs });
-  const server = buildServer(vault);
+  const telemetry = await loadTelemetry();
+  const server = buildServer(vault, { telemetry });
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error(
     `margins-mcp: serving vault at ${vault.root} ` +
-      `(index roots: ${roots.join(", ")}, detected via ${source})`
+      `(index roots: ${roots.join(", ")}, detected via ${source}, ` +
+      `telemetry: ${telemetry.enabled ? "on" : "off"})`
   );
 }
