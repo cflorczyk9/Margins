@@ -69,8 +69,15 @@ cd "$REPO_ROOT"
 # Cleanup the staging directory; keep the .mcpb.
 rm -rf "$STAGE_DIR"
 
+# Also produce an unversioned copy. The unversioned name is what the
+# "Download" button on margins.app links to, via GitHub's stable URL:
+#   https://github.com/cflorczyk9/Margins/releases/latest/download/margins-mcp.mcpb
+# The versioned copy is kept for archival use (multiple versions in Downloads/).
+cp "$DIST_DIR/$BUNDLE_NAME" "$DIST_DIR/margins-mcp.mcpb"
+
 BUNDLE_SIZE=$(du -h "$DIST_DIR/$BUNDLE_NAME" | cut -f1)
 echo "  Built $DIST_DIR/$BUNDLE_NAME ($BUNDLE_SIZE)"
+echo "  Also wrote $DIST_DIR/margins-mcp.mcpb (unversioned, for stable download URL)"
 echo ""
 echo "To test locally:"
 echo "  open $DIST_DIR/$BUNDLE_NAME"
