@@ -81,3 +81,64 @@ test("formatSummary renders text without throwing for both empty and non-empty v
   assert.match(text, /1 markdown files/);
   assert.match(text, /Try asking me/);
 });
+
+test("pile mode triggers for A3 vault and includes sample + topPhrases + filenamePatterns", async () => {
+  await mkdir(path.join(tmpRoot, ".obsidian"), { recursive: true });
+  // 25 unlinked files mentioning recurring names → A3 → pile mode.
+  for (let i = 0; i < 25; i++) {
+    await touch(
+      `notes/file${i}.md`,
+      `Talked to Sarah about Apex today. Mike weighed in too. Sarah said yes.`
+    );
+  }
+  const vault = createVault(tmpRoot);
+  const primer = createPrimer(vault);
+  const summary = await primer.summarize();
+  assert.equal(summary.mode, "pile");
+  assert.equal(summary.persona.code, "A3");
+  assert.ok(Array.isArray(summary.sample) && summary.sample.length > 0);
+  assert.ok(Array.isArray(summary.topPhrases));
+  const phrases = summary.topPhrases.map((p) => p.phrase);
+  assert.ok(phrases.includes("Sarah"));
+  assert.ok(phrases.includes("Apex"));
+  assert.ok(Array.isArray(summary.filenamePatterns) && summary.filenamePatterns.length > 0);
+  assert.ok(summary.guidance.length > 0);
+});
+
+test("pile mode formatSummary renders sample snippets and guidance", async () => {
+  await mkdir(path.join(tmpRoot, ".obsidian"), { recursive: true });
+  for (let i = 0; i < 20; i++) {
+    await touch(`pile/n${i}.md`, "Random Project Apex update notes.");
+  }
+  const vault = createVault(tmpRoot);
+  const primer = createPrimer(vault);
+  const summary = await primer.summarize();
+  const text = formatSummary(summary);
+  assert.match(text, /Mode: pile/);
+  assert.match(text, /Sample of \d+ files/);
+  assert.match(text, /Guidance:/);
+});
+
+test("synthesis mode reports mode in formatSummary", async () => {
+  await mkdir(path.join(tmpRoot, ".obsidian"), { recursive: true });
+  for (let i = 0; i < 15; i++) {
+    await touch(`wiki/p${i}.md`, `Linked content [[other${i}]] [[third${i}]].`);
+  }
+  const vault = createVault(tmpRoot);
+  const primer = createPrimer(vault);
+  const summary = await primer.summarize();
+  assert.equal(summary.mode, "synthesis");
+  const text = formatSummary(summary);
+  assert.match(text, /Mode: synthesis/);
+});
+
+test("empty mode reports mode in formatSummary even with a couple of files", async () => {
+  await mkdir(path.join(tmpRoot, ".obsidian"), { recursive: true });
+  await touch("a.md");
+  const vault = createVault(tmpRoot);
+  const primer = createPrimer(vault);
+  const summary = await primer.summarize();
+  assert.equal(summary.mode, "empty");
+  const text = formatSummary(summary);
+  assert.match(text, /Mode: empty/);
+});

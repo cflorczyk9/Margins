@@ -72,7 +72,15 @@ export function buildServer(vault, options = {}) {
     "margins_start",
     {
       description:
-        "Conversation-start primer. Returns vault stats (file count, top folders), pending proposals, uningested files in raw/, the user's most recent preferences, and the vault's CLAUDE.md if present. Call this once at the start of every vault-relevant conversation so you ground your answers in the actual vault state.",
+        "Conversation-start primer. Always call this once at the start of every vault-relevant conversation. " +
+        "The response includes a 'mode' field — read it and follow the 'guidance' field tailored to that mode: " +
+        "(1) mode='pile' for unstructured many-file vaults — returns a representative time-stratified sample, " +
+        "top recurring capitalized phrases (likely people/projects), and filename patterns. Name what you see " +
+        "and offer to draft structure. " +
+        "(2) mode='empty' for near-empty vaults — ask what the user wants and offer to scaffold. " +
+        "(3) mode='synthesis' for organized linked vaults — returns folder stats, pending proposals, " +
+        "uningested files, recent user preferences, and the vault's CLAUDE.md. Ground answers in this structure " +
+        "and cite file paths. All modes also return pendingProposals, uningestedRaw, recentPreferences, and vaultManual.",
       inputSchema: {},
       annotations: { readOnlyHint: true }
     },
