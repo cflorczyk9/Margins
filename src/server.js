@@ -10,6 +10,20 @@ import { loadTelemetry } from "./telemetry.js";
 import { createPreferences } from "./preferences.js";
 import { createWikilinks } from "./wikilinks.js";
 
+// Inline SVG of the Margins mark (Kandinsky-inspired disc + ink bar). Embedded
+// as a base64 data URI so the icon renders in MCP clients without requiring a
+// network fetch — works offline, no dependency on margins.app being deployed.
+// 421-byte SVG → ~600 bytes encoded; negligible against the handshake size.
+const MARGINS_ICON_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">' +
+  '<rect x="4" y="4" width="3" height="24" fill="#1a1612"/>' +
+  '<circle cx="20" cy="16" r="11" fill="#f0c14b"/>' +
+  '<circle cx="20" cy="16" r="7" fill="#d63a2f"/>' +
+  '<circle cx="20" cy="16" r="2.5" fill="#1a1612"/>' +
+  "</svg>";
+const MARGINS_ICON_DATA_URI =
+  "data:image/svg+xml;base64," + Buffer.from(MARGINS_ICON_SVG).toString("base64");
+
 const OPERATOR_MANUAL = `Margins reads and proposes writes to a Markdown vault on the user's disk.
 
 START EVERY CONVERSATION by calling margins_start once. It returns vault
@@ -56,7 +70,15 @@ export function buildServer(vault, options = {}) {
   const telemetry = options.telemetry || { fireAndForget: () => {}, enabled: false };
   const trackToolCall = (toolName) => telemetry.fireAndForget(`/tool/${toolName}`);
   const server = new McpServer(
-    { name: "margins", version: "0.8.0" },
+    {
+      name: "margins",
+      version: "0.8.1",
+      icons: [{ src: MARGINS_ICON_DATA_URI, mimeType: "image/svg+xml" }],
+      websiteUrl: "https://margins.app",
+      description:
+        "Use your Claude Pro/Max subscription on your Obsidian vault. Reads markdown, " +
+        "proposes writes, and compiles raw source files into wiki source pages."
+    },
     { instructions: OPERATOR_MANUAL }
   );
 
