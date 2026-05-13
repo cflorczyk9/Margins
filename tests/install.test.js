@@ -8,7 +8,7 @@ import { readJsonSafe, writeMcpEntry } from "../src/install/config-writer.js";
 import { scaffoldStarterVault } from "../src/install/starter-vault.js";
 import { detectHosts } from "../src/install/hosts.js";
 import { probeServer } from "../src/install/probe.js";
-import { detectInstallLocation } from "../src/install/index.js";
+import { detectInstallLocation, ensureVaultDirs } from "../src/install/index.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SERVER_BIN = path.resolve(__dirname, "../bin/margins-mcp.js");
@@ -136,6 +136,20 @@ test("detectHosts returns an entry for each known host", async () => {
   for (const h of hosts) {
     assert.ok(["present", "config-missing", "host-missing", "unsupported-platform"].includes(h.status));
   }
+});
+
+test("ensureVaultDirs creates raw/, proposed/, .margins/ in a fresh vault", async () => {
+  const result = await ensureVaultDirs(tmpRoot);
+  assert.deepEqual(result.created.sort(), [".margins", "proposed", "raw"]);
+  assert.ok(await exists(path.join(tmpRoot, "raw")));
+  assert.ok(await exists(path.join(tmpRoot, "proposed")));
+  assert.ok(await exists(path.join(tmpRoot, ".margins")));
+});
+
+test("ensureVaultDirs is idempotent (no-op when dirs already exist)", async () => {
+  await ensureVaultDirs(tmpRoot);
+  const second = await ensureVaultDirs(tmpRoot);
+  assert.deepEqual(second.created, []);
 });
 
 test("detectInstallLocation flags npx-cache paths as fragile", () => {

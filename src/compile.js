@@ -1,4 +1,4 @@
-import { readFile, stat } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { compileVault } from "./compiler/compiler.js";
 
@@ -17,7 +17,7 @@ export function createCompile(vault, proposals) {
     try {
       info = await stat(absRaw);
     } catch {
-      throw new Error(`raw file not found: ${fullRawPath}`);
+      throw new Error(await buildNotFoundError(vault, fullRawPath, normalized));
     }
     if (!info.isFile()) {
       throw new Error(`not a file: ${fullRawPath}`);
@@ -113,4 +113,63 @@ function titleize(slug) {
   return slug
     .replace(/[-_]+/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+async function buildNotFoundError(vault, fullRawPath, requested) {
+  // If raw/ itself is missing, that's the actionable hint.
+  let entries;
+  try {
+    entries = await readdir(vault.resolveInside("raw"), { withFileTypes: true });
+  } catch {
+    return `raw/ directory not found in this vault. Drop a markdown or text file at <vault>/raw/<your-file> first, then try again.`;
+  }
+  const available = entries
+    .filter((e) => e.isFile())
+    .map((e) => e.name)
+    .filter((n) => !n.startsWith("."));
+  if (available.length === 0) {
+    return `raw file not found: ${fullRawPath}. The raw/ folder is empty — drop your source file there first.`;
+  }
+  const closest = findClosest(requested, available);
+  if (closest && closest !== requested) {
+    return `raw file not found: ${fullRawPath}. Did you mean: raw/${closest}?`;
+  }
+  const preview = available.slice(0, 5).join(", ");
+  const more = available.length > 5 ? `, +${available.length - 5} more` : "";
+  return `raw file not found: ${fullRawPath}. Available in raw/: ${preview}${more}.`;
+}
+
+function findClosest(target, candidates) {
+  if (!candidates.length) return null;
+  const lower = target.toLowerCase();
+  let best = null;
+  let bestDistance = Infinity;
+  for (const c of candidates) {
+    const d = levenshtein(lower, c.toLowerCase());
+    if (d < bestDistance) {
+      bestDistance = d;
+      best = c;
+    }
+  }
+  // Only suggest if reasonably close — half the longer string's length, min 2.
+  const threshold = Math.max(2, Math.floor(Math.max(target.length, best.length) / 2));
+  if (bestDistance > threshold) return null;
+  return best;
+}
+
+function levenshtein(a, b) {
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  const prev = new Array(b.length + 1);
+  const curr = new Array(b.length + 1);
+  for (let j = 0; j <= b.length; j++) prev[j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
+    }
+    for (let j = 0; j <= b.length; j++) prev[j] = curr[j];
+  }
+  return prev[b.length];
 }

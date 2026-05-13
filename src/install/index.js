@@ -1,5 +1,5 @@
 import path from "node:path";
-import { stat } from "node:fs/promises";
+import { mkdir, stat } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { detectHosts, HOSTS } from "./hosts.js";
 import { writeMcpEntry } from "./config-writer.js";
@@ -44,6 +44,22 @@ async function pathExists(p) {
     return false;
   }
 }
+
+const REQUIRED_VAULT_DIRS = ["raw", "proposed", ".margins"];
+
+async function ensureVaultDirs(vaultPath) {
+  const created = [];
+  for (const rel of REQUIRED_VAULT_DIRS) {
+    const abs = path.join(vaultPath, rel);
+    if (!(await pathExists(abs))) {
+      await mkdir(abs, { recursive: true });
+      created.push(rel);
+    }
+  }
+  return { created };
+}
+
+export { ensureVaultDirs };
 
 async function detectVaultDefault(cwd) {
   if (await pathExists(path.join(cwd, ".obsidian"))) return cwd;
@@ -102,6 +118,15 @@ export async function runInstaller(argv = [], { log = console.log, errlog = cons
       );
     }
     log(`Vault: ${vaultPath}`);
+
+    // Margins relies on these dirs existing. Create them upfront so the first
+    // propose_compile_from_raw / proposal write doesn't fail with "directory not
+    // found" on a fresh vault.
+    const ensuredDirs = await ensureVaultDirs(vaultPath);
+    if (ensuredDirs.created.length) {
+      log(`  Created ${ensuredDirs.created.length} vault dirs: ${ensuredDirs.created.join(", ")}`);
+      result.steps.push({ kind: "vault-dirs-created", dirs: ensuredDirs.created });
+    }
 
     const detected = await detectHosts();
     const requested = args.hosts || detected.filter((h) => h.status !== "host-missing").map((h) => h.id);
