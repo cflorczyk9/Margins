@@ -1,6 +1,0 @@
-tests/
-scripts/
-PRODUCT-ROADMAP.md
-tsconfig.json
-node_modules/playwright-core/
-node_modules/@playwright/

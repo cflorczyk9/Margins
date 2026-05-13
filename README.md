@@ -1,89 +1,127 @@
-# Margins
+# margins-mcp
 
-Margins is a local-first source-to-wiki compiler for LLMs.
+**Use your Claude Pro/Max subscription on your Obsidian vault.** No API key. No per-token costs. No embedding pipelines. Claude reads your notes and proposes updates; your subscription pays for inference; your files stay on your disk.
 
-For the product direction from local web app to Claude/ChatGPT connector, see [`PRODUCT-ROADMAP.md`](./PRODUCT-ROADMAP.md).
+[30-second demo placeholder — record after v0.3 ships]
 
-It turns:
+## Install
 
-```text
-raw/
+```sh
+npx margins-mcp install --vault /path/to/your/vault
 ```
 
-into:
+That's it. The installer detects Claude Desktop and Claude Code, writes the right config files, and runs a verification probe. Restart Claude Desktop (Cmd-Q on macOS, not just close), or in Claude Code run `/mcp` to see Margins listed.
 
-```text
-wiki/
-  .margins/
-operator-manual.md
-query-cookbook.md
-commands/
-agents/
+Don't have an Obsidian vault yet? Scaffold a Margins-shaped one:
+
+```sh
+npx margins-mcp install --starter-vault ~/notes
 ```
 
-The goal is not file organization. The goal is an LLM-operable wiki: source nodes, concept nodes, entity nodes, synthesis nodes, citations, commands, agents, and an edit log that Claude or ChatGPT can read from and write back into through MCP.
+### Manual install
 
-## Run the local app
+If you'd rather edit config yourself, add this to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS path; see [Anthropic docs](https://modelcontextprotocol.io/quickstart/user) for Windows/Linux):
 
-```bash
-npm run dev
+```json
+{
+  "mcpServers": {
+    "margins": {
+      "command": "node",
+      "args": ["/absolute/path/to/margins-mcp/bin/margins-mcp.js"],
+      "env": { "MARGINS_VAULT": "/absolute/path/to/your/vault" }
+    }
+  }
+}
 ```
 
-Open `http://localhost:5173`.
+## Try it
 
-The default UI is an inbox-style local vault flow:
+In a new Claude conversation, ask:
 
-1. Choose a vault folder.
-2. Drop or upload documents into the inbox.
-3. Click `Process` on the pending document. Margins immediately saves the original source file in `raw/`, sends readable text to the configured model with wiki context and guardrails, then prepares a short summary, connections, and at most three optional questions.
-4. Answer or skip the quick questions.
-5. Click `Approve` on the document to save the generated wiki, graph, and operating layer.
+> Use margins to give me a summary of my recent notes.
 
-The left rail keeps the local vault visible and remembers the last selected vault where the browser allows it. The main app tabs are Inbox, Vault, and Graph. Review questions appear inline inside the inbox when needed. There is intentionally no Margins-owned chat tab.
+Or:
 
-Gemini can be used from the Advanced controls with a local browser key. If the direct API call fails or no key is configured, source ingest stops with an error; Margins does not create a heuristic source page.
+> What pages support the claim that my project deadline is May 30th? Use margins to find them.
 
-Margins V1 is local-first storage with a required model review for uploaded sources. The current posture is therefore:
+Or:
 
-- Browser ingest uses a BYO model key stored locally in the browser.
-- Original files are preserved locally in `raw/` before model review.
-- Future provider integrations should remain BYO key/provider flows, not Margins-owned hosted storage.
+> I just dropped a transcript into `raw/`. Compile it into a structured source page in my wiki.
 
-The browser app has one source-ingest path:
+The model can read your vault, propose new pages, propose edits to existing ones, and pull raw sources into structured wiki pages. Every write stages to `proposed/` first; nothing lands without you accepting.
 
-- `Extract PDF text` uses PDF.js in the browser to turn readable PDFs into source text.
-- `Process` sends the source to the configured model and compiles source markdown only from the returned review.
-- `Compile reviewed` rebuilds wiki/operating files only for sources that already have model reviews in the current session.
-- `Copy LLM ingest prompt` creates a Claude/ChatGPT handoff prompt for manual wiki-file generation.
-- `LLM Review` parses Claude/ChatGPT output returned as `margins-file` fenced blocks and lets you preview it before accepting it as the current wiki.
-- `Create vault` scaffolds the selected folder with the expected vault structure. `Open vault` selects an existing local vault and loads its existing wiki files back into the app. `Save changes` writes the accepted wiki plus original source files directly into the selected vault using the browser File System Access API.
-- Incremental ingest keeps the loaded vault as context, sends only the new source batch to the language model, and merges the model-reviewed source pages into the existing wiki.
-- `Review Mode` controls how much interruption Margins allows: Auto-file skips the summary, Suggested review shows the source summary and asks only useful questions, and Strict review keeps the same three-question cap.
-- Temporary API settings are tucked under developer controls and are local-only browser settings. Gemini is the default local provider. These controls should be hidden in production.
+## Tools
 
-## Run tests
+### Read
 
-```bash
+| Tool | Purpose |
+|------|---------|
+| `margins_start` | Primer: vault stats + suggested queries. Call this first in a new conversation. |
+| `search_vault` | Full-text + filename search across the vault. |
+| `read_page` | Read one page by relative path. |
+| `list_recent` | Most recently modified pages. |
+| `get_backlinks` | Pages that wikilink to a target slug. |
+| `search` / `fetch` | ChatGPT Deep Research compatibility pair. |
+
+### Propose writes (staged — nothing lands until accepted)
+
+| Tool | Purpose |
+|------|---------|
+| `propose_page` | Stage a new page at `proposed/<path>`. |
+| `propose_edit` | Stage a string-replacement edit. `before` must appear exactly once. |
+| `append_to` | Stage an append. Creates the page if missing; stacks on pending proposals. |
+| `propose_compile_from_raw` | Turn a raw transcript/note in `raw/` into a structured source page. |
+| `list_proposals` | List pending proposals + overwrite-risk flag per entry. |
+| `resolve_proposal` | `action: "accept"` lands the proposal; `action: "reject"` discards it. |
+
+### How the proposal flow works
+
+Every write tool stages to `proposed/<path>` inside your vault. Nothing touches the live tree until you (or an MCP client acting on your behalf) call `resolve_proposal` with `action: "accept"`. You can also inspect staged content (`ls proposed/`) and accept by moving files yourself.
+
+Sequential edits stack: a second `propose_edit` on the same path reads from the pending proposal, not the vault.
+
+## Configuration
+
+| Env var | Default | Purpose |
+|---------|---------|---------|
+| `MARGINS_VAULT` | (required) | Absolute path to your Obsidian vault or Markdown folder. |
+| `MARGINS_INDEX_ROOTS` | auto-detected | Comma-separated subfolders to index. Auto-detection: `.obsidian/` present → index root; `wiki/` present → index `wiki/` only; neither → index root. |
+| `MARGINS_TELEMETRY` | (consent file) | Override telemetry: `on` or `off`. Default uses the consent decision made during install. |
+
+## What Margins is NOT
+
+To keep scope crisp:
+
+- **Not an inference layer.** Your Claude subscription pays for that. Margins makes zero LLM calls.
+- **Not a web app.** The chat surface lives in Claude Desktop / Claude Code / claude.ai. Margins is plumbing.
+- **Not a cloud sync.** Local-first. Your files stay on your disk.
+- **Not a CRM integration.** Different product.
+- **Not API-key-based.** Subscription-passthrough is the whole point.
+
+## Privacy
+
+- Vault content never leaves your machine. Margins is a Node process that reads/writes files locally and exposes structured tools over stdio.
+- Anonymous telemetry (opt-in at install time) reports tool-call counts to help me prioritize what to build next. Sample event payload: `GET https://margins.goatcounter.com/count?p=/tool/search_vault`. No vault content, no file paths, no user identifier beyond the standard 24-hour rolling session token GoatCounter assigns. Disable per-session with `MARGINS_TELEMETRY=off`. Decision stored at `~/.margins/consent.json`.
+
+## Develop
+
+```sh
+git clone https://github.com/cflorczyk9/Margins.git
+cd Margins
+npm install
 npm test
+MARGINS_VAULT=/path/to/test/vault npm start
 ```
 
-## Current scope
+The compiler (`src/compiler/`) was originally vendored from an earlier Margins web app. The web app and its landing page live on the `legacy-webapp` branch in this repo. Re-vendor with `scripts/vendor-compiler.sh` if you ever need to pull updates back from there.
 
-- Local-first proof of concept.
-- Markdown/text files are fully supported.
-- PDFs with selectable text can be extracted locally in the browser.
-- No hosted storage.
-- No Margins-owned chat surface.
-- Source ingest requires a configured model key.
-- Write-back is proposal-first, never silent.
+## Roadmap
 
-## Project status
+- v0.4: `get_citations` (semantic embedding search, opt-in dep).
+- v0.4: PDF/DOCX support for `propose_compile_from_raw`.
+- v0.5: HTTP / Streamable transport for claude.ai web and ChatGPT custom connectors.
+- v0.5+: Obsidian community plugin alongside MCP, if signal supports it.
 
-Margins is a fast-built MVP partway through a single-file → modules refactor. I'm tracking that work honestly here rather than letting the shape surprise anyone reading the code:
+## License
 
-- `src/app.js` was the only file for a while and is still ~11K lines as I peel pieces off. Recent extractions live under `src/core/` (state, vault, utilities, templates, timing, review-parser) and `src/views/` (Files tab, Entities, Graph, LLM, Inbox). Next splits: the Inbox flow and the Dream tab.
-- `styles.css` is one monolithic stylesheet. Component-co-located styles are deferred until the JS module split stabilizes — splitting both at once would cause too much churn.
-- `wizard.html` is the onboarding wizard, structurally separate from `app.html` so each route owns its own bundle. The single-file inline-style/inline-script shape is legacy and pending its own extraction.
-- The Files-tab Quiet redesign (May 2026) is the most recent extraction pass — new `src/views/filesQuietHelpers.js` is the shape future view modules should follow.
-
-If you're a reviewer: the code is loud about what's done well (BYOK boundary, FS Access API integration, review-first ingest, source-grounded wiki structure) and loud about what isn't (file size, CSS structure). Both are intentional snapshots of an ongoing refactor, not stopping points.
+MIT
