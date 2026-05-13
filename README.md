@@ -4,6 +4,19 @@
 
 `margins-mcp` is a small Node program that sits between Claude (Desktop or Code) and your Obsidian vault. When you chat with Claude, it reads your notes through `margins-mcp`. Your files stay local, Claude does the thinking, your existing subscription pays for it.
 
+## Which Margins are you?
+
+Margins works for six common starting points. `margins_start` auto-detects your state on the first call, so you don't have to classify yourself — but knowing which row you're on helps set expectations.
+
+| You... | Persona | First conversation |
+|---|---|---|
+| Obsidian, vault organized with wikilinks | **A1** | Q&A on your notes. `margins_start` then ask anything. |
+| Obsidian, vault is empty or new | **A2** | Ask Claude to scaffold daily-note + meeting templates. |
+| Obsidian, many files but few wikilinks | **A3** | Run `propose_wikilinks` on a page to surface connections you missed. |
+| No Obsidian, organized markdown | **B1** | Same as A1. Install Obsidian for the proposal-review UX. |
+| No Obsidian, empty | **B2** | Use `--starter-vault ~/Margins` to scaffold one. |
+| No Obsidian, messy folder | **B3** | Run `propose_wikilinks` on your busiest page. Install Obsidian to review proposals visually. |
+
 ## Requirements
 
 - [Node.js 18 or newer](https://nodejs.org)
@@ -110,6 +123,12 @@ The model can read your vault, propose new pages, propose edits to existing ones
 | `list_proposals` | List pending proposals + overwrite-risk flag per entry. |
 | `resolve_proposal` | `action: "accept"` lands the proposal; `action: "reject"` discards it. |
 
+### Suggest (for A3 / B3 — vaults with many files but few links)
+
+| Tool | Purpose |
+|------|---------|
+| `propose_wikilinks` | Scan a page for entity-shaped phrases and propose wikilinks to other vault pages that share the same slug. The model then chains `propose_edit` calls to apply the ones it likes. |
+
 ### Learn
 
 | Tool | Purpose |
@@ -168,11 +187,12 @@ Both files live in the vault, so they travel with it. Switch machines, switch ho
 
 ## Roadmap
 
-- v0.5: `get_citations` (semantic embedding search, opt-in dep).
-- v0.5: PDF/DOCX support for `propose_compile_from_raw`.
-- v0.6: HTTP / Streamable transport for claude.ai web and ChatGPT custom connectors.
-- v0.6+: Obsidian community plugin alongside MCP, if signal supports it.
-- v0.7+: file watcher / auto-scaffold on drop into `raw/`.
+- v0.6: web onboarding at margins.app — pick a folder via File System Access, scaffold a vault, get the install command. Closes B2/B3 personas without requiring CLI fluency.
+- v0.6: `get_citations` (semantic embedding search, opt-in dep).
+- v0.6: PDF/DOCX support for `propose_compile_from_raw`.
+- v0.7: HTTP / Streamable transport for claude.ai web and ChatGPT custom connectors.
+- v0.7+: Obsidian community plugin alongside MCP, if signal supports it.
+- v0.8+: file watcher / auto-scaffold on drop into `raw/`.
 
 ## License
 
