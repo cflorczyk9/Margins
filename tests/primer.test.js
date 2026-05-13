@@ -45,15 +45,31 @@ test("summarize counts files per folder", async () => {
   assert.equal(top.count, 2);
 });
 
-test("suggested queries reference the top folders by name", async () => {
-  await touch("wiki/career/a.md");
-  await touch("wiki/career/b.md");
-  await touch("wiki/projects/c.md");
+test("populated vault suggested queries are persona-aware (A3 with no links references wikilinks)", async () => {
+  // Many files, no wikilinks → A3 (Obsidian) or B3 (no Obsidian)
+  await mkdir(path.join(tmpRoot, ".obsidian"), { recursive: true });
+  for (let i = 0; i < 15; i++) {
+    await touch(`wiki/career/page${i}.md`, "Plain content, no links.");
+  }
   const vault = createVault(tmpRoot);
   const primer = createPrimer(vault);
   const summary = await primer.summarize();
+  assert.equal(summary.persona.code, "A3");
   const joined = summary.suggestedQueries.join("\n");
-  assert.match(joined, /wiki\/career/);
+  assert.match(joined, /wikilink|propose_wikilinks/);
+});
+
+test("populated linked vault classified as A1 with structure-aware suggestions", async () => {
+  await mkdir(path.join(tmpRoot, ".obsidian"), { recursive: true });
+  for (let i = 0; i < 15; i++) {
+    await touch(`wiki/career/page${i}.md`, `Content with [[other${i}]] and [[third${i}]] links.`);
+  }
+  const vault = createVault(tmpRoot);
+  const primer = createPrimer(vault);
+  const summary = await primer.summarize();
+  assert.equal(summary.persona.code, "A1");
+  const joined = summary.suggestedQueries.join("\n");
+  assert.match(joined, /search_vault/);
 });
 
 test("formatSummary renders text without throwing for both empty and non-empty vaults", async () => {

@@ -1,14 +1,17 @@
 import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { readVaultManual } from "./vault-manual.js";
+import { classifyVault, suggestionsForPersona } from "./persona.js";
 
 export function createPrimer(vault, { proposals, preferences } = {}) {
   async function summarize() {
     const files = await vault.listFiles();
+    const persona = await classifyVault(vault);
     const summary = {
       totalFiles: files.length,
       foldersByCount: [],
       suggestedQueries: [],
+      persona,
       pendingProposals: { count: 0, paths: [] },
       uningestedRaw: { count: 0, files: [] },
       recentPreferences: [],
@@ -26,14 +29,8 @@ export function createPrimer(vault, { proposals, preferences } = {}) {
         .map(([folder, count]) => ({ folder, count }))
         .sort((a, b) => b.count - a.count)
         .slice(0, 15);
-      summary.suggestedQueries = buildSuggestions(summary.foldersByCount.slice(0, 5));
-    } else {
-      summary.suggestedQueries = [
-        "Drop some markdown files into your vault, then ask me again.",
-        "Try propose_page to create your first note.",
-        "Check the vault root: " + vault.root
-      ];
     }
+    summary.suggestedQueries = suggestionsForPersona(persona, summary.foldersByCount.slice(0, 5));
 
     if (proposals) {
       const pending = await proposals.listProposals();
@@ -94,36 +91,12 @@ async function detectUningestedRaw(vault) {
   };
 }
 
-function buildSuggestions(topFolders) {
-  if (!topFolders.length) return [];
-  const out = [];
-  const folderLabel = (f) => (f.folder === "(root)" ? "the root folder" : `${f.folder}/`);
-
-  out.push(
-    `Use list_recent to see what I've changed recently. Fresh notes from across ${folderLabel(topFolders[0])} and elsewhere.`
-  );
-
-  if (topFolders[0]) {
-    out.push(
-      `Use search_vault to find pages by keyword. ${topFolders[0].count} pages live in ${folderLabel(topFolders[0])}.`
-    );
-  }
-
-  if (topFolders.length >= 2) {
-    out.push(
-      `Ask: what threads connect ${folderLabel(topFolders[0]).replace(/\/$/, "")} and ${folderLabel(topFolders[1]).replace(/\/$/, "")}? The vault has ${topFolders[0].count} and ${topFolders[1].count} pages there respectively.`
-    );
-  } else {
-    out.push(
-      `Ask: summarize my recent notes from this week.`
-    );
-  }
-
-  return out;
-}
-
 export function formatSummary(summary) {
   const lines = [];
+  if (summary.persona) {
+    lines.push(`Vault persona: ${summary.persona.code} — ${summary.persona.label}`);
+    lines.push("");
+  }
   if (summary.totalFiles === 0) {
     lines.push("Your vault is empty.");
   } else {

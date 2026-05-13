@@ -62,6 +62,15 @@ async function ensureVaultDirs(vaultPath) {
 export { ensureVaultDirs };
 
 async function detectVaultDefault(cwd) {
+  // Web onboarding (margins.app) creates ~/Margins/. Auto-detect it so the
+  // CLI install handoff is seamless: user clicks through the web flow,
+  // pastes `margins-mcp install`, installer finds the new vault without
+  // a path prompt.
+  const home = process.env.HOME || process.env.USERPROFILE || "";
+  if (home) {
+    const homeMargins = path.join(home, "Margins");
+    if (await pathExists(homeMargins)) return homeMargins;
+  }
   if (await pathExists(path.join(cwd, ".obsidian"))) return cwd;
   if (await pathExists(path.join(cwd, "wiki"))) return cwd;
   return null;

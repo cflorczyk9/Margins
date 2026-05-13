@@ -8,6 +8,7 @@ import { createPrimer, formatSummary } from "./primer.js";
 import { createCompile } from "./compile.js";
 import { loadTelemetry } from "./telemetry.js";
 import { createPreferences } from "./preferences.js";
+import { createWikilinks } from "./wikilinks.js";
 
 const OPERATOR_MANUAL = `Margins reads and proposes writes to a Markdown vault on the user's disk.
 
@@ -41,6 +42,7 @@ TOOLS:
 - Context: margins_start, recall_preferences
 - Read: search_vault, read_page, list_recent, get_backlinks
 - Propose writes: propose_page, propose_edit, append_to, propose_compile_from_raw
+- Suggest: propose_wikilinks (for A3/B3 vaults with few links)
 - Manage proposals: list_proposals, resolve_proposal
 - Learn: record_preference
 - ChatGPT Deep Research: search, fetch`;
@@ -50,10 +52,11 @@ export function buildServer(vault, options = {}) {
   const preferences = createPreferences(vault);
   const primer = createPrimer(vault, { proposals, preferences });
   const compile = createCompile(vault, proposals);
+  const wikilinks = createWikilinks(vault);
   const telemetry = options.telemetry || { fireAndForget: () => {}, enabled: false };
   const trackToolCall = (toolName) => telemetry.fireAndForget(`/tool/${toolName}`);
   const server = new McpServer(
-    { name: "margins", version: "0.4.0" },
+    { name: "margins", version: "0.5.0" },
     { instructions: OPERATOR_MANUAL }
   );
 
@@ -235,6 +238,45 @@ export function buildServer(vault, options = {}) {
           { type: "text", text: lines.join("\n") || `No backlinks to ${target}.` }
         ],
         structuredContent: { hits }
+      };
+    }
+  );
+
+  register(
+    "propose_wikilinks",
+    {
+      description:
+        "Scan a page for entity-shaped phrases and propose wikilinks to other vault pages that share the same slug. Returns a ranked list of {phrase, wikilink, targetPath, occurrences}. Especially useful for A3/B3 personas (many files, few wikilinks). The model then chooses which suggestions to apply via propose_edit (one edit per phrase).",
+      inputSchema: {
+        path: z
+          .string()
+          .describe("Page path relative to vault root, e.g. 'wiki/career/career.md'."),
+        maxSuggestions: z
+          .number()
+          .int()
+          .min(1)
+          .max(50)
+          .optional()
+          .describe("Cap on suggestions returned. Default 15.")
+      },
+      annotations: { readOnlyHint: true }
+    },
+    async ({ path: rel, maxSuggestions }) => {
+      const result = await wikilinks.proposeWikilinks(rel, { maxSuggestions });
+      const lines = [
+        `Scanned ${result.page} against ${result.vaultSlugsAvailable} vault slugs.`,
+        `Found ${result.suggestions.length} wikilink candidates:`,
+        ""
+      ];
+      for (const s of result.suggestions) {
+        lines.push(`  "${s.phrase}" -> ${s.wikilink}  (${s.targetPath}, ${s.occurrences}x)`);
+      }
+      if (result.suggestions.length === 0) {
+        lines.push("(no candidate phrases matched existing vault slugs)");
+      }
+      return {
+        content: [{ type: "text", text: lines.join("\n") }],
+        structuredContent: result
       };
     }
   );
