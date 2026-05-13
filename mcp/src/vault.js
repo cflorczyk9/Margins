@@ -1,17 +1,15 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
+import { DEFAULT_SKIP_DIRS } from "./index-roots.js";
 
 const TEXT_EXTENSIONS = new Set([".md", ".markdown", ".txt"]);
-const SKIP_DIR_NAMES = new Set([
-  ".git",
-  ".obsidian",
-  "node_modules",
-  ".trash",
-  ".margins"
-]);
 
-export function createVault(rootArg) {
+export function createVault(rootArg, options = {}) {
   const root = path.resolve(rootArg);
+  const indexRoots = options.indexRoots && options.indexRoots.length
+    ? options.indexRoots
+    : ["."];
+  const skipDirs = options.skipDirs || DEFAULT_SKIP_DIRS;
 
   function resolveInside(rel) {
     const normalized = path
@@ -37,10 +35,9 @@ export function createVault(rootArg) {
       return;
     }
     for (const entry of entries) {
-      if (entry.name.startsWith(".") && SKIP_DIR_NAMES.has(entry.name)) continue;
       const abs = path.join(dir, entry.name);
       if (entry.isDirectory()) {
-        if (SKIP_DIR_NAMES.has(entry.name)) continue;
+        if (skipDirs.has(entry.name)) continue;
         await walk(abs, out);
       } else if (entry.isFile()) {
         const ext = path.extname(entry.name).toLowerCase();
@@ -52,7 +49,18 @@ export function createVault(rootArg) {
 
   async function listFiles() {
     const out = [];
-    await walk(root, out);
+    const seen = new Set();
+    for (const rel of indexRoots) {
+      const abs = rel === "." || rel === "" ? root : resolveInside(rel);
+      const sub = [];
+      await walk(abs, sub);
+      for (const f of sub) {
+        if (!seen.has(f)) {
+          seen.add(f);
+          out.push(f);
+        }
+      }
+    }
     return out;
   }
 

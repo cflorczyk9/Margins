@@ -3,14 +3,36 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { createVault } from "./vault.js";
 import { createProposals } from "./proposals.js";
+import { detectIndexRoots } from "./index-roots.js";
+import { createPrimer, formatSummary } from "./primer.js";
+import { createCompile } from "./compile.js";
 
 export function buildServer(vault) {
   const proposals = createProposals(vault);
+  const primer = createPrimer(vault);
+  const compile = createCompile(vault, proposals);
   const server = new McpServer(
     { name: "margins", version: "0.2.0" },
     {
       instructions:
-        "Margins vault tools. READ: search_vault, read_page, list_recent, get_backlinks. WRITE: writes are proposals — propose_page, propose_edit, and append_to all stage to proposed/<path>. The user (or an MCP client) calls list_proposals to see what's pending and resolve_proposal to accept or reject. Nothing lands in the vault until accepted. ChatGPT Deep Research clients should call search + fetch."
+        "Margins vault tools. START HERE: call margins_start to see what's in the user's vault and get suggested queries. READ: search_vault, read_page, list_recent, get_backlinks. WRITE: writes are proposals — propose_page, propose_edit, and append_to all stage to proposed/<path>. The user (or an MCP client) calls list_proposals to see what's pending and resolve_proposal to accept or reject. Nothing lands in the vault until accepted. ChatGPT Deep Research clients should call search + fetch."
+    }
+  );
+
+  server.registerTool(
+    "margins_start",
+    {
+      description:
+        "Primer for a new conversation. Returns vault stats (file count, top folders) and 2-3 suggested queries to try. Call this first if you don't know what's in the user's vault.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true }
+    },
+    async () => {
+      const summary = await primer.summarize();
+      return {
+        content: [{ type: "text", text: formatSummary(summary) }],
+        structuredContent: summary
+      };
     }
   );
 
@@ -186,6 +208,62 @@ export function buildServer(vault) {
   );
 
   server.registerTool(
+    "propose_compile_from_raw",
+    {
+      description:
+        "Compile a text file under raw/ into a structured source page proposal. You (the model) provide the review metadata: a summary, optional bucket, optional takeaways. Margins runs its compiler and stages the result at proposed/<wiki path>. Use this when the user has dropped a raw transcript / notes file into raw/ and wants it filed into the wiki. v0.3: text only (.md, .markdown, .txt). PDF/DOCX support deferred to v0.4.",
+      inputSchema: {
+        rawPath: z
+          .string()
+          .describe("Path of the raw file. Either 'raw/foo.md' or just 'foo.md' (auto-prefixed)."),
+        summary: z.string().describe("1-3 sentence summary of what this source is about."),
+        title: z.string().optional().describe("Title for the source page. Defaults to titlecased filename."),
+        bucket: z.string().optional().describe("Wiki bucket. Default 'sources'. Try 'projects', 'career', 'ideas', etc."),
+        destination_path: z
+          .string()
+          .optional()
+          .describe("Override destination, e.g. 'wiki/career/source-2026-05-13-something.md'."),
+        takeaways: z
+          .array(
+            z.union([
+              z.string(),
+              z.object({ point: z.string(), evidence: z.string().optional() })
+            ])
+          )
+          .optional()
+          .describe("Key takeaways. Either strings or {point, evidence} objects."),
+        summaryBullets: z.array(z.string()).optional().describe("Short summary bullets.")
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false }
+    },
+    async ({ rawPath, summary, title, bucket, destination_path, takeaways, summaryBullets }) => {
+      const result = await compile.proposeCompileFromRaw(rawPath, {
+        summary,
+        title,
+        bucket,
+        destination_path,
+        takeaways,
+        summaryBullets
+      });
+      const lines = [
+        `Compiled ${result.rawFile} → staged at ${result.proposalPath}`,
+        `Title: ${result.title}`,
+        `Bucket: ${result.bucket}`,
+        result.summary ? `Summary: ${result.summary}` : null,
+        result.entitiesExtracted && result.entitiesExtracted.length
+          ? `Entities extracted: ${result.entitiesExtracted.join(", ")}`
+          : null,
+        "",
+        "Run resolve_proposal to accept or reject."
+      ].filter(Boolean);
+      return {
+        content: [{ type: "text", text: lines.join("\n") }],
+        structuredContent: result
+      };
+    }
+  );
+
+  server.registerTool(
     "list_proposals",
     {
       description:
@@ -299,9 +377,16 @@ function titleFromPath(rel) {
 
 export async function runStdio({ vaultRoot } = {}) {
   const root = vaultRoot || process.env.MARGINS_VAULT || process.cwd();
-  const vault = createVault(root);
+  const { roots, skipDirs, source } = await detectIndexRoots(
+    root,
+    process.env.MARGINS_INDEX_ROOTS
+  );
+  const vault = createVault(root, { indexRoots: roots, skipDirs });
   const server = buildServer(vault);
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error(`margins-mcp: serving vault at ${vault.root}`);
+  console.error(
+    `margins-mcp: serving vault at ${vault.root} ` +
+      `(index roots: ${roots.join(", ")}, detected via ${source})`
+  );
 }
