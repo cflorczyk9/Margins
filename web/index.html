@@ -364,22 +364,24 @@
 <!-- ============ EXISTING VAULT PATH ============ -->
 <section id="path-existing" class="block reveal hidden">
   <h2><span class="accent-dot"></span>You have a vault</h2>
-  <p>Three commands and a restart. The whole thing takes about ninety seconds.</p>
 
-  <h3>1. Install globally</h3>
+  <h3>Easiest: download for Claude Desktop</h3>
+  <p>Double-click to install. Pre-bundled with everything Margins needs. Claude Desktop will show the Margins logo in your Connectors list.</p>
+  <p><a class="btn btn-primary" href="https://github.com/cflorczyk9/Margins/releases/latest" rel="noopener">Download .mcpb (latest)</a></p>
+  <p>Open the file with Claude Desktop, point it at your vault path when prompted, restart Claude (<kbd>Cmd-Q</kbd> + reopen).</p>
+
+  <h3>Or, via CLI (Claude Code users + terminal lovers)</h3>
   <pre><button class="copy-btn" data-copy="install-cmd">copy</button><code id="install-cmd">npm install -g margins-mcp</code></pre>
-
-  <h3>2. Find your vault path</h3>
-  <p>In Obsidian, right-click the vault in the file tree → <strong>Reveal in Finder</strong> (macOS) or <strong>Show in Explorer</strong> (Windows). Copy the absolute path.</p>
-  <p>Common locations: <code>~/Documents/MyVault</code>, <code>~/Library/CloudStorage/iCloudDrive/Obsidian/MyVault</code>, <code>%USERPROFILE%\Documents\MyVault</code>.</p>
-
-  <h3>3. Run the installer</h3>
+  <p>Then find your vault path in Obsidian (right-click vault → <strong>Reveal in Finder</strong>) and run:</p>
   <pre><button class="copy-btn" data-copy="run-cmd">copy</button><code id="run-cmd">margins-mcp install --vault /absolute/path/to/your/vault</code></pre>
-  <p>The installer detects Claude Desktop and Claude Code, writes the config files, scaffolds <code>raw/</code> + <code>proposed/</code> + <code>.margins/</code> in your vault, and runs a verification probe. Restart Claude Desktop (<kbd>Cmd-Q</kbd>, not just close the window).</p>
+  <p>The installer writes the configs for Claude Desktop and Claude Code, scaffolds <code>raw/</code> + <code>proposed/</code> + <code>.margins/</code> in your vault, and runs a verification probe.</p>
 
-  <h3>4. Try it</h3>
+  <h3>Try it</h3>
   <p>Open a new Claude conversation:</p>
   <pre><code>Use margins to give me a summary of my recent notes.</code></pre>
+
+  <h3>Updates</h3>
+  <p>Margins surfaces an update hint in <code>margins_start</code> when a newer version is available. <strong>CLI install:</strong> run <code>margins-mcp install --update</code>. <strong>Desktop install:</strong> re-download the .mcpb above and double-click.</p>
 </section>
 
 <!-- ============ NO VAULT PATH ============ -->

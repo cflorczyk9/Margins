@@ -4,3 +4,8 @@ node_modules/
 .env.*
 .claude/
 *.log
+
+# .mcpb build artifacts (we publish via GH Releases, not git)
+dist/
+*.mcpb
+*.tgz
