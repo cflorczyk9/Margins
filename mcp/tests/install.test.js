@@ -8,6 +8,7 @@ import { readJsonSafe, writeMcpEntry } from "../src/install/config-writer.js";
 import { scaffoldStarterVault } from "../src/install/starter-vault.js";
 import { detectHosts } from "../src/install/hosts.js";
 import { probeServer } from "../src/install/probe.js";
+import { detectInstallLocation } from "../src/install/index.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SERVER_BIN = path.resolve(__dirname, "../bin/margins-mcp.js");
@@ -135,6 +136,21 @@ test("detectHosts returns an entry for each known host", async () => {
   for (const h of hosts) {
     assert.ok(["present", "config-missing", "host-missing", "unsupported-platform"].includes(h.status));
   }
+});
+
+test("detectInstallLocation flags npx-cache paths as fragile", () => {
+  assert.equal(
+    detectInstallLocation("/Users/foo/.npm/_npx/abc123/node_modules/margins-mcp/bin/margins-mcp.js"),
+    "npx-cache"
+  );
+  assert.equal(
+    detectInstallLocation("/usr/local/lib/node_modules/margins-mcp/bin/margins-mcp.js"),
+    "stable"
+  );
+  assert.equal(
+    detectInstallLocation("/opt/homebrew/lib/node_modules/margins-mcp/bin/margins-mcp.js"),
+    "stable"
+  );
 });
 
 test("probeServer starts margins-mcp and lists 12 tools", async () => {

@@ -12,6 +12,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SERVER_BIN = path.resolve(__dirname, "../../bin/margins-mcp.js");
 const SERVER_NAME = "margins";
 
+export function detectInstallLocation(serverBin = SERVER_BIN) {
+  // npx caches packages under <home>/.npm/_npx/<hash>/. npm prunes these
+  // periodically, so configs written with that path break weeks later when
+  // the cache is evicted. Detect and warn.
+  if (serverBin.includes("/.npm/_npx/")) return "npx-cache";
+  return "stable";
+}
+
 function parseArgs(argv) {
   const args = { yes: false, vault: null, starterVault: null, force: false, hosts: null };
   for (let i = 0; i < argv.length; i++) {
@@ -47,6 +55,29 @@ export async function runInstaller(argv = [], { log = console.log, errlog = cons
   const args = parseArgs(argv);
   const prompter = createPrompter({ yes: args.yes });
   const result = { steps: [], errors: [] };
+
+  const location = detectInstallLocation();
+  if (location === "npx-cache") {
+    log("");
+    log("WARNING: this installer is running from the npx cache.");
+    log("  npm prunes that cache periodically. When it does, Claude Desktop and");
+    log("  Claude Code will silently lose the margins MCP server because the path");
+    log("  they're configured with no longer exists.");
+    log("");
+    log("  For a persistent install, cancel now (Ctrl+C) and run:");
+    log("    npm install -g margins-mcp");
+    log("    margins-mcp install");
+    log("");
+    const proceed = await prompter.ask("Proceed with the fragile npx-cache install anyway?", {
+      defaultYes: false
+    });
+    if (!proceed) {
+      log("Cancelled. Re-run after the global install.");
+      prompter.close();
+      return { ...result, cancelled: true };
+    }
+    result.steps.push({ kind: "npx-cache-warning-acknowledged" });
+  }
 
   try {
     let vaultPath = args.vault;
