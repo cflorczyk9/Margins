@@ -1,6 +1,6 @@
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import { compileVault } from "../../src/compiler.js";
+import { compileVault } from "./compiler/compiler.js";
 
 const TEXT_EXTENSIONS = new Set([".md", ".markdown", ".txt"]);
 
