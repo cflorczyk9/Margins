@@ -3,94 +3,354 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Margins — Use your Claude subscription on your Obsidian vault</title>
+<title>Margins — Claude on your Obsidian vault</title>
 <meta name="description" content="A small MCP connector that lets Claude Pro/Max read and propose writes to your Obsidian vault. No API key. Files stay local.">
+<meta name="theme-color" content="#faf7f2">
 <meta property="og:title" content="Margins — Claude on your Obsidian vault">
 <meta property="og:description" content="Read and propose writes to your Markdown vault with your existing Claude subscription. No API key.">
 <meta property="og:type" content="website">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #faf9f7;
-    --fg: #1a1a1a;
-    --muted: #666;
-    --accent: #1f6feb;
-    --border: #ddd;
-    --code-bg: #f4f3f0;
+    --bg: #faf7f2;
+    --paper: #ffffff;
+    --paper-soft: #f5f1ea;
+    --ink: #1a1612;
+    --ink-2: #4a423a;
+    --ink-3: #847a6b;
+    --line: #e8e2d6;
+    --line-strong: #d8d0bf;
+    --accent: #d63a2f;
+    --accent-dark: #b22618;
+    --accent-soft: rgba(214, 58, 47, 0.10);
+    --accent-line: rgba(214, 58, 47, 0.22);
+    --on-accent: #ffffff;
+    --vermillion: #d63a2f;
+    --cobalt: #2c5aa0;
+    --mustard: #f0c14b;
+    --violet: #6a4f8c;
+    --green-poly: #6fa863;
+    --good: #5b7d57;
+    --good-soft: rgba(91, 125, 87, 0.10);
+    --shadow-sm: 0 1px 0 rgba(26,22,18,0.04), 0 6px 18px rgba(26,22,18,0.04);
+    --shadow-md: 0 1px 0 rgba(26,22,18,0.06), 0 12px 36px rgba(26,22,18,0.10);
   }
-  * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; }
-  main { max-width: 720px; margin: 0 auto; padding: 48px 24px 96px; }
-  h1 { font-size: 2.2rem; margin: 0 0 0.4em; letter-spacing: -0.02em; }
-  h2 { font-size: 1.4rem; margin: 2.4em 0 0.6em; letter-spacing: -0.01em; }
-  h3 { font-size: 1.1rem; margin: 1.8em 0 0.4em; }
-  p { margin: 0.7em 0; }
-  .tagline { color: var(--muted); font-size: 1.1rem; margin-top: 0; }
-  a { color: var(--accent); text-decoration: none; }
-  a:hover { text-decoration: underline; }
-  code, pre { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 0.93rem; }
-  pre { background: var(--code-bg); padding: 14px 16px; border-radius: 6px; overflow-x: auto; position: relative; }
-  pre .copy-btn { position: absolute; top: 8px; right: 8px; background: white; border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font-size: 0.78rem; cursor: pointer; }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Manrope', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+    letter-spacing: -0.005em;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  a { color: var(--ink); text-decoration: none; border-bottom: 1px solid var(--accent-line); }
+  a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+  button, input, select, textarea { font: inherit; }
+  h1, h2, h3, p { margin: 0; }
+
+  .scroll-progress {
+    position: fixed; top: 0; left: 0;
+    height: 2px; width: 100%;
+    transform: scaleX(0); transform-origin: 0 50%;
+    background: linear-gradient(90deg, var(--mustard) 0%, var(--vermillion) 50%, var(--cobalt) 100%);
+    z-index: 100; pointer-events: none; will-change: transform;
+  }
+
+  .wrap { max-width: 980px; margin: 0 auto; padding: 0 32px; }
+
+  /* === Top nav === */
+  .nav { padding: 28px 0 0; }
+  .nav-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+  .brand { display: inline-flex; align-items: center; gap: 12px; font-weight: 700; font-size: 17px; letter-spacing: -0.01em; color: var(--ink); border: none; }
+  .brand-mark { width: 32px; height: 26px; flex: 0 0 auto; display: block; }
+  .nav-links { display: inline-flex; align-items: center; gap: 18px; font-size: 13px; font-weight: 500; color: var(--ink-2); }
+  .nav-links a { border: none; color: var(--ink-2); }
+  .nav-links a:hover { color: var(--accent); }
+
+  /* === Hero === */
+  .hero { padding: 72px 0 56px; }
+  .hero-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+    gap: 48px;
+    align-items: center;
+  }
+  @media (max-width: 880px) {
+    .hero-row { grid-template-columns: 1fr; gap: 32px; }
+    .hero { padding: 48px 0 40px; }
+  }
+  .kicker {
+    display: inline-block;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.10em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 18px;
+  }
+  h1.hero-title {
+    font-family: 'Manrope', sans-serif;
+    font-size: clamp(34px, 4.6vw, 50px);
+    font-weight: 600;
+    line-height: 1.04;
+    letter-spacing: -0.025em;
+    margin: 0 0 22px;
+    color: var(--ink);
+  }
+  h1.hero-title em {
+    font-style: normal; color: var(--accent); position: relative; display: inline-block;
+  }
+  h1.hero-title em::after {
+    content: ""; position: absolute; left: 0; bottom: -2px;
+    height: 2px; width: 100%; background: var(--vermillion);
+    transform: scaleX(0); transform-origin: 0 50%;
+    animation: underline-draw 700ms cubic-bezier(0.22, 1, 0.36, 1) 0.9s forwards;
+  }
+  @keyframes underline-draw { to { transform: scaleX(1); } }
+  .hero-sub {
+    font-size: 16.5px;
+    color: var(--ink-2);
+    margin: 0 0 28px;
+    max-width: 52ch;
+  }
+  .hero-cta { display: inline-flex; gap: 10px; flex-wrap: wrap; }
+
+  /* === Composition art (Kandinsky-ish) === */
+  .hero-art { max-width: 380px; aspect-ratio: 1 / 1; width: 100%; margin-left: auto; }
+  @media (max-width: 880px) { .hero-art { margin: 0 auto; max-width: 320px; } }
+  .hero-art svg { width: 100%; height: 100%; display: block; overflow: visible; }
+  @keyframes breathe {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.035); }
+  }
+  .breathing-disc { transform-origin: center; animation: breathe 6.5s ease-in-out infinite; }
+  .breathing-disc.delay-1 { animation-delay: -1.8s; }
+  .breathing-disc.delay-2 { animation-delay: -3.2s; }
+
+  /* === Hero-rise stagger === */
+  @keyframes hero-rise {
+    from { opacity: 0; transform: translateY(14px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .hero .kicker, .hero h1.hero-title, .hero .hero-sub, .hero .hero-cta, .hero .hero-art {
+    animation: hero-rise 0.85s cubic-bezier(0.18, 0.72, 0.22, 1) backwards;
+  }
+  .hero .kicker     { animation-delay: 0.05s; }
+  .hero .hero-art   { animation-delay: 0.10s; }
+  .hero h1.hero-title { animation-delay: 0.18s; }
+  .hero .hero-sub   { animation-delay: 0.32s; }
+  .hero .hero-cta   { animation-delay: 0.50s; }
+
+  /* === Buttons === */
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    border-radius: 8px; font-family: inherit; font-size: 14px; font-weight: 700; line-height: 1;
+    padding: 11px 16px; border: 1px solid transparent; cursor: pointer;
+    transition: background 140ms ease, border-color 140ms ease, color 140ms ease, transform 140ms ease, box-shadow 140ms ease;
+    text-decoration: none;
+  }
+  a.btn { border-bottom: 1px solid transparent; }
+  .btn-primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); box-shadow: var(--shadow-sm); }
+  .btn-primary:hover { background: var(--accent-dark); border-color: var(--accent-dark); transform: translateY(-1px); color: var(--on-accent); }
+  .btn-ghost { background: var(--paper); color: var(--ink); border-color: var(--line-strong); box-shadow: var(--shadow-sm); }
+  .btn-ghost:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+  .btn .arrow { font-size: 11px; opacity: 0.8; }
+
+  /* === Section structure === */
+  section.block { padding: 56px 0; border-top: 1px solid var(--line); }
+  section.block:first-of-type { border-top: none; }
+  h2 { font-family: 'Manrope', sans-serif; font-size: 24px; font-weight: 600; letter-spacing: -0.015em; margin: 0 0 24px; color: var(--ink); }
+  h2 .accent-dot {
+    display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent); margin-right: 12px; vertical-align: 4px;
+  }
+  h3 { font-family: 'Manrope', sans-serif; font-size: 16px; font-weight: 700; margin: 28px 0 10px; color: var(--ink); letter-spacing: -0.005em; }
+
+  /* === Persona fork === */
+  .fork { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 720px) { .fork { grid-template-columns: 1fr; } }
+  .fork-option {
+    background: var(--paper); border: 1px solid var(--line); border-radius: 10px;
+    padding: 22px; cursor: pointer; box-shadow: var(--shadow-sm);
+    transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+    position: relative; overflow: hidden;
+  }
+  .fork-option:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .fork-option.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), var(--shadow-md); }
+  .fork-option h3 { margin: 0 0 8px; }
+  .fork-option p { color: var(--ink-2); font-size: 14.5px; margin: 0; }
+  .fork-option::before {
+    content: ""; position: absolute; top: 14px; right: 14px;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--line); transition: background 0.15s ease;
+  }
+  .fork-option.selected::before { background: var(--accent); }
+
+  /* === Code blocks === */
+  code, pre { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 13.5px; }
+  pre {
+    background: var(--paper-soft); padding: 14px 16px; border-radius: 8px;
+    border: 1px solid var(--line); overflow-x: auto; position: relative;
+    margin: 12px 0;
+  }
+  pre code { background: transparent; padding: 0; }
+  pre .copy-btn {
+    position: absolute; top: 8px; right: 8px;
+    background: var(--paper); border: 1px solid var(--line-strong);
+    border-radius: 6px; padding: 4px 10px; font-size: 11px; font-weight: 600;
+    cursor: pointer; color: var(--ink-2);
+    transition: border-color 0.15s, color 0.15s;
+  }
   pre .copy-btn:hover { border-color: var(--accent); color: var(--accent); }
-  code:not(pre code) { background: var(--code-bg); padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }
-  .fork { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 24px 0; }
-  @media (max-width: 600px) { .fork { grid-template-columns: 1fr; } }
-  .fork-option { background: white; border: 1px solid var(--border); border-radius: 8px; padding: 20px; cursor: pointer; transition: border-color 0.15s; }
-  .fork-option:hover { border-color: var(--accent); }
-  .fork-option.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-  .fork-option h3 { margin-top: 0; }
-  .fork-option .small { color: var(--muted); font-size: 0.9rem; }
+  p code, li code, td code { background: var(--paper-soft); padding: 2px 6px; border-radius: 4px; font-size: 0.92em; color: var(--ink); }
+  kbd { background: var(--paper); border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: 4px; padding: 1px 6px; font-size: 0.85em; font-family: ui-monospace, Menlo, monospace; }
+
+  /* === Status banners === */
+  .status { margin-top: 14px; padding: 12px 14px; border-radius: 8px; font-size: 14px; }
+  .status.ok { background: var(--good-soft); border: 1px solid color-mix(in srgb, var(--good) 25%, transparent); color: var(--good); }
+  .status.err { background: rgba(214,58,47,0.06); border: 1px solid var(--accent-line); color: var(--accent-dark); }
+  .status.warn { background: rgba(240,193,75,0.10); border: 1px solid rgba(240,193,75,0.45); color: #8d5f00; }
+
+  /* === Persona table === */
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); font-size: 14px; vertical-align: top; }
+  th { font-weight: 600; color: var(--ink-3); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
+  td strong { font-weight: 700; }
+  td:nth-child(2) strong {
+    display: inline-block; min-width: 30px; padding: 1px 8px;
+    border-radius: 4px; font-size: 12px; letter-spacing: 0.04em;
+    background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent-line);
+  }
+
+  /* === Section reveal === */
+  .reveal {
+    opacity: 0; transform: translateY(14px);
+    transition: opacity 750ms cubic-bezier(0.22, 1, 0.36, 1), transform 750ms cubic-bezier(0.22, 1, 0.36, 1);
+    will-change: opacity, transform;
+  }
+  .reveal.is-in { opacity: 1; transform: translateY(0); }
+
+  /* === Footer === */
+  footer { color: var(--ink-3); font-size: 13px; padding: 32px 0 56px; border-top: 1px solid var(--line); }
+  footer .accent-line {
+    display: inline-block; height: 2px; width: 32px; background: var(--accent); vertical-align: 4px; margin-right: 12px;
+  }
+
   .hidden { display: none; }
-  button.primary { background: var(--accent); color: white; border: 0; padding: 10px 18px; border-radius: 6px; font-size: 1rem; cursor: pointer; font-weight: 500; }
-  button.primary:hover { background: #1958c4; }
-  button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
-  .status { margin-top: 12px; padding: 12px 14px; border-radius: 6px; }
-  .status.ok { background: #e6f6ec; border: 1px solid #b7e0c2; }
-  .status.err { background: #fdecec; border: 1px solid #f0b8b8; }
-  .status.warn { background: #fff8e1; border: 1px solid #f0d99a; }
-  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
-  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 0.92rem; }
-  th { font-weight: 600; color: var(--muted); }
-  footer { color: var(--muted); font-size: 0.88rem; margin-top: 4em; padding-top: 1.5em; border-top: 1px solid var(--border); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .breathing-disc, .scroll-progress { animation: none; }
+    h1.hero-title em::after { transform: scaleX(1); animation: none; }
+    .hero .kicker, .hero h1.hero-title, .hero .hero-sub, .hero .hero-cta, .hero .hero-art { animation: none; }
+    .reveal { opacity: 1; transform: none; transition: none; }
+  }
 </style>
 </head>
 <body>
-<main>
 
-<h1>Margins</h1>
-<p class="tagline">Use your Claude Pro or Max subscription on your Obsidian vault. No API key. No per-token costs. Your files stay on your disk.</p>
+<div class="scroll-progress" id="scroll-progress"></div>
 
-<p><code>margins-mcp</code> is a small Node program that sits between Claude (Desktop or Code) and your Markdown vault. Claude reads your notes through it. Your subscription pays for inference. Files never leave your machine.</p>
-
-<h2>Get started</h2>
-
-<p>Pick the row that matches your setup:</p>
-
-<div class="fork">
-  <div class="fork-option" id="opt-has-vault" tabindex="0" role="button">
-    <h3>I have a vault already</h3>
-    <p class="small">You use Obsidian, or you have a folder of Markdown files somewhere. You know the path.</p>
+<nav class="nav">
+  <div class="wrap">
+    <div class="nav-row">
+      <a href="#" class="brand">
+        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+          <rect x="4" y="4" width="3" height="24" fill="#1a1612"/>
+          <circle cx="20" cy="16" r="11" fill="#f0c14b"/>
+          <circle cx="20" cy="16" r="7" fill="#d63a2f"/>
+          <circle cx="20" cy="16" r="2.5" fill="#1a1612"/>
+        </svg>
+        <span>Margins</span>
+      </a>
+      <div class="nav-links">
+        <a href="https://github.com/cflorczyk9/Margins">GitHub</a>
+        <a href="https://www.npmjs.com/package/margins-mcp">npm</a>
+      </div>
+    </div>
   </div>
-  <div class="fork-option" id="opt-no-vault" tabindex="0" role="button">
-    <h3>I'm starting fresh</h3>
-    <p class="small">No vault yet. Margins will scaffold one for you, right in this browser, then hand you the install command.</p>
+</nav>
+
+<section class="hero">
+  <div class="wrap">
+    <div class="hero-row">
+      <div>
+        <div class="kicker">Open source · v0.5</div>
+        <h1 class="hero-title">Your Claude subscription, on your <em>Obsidian vault</em>.</h1>
+        <p class="hero-sub">A small MCP connector lets Claude Pro or Max read and propose writes to your Markdown vault. No API key, no per-token costs, no embedding pipelines. Files stay on your disk.</p>
+        <div class="hero-cta">
+          <a href="#get-started" class="btn btn-primary">Get started <span class="arrow">↓</span></a>
+          <a href="https://github.com/cflorczyk9/Margins" class="btn btn-ghost">Read the source</a>
+        </div>
+      </div>
+      <div class="hero-art" aria-hidden="true">
+        <svg viewBox="0 0 320 320">
+          <!-- diagonal pencil line through the back -->
+          <line x1="20" y1="280" x2="300" y2="40" stroke="#1a1612" stroke-width="0.6" opacity="0.30"/>
+          <!-- cobalt arc -->
+          <path d="M 30 90 Q 160 200 290 60" fill="none" stroke="#2c5aa0" stroke-width="1.8" stroke-linecap="round" opacity="0.75"/>
+          <!-- concentric discs (mustard / vermillion / black) -->
+          <g class="breathing-disc">
+            <circle cx="225" cy="115" r="56" fill="#f0c14b" style="mix-blend-mode: multiply;"/>
+          </g>
+          <g class="breathing-disc delay-1">
+            <circle cx="225" cy="115" r="32" fill="#d63a2f" style="mix-blend-mode: multiply;"/>
+          </g>
+          <g class="breathing-disc delay-2">
+            <circle cx="225" cy="115" r="10" fill="#1a1612"/>
+          </g>
+          <!-- triangle -->
+          <polygon points="60,180 200,205 110,300" fill="none" stroke="#1a1612" stroke-width="1.3" stroke-linejoin="round"/>
+          <!-- scatter dots -->
+          <circle cx="80" cy="80" r="7" fill="#6a4f8c"/>
+          <circle cx="250" cy="240" r="5" fill="#6fa863"/>
+          <circle cx="40" cy="240" r="3.5" fill="#d63a2f"/>
+          <circle cx="285" cy="270" r="2.5" fill="#1a1612"/>
+          <circle cx="180" cy="60" r="2" fill="#1a1612"/>
+        </svg>
+      </div>
+    </div>
   </div>
-</div>
+</section>
+
+<main class="wrap" id="get-started">
+
+<section class="block reveal">
+  <h2><span class="accent-dot"></span>Get started</h2>
+  <p>Pick the row that matches your setup. You can change later.</p>
+
+  <div class="fork" style="margin-top: 24px;">
+    <div class="fork-option" id="opt-has-vault" tabindex="0" role="button" aria-pressed="false">
+      <h3>I have a vault already</h3>
+      <p>Obsidian, or a folder of Markdown. You know the path.</p>
+    </div>
+    <div class="fork-option" id="opt-no-vault" tabindex="0" role="button" aria-pressed="false">
+      <h3>I'm starting fresh</h3>
+      <p>No vault yet. Margins will scaffold one in your browser.</p>
+    </div>
+  </div>
+</section>
 
 <!-- ============ EXISTING VAULT PATH ============ -->
-<section id="path-existing" class="hidden">
-  <h2>You have a vault</h2>
-  <p>Install <code>margins-mcp</code> globally, then run the installer pointing at your vault.</p>
+<section id="path-existing" class="block reveal hidden">
+  <h2><span class="accent-dot"></span>You have a vault</h2>
+  <p>Three commands and a restart. The whole thing takes about ninety seconds.</p>
 
-  <h3>1. Install</h3>
+  <h3>1. Install globally</h3>
   <pre><button class="copy-btn" data-copy="install-cmd">copy</button><code id="install-cmd">npm install -g margins-mcp</code></pre>
 
   <h3>2. Find your vault path</h3>
-  <p>In Obsidian, right-click your vault in the file tree → <strong>Reveal in Finder</strong> (macOS) or <strong>Show in Explorer</strong> (Windows). Copy the absolute path.</p>
-  <p class="small">Common paths: <code>~/Documents/MyVault</code>, or <code>~/Library/CloudStorage/iCloudDrive/Obsidian/MyVault</code> for iCloud-synced vaults on Mac.</p>
+  <p>In Obsidian, right-click the vault in the file tree → <strong>Reveal in Finder</strong> (macOS) or <strong>Show in Explorer</strong> (Windows). Copy the absolute path.</p>
+  <p>Common locations: <code>~/Documents/MyVault</code>, <code>~/Library/CloudStorage/iCloudDrive/Obsidian/MyVault</code>, <code>%USERPROFILE%\Documents\MyVault</code>.</p>
 
   <h3>3. Run the installer</h3>
   <pre><button class="copy-btn" data-copy="run-cmd">copy</button><code id="run-cmd">margins-mcp install --vault /absolute/path/to/your/vault</code></pre>
-  <p>The installer detects Claude Desktop and Claude Code, writes the right configs, scaffolds <code>raw/</code> + <code>proposed/</code> + <code>.margins/</code> in your vault, and runs a verification probe. Restart Claude Desktop (<kbd>Cmd-Q</kbd>) and you're done.</p>
+  <p>The installer detects Claude Desktop and Claude Code, writes the config files, scaffolds <code>raw/</code> + <code>proposed/</code> + <code>.margins/</code> in your vault, and runs a verification probe. Restart Claude Desktop (<kbd>Cmd-Q</kbd>, not just close the window).</p>
 
   <h3>4. Try it</h3>
   <p>Open a new Claude conversation:</p>
@@ -98,14 +358,14 @@
 </section>
 
 <!-- ============ NO VAULT PATH ============ -->
-<section id="path-fresh" class="hidden">
-  <h2>You're starting fresh</h2>
-  <p>Margins will scaffold a vault in your browser using the File System Access API. Pick a parent folder (e.g. your home directory); Margins creates a <code>Margins/</code> folder inside it with the right structure.</p>
+<section id="path-fresh" class="block reveal hidden">
+  <h2><span class="accent-dot"></span>You're starting fresh</h2>
+  <p>Margins scaffolds the vault in your browser. Pick a parent folder; Margins creates a <code>Margins/</code> directory inside with the right structure.</p>
 
   <div id="fs-support-check"></div>
 
   <h3>1. Scaffold the vault</h3>
-  <button class="primary" id="scaffold-btn">Pick parent folder and scaffold</button>
+  <button class="btn btn-primary" id="scaffold-btn">Pick parent folder and scaffold</button>
   <div id="scaffold-status"></div>
 
   <h3 id="step-2-heading" class="hidden">2. Install and connect</h3>
@@ -113,7 +373,7 @@
     <p>Open a terminal and run:</p>
     <pre><button class="copy-btn" data-copy="fresh-install">copy</button><code id="fresh-install">npm install -g margins-mcp
 margins-mcp install</code></pre>
-    <p>The installer detects <code>~/Margins/</code> automatically (the folder you just scaffolded) and connects it to Claude Desktop / Claude Code. Restart Claude Desktop after it finishes.</p>
+    <p>The installer auto-detects <code>~/Margins/</code> and connects it to Claude Desktop / Claude Code. Restart Claude Desktop when it finishes.</p>
 
     <h3>3. Try it</h3>
     <p>Open a new Claude conversation:</p>
@@ -121,37 +381,51 @@ margins-mcp install</code></pre>
   </div>
 </section>
 
-<!-- ============ ALWAYS-VISIBLE: WHICH USER ARE YOU ============ -->
-<h2>Which Margins are you?</h2>
-<p><code>margins_start</code> (the first tool Claude calls) auto-detects which row you're on and adapts its first suggestions. You don't have to figure this out yourself — but knowing helps set expectations.</p>
+<section class="block reveal">
+  <h2><span class="accent-dot"></span>Which Margins are you?</h2>
+  <p><code>margins_start</code> (the first tool Claude calls) auto-detects which row you're on and adapts its first suggestions.</p>
 
-<table>
-<thead><tr><th>You</th><th>Persona</th><th>First conversation</th></tr></thead>
-<tbody>
-<tr><td>Obsidian, vault organized with wikilinks</td><td><strong>A1</strong></td><td>Q&A on existing notes</td></tr>
-<tr><td>Obsidian, vault empty or new</td><td><strong>A2</strong></td><td>Scaffold daily-note + meeting templates</td></tr>
-<tr><td>Obsidian, many files but few wikilinks</td><td><strong>A3</strong></td><td>Run <code>propose_wikilinks</code> on a page</td></tr>
-<tr><td>No Obsidian, organized markdown</td><td><strong>B1</strong></td><td>Same as A1; consider Obsidian as a viewer</td></tr>
-<tr><td>No Obsidian, empty folder</td><td><strong>B2</strong></td><td>Use this page's "Starting fresh" flow</td></tr>
-<tr><td>No Obsidian, messy folder of files</td><td><strong>B3</strong></td><td><code>propose_wikilinks</code> + install Obsidian</td></tr>
-</tbody>
-</table>
-
-<h2>Links</h2>
-<ul>
-  <li><a href="https://github.com/cflorczyk9/Margins">Source on GitHub</a></li>
-  <li><a href="https://www.npmjs.com/package/margins-mcp">npm package</a></li>
-  <li><a href="https://obsidian.md">Obsidian (free)</a></li>
-  <li><a href="https://claude.ai">Claude Pro / Max</a></li>
-</ul>
-
-<footer>
-  <p>Margins runs locally. No vault content ever leaves your machine. <a href="https://github.com/cflorczyk9/Margins#privacy">Privacy details</a>.</p>
-</footer>
+  <table>
+    <thead><tr><th>You</th><th>Persona</th><th>First conversation</th></tr></thead>
+    <tbody>
+      <tr><td>Obsidian, vault organized with wikilinks</td><td><strong>A1</strong></td><td>Q&amp;A on existing notes</td></tr>
+      <tr><td>Obsidian, vault empty or new</td><td><strong>A2</strong></td><td>Scaffold daily-note + meeting templates</td></tr>
+      <tr><td>Obsidian, many files but few wikilinks</td><td><strong>A3</strong></td><td>Run <code>propose_wikilinks</code> on a page</td></tr>
+      <tr><td>No Obsidian, organized markdown</td><td><strong>B1</strong></td><td>Same as A1; consider Obsidian as a viewer</td></tr>
+      <tr><td>No Obsidian, empty folder</td><td><strong>B2</strong></td><td>Use the "Starting fresh" flow above</td></tr>
+      <tr><td>No Obsidian, messy folder of files</td><td><strong>B3</strong></td><td><code>propose_wikilinks</code> + install Obsidian</td></tr>
+    </tbody>
+  </table>
+</section>
 
 </main>
 
+<footer>
+  <div class="wrap">
+    <span class="accent-line"></span>Margins runs locally. No vault content leaves your machine. <a href="https://github.com/cflorczyk9/Margins#privacy">Privacy details</a> · <a href="https://github.com/cflorczyk9/Margins">Source</a> · MIT
+  </div>
+</footer>
+
 <script type="module">
+// ============ Scroll progress bar ============
+const progress = document.getElementById("scroll-progress");
+function updateScrollProgress() {
+  const max = document.documentElement.scrollHeight - window.innerHeight;
+  const ratio = max > 0 ? Math.min(1, window.scrollY / max) : 0;
+  progress.style.transform = `scaleX(${ratio})`;
+}
+document.addEventListener("scroll", updateScrollProgress, { passive: true });
+updateScrollProgress();
+
+// ============ Section reveal ============
+const io = new IntersectionObserver((entries) => {
+  for (const e of entries) if (e.isIntersecting) {
+    e.target.classList.add("is-in");
+    io.unobserve(e.target);
+  }
+}, { threshold: 0.12 });
+for (const el of document.querySelectorAll(".reveal")) io.observe(el);
+
 // ============ Persona fork ============
 const existingBtn = document.getElementById("opt-has-vault");
 const freshBtn = document.getElementById("opt-no-vault");
@@ -161,8 +435,12 @@ const freshPath = document.getElementById("path-fresh");
 function selectPath(which) {
   existingBtn.classList.toggle("selected", which === "existing");
   freshBtn.classList.toggle("selected", which === "fresh");
+  existingBtn.setAttribute("aria-pressed", which === "existing");
+  freshBtn.setAttribute("aria-pressed", which === "fresh");
   existingPath.classList.toggle("hidden", which !== "existing");
   freshPath.classList.toggle("hidden", which !== "fresh");
+  if (which === "existing") existingPath.classList.add("is-in");
+  if (which === "fresh") freshPath.classList.add("is-in");
   setTimeout(() => {
     const target = which === "existing" ? existingPath : freshPath;
     target.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -171,8 +449,11 @@ function selectPath(which) {
 
 existingBtn.addEventListener("click", () => selectPath("existing"));
 freshBtn.addEventListener("click", () => selectPath("fresh"));
-existingBtn.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectPath("existing"); } });
-freshBtn.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectPath("fresh"); } });
+for (const btn of [existingBtn, freshBtn]) {
+  btn.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectPath(btn === existingBtn ? "existing" : "fresh"); }
+  });
+}
 
 // ============ Copy buttons ============
 for (const btn of document.querySelectorAll(".copy-btn")) {
@@ -202,7 +483,7 @@ const SUPPORTS_FSA = typeof window.showDirectoryPicker === "function";
 if (!SUPPORTS_FSA) {
   fsSupportCheck.innerHTML = `
     <div class="status warn">
-      Your browser doesn't support the File System Access API (Chrome/Edge do; Firefox/Safari don't).
+      Your browser doesn't support the File System Access API (Chrome and Edge do; Firefox and Safari don't yet).
       Use the CLI fallback: <code>npm install -g margins-mcp &amp;&amp; margins-mcp install --starter-vault ~/Margins</code>
     </div>`;
   scaffoldBtn.disabled = true;
@@ -237,7 +518,7 @@ Your vault map. Add links to durable pages as they appear.
   ".margins/preferences.md": `# Vault preferences
 
 Margins-learned conventions. Claude appends here when you correct a
-proposal in a durable way. Plain Markdown — you can audit it, hand-edit
+proposal in a durable way. Plain Markdown - you can audit it, hand-edit
 it, or delete sections that no longer apply.
 `
 };
@@ -274,13 +555,7 @@ scaffoldBtn?.addEventListener("click", async () => {
 
   try {
     const marginsDir = await parentHandle.getDirectoryHandle("Margins", { create: true });
-
-    // Create all subdirs
-    for (const rel of STARTER_DIRS) {
-      await ensureDirPath(marginsDir, rel);
-    }
-
-    // Write seed files
+    for (const rel of STARTER_DIRS) await ensureDirPath(marginsDir, rel);
     for (const [rel, content] of Object.entries(STARTER_FILES)) {
       const dirPath = rel.split("/").slice(0, -1).join("/");
       const name = rel.split("/").pop();
@@ -290,9 +565,9 @@ scaffoldBtn?.addEventListener("click", async () => {
 
     scaffoldStatus.innerHTML = `
       <div class="status ok">
-        Scaffolded a Margins vault inside the folder you picked. It contains: wiki/, raw/, proposed/, .margins/, CLAUDE.md, operator-manual.md.
+        Scaffolded a Margins vault inside the folder you picked. It contains wiki/, raw/, proposed/, .margins/, plus CLAUDE.md and operator-manual.md.
         <br><br>
-        Move it to <code>~/Margins/</code> if it isn't there already — the CLI installer auto-detects that path.
+        Move it to <code>~/Margins/</code> if it isn't there already - the CLI installer auto-detects that path.
       </div>`;
 
     step2Heading.classList.remove("hidden");
