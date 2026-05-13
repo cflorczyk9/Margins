@@ -2,17 +2,52 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { createVault } from "./vault.js";
+import { createProposals } from "./proposals.js";
+import { detectIndexRoots } from "./index-roots.js";
+import { createPrimer, formatSummary } from "./primer.js";
+import { createCompile } from "./compile.js";
+import { loadTelemetry } from "./telemetry.js";
 
-export function buildServer(vault) {
+export function buildServer(vault, options = {}) {
+  const proposals = createProposals(vault);
+  const primer = createPrimer(vault);
+  const compile = createCompile(vault, proposals);
+  const telemetry = options.telemetry || { fireAndForget: () => {}, enabled: false };
+  const trackToolCall = (toolName) => telemetry.fireAndForget(`/tool/${toolName}`);
   const server = new McpServer(
-    { name: "margins", version: "0.1.0" },
+    { name: "margins", version: "0.3.0" },
     {
       instructions:
-        "Read-only access to a Margins vault. Use search_vault first to locate pages, then read_page to fetch full text. list_recent answers 'what did I just ingest.' get_backlinks finds pages that wikilink to a slug. ChatGPT Deep Research clients should call search + fetch."
+        "Margins vault tools. START HERE: call margins_start to see what's in the user's vault and get suggested queries. READ: search_vault, read_page, list_recent, get_backlinks. WRITE: writes are proposals — propose_page, propose_edit, and append_to all stage to proposed/<path>. The user (or an MCP client) calls list_proposals to see what's pending and resolve_proposal to accept or reject. Nothing lands in the vault until accepted. ChatGPT Deep Research clients should call search + fetch."
     }
   );
 
-  server.registerTool(
+  // Wrapper that mirrors server.registerTool but tracks each call via telemetry.
+  function register(name, config, handler) {
+    return server.registerTool(name, config, async (args, extra) => {
+      trackToolCall(name);
+      return handler(args, extra);
+    });
+  }
+
+  register(
+    "margins_start",
+    {
+      description:
+        "Primer for a new conversation. Returns vault stats (file count, top folders) and 2-3 suggested queries to try. Call this first if you don't know what's in the user's vault.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true }
+    },
+    async () => {
+      const summary = await primer.summarize();
+      return {
+        content: [{ type: "text", text: formatSummary(summary) }],
+        structuredContent: summary
+      };
+    }
+  );
+
+  register(
     "search_vault",
     {
       description:
@@ -38,7 +73,7 @@ export function buildServer(vault) {
     }
   );
 
-  server.registerTool(
+  register(
     "read_page",
     {
       description: "Read a single vault page by relative path (e.g. 'wiki/career/career.md').",
@@ -60,7 +95,7 @@ export function buildServer(vault) {
     }
   );
 
-  server.registerTool(
+  register(
     "list_recent",
     {
       description:
@@ -82,7 +117,7 @@ export function buildServer(vault) {
     }
   );
 
-  server.registerTool(
+  register(
     "get_backlinks",
     {
       description:
@@ -105,7 +140,194 @@ export function buildServer(vault) {
     }
   );
 
-  server.registerTool(
+  register(
+    "propose_page",
+    {
+      description:
+        "Propose a new page in the vault. Body is the full markdown (frontmatter optional). The page is staged at proposed/<path> until the user accepts it via resolve_proposal. Errors if a page already exists at this path in the vault — use propose_edit or append_to in that case.",
+      inputSchema: {
+        path: z
+          .string()
+          .describe("Destination path relative to vault root, e.g. 'wiki/projects/foo.md'."),
+        body: z.string().describe("Full markdown body to write.")
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false }
+    },
+    async ({ path: rel, body }) => {
+      const result = await proposals.proposePage(rel, body);
+      return {
+        content: [
+          {
+            type: "text",
+            text:
+              `Staged ${result.proposalPath} → would land at ${result.destinationPath}.` +
+              (result.replacedExisting ? " (replaced a prior proposal)" : "") +
+              " Run resolve_proposal to accept or reject."
+          }
+        ],
+        structuredContent: result
+      };
+    }
+  );
+
+  register(
+    "propose_edit",
+    {
+      description:
+        "Propose an edit to an existing page via exact string replacement. 'before' must appear exactly once in the current file (or in the pending proposal if one exists); add surrounding context if it doesn't. The edit is staged at proposed/<path>.",
+      inputSchema: {
+        path: z.string().describe("Page path relative to vault root."),
+        before: z.string().describe("Exact text to replace. Must be unique in the file."),
+        after: z.string().describe("Replacement text. Empty string deletes the match.")
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false }
+    },
+    async ({ path: rel, before, after }) => {
+      const result = await proposals.proposeEdit(rel, before, after);
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Staged edit to ${result.destinationPath} (read from ${result.readFrom}). Run resolve_proposal to accept.`
+          }
+        ],
+        structuredContent: result
+      };
+    }
+  );
+
+  register(
+    "append_to",
+    {
+      description:
+        "Append content to the end of a page. If the page doesn't exist, it's created. If a pending proposal exists for the path, the append stacks on top of it. Result is staged at proposed/<path>.",
+      inputSchema: {
+        path: z.string().describe("Page path relative to vault root."),
+        content: z.string().describe("Content to append. A newline separator is added if needed.")
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false }
+    },
+    async ({ path: rel, content }) => {
+      const result = await proposals.appendTo(rel, content);
+      return {
+        content: [
+          { type: "text", text: `Appended to proposed/${result.destinationPath}.` }
+        ],
+        structuredContent: result
+      };
+    }
+  );
+
+  register(
+    "propose_compile_from_raw",
+    {
+      description:
+        "Compile a text file under raw/ into a structured source page proposal. You (the model) provide the review metadata: a summary, optional bucket, optional takeaways. Margins runs its compiler and stages the result at proposed/<wiki path>. Use this when the user has dropped a raw transcript / notes file into raw/ and wants it filed into the wiki. v0.3: text only (.md, .markdown, .txt). PDF/DOCX support deferred to v0.4.",
+      inputSchema: {
+        rawPath: z
+          .string()
+          .describe("Path of the raw file. Either 'raw/foo.md' or just 'foo.md' (auto-prefixed)."),
+        summary: z.string().describe("1-3 sentence summary of what this source is about."),
+        title: z.string().optional().describe("Title for the source page. Defaults to titlecased filename."),
+        bucket: z.string().optional().describe("Wiki bucket. Default 'sources'. Try 'projects', 'career', 'ideas', etc."),
+        destination_path: z
+          .string()
+          .optional()
+          .describe("Override destination, e.g. 'wiki/career/source-2026-05-13-something.md'."),
+        takeaways: z
+          .array(
+            z.union([
+              z.string(),
+              z.object({ point: z.string(), evidence: z.string().optional() })
+            ])
+          )
+          .optional()
+          .describe("Key takeaways. Either strings or {point, evidence} objects."),
+        summaryBullets: z.array(z.string()).optional().describe("Short summary bullets.")
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false }
+    },
+    async ({ rawPath, summary, title, bucket, destination_path, takeaways, summaryBullets }) => {
+      const result = await compile.proposeCompileFromRaw(rawPath, {
+        summary,
+        title,
+        bucket,
+        destination_path,
+        takeaways,
+        summaryBullets
+      });
+      const lines = [
+        `Compiled ${result.rawFile} → staged at ${result.proposalPath}`,
+        `Title: ${result.title}`,
+        `Bucket: ${result.bucket}`,
+        result.summary ? `Summary: ${result.summary}` : null,
+        result.entitiesExtracted && result.entitiesExtracted.length
+          ? `Entities extracted: ${result.entitiesExtracted.join(", ")}`
+          : null,
+        "",
+        "Run resolve_proposal to accept or reject."
+      ].filter(Boolean);
+      return {
+        content: [{ type: "text", text: lines.join("\n") }],
+        structuredContent: result
+      };
+    }
+  );
+
+  register(
+    "list_proposals",
+    {
+      description:
+        "List every pending proposal. Each entry has its proposal path, its destination path, and whether accepting would overwrite an existing vault file.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true }
+    },
+    async () => {
+      const items = await proposals.listProposals();
+      if (!items.length) {
+        return {
+          content: [{ type: "text", text: "No pending proposals." }],
+          structuredContent: { items: [] }
+        };
+      }
+      const lines = items.map(
+        (i) =>
+          `- ${i.destinationPath}` +
+          (i.willOverwrite ? " (would overwrite existing)" : " (new)") +
+          ` — ${i.size} bytes`
+      );
+      return {
+        content: [{ type: "text", text: lines.join("\n") }],
+        structuredContent: { items }
+      };
+    }
+  );
+
+  register(
+    "resolve_proposal",
+    {
+      description:
+        "Accept or reject a pending proposal. Accept moves the proposal from proposed/<path> to <path> (overwriting any existing vault file at the destination). Reject deletes the proposal without touching the vault.",
+      inputSchema: {
+        path: z
+          .string()
+          .describe("Destination path of the proposal, with or without the 'proposed/' prefix."),
+        action: z.enum(["accept", "reject"]).describe("Whether to apply or discard.")
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true }
+    },
+    async ({ path: rel, action }) => {
+      const result = await proposals.resolveProposal(rel, action);
+      return {
+        content: [
+          { type: "text", text: `${result.destinationPath}: ${result.action}.` }
+        ],
+        structuredContent: result
+      };
+    }
+  );
+
+  register(
     "search",
     {
       description:
@@ -127,7 +349,7 @@ export function buildServer(vault) {
     }
   );
 
-  server.registerTool(
+  register(
     "fetch",
     {
       description:
@@ -166,9 +388,18 @@ function titleFromPath(rel) {
 
 export async function runStdio({ vaultRoot } = {}) {
   const root = vaultRoot || process.env.MARGINS_VAULT || process.cwd();
-  const vault = createVault(root);
-  const server = buildServer(vault);
+  const { roots, skipDirs, source } = await detectIndexRoots(
+    root,
+    process.env.MARGINS_INDEX_ROOTS
+  );
+  const vault = createVault(root, { indexRoots: roots, skipDirs });
+  const telemetry = await loadTelemetry();
+  const server = buildServer(vault, { telemetry });
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error(`margins-mcp: serving vault at ${vault.root}`);
+  console.error(
+    `margins-mcp: serving vault at ${vault.root} ` +
+      `(index roots: ${roots.join(", ")}, detected via ${source}, ` +
+      `telemetry: ${telemetry.enabled ? "on" : "off"})`
+  );
 }
