@@ -1,11 +1,18 @@
 # Netlify deploy config for margins.app.
 #
-# Static site only. Single HTML file with inline CSS + JS. No build step,
-# no node_modules to ship, no asset pipeline. The MCP package lives at
-# the repo root and is published to npm separately.
+# Static site. Single HTML landing + one shell install script. No build step,
+# no node_modules to ship, no asset pipeline.
 
 [build]
   publish = "web"
+
+# Bare `/install` serves the shell script so users can do:
+#   curl -fsSL https://margins.app/install | bash
+[[redirects]]
+  from = "/install"
+  to = "/install.sh"
+  status = 200
+  force = true
 
 [[headers]]
   for = "/*"
@@ -13,3 +20,10 @@
     X-Frame-Options = "DENY"
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
+
+# Serve install.sh as text/plain so curl sees raw bash, not octet-stream.
+[[headers]]
+  for = "/install.sh"
+  [headers.values]
+    Content-Type = "text/plain; charset=utf-8"
+    Cache-Control = "public, max-age=300"

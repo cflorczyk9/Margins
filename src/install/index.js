@@ -7,6 +7,7 @@ import { probeServer } from "./probe.js";
 import { scaffoldStarterVault } from "./starter-vault.js";
 import { createPrompter } from "./prompt.js";
 import { readConsent, writeConsent, createTelemetry } from "../telemetry.js";
+import { detectObsidianVaults } from "./obsidian-vaults.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SERVER_BIN = path.resolve(__dirname, "../../bin/margins-mcp.js");
@@ -117,8 +118,35 @@ export async function runInstaller(argv = [], { log = console.log, errlog = cons
     }
 
     if (!vaultPath) {
-      const guess = (await detectVaultDefault(process.cwd())) || process.cwd();
-      vaultPath = await prompter.askText("Where is your vault?", { defaultValue: guess });
+      const obsidian = await detectObsidianVaults();
+      if (obsidian.vaults.length === 1) {
+        const only = obsidian.vaults[0];
+        log(`Found Obsidian vault: ${only.name} (${only.path})`);
+        const useIt = await prompter.ask(`Use this vault?`, { defaultYes: true });
+        if (useIt) vaultPath = only.path;
+      } else if (obsidian.vaults.length > 1) {
+        log(`Found ${obsidian.vaults.length} Obsidian vaults:`);
+        obsidian.vaults.forEach((v, i) => {
+          log(`  ${i + 1}. ${v.name} — ${v.path}${v.isOpen ? "  (open in Obsidian)" : ""}`);
+        });
+        const pickedRaw = await prompter.askText(
+          `Pick a vault by number, or paste a different path`,
+          { defaultValue: "1" }
+        );
+        const picked = parseInt(pickedRaw, 10);
+        if (!Number.isNaN(picked) && picked >= 1 && picked <= obsidian.vaults.length) {
+          vaultPath = obsidian.vaults[picked - 1].path;
+        } else if (pickedRaw && pickedRaw !== "1") {
+          vaultPath = pickedRaw;
+        } else {
+          vaultPath = obsidian.vaults[0].path;
+        }
+      }
+
+      if (!vaultPath) {
+        const guess = (await detectVaultDefault(process.cwd())) || process.cwd();
+        vaultPath = await prompter.askText("Where is your vault?", { defaultValue: guess });
+      }
     }
     vaultPath = path.resolve(vaultPath);
     if (!(await pathExists(vaultPath))) {
