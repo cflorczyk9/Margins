@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Margins — Use your Claude subscription on your Obsidian vault</title>
+<meta name="description" content="A small MCP connector that lets Claude Pro/Max read and propose writes to your Obsidian vault. No API key. Files stay local.">
+<meta property="og:title" content="Margins — Claude on your Obsidian vault">
+<meta property="og:description" content="Read and propose writes to your Markdown vault with your existing Claude subscription. No API key.">
+<meta property="og:type" content="website">
+<style>
+  :root {
+    --bg: #faf9f7;
+    --fg: #1a1a1a;
+    --muted: #666;
+    --accent: #1f6feb;
+    --border: #ddd;
+    --code-bg: #f4f3f0;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; }
+  main { max-width: 720px; margin: 0 auto; padding: 48px 24px 96px; }
+  h1 { font-size: 2.2rem; margin: 0 0 0.4em; letter-spacing: -0.02em; }
+  h2 { font-size: 1.4rem; margin: 2.4em 0 0.6em; letter-spacing: -0.01em; }
+  h3 { font-size: 1.1rem; margin: 1.8em 0 0.4em; }
+  p { margin: 0.7em 0; }
+  .tagline { color: var(--muted); font-size: 1.1rem; margin-top: 0; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code, pre { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 0.93rem; }
+  pre { background: var(--code-bg); padding: 14px 16px; border-radius: 6px; overflow-x: auto; position: relative; }
+  pre .copy-btn { position: absolute; top: 8px; right: 8px; background: white; border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font-size: 0.78rem; cursor: pointer; }
+  pre .copy-btn:hover { border-color: var(--accent); color: var(--accent); }
+  code:not(pre code) { background: var(--code-bg); padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }
+  .fork { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 24px 0; }
+  @media (max-width: 600px) { .fork { grid-template-columns: 1fr; } }
+  .fork-option { background: white; border: 1px solid var(--border); border-radius: 8px; padding: 20px; cursor: pointer; transition: border-color 0.15s; }
+  .fork-option:hover { border-color: var(--accent); }
+  .fork-option.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .fork-option h3 { margin-top: 0; }
+  .fork-option .small { color: var(--muted); font-size: 0.9rem; }
+  .hidden { display: none; }
+  button.primary { background: var(--accent); color: white; border: 0; padding: 10px 18px; border-radius: 6px; font-size: 1rem; cursor: pointer; font-weight: 500; }
+  button.primary:hover { background: #1958c4; }
+  button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .status { margin-top: 12px; padding: 12px 14px; border-radius: 6px; }
+  .status.ok { background: #e6f6ec; border: 1px solid #b7e0c2; }
+  .status.err { background: #fdecec; border: 1px solid #f0b8b8; }
+  .status.warn { background: #fff8e1; border: 1px solid #f0d99a; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 0.92rem; }
+  th { font-weight: 600; color: var(--muted); }
+  footer { color: var(--muted); font-size: 0.88rem; margin-top: 4em; padding-top: 1.5em; border-top: 1px solid var(--border); }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Margins</h1>
+<p class="tagline">Use your Claude Pro or Max subscription on your Obsidian vault. No API key. No per-token costs. Your files stay on your disk.</p>
+
+<p><code>margins-mcp</code> is a small Node program that sits between Claude (Desktop or Code) and your Markdown vault. Claude reads your notes through it. Your subscription pays for inference. Files never leave your machine.</p>
+
+<h2>Get started</h2>
+
+<p>Pick the row that matches your setup:</p>
+
+<div class="fork">
+  <div class="fork-option" id="opt-has-vault" tabindex="0" role="button">
+    <h3>I have a vault already</h3>
+    <p class="small">You use Obsidian, or you have a folder of Markdown files somewhere. You know the path.</p>
+  </div>
+  <div class="fork-option" id="opt-no-vault" tabindex="0" role="button">
+    <h3>I'm starting fresh</h3>
+    <p class="small">No vault yet. Margins will scaffold one for you, right in this browser, then hand you the install command.</p>
+  </div>
+</div>
+
+<!-- ============ EXISTING VAULT PATH ============ -->
+<section id="path-existing" class="hidden">
+  <h2>You have a vault</h2>
+  <p>Install <code>margins-mcp</code> globally, then run the installer pointing at your vault.</p>
+
+  <h3>1. Install</h3>
+  <pre><button class="copy-btn" data-copy="install-cmd">copy</button><code id="install-cmd">npm install -g margins-mcp</code></pre>
+
+  <h3>2. Find your vault path</h3>
+  <p>In Obsidian, right-click your vault in the file tree → <strong>Reveal in Finder</strong> (macOS) or <strong>Show in Explorer</strong> (Windows). Copy the absolute path.</p>
+  <p class="small">Common paths: <code>~/Documents/MyVault</code>, or <code>~/Library/CloudStorage/iCloudDrive/Obsidian/MyVault</code> for iCloud-synced vaults on Mac.</p>
+
+  <h3>3. Run the installer</h3>
+  <pre><button class="copy-btn" data-copy="run-cmd">copy</button><code id="run-cmd">margins-mcp install --vault /absolute/path/to/your/vault</code></pre>
+  <p>The installer detects Claude Desktop and Claude Code, writes the right configs, scaffolds <code>raw/</code> + <code>proposed/</code> + <code>.margins/</code> in your vault, and runs a verification probe. Restart Claude Desktop (<kbd>Cmd-Q</kbd>) and you're done.</p>
+
+  <h3>4. Try it</h3>
+  <p>Open a new Claude conversation:</p>
+  <pre><code>Use margins to give me a summary of my recent notes.</code></pre>
+</section>
+
+<!-- ============ NO VAULT PATH ============ -->
+<section id="path-fresh" class="hidden">
+  <h2>You're starting fresh</h2>
+  <p>Margins will scaffold a vault in your browser using the File System Access API. Pick a parent folder (e.g. your home directory); Margins creates a <code>Margins/</code> folder inside it with the right structure.</p>
+
+  <div id="fs-support-check"></div>
+
+  <h3>1. Scaffold the vault</h3>
+  <button class="primary" id="scaffold-btn">Pick parent folder and scaffold</button>
+  <div id="scaffold-status"></div>
+
+  <h3 id="step-2-heading" class="hidden">2. Install and connect</h3>
+  <div id="step-2-body" class="hidden">
+    <p>Open a terminal and run:</p>
+    <pre><button class="copy-btn" data-copy="fresh-install">copy</button><code id="fresh-install">npm install -g margins-mcp
+margins-mcp install</code></pre>
+    <p>The installer detects <code>~/Margins/</code> automatically (the folder you just scaffolded) and connects it to Claude Desktop / Claude Code. Restart Claude Desktop after it finishes.</p>
+
+    <h3>3. Try it</h3>
+    <p>Open a new Claude conversation:</p>
+    <pre><code>Use margins to help me start writing in my new vault.</code></pre>
+  </div>
+</section>
+
+<!-- ============ ALWAYS-VISIBLE: WHICH USER ARE YOU ============ -->
+<h2>Which Margins are you?</h2>
+<p><code>margins_start</code> (the first tool Claude calls) auto-detects which row you're on and adapts its first suggestions. You don't have to figure this out yourself — but knowing helps set expectations.</p>
+
+<table>
+<thead><tr><th>You</th><th>Persona</th><th>First conversation</th></tr></thead>
+<tbody>
+<tr><td>Obsidian, vault organized with wikilinks</td><td><strong>A1</strong></td><td>Q&A on existing notes</td></tr>
+<tr><td>Obsidian, vault empty or new</td><td><strong>A2</strong></td><td>Scaffold daily-note + meeting templates</td></tr>
+<tr><td>Obsidian, many files but few wikilinks</td><td><strong>A3</strong></td><td>Run <code>propose_wikilinks</code> on a page</td></tr>
+<tr><td>No Obsidian, organized markdown</td><td><strong>B1</strong></td><td>Same as A1; consider Obsidian as a viewer</td></tr>
+<tr><td>No Obsidian, empty folder</td><td><strong>B2</strong></td><td>Use this page's "Starting fresh" flow</td></tr>
+<tr><td>No Obsidian, messy folder of files</td><td><strong>B3</strong></td><td><code>propose_wikilinks</code> + install Obsidian</td></tr>
+</tbody>
+</table>
+
+<h2>Links</h2>
+<ul>
+  <li><a href="https://github.com/cflorczyk9/Margins">Source on GitHub</a></li>
+  <li><a href="https://www.npmjs.com/package/margins-mcp">npm package</a></li>
+  <li><a href="https://obsidian.md">Obsidian (free)</a></li>
+  <li><a href="https://claude.ai">Claude Pro / Max</a></li>
+</ul>
+
+<footer>
+  <p>Margins runs locally. No vault content ever leaves your machine. <a href="https://github.com/cflorczyk9/Margins#privacy">Privacy details</a>.</p>
+</footer>
+
+</main>
+
+<script type="module">
+// ============ Persona fork ============
+const existingBtn = document.getElementById("opt-has-vault");
+const freshBtn = document.getElementById("opt-no-vault");
+const existingPath = document.getElementById("path-existing");
+const freshPath = document.getElementById("path-fresh");
+
+function selectPath(which) {
+  existingBtn.classList.toggle("selected", which === "existing");
+  freshBtn.classList.toggle("selected", which === "fresh");
+  existingPath.classList.toggle("hidden", which !== "existing");
+  freshPath.classList.toggle("hidden", which !== "fresh");
+  setTimeout(() => {
+    const target = which === "existing" ? existingPath : freshPath;
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, 50);
+}
+
+existingBtn.addEventListener("click", () => selectPath("existing"));
+freshBtn.addEventListener("click", () => selectPath("fresh"));
+existingBtn.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectPath("existing"); } });
+freshBtn.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectPath("fresh"); } });
+
+// ============ Copy buttons ============
+for (const btn of document.querySelectorAll(".copy-btn")) {
+  btn.addEventListener("click", async () => {
+    const target = document.getElementById(btn.dataset.copy);
+    if (!target) return;
+    try {
+      await navigator.clipboard.writeText(target.textContent);
+      const originalText = btn.textContent;
+      btn.textContent = "copied";
+      setTimeout(() => { btn.textContent = originalText; }, 1200);
+    } catch {
+      btn.textContent = "(copy failed)";
+    }
+  });
+}
+
+// ============ File System Access scaffolder ============
+const fsSupportCheck = document.getElementById("fs-support-check");
+const scaffoldBtn = document.getElementById("scaffold-btn");
+const scaffoldStatus = document.getElementById("scaffold-status");
+const step2Heading = document.getElementById("step-2-heading");
+const step2Body = document.getElementById("step-2-body");
+
+const SUPPORTS_FSA = typeof window.showDirectoryPicker === "function";
+
+if (!SUPPORTS_FSA) {
+  fsSupportCheck.innerHTML = `
+    <div class="status warn">
+      Your browser doesn't support the File System Access API (Chrome/Edge do; Firefox/Safari don't).
+      Use the CLI fallback: <code>npm install -g margins-mcp &amp;&amp; margins-mcp install --starter-vault ~/Margins</code>
+    </div>`;
+  scaffoldBtn.disabled = true;
+}
+
+const STARTER_FILES = {
+  "CLAUDE.md": `# CLAUDE.md
+
+This vault was scaffolded by Margins. Drop your operating rules here.
+
+## How to use it
+- Raw transcripts and notes go in \`raw/\`. Ask Claude to compile them with \`propose_compile_from_raw\`.
+- Wiki pages live in \`wiki/\`. Sources, concepts, entities, syntheses.
+- Proposed writes stage at \`proposed/\` until you accept them.
+- Vault-specific rules and conventions live in this file.
+`,
+  "operator-manual.md": `# Operator manual
+
+1. Raw files in \`raw/\` are evidence. They don't get edited.
+2. Wiki pages in \`wiki/\` are navigable. Link them, tag them.
+3. Proposed writes stay in \`proposed/\` until you accept.
+4. Claude is a drafter, not an autonomous editor. Review before accepting.
+`,
+  "wiki/index.md": `# Index
+
+Your vault map. Add links to durable pages as they appear.
+
+1. Drop a markdown note into \`wiki/daily/\` to start today.
+2. Or drop a transcript into \`raw/\` and ask Claude to compile it.
+3. Or just ask Claude to summarize what's here once the vault grows.
+`,
+  ".margins/preferences.md": `# Vault preferences
+
+Margins-learned conventions. Claude appends here when you correct a
+proposal in a durable way. Plain Markdown — you can audit it, hand-edit
+it, or delete sections that no longer apply.
+`
+};
+const STARTER_DIRS = ["wiki/daily", "wiki/sources", "wiki/entities", "wiki/concepts", "raw", "proposed", ".margins"];
+
+async function ensureDir(parent, name) {
+  return parent.getDirectoryHandle(name, { create: true });
+}
+async function ensureDirPath(root, relPath) {
+  let cur = root;
+  for (const part of relPath.split("/")) {
+    if (!part) continue;
+    cur = await ensureDir(cur, part);
+  }
+  return cur;
+}
+async function writeFile(parent, name, content) {
+  const fh = await parent.getFileHandle(name, { create: true });
+  const w = await fh.createWritable();
+  await w.write(content);
+  await w.close();
+}
+
+scaffoldBtn?.addEventListener("click", async () => {
+  scaffoldStatus.innerHTML = "";
+  let parentHandle;
+  try {
+    parentHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+  } catch (err) {
+    if (err && err.name === "AbortError") return;
+    scaffoldStatus.innerHTML = `<div class="status err">Folder pick canceled or denied: ${err.message}</div>`;
+    return;
+  }
+
+  try {
+    const marginsDir = await parentHandle.getDirectoryHandle("Margins", { create: true });
+
+    // Create all subdirs
+    for (const rel of STARTER_DIRS) {
+      await ensureDirPath(marginsDir, rel);
+    }
+
+    // Write seed files
+    for (const [rel, content] of Object.entries(STARTER_FILES)) {
+      const dirPath = rel.split("/").slice(0, -1).join("/");
+      const name = rel.split("/").pop();
+      const parent = dirPath ? await ensureDirPath(marginsDir, dirPath) : marginsDir;
+      await writeFile(parent, name, content);
+    }
+
+    scaffoldStatus.innerHTML = `
+      <div class="status ok">
+        Scaffolded a Margins vault inside the folder you picked. It contains: wiki/, raw/, proposed/, .margins/, CLAUDE.md, operator-manual.md.
+        <br><br>
+        Move it to <code>~/Margins/</code> if it isn't there already — the CLI installer auto-detects that path.
+      </div>`;
+
+    step2Heading.classList.remove("hidden");
+    step2Body.classList.remove("hidden");
+    setTimeout(() => step2Body.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
+  } catch (err) {
+    scaffoldStatus.innerHTML = `<div class="status err">Scaffold failed: ${err.message}</div>`;
+  }
+});
+</script>
+</body>
+</html>

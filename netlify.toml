@@ -1,0 +1,15 @@
+# Netlify deploy config for margins.app.
+#
+# Static site only. Single HTML file with inline CSS + JS. No build step,
+# no node_modules to ship, no asset pipeline. The MCP package lives at
+# the repo root and is published to npm separately.
+
+[build]
+  publish = "web"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
