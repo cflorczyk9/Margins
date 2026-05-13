@@ -1,0 +1,163 @@
+import { test, beforeEach, afterEach } from "node:test";
+import assert from "node:assert/strict";
+import { cp, mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import path from "node:path";
+import os from "node:os";
+import { fileURLToPath } from "node:url";
+import { createVault } from "../src/vault.js";
+import { createProposals } from "../src/proposals.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const FIXTURE = path.join(__dirname, "fixtures");
+
+let tmpRoot;
+let vault;
+let proposals;
+
+beforeEach(async () => {
+  tmpRoot = await mkdtemp(path.join(os.tmpdir(), "margins-proposals-"));
+  await cp(FIXTURE, tmpRoot, { recursive: true });
+  vault = createVault(tmpRoot);
+  proposals = createProposals(vault);
+});
+
+afterEach(async () => {
+  await rm(tmpRoot, { recursive: true, force: true });
+});
+
+async function exists(rel) {
+  try {
+    await stat(path.join(tmpRoot, rel));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function read(rel) {
+  return readFile(path.join(tmpRoot, rel), "utf8");
+}
+
+test("propose_page stages a new file to proposed/<path>", async () => {
+  const result = await proposals.proposePage("wiki/projects/foo.md", "# Foo\n");
+  assert.equal(result.destinationPath, "wiki/projects/foo.md");
+  assert.equal(result.proposalPath, "proposed/wiki/projects/foo.md");
+  assert.equal(result.replacedExisting, false);
+  assert.ok(await exists("proposed/wiki/projects/foo.md"));
+  assert.equal(await read("proposed/wiki/projects/foo.md"), "# Foo\n");
+  assert.equal(await exists("wiki/projects/foo.md"), false);
+});
+
+test("propose_page errors when destination already exists in vault", async () => {
+  await assert.rejects(
+    () => proposals.proposePage("wiki/career.md", "# clash"),
+    /already exists in vault/
+  );
+});
+
+test("propose_page replaces a prior proposal silently", async () => {
+  await proposals.proposePage("wiki/new.md", "v1");
+  const second = await proposals.proposePage("wiki/new.md", "v2");
+  assert.equal(second.replacedExisting, true);
+  assert.equal(await read("proposed/wiki/new.md"), "v2");
+});
+
+test("propose_edit reads from vault and writes to proposed/", async () => {
+  const before = await read("wiki/career.md");
+  const result = await proposals.proposeEdit(
+    "wiki/career.md",
+    "Notes on Connor's career fork.",
+    "Notes on the career fork (edited)."
+  );
+  assert.equal(result.readFrom, "vault");
+  const proposed = await read("proposed/wiki/career.md");
+  assert.match(proposed, /career fork \(edited\)/);
+  // vault unchanged
+  assert.equal(await read("wiki/career.md"), before);
+});
+
+test("propose_edit errors when 'before' is missing", async () => {
+  await assert.rejects(
+    () => proposals.proposeEdit("wiki/career.md", "nonexistent string", "x"),
+    /not found/
+  );
+});
+
+test("propose_edit errors when 'before' is ambiguous", async () => {
+  await proposals.proposePage("wiki/dup.md", "foo\nfoo\nfoo\n");
+  await assert.rejects(
+    () => proposals.proposeEdit("wiki/dup.md", "foo", "bar"),
+    /appears 3 times/
+  );
+});
+
+test("propose_edit stacks on top of pending proposal", async () => {
+  await proposals.proposePage("wiki/stack.md", "alpha\nbeta\ngamma\n");
+  const second = await proposals.proposeEdit("wiki/stack.md", "beta", "BETA");
+  assert.equal(second.readFrom, "proposal");
+  assert.equal(await read("proposed/wiki/stack.md"), "alpha\nBETA\ngamma\n");
+});
+
+test("append_to creates a new file if path is missing", async () => {
+  await proposals.appendTo("wiki/log.md", "first entry");
+  assert.equal(await read("proposed/wiki/log.md"), "first entry");
+});
+
+test("append_to appends to existing vault content with newline separator", async () => {
+  await proposals.appendTo("wiki/career.md", "extra line");
+  const result = await read("proposed/wiki/career.md");
+  assert.match(result, /career fork.*\nextra line$/s);
+});
+
+test("list_proposals returns pending proposals with overwrite hint", async () => {
+  await proposals.proposePage("wiki/new1.md", "n1");
+  await proposals.appendTo("wiki/career.md", "more"); // overwrites existing
+  const items = await proposals.listProposals();
+  const byPath = Object.fromEntries(items.map((i) => [i.destinationPath, i]));
+  assert.equal(byPath["wiki/new1.md"].willOverwrite, false);
+  assert.equal(byPath["wiki/career.md"].willOverwrite, true);
+});
+
+test("resolve_proposal accept moves file from proposed/ to destination", async () => {
+  await proposals.proposePage("wiki/accepted.md", "body");
+  const result = await proposals.resolveProposal("wiki/accepted.md", "accept");
+  assert.equal(result.action, "accepted");
+  assert.equal(await exists("proposed/wiki/accepted.md"), false);
+  assert.equal(await read("wiki/accepted.md"), "body");
+});
+
+test("resolve_proposal accept overwrites existing vault file", async () => {
+  await proposals.appendTo("wiki/career.md", "appended");
+  await proposals.resolveProposal("wiki/career.md", "accept");
+  const final = await read("wiki/career.md");
+  assert.match(final, /appended$/s);
+  assert.equal(await exists("proposed/wiki/career.md"), false);
+});
+
+test("resolve_proposal reject deletes the proposal without touching the vault", async () => {
+  const before = await read("wiki/career.md");
+  await proposals.appendTo("wiki/career.md", "bad change");
+  const result = await proposals.resolveProposal("wiki/career.md", "reject");
+  assert.equal(result.action, "rejected");
+  assert.equal(await exists("proposed/wiki/career.md"), false);
+  assert.equal(await read("wiki/career.md"), before);
+});
+
+test("resolve_proposal accepts the 'proposed/' prefix in path", async () => {
+  await proposals.proposePage("wiki/prefixed.md", "x");
+  await proposals.resolveProposal("proposed/wiki/prefixed.md", "accept");
+  assert.equal(await read("wiki/prefixed.md"), "x");
+});
+
+test("path traversal rejected on every write surface", async () => {
+  await assert.rejects(() => proposals.proposePage("../etc/passwd", "x"));
+  await assert.rejects(() => proposals.proposeEdit("../foo.md", "a", "b"));
+  await assert.rejects(() => proposals.appendTo("../foo.md", "x"));
+});
+
+test("writes targeting 'proposed/<x>' rejected", async () => {
+  await assert.rejects(
+    () => proposals.proposePage("proposed/wiki/foo.md", "x"),
+    /cannot start with proposed/
+  );
+});

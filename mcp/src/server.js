@@ -2,13 +2,15 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { createVault } from "./vault.js";
+import { createProposals } from "./proposals.js";
 
 export function buildServer(vault) {
+  const proposals = createProposals(vault);
   const server = new McpServer(
-    { name: "margins", version: "0.1.0" },
+    { name: "margins", version: "0.2.0" },
     {
       instructions:
-        "Read-only access to a Margins vault. Use search_vault first to locate pages, then read_page to fetch full text. list_recent answers 'what did I just ingest.' get_backlinks finds pages that wikilink to a slug. ChatGPT Deep Research clients should call search + fetch."
+        "Margins vault tools. READ: search_vault, read_page, list_recent, get_backlinks. WRITE: writes are proposals — propose_page, propose_edit, and append_to all stage to proposed/<path>. The user (or an MCP client) calls list_proposals to see what's pending and resolve_proposal to accept or reject. Nothing lands in the vault until accepted. ChatGPT Deep Research clients should call search + fetch."
     }
   );
 
@@ -101,6 +103,137 @@ export function buildServer(vault) {
           { type: "text", text: lines.join("\n") || `No backlinks to ${target}.` }
         ],
         structuredContent: { hits }
+      };
+    }
+  );
+
+  server.registerTool(
+    "propose_page",
+    {
+      description:
+        "Propose a new page in the vault. Body is the full markdown (frontmatter optional). The page is staged at proposed/<path> until the user accepts it via resolve_proposal. Errors if a page already exists at this path in the vault — use propose_edit or append_to in that case.",
+      inputSchema: {
+        path: z
+          .string()
+          .describe("Destination path relative to vault root, e.g. 'wiki/projects/foo.md'."),
+        body: z.string().describe("Full markdown body to write.")
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false }
+    },
+    async ({ path: rel, body }) => {
+      const result = await proposals.proposePage(rel, body);
+      return {
+        content: [
+          {
+            type: "text",
+            text:
+              `Staged ${result.proposalPath} → would land at ${result.destinationPath}.` +
+              (result.replacedExisting ? " (replaced a prior proposal)" : "") +
+              " Run resolve_proposal to accept or reject."
+          }
+        ],
+        structuredContent: result
+      };
+    }
+  );
+
+  server.registerTool(
+    "propose_edit",
+    {
+      description:
+        "Propose an edit to an existing page via exact string replacement. 'before' must appear exactly once in the current file (or in the pending proposal if one exists); add surrounding context if it doesn't. The edit is staged at proposed/<path>.",
+      inputSchema: {
+        path: z.string().describe("Page path relative to vault root."),
+        before: z.string().describe("Exact text to replace. Must be unique in the file."),
+        after: z.string().describe("Replacement text. Empty string deletes the match.")
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false }
+    },
+    async ({ path: rel, before, after }) => {
+      const result = await proposals.proposeEdit(rel, before, after);
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Staged edit to ${result.destinationPath} (read from ${result.readFrom}). Run resolve_proposal to accept.`
+          }
+        ],
+        structuredContent: result
+      };
+    }
+  );
+
+  server.registerTool(
+    "append_to",
+    {
+      description:
+        "Append content to the end of a page. If the page doesn't exist, it's created. If a pending proposal exists for the path, the append stacks on top of it. Result is staged at proposed/<path>.",
+      inputSchema: {
+        path: z.string().describe("Page path relative to vault root."),
+        content: z.string().describe("Content to append. A newline separator is added if needed.")
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false }
+    },
+    async ({ path: rel, content }) => {
+      const result = await proposals.appendTo(rel, content);
+      return {
+        content: [
+          { type: "text", text: `Appended to proposed/${result.destinationPath}.` }
+        ],
+        structuredContent: result
+      };
+    }
+  );
+
+  server.registerTool(
+    "list_proposals",
+    {
+      description:
+        "List every pending proposal. Each entry has its proposal path, its destination path, and whether accepting would overwrite an existing vault file.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true }
+    },
+    async () => {
+      const items = await proposals.listProposals();
+      if (!items.length) {
+        return {
+          content: [{ type: "text", text: "No pending proposals." }],
+          structuredContent: { items: [] }
+        };
+      }
+      const lines = items.map(
+        (i) =>
+          `- ${i.destinationPath}` +
+          (i.willOverwrite ? " (would overwrite existing)" : " (new)") +
+          ` — ${i.size} bytes`
+      );
+      return {
+        content: [{ type: "text", text: lines.join("\n") }],
+        structuredContent: { items }
+      };
+    }
+  );
+
+  server.registerTool(
+    "resolve_proposal",
+    {
+      description:
+        "Accept or reject a pending proposal. Accept moves the proposal from proposed/<path> to <path> (overwriting any existing vault file at the destination). Reject deletes the proposal without touching the vault.",
+      inputSchema: {
+        path: z
+          .string()
+          .describe("Destination path of the proposal, with or without the 'proposed/' prefix."),
+        action: z.enum(["accept", "reject"]).describe("Whether to apply or discard.")
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true }
+    },
+    async ({ path: rel, action }) => {
+      const result = await proposals.resolveProposal(rel, action);
+      return {
+        content: [
+          { type: "text", text: `${result.destinationPath}: ${result.action}.` }
+        ],
+        structuredContent: result
       };
     }
   );
