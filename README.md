@@ -2,25 +2,55 @@
 
 **Use your Claude Pro/Max subscription on your Obsidian vault.** No API key. No per-token costs. No embedding pipelines. Claude reads your notes and proposes updates; your subscription pays for inference; your files stay on your disk.
 
-[30-second demo placeholder — record after v0.3 ships]
+`margins-mcp` is a small Node program that sits between Claude (Desktop or Code) and your Obsidian vault. When you chat with Claude, it reads your notes through `margins-mcp`. Your files stay local, Claude does the thinking, your existing subscription pays for it.
+
+## Requirements
+
+- [Node.js 18 or newer](https://nodejs.org)
+- An Obsidian vault, or any folder of Markdown files
+- A Claude subscription: Pro ($20/mo), Max, or Claude Code
 
 ## Install
 
-```sh
-npx margins-mcp install --vault /path/to/your/vault
-```
-
-That's it. The installer detects Claude Desktop and Claude Code, writes the right config files, and runs a verification probe. Restart Claude Desktop (Cmd-Q on macOS, not just close), or in Claude Code run `/mcp` to see Margins listed.
-
-Don't have an Obsidian vault yet? Scaffold a Margins-shaped one:
+Two commands:
 
 ```sh
-npx margins-mcp install --starter-vault ~/notes
+npm install -g margins-mcp
+margins-mcp install
 ```
+
+The installer prompts for your vault path, detects Claude Desktop and Claude Code, writes the right config files, scaffolds `raw/` + `proposed/` + `.margins/` inside your vault if missing, and runs a verification probe. Restart Claude Desktop (`Cmd-Q` on macOS, not just close the window), or in Claude Code run `/mcp` to see Margins listed.
+
+### Don't have a vault yet?
+
+Scaffold a Margins-shaped one:
+
+```sh
+margins-mcp install --starter-vault ~/notes
+```
+
+### Finding your Obsidian vault path
+
+If you already use Obsidian and don't know your vault's absolute path:
+
+- **In Obsidian:** right-click the vault name in the file tree → "Reveal in Finder" (macOS) or "Show in Explorer" (Windows). The path is in the title bar.
+- **macOS common paths:** `~/Documents/<VaultName>`, or `~/Library/CloudStorage/iCloudDrive/Obsidian/<VaultName>` if iCloud-synced.
+- **Linux common paths:** `~/Documents/<VaultName>`, or `~/.local/share/Obsidian/<VaultName>`.
+- **Windows common paths:** `%USERPROFILE%\Documents\<VaultName>`.
+
+Pass it to the installer via `--vault /absolute/path` or answer the prompt.
+
+### Try-without-installing
+
+```sh
+npx margins-mcp install --vault /path/to/vault
+```
+
+You'll see a warning that npm may garbage-collect the npx cache and your configs would break weeks later. For real use, prefer `npm install -g` above. The npx path is fine for kicking the tires.
 
 ### Manual install
 
-If you'd rather edit config yourself, add this to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS path; see [Anthropic docs](https://modelcontextprotocol.io/quickstart/user) for Windows/Linux):
+If you'd rather edit config yourself, add this to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS; see [Anthropic docs](https://modelcontextprotocol.io/quickstart/user) for Windows/Linux paths):
 
 ```json
 {

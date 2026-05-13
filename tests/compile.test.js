@@ -69,10 +69,36 @@ test("accepts a 'raw/' prefix or bare filename", async () => {
   assert.equal(a.rawFile, b.rawFile);
 });
 
-test("errors when raw file does not exist", async () => {
+test("errors when raw/ directory doesn't exist", async () => {
   await assert.rejects(
     () => compile.proposeCompileFromRaw("missing.md", { summary: "s" }),
-    /raw file not found/
+    /raw\/ directory not found/
+  );
+});
+
+test("errors with empty-raw hint when raw/ exists but is empty", async () => {
+  await mkdir(path.join(tmpRoot, "raw"), { recursive: true });
+  await assert.rejects(
+    () => compile.proposeCompileFromRaw("missing.md", { summary: "s" }),
+    /raw\/ folder is empty/
+  );
+});
+
+test("error suggests closest match for a mistyped raw filename", async () => {
+  await touch("raw/2026-05-13-board-call.md", "body");
+  await touch("raw/april-pitch.md", "body");
+  await assert.rejects(
+    () => compile.proposeCompileFromRaw("2026-05-13-bord-call.md", { summary: "s" }),
+    /Did you mean: raw\/2026-05-13-board-call\.md/
+  );
+});
+
+test("error lists available files when no close match", async () => {
+  await touch("raw/foo.md", "body");
+  await touch("raw/bar.md", "body");
+  await assert.rejects(
+    () => compile.proposeCompileFromRaw("totally-different-and-long-name.md", { summary: "s" }),
+    /Available in raw\/.*foo\.md.*bar\.md|Available in raw\/.*bar\.md.*foo\.md/
   );
 });
 
