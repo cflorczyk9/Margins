@@ -371,7 +371,12 @@
   }
   .hero-cta { display: inline-flex; gap: 10px; flex-wrap: wrap; }
 
-  .hero-art { max-width: 380px; aspect-ratio: 1 / 1; width: 100%; margin-left: auto; }
+  /* Cap bumped from 380→640 so the diagram grows leftward inside its grid
+     column. width:100% + margin-left:auto keep it flush-right; the grid
+     columns stay exactly where they are so the text column doesn't shift.
+     At typical desktop widths (1180px wrap, column ~503px) the image fills
+     its column. At wider viewports the 640 cap stops it from getting silly. */
+  .hero-art { max-width: 640px; aspect-ratio: 1 / 1; width: 100%; margin-left: auto; }
   @media (max-width: 880px) { .hero-art { margin: 0 auto; max-width: 320px; } }
   .hero-art svg { width: 100%; height: 100%; display: block; overflow: visible; }
   .hero-art svg .ink-stroke { stroke: var(--svg-ink); opacity: var(--svg-ink-opacity); }
