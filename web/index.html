@@ -690,8 +690,9 @@
   .m-row.even > .cell { background: color-mix(in srgb, var(--paper-soft) 30%, transparent); }
   .matrix:hover .m-row:hover > .cell { background: color-mix(in srgb, var(--paper-soft) 60%, transparent); }
   .matrix:hover .m-row:hover > .cell.label { box-shadow: inset 2px 0 0 var(--ink); }
-  .m-row > .cell.us,
-  .m-head .h-us { background: var(--accent-soft); }
+  /* Margins column: no background tint — the vermillion .us-ring is the only
+     visual signal of "this is us." Keeps the column readable in dark mode and
+     stops the header from looking like an alert. */
   .us-ring {
     position: absolute;
     top: 0;
@@ -764,7 +765,7 @@
     }
     .tool-card.is-us {
       border: 1.75px solid var(--vermillion);
-      background: linear-gradient(180deg, var(--accent-soft), var(--paper) 60%);
+      background: var(--paper);
       position: relative;
     }
     .tool-card.is-us::before {
