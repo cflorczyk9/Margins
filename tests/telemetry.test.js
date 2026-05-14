@@ -1,6 +1,18 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createTelemetry } from "../src/telemetry.js";
+import { createTelemetry, applySelfTag, selfTagEnabled } from "../src/telemetry.js";
+
+function withEnv(key, value, fn) {
+  const previous = process.env[key];
+  if (value === undefined) delete process.env[key];
+  else process.env[key] = value;
+  try {
+    return fn();
+  } finally {
+    if (previous === undefined) delete process.env[key];
+    else process.env[key] = previous;
+  }
+}
 
 function makeFakeFetch() {
   const calls = [];
@@ -83,6 +95,36 @@ test("postEvent silently survives network failure", async () => {
   const result = await t.postEvent("/tool/anything");
   assert.equal(result.sent, false);
   assert.equal(result.reason, "network");
+});
+
+test("selfTagEnabled is false when MARGINS_TELEMETRY_SELF unset", () => {
+  withEnv("MARGINS_TELEMETRY_SELF", undefined, () => {
+    assert.equal(selfTagEnabled(), false);
+    assert.equal(applySelfTag("/tool/x"), "/tool/x");
+  });
+});
+
+test("MARGINS_TELEMETRY_SELF=1 prefixes event paths with /dev", () => {
+  withEnv("MARGINS_TELEMETRY_SELF", "1", () => {
+    assert.equal(selfTagEnabled(), true);
+    assert.equal(applySelfTag("/tool/margins_start"), "/dev/tool/margins_start");
+    assert.equal(applySelfTag("/install/completed"), "/dev/install/completed");
+  });
+});
+
+test("postEvent sends to /dev/* path when self-tagged", async () => {
+  await withEnv("MARGINS_TELEMETRY_SELF", "on", async () => {
+    const fakeFetch = makeFakeFetch();
+    const t = createTelemetry({
+      consent: { enabled: true, endpoint: "https://test.goatcounter.com" },
+      fetch: fakeFetch
+    });
+    await t.postEvent("/tool/search_vault");
+    assert.equal(
+      fakeFetch.calls[0].url,
+      "https://test.goatcounter.com/count?p=%2Fdev%2Ftool%2Fsearch_vault"
+    );
+  });
 });
 
 test("fireAndForget never throws even on network failure", async () => {
