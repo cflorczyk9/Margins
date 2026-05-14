@@ -1,0 +1,871 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>How Margins works — a detail walkthrough</title>
+<meta name="description" content="A visual walkthrough of how Margins turns a folder of files into a connected wiki. Drop documents anywhere, ask Claude questions, build structure as you go. Originals never move.">
+<meta name="theme-color" content="#faf7f2">
+<meta name="robots" content="index,follow,max-snippet:-1,max-image-preview:large">
+<link rel="canonical" href="https://margins.app/how-it-works.html">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="apple-touch-icon" sizes="192x192" href="favicon-192.png">
+
+<meta property="og:title" content="How Margins works — a detail walkthrough">
+<meta property="og:description" content="A visual walkthrough of how Margins turns a folder of files into a connected wiki.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://margins.app/how-it-works.html">
+<meta property="og:image" content="https://margins.app/og-image.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,400&display=swap" rel="stylesheet">
+
+<script>
+(function() {
+  try {
+    var stored = localStorage.getItem('margins-theme');
+    var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    var theme = stored || (prefersDark ? 'dark' : 'light');
+    document.documentElement.setAttribute('data-theme', theme);
+  } catch (e) {
+    document.documentElement.setAttribute('data-theme', 'light');
+  }
+})();
+</script>
+
+<style>
+:root {
+  --bg: #faf7f2;
+  --paper: #ffffff;
+  --paper-soft: #f5f1ea;
+  --ink: #1a1612;
+  --ink-2: #4a423a;
+  --ink-3: #847a6b;
+  --ink-4: #b0a99b;
+  --line: #ece6d9;
+  --line-strong: #d8d0bf;
+  --accent: #d63a2f;
+  --accent-soft: rgba(214, 58, 47, 0.10);
+  --accent-line: rgba(214, 58, 47, 0.22);
+  --on-accent: #ffffff;
+  --gold: #f0c14b;
+  --shadow-sm: 0 1px 2px rgba(26,22,18,0.05), 0 4px 12px rgba(26,22,18,0.04);
+}
+[data-theme="dark"] {
+  --bg: #15110d;
+  --paper: #1F1A14;
+  --paper-soft: #1A1612;
+  --ink: #E8E2D6;
+  --ink-2: #C8C2B5;
+  --ink-3: #8A857A;
+  --ink-4: #5C574F;
+  --line: #2E281F;
+  --line-strong: #3D362B;
+  --accent: #E04B3F;
+  --accent-soft: rgba(224, 75, 63, 0.12);
+  --accent-line: rgba(224, 75, 63, 0.28);
+  --on-accent: #1a1612;
+  --gold: #F0C14B;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.20), 0 4px 12px rgba(0,0,0,0.20);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+html, body {
+  margin: 0; padding: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  letter-spacing: -0.005em;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  transition: background-color 240ms ease, color 240ms ease;
+}
+a { color: var(--ink); text-decoration: none; border-bottom: 1px solid var(--accent-line); transition: color 200ms, border-color 200ms; }
+a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+::selection { background: var(--accent); color: var(--on-accent); }
+
+.wrap { max-width: 1080px; margin: 0 auto; padding: 0 1.5rem; }
+
+/* ===== Nav ===== */
+.nav {
+  position: sticky; top: 0; z-index: 50;
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-bottom: 1px solid transparent;
+  transition: border-color 220ms, background-color 220ms;
+}
+.nav.is-scrolled { border-bottom-color: var(--line); }
+.nav-row {
+  display: flex; align-items: center; gap: 1.5rem;
+  padding: 0.9rem 0;
+}
+.brand {
+  display: flex; align-items: center; gap: 0.55rem;
+  border: none; color: var(--ink); font-weight: 600; font-size: 17px;
+}
+.brand:hover { color: var(--accent); border-color: transparent; }
+.brand-mark { width: 28px; height: 28px; color: var(--ink); }
+.nav-links { margin-left: auto; display: flex; gap: 1.4rem; align-items: center; }
+.nav-links a {
+  font-size: 14px; font-weight: 500;
+  color: var(--ink-3); border: none;
+}
+.nav-links a:hover { color: var(--ink); }
+.nav-links a.current { color: var(--ink); position: relative; }
+.nav-links a.current::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: -3px;
+  height: 1px; background: var(--ink);
+}
+.theme-toggle {
+  width: 32px; height: 32px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: color 200ms, border-color 200ms;
+}
+.theme-toggle:hover { color: var(--ink); border-color: var(--ink-3); }
+.theme-toggle svg { width: 16px; height: 16px; }
+.theme-toggle .icon-sun { display: none; }
+.theme-toggle .icon-moon { display: block; }
+[data-theme="dark"] .theme-toggle .icon-sun { display: block; }
+[data-theme="dark"] .theme-toggle .icon-moon { display: none; }
+
+/* ===== Hero ===== */
+.detail-hero {
+  padding: 3.5rem 0 2rem;
+  border-bottom: 1px solid var(--line);
+}
+.eyebrow {
+  font-size: 12px; font-weight: 600;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 0.85rem;
+}
+h1.title {
+  font-family: 'Newsreader', Georgia, "Times New Roman", serif;
+  font-size: clamp(34px, 4.4vw, 52px);
+  font-weight: 500;
+  letter-spacing: -0.018em;
+  line-height: 1.08;
+  margin: 0 0 1.25rem;
+  max-width: 18ch;
+}
+h1.title em { font-style: italic; color: var(--accent); }
+.lede {
+  font-family: 'Newsreader', Georgia, serif;
+  font-size: clamp(19px, 2vw, 22px);
+  line-height: 1.5;
+  max-width: 38em;
+  color: var(--ink-2);
+  font-weight: 400;
+  margin: 0;
+}
+
+/* ===== Sections ===== */
+.section { padding: 3rem 0 0.5rem; }
+.section.alt { background: var(--paper-soft); }
+h2 {
+  font-family: 'Newsreader', Georgia, serif;
+  font-size: clamp(26px, 2.8vw, 34px);
+  font-weight: 500;
+  letter-spacing: -0.012em;
+  line-height: 1.15;
+  margin: 0 0 0.5rem;
+  display: flex; align-items: baseline; gap: 0.7rem;
+}
+h2 .num {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1.6rem; height: 1.6rem;
+  background: var(--ink); color: var(--bg);
+  border-radius: 50%;
+  font-family: 'Manrope', sans-serif;
+  font-size: 0.78rem; font-weight: 700;
+  flex: 0 0 1.6rem;
+  position: relative; top: -3px;
+}
+.section-sub {
+  color: var(--ink-2);
+  margin: 0 0 1.5rem;
+  font-size: 1rem;
+  max-width: 56ch;
+}
+
+/* ===== Callout ===== */
+.callout {
+  background: var(--accent-soft);
+  border-left: 3px solid var(--accent);
+  padding: 1rem 1.25rem;
+  margin: 1.5rem 0;
+  border-radius: 0 4px 4px 0;
+}
+.callout strong {
+  display: block;
+  font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--accent); font-weight: 700;
+  margin-bottom: 0.4rem;
+}
+.callout p { margin: 0; font-size: 0.96rem; }
+.callout code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.86em; color: var(--accent); }
+
+/* ===== Tree ===== */
+.tree {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.85rem;
+  line-height: 1.75;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 1.25rem 1.5rem;
+  overflow-x: auto;
+  box-shadow: var(--shadow-sm);
+}
+.tree .row { display: flex; gap: 1.5rem; align-items: baseline; white-space: nowrap; }
+.tree .path { color: var(--ink); }
+.tree .meta {
+  color: var(--ink-3);
+  font-family: 'Manrope', sans-serif;
+  font-size: 0.78rem;
+  font-style: italic;
+}
+.tree .accent { color: var(--accent); font-weight: 600; }
+.tree .dim { color: var(--ink-4); }
+
+/* ===== Three-pane flow ===== */
+.flow {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 1rem;
+  margin: 1.25rem 0 0.5rem;
+}
+.lane {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 1.1rem 1.25rem;
+  box-shadow: var(--shadow-sm);
+}
+.lane h4 {
+  margin: 0 0 0.7rem;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 700;
+}
+.lane ol { margin: 0; padding-left: 1.2rem; font-size: 0.93rem; }
+.lane li { margin-bottom: 0.55rem; }
+.lane code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.82rem;
+  background: var(--paper-soft);
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  color: var(--accent);
+}
+
+/* ===== Connection diagram ===== */
+.web-fig {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 1.5rem;
+  overflow-x: auto;
+  box-shadow: var(--shadow-sm);
+}
+.web-fig svg { width: 100%; height: auto; display: block; min-width: 920px; }
+.web-fig text { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+[data-theme="dark"] .web-fig .raw-box { fill: var(--paper-soft); stroke: var(--ink-4); }
+[data-theme="dark"] .web-fig .raw-text { fill: var(--ink); }
+[data-theme="dark"] .web-fig .raw-meta { fill: var(--ink-3); }
+[data-theme="dark"] .web-fig .src-box { fill: var(--paper-soft); stroke: var(--accent); }
+[data-theme="dark"] .web-fig .src-text { fill: var(--ink); }
+[data-theme="dark"] .web-fig .src-meta { fill: var(--ink-3); }
+[data-theme="dark"] .web-fig .hub-box { fill: var(--paper); stroke: var(--ink); }
+[data-theme="dark"] .web-fig .hub-text { fill: var(--ink); }
+[data-theme="dark"] .web-fig .hub-meta { fill: var(--ink-3); }
+[data-theme="dark"] .web-fig .arrow-raw { stroke: var(--ink-4); }
+[data-theme="dark"] .web-fig .arrow-link { stroke: var(--accent); }
+[data-theme="dark"] .web-fig .legend-h { fill: var(--ink); }
+[data-theme="dark"] .web-fig .legend { fill: var(--ink-3); }
+
+/* ===== Timeline ===== */
+.timeline {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  margin: 1.25rem 0;
+}
+.tcard {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 1.1rem 1.2rem;
+  border-top: 3px solid var(--ink);
+  box-shadow: var(--shadow-sm);
+}
+.tcard .when {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-weight: 700;
+  margin-bottom: 0.45rem;
+}
+.tcard h5 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  font-family: 'Manrope', sans-serif;
+}
+.tcard p { font-size: 0.88rem; margin: 0; color: var(--ink-2); }
+.tcard .stats {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.76rem;
+  color: var(--ink-3);
+  margin-top: 0.7rem;
+  line-height: 1.5;
+  padding-top: 0.6rem;
+  border-top: 1px dashed var(--line);
+}
+
+/* ===== Tool table ===== */
+table.tools {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.25rem 0;
+  font-size: 0.93rem;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+table.tools th, table.tools td {
+  text-align: left;
+  padding: 0.75rem 0.95rem;
+  vertical-align: top;
+  border-bottom: 1px solid var(--line);
+}
+table.tools th {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-weight: 700;
+  background: var(--paper-soft);
+}
+table.tools tr:last-child td { border-bottom: none; }
+table.tools td code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.84rem;
+  color: var(--accent);
+}
+table.tools .group td {
+  background: var(--paper-soft);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* ===== Before/After states ===== */
+.states {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin: 1.25rem 0;
+}
+.state {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 1.2rem 1.4rem;
+  box-shadow: var(--shadow-sm);
+}
+.state h5 {
+  margin: 0 0 0.8rem;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-weight: 700;
+}
+.state .stat {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.85rem;
+  padding: 0.45rem 0;
+  border-bottom: 1px dashed var(--line);
+}
+.state .stat:last-child { border-bottom: none; }
+.state .stat span:last-child { color: var(--accent); font-weight: 600; text-align: right; }
+
+ul.guarantees { list-style: none; padding: 0; margin: 1rem 0 0; }
+ul.guarantees li {
+  padding: 0.8rem 0 0.8rem 1.5rem;
+  border-bottom: 1px solid var(--line);
+  position: relative;
+  font-size: 0.97rem;
+  color: var(--ink-2);
+}
+ul.guarantees li:last-child { border-bottom: none; }
+ul.guarantees li::before {
+  content: ""; position: absolute; left: 0; top: 1.4rem;
+  width: 10px; height: 1px; background: var(--accent);
+}
+ul.guarantees strong { font-weight: 600; color: var(--ink); }
+ul.guarantees code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.86em; color: var(--accent); }
+
+/* ===== CTA block ===== */
+.cta-block {
+  margin: 3.5rem 0 1rem;
+  padding: 2.5rem 2rem;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  text-align: center;
+  box-shadow: var(--shadow-sm);
+}
+.cta-block h3 {
+  font-family: 'Newsreader', Georgia, serif;
+  font-size: 1.7rem;
+  font-weight: 500;
+  margin: 0 0 0.5rem;
+  letter-spacing: -0.01em;
+}
+.cta-block p { margin: 0 0 1.5rem; color: var(--ink-2); }
+.btn {
+  display: inline-block;
+  background: var(--accent);
+  color: var(--on-accent);
+  padding: 12px 24px;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 15px;
+  font-family: inherit;
+  border: 1px solid var(--accent);
+  transition: opacity 200ms, transform 100ms;
+  letter-spacing: -0.005em;
+}
+.btn:hover { color: var(--on-accent); border-color: var(--accent); opacity: 0.92; }
+.btn:active { transform: translateY(1px); }
+.btn .arrow { display: inline-block; margin-left: 0.35rem; transition: transform 200ms; }
+.btn:hover .arrow { transform: translateX(2px); }
+
+footer.site-footer {
+  margin-top: 4rem;
+  padding: 2rem 0;
+  border-top: 1px solid var(--line);
+  font-size: 0.85rem;
+  color: var(--ink-3);
+}
+footer.site-footer .wrap { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+footer.site-footer a { color: var(--ink-3); border: none; }
+footer.site-footer a:hover { color: var(--accent); }
+
+@media (max-width: 800px) {
+  .flow { grid-template-columns: 1fr; }
+  .timeline { grid-template-columns: 1fr 1fr; }
+  .states { grid-template-columns: 1fr; }
+  .nav-links { gap: 0.9rem; }
+  .nav-links a:nth-child(2),
+  .nav-links a:nth-child(3) { display: none; }
+}
+</style>
+</head>
+<body>
+
+<nav class="nav" id="nav">
+  <div class="wrap">
+    <div class="nav-row">
+      <a href="/" class="brand">
+        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+          <rect x="4" y="4" width="3" height="24" fill="currentColor"/>
+          <circle cx="20" cy="16" r="11" fill="#f0c14b"/>
+          <circle cx="20" cy="16" r="7" fill="#d63a2f"/>
+          <circle cx="20" cy="16" r="2.5" fill="currentColor"/>
+        </svg>
+        <span>Margins</span>
+      </a>
+      <div class="nav-links">
+        <a href="/#how">How it works</a>
+        <a href="/#demo">Demo</a>
+        <a href="/#compare">Compare</a>
+        <a href="/how-it-works.html" class="current">Detail</a>
+        <a href="/#get-started">Install</a>
+        <a href="https://github.com/cflorczyk9/Margins">GitHub</a>
+        <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode" title="Toggle theme">
+          <svg class="icon-moon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M13.5 9.4a5.5 5.5 0 0 1-7-7 5.5 5.5 0 1 0 7 7z"/>
+          </svg>
+          <svg class="icon-sun" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="8" cy="8" r="3.2"/>
+            <line x1="8" y1="1.5" x2="8" y2="3"/>
+            <line x1="8" y1="13" x2="8" y2="14.5"/>
+            <line x1="1.5" y1="8" x2="3" y2="8"/>
+            <line x1="13" y1="8" x2="14.5" y2="8"/>
+            <line x1="3.4" y1="3.4" x2="4.4" y2="4.4"/>
+            <line x1="11.6" y1="11.6" x2="12.6" y2="12.6"/>
+            <line x1="3.4" y1="12.6" x2="4.4" y2="11.6"/>
+            <line x1="11.6" y1="4.4" x2="12.6" y2="3.4"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<header class="detail-hero">
+  <div class="wrap">
+    <p class="eyebrow">How it works — detail</p>
+    <h1 class="title">From a folder of files to a <em>connected wiki</em>.</h1>
+    <p class="lede">Margins is a Node process that connects Claude Desktop to a folder on your disk. You drop documents into the folder, ask Claude questions, and let Claude build a wiki underneath your originals as you go. The originals never move. The wiki grows file by file, each one accepted by you.</p>
+  </div>
+</header>
+
+<section class="section">
+  <div class="wrap">
+    <h2><span class="num">1</span>What your folder looks like</h2>
+    <p class="section-sub">A Margins vault is just a regular folder on your disk. After install and a few compiles, it has this shape. The originals you dropped in stay where you put them. Everything in <strong style="color:var(--accent)">wiki/</strong> is generated by Claude through Margins, one accepted proposal at a time.</p>
+
+    <div class="tree">
+      <div class="row"><span class="path">~/Documents/my-vault/</span><span class="meta">the folder you point Margins at</span></div>
+      <div class="row"><span class="path">├── CLAUDE.md</span><span class="meta">starter operator instructions scaffolded at install</span></div>
+      <div class="row"><span class="path">├── operator-manual.md</span><span class="meta">human-readable rules for the wiki</span></div>
+      <div class="row"><span class="path">├── raw/</span><span class="meta">conventional inbox for files you want to file later</span></div>
+      <div class="row"><span class="path">│&nbsp;&nbsp; ├── 2026-04-board-meeting.docx</span><span class="meta">original, untouched</span></div>
+      <div class="row"><span class="path">│&nbsp;&nbsp; ├── q3-strategy-doc.pdf</span><span class="meta">original, untouched</span></div>
+      <div class="row"><span class="path">│&nbsp;&nbsp; └── product-update-mar.md</span><span class="meta">original, untouched</span></div>
+      <div class="row"><span class="path">├── <span class="dim">// files can also live anywhere else in the vault</span></span></div>
+      <div class="row"><span class="path">├── meetings/march-7-call.md</span><span class="meta">indexed if MARGINS_INGEST_ROOTS includes it</span></div>
+      <div class="row"><span class="path">│</span></div>
+      <div class="row"><span class="path">├── <span class="accent">wiki/</span></span><span class="meta">the structured layer Margins builds</span></div>
+      <div class="row"><span class="path">│&nbsp;&nbsp; ├── <span class="accent">sources/</span></span><span class="meta">one page per compiled file</span></div>
+      <div class="row"><span class="path">│&nbsp;&nbsp; │&nbsp;&nbsp; ├── source-2026-04-board-meeting.md</span></div>
+      <div class="row"><span class="path">│&nbsp;&nbsp; │&nbsp;&nbsp; ├── source-q3-strategy-doc.md</span></div>
+      <div class="row"><span class="path">│&nbsp;&nbsp; │&nbsp;&nbsp; └── source-product-update-mar.md</span></div>
+      <div class="row"><span class="path">│&nbsp;&nbsp; ├── <span class="accent">entities/</span></span><span class="meta">people, companies, places, projects</span></div>
+      <div class="row"><span class="path">│&nbsp;&nbsp; │&nbsp;&nbsp; ├── maya-chen.md</span></div>
+      <div class="row"><span class="path">│&nbsp;&nbsp; │&nbsp;&nbsp; └── atlas-project.md</span></div>
+      <div class="row"><span class="path">│&nbsp;&nbsp; ├── <span class="accent">concepts/</span></span><span class="meta">durable ideas across multiple sources</span></div>
+      <div class="row"><span class="path">│&nbsp;&nbsp; │&nbsp;&nbsp; └── release-cadence.md</span></div>
+      <div class="row"><span class="path">│&nbsp;&nbsp; ├── ingest-tracker.md</span><span class="meta">auto-updated row per accepted source page</span></div>
+      <div class="row"><span class="path">│&nbsp;&nbsp; └── index.md</span><span class="meta">a navigable map of the vault</span></div>
+      <div class="row"><span class="path">│</span></div>
+      <div class="row"><span class="path">├── proposed/</span><span class="meta">staging — pending writes waiting for your accept</span></div>
+      <div class="row"><span class="path">│&nbsp;&nbsp; └── wiki/sources/source-new-file.md</span></div>
+      <div class="row"><span class="path">│</span></div>
+      <div class="row"><span class="path">└── .margins/</span><span class="meta">small hidden state: preferences, telemetry consent</span></div>
+    </div>
+
+    <div class="callout">
+      <strong>The principle</strong>
+      <p>Filesystem is truth. Frontmatter is the contract between source pages and the originals they describe. Margins is a local Node process that reads, suggests, and writes — but every write is staged in <code>proposed/</code> first. You approve. Then it lands.</p>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="wrap">
+    <h2><span class="num">2</span>How Margins interacts with the folder</h2>
+    <p class="section-sub">When you talk to Claude in Claude Desktop, Claude has tools that read and write to your vault. Here is what happens when you say "compile this PDF" or "what did I learn from those meetings?"</p>
+
+    <div class="flow">
+      <div class="lane">
+        <h4>You, in Claude Desktop</h4>
+        <ol>
+          <li>"Help me file the PDF I just dropped into <code>raw/</code>"</li>
+          <li>Claude shows what it found and asks for any context you want included.</li>
+          <li>You confirm. Claude calls Margins.</li>
+          <li>Claude returns: "Staged 1 proposal. Want me to walk you through it?"</li>
+          <li>You read the proposal. Accept.</li>
+        </ol>
+      </div>
+      <div class="lane">
+        <h4>Claude, calling Margins tools</h4>
+        <ol>
+          <li><code>margins_start</code> runs on every new conversation. Returns vault stats, unprocessed file count, and recent preferences.</li>
+          <li><code>list_unprocessed</code> returns the PDF you just dropped.</li>
+          <li><code>read_page</code> on the PDF. Margins extracts text from the binary.</li>
+          <li><code>propose_compile_from_raw</code> with the path and a summary Claude generates.</li>
+          <li><code>resolve_proposal</code> with action=accept after your approval.</li>
+        </ol>
+      </div>
+      <div class="lane">
+        <h4>Margins, on disk</h4>
+        <ol>
+          <li>Scans the configured ingest roots for files without a source page yet.</li>
+          <li>Extracts text from PDF, DOCX, XLSX, EPUB, email, and more.</li>
+          <li>Runs the compiler. Writes a structured markdown page to <code>proposed/wiki/sources/...</code></li>
+          <li>On accept: rename from <code>proposed/</code> into the vault. Append a row to <code>ingest-tracker.md</code>.</li>
+          <li>Original file stays put.</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="wrap">
+    <h2><span class="num">3</span>How the connected wiki forms</h2>
+    <p class="section-sub">The magic isn't the source pages themselves. It's that as multiple source pages accumulate, the same names and ideas start to recur. Margins surfaces those patterns. You accept proposals to build entity and concept pages. Those pages become hubs. Connections compound.</p>
+
+    <div class="web-fig">
+<svg viewBox="0 0 1040 400" xmlns="http://www.w3.org/2000/svg" aria-labelledby="wiki-graph-title">
+  <title id="wiki-graph-title">Raw files compile into source pages, which link into shared entity and concept hubs.</title>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#847a6b"/>
+    </marker>
+    <marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#d63a2f"/>
+    </marker>
+  </defs>
+
+  <!-- column headers -->
+  <g font-family="Manrope, sans-serif" font-size="11" font-weight="700" letter-spacing="0.08em" fill="#847a6b" class="legend-h">
+    <text x="20" y="22" text-transform="uppercase">RAW FILES</text>
+    <text x="290" y="22" text-transform="uppercase">SOURCE PAGES</text>
+    <text x="680" y="22" text-transform="uppercase">ENTITIES &amp; CONCEPTS</text>
+  </g>
+
+  <!-- raw files (col 1) -->
+  <g font-size="12" fill="#1a1612">
+    <rect class="raw-box" x="20" y="50" width="240" height="44" fill="#ffffff" stroke="#847a6b"/>
+    <text class="raw-text" x="30" y="68">raw/board-meeting.docx</text>
+    <text class="raw-meta" x="30" y="84" fill="#847a6b" font-size="10">original, untouched</text>
+
+    <rect class="raw-box" x="20" y="115" width="240" height="44" fill="#ffffff" stroke="#847a6b"/>
+    <text class="raw-text" x="30" y="133">raw/q3-strategy.pdf</text>
+    <text class="raw-meta" x="30" y="149" fill="#847a6b" font-size="10">original, untouched</text>
+
+    <rect class="raw-box" x="20" y="180" width="240" height="44" fill="#ffffff" stroke="#847a6b"/>
+    <text class="raw-text" x="30" y="198">raw/march-email.eml</text>
+    <text class="raw-meta" x="30" y="214" fill="#847a6b" font-size="10">original, untouched</text>
+  </g>
+
+  <!-- source pages (col 2) -->
+  <g font-size="11" fill="#1a1612">
+    <rect class="src-box" x="290" y="45" width="370" height="54" fill="#f5f1ea" stroke="#d63a2f"/>
+    <text class="src-text" x="300" y="63" font-weight="600">source-board-meeting.md</text>
+    <text class="src-meta" x="300" y="79" font-size="10" fill="#847a6b">raw_file: raw/board-meeting.docx</text>
+    <text class="src-meta" x="300" y="93" font-size="10" fill="#847a6b">mentions: [[maya-chen]], [[atlas-project]]</text>
+
+    <rect class="src-box" x="290" y="110" width="370" height="54" fill="#f5f1ea" stroke="#d63a2f"/>
+    <text class="src-text" x="300" y="128" font-weight="600">source-q3-strategy.md</text>
+    <text class="src-meta" x="300" y="144" font-size="10" fill="#847a6b">raw_file: raw/q3-strategy.pdf</text>
+    <text class="src-meta" x="300" y="158" font-size="10" fill="#847a6b">mentions: [[maya-chen]], [[release-cadence]]</text>
+
+    <rect class="src-box" x="290" y="175" width="370" height="54" fill="#f5f1ea" stroke="#d63a2f"/>
+    <text class="src-text" x="300" y="193" font-weight="600">source-march-email.md</text>
+    <text class="src-meta" x="300" y="209" font-size="10" fill="#847a6b">raw_file: raw/march-email.eml</text>
+    <text class="src-meta" x="300" y="223" font-size="10" fill="#847a6b">mentions: [[atlas-project]], [[release-cadence]]</text>
+  </g>
+
+  <!-- entity / concept hubs (col 3) -->
+  <g font-size="11" fill="#1a1612">
+    <rect class="hub-box" x="690" y="40" width="320" height="64" fill="#ffffff" stroke="#1a1612" stroke-width="1.5"/>
+    <text class="hub-text" x="700" y="60" font-weight="600">entities/maya-chen.md</text>
+    <text class="hub-meta" x="700" y="78" font-size="10" fill="#847a6b">Source Log:</text>
+    <text class="hub-meta" x="700" y="93" font-size="10" fill="#847a6b">  ← source-board-meeting</text>
+    <text class="hub-meta" x="700" y="105" font-size="10" fill="#847a6b">  ← source-q3-strategy</text>
+
+    <rect class="hub-box" x="690" y="120" width="320" height="64" fill="#ffffff" stroke="#1a1612" stroke-width="1.5"/>
+    <text class="hub-text" x="700" y="140" font-weight="600">entities/atlas-project.md</text>
+    <text class="hub-meta" x="700" y="158" font-size="10" fill="#847a6b">Source Log:</text>
+    <text class="hub-meta" x="700" y="173" font-size="10" fill="#847a6b">  ← source-board-meeting</text>
+    <text class="hub-meta" x="700" y="185" font-size="10" fill="#847a6b">  ← source-march-email</text>
+
+    <rect class="hub-box" x="690" y="200" width="320" height="64" fill="#ffffff" stroke="#1a1612" stroke-width="1.5"/>
+    <text class="hub-text" x="700" y="220" font-weight="600">concepts/release-cadence.md</text>
+    <text class="hub-meta" x="700" y="238" font-size="10" fill="#847a6b">Source Log:</text>
+    <text class="hub-meta" x="700" y="253" font-size="10" fill="#847a6b">  ← source-q3-strategy</text>
+    <text class="hub-meta" x="700" y="265" font-size="10" fill="#847a6b">  ← source-march-email</text>
+  </g>
+
+  <!-- arrows raw → source -->
+  <g class="arrow-raw" stroke="#847a6b" fill="none" stroke-width="1.3">
+    <path d="M 260 72 L 290 72" marker-end="url(#arrow)"/>
+    <path d="M 260 137 L 290 137" marker-end="url(#arrow)"/>
+    <path d="M 260 202 L 290 202" marker-end="url(#arrow)"/>
+  </g>
+
+  <!-- arrows source → hub -->
+  <g class="arrow-link" stroke="#d63a2f" fill="none" stroke-width="1.2" opacity="0.65">
+    <path d="M 660 72 Q 675 60 690 72" marker-end="url(#arrow-red)"/>
+    <path d="M 660 137 Q 675 105 690 78" marker-end="url(#arrow-red)"/>
+    <path d="M 660 72 Q 675 105 690 145" marker-end="url(#arrow-red)"/>
+    <path d="M 660 202 Q 675 175 690 155" marker-end="url(#arrow-red)"/>
+    <path d="M 660 137 Q 675 175 690 225" marker-end="url(#arrow-red)"/>
+    <path d="M 660 202 Q 675 220 690 232" marker-end="url(#arrow-red)"/>
+  </g>
+
+  <!-- legend -->
+  <g font-family="Manrope, sans-serif" font-size="11">
+    <text class="legend-h" x="20" y="310" font-weight="600" fill="#1a1612">Left to right:</text>
+    <text class="legend" x="20" y="328" fill="#4a423a">1. Raw files stay in place. Margins never moves or edits them.</text>
+    <text class="legend" x="20" y="346" fill="#4a423a">2. Compile produces one source page per raw file, with wiki-links in the body.</text>
+    <text class="legend" x="20" y="364" fill="#4a423a">3. Recurring entities and concepts become hubs that link back to every source that mentions them.</text>
+    <text class="legend" x="20" y="384" fill="#847a6b" font-style="italic">Asking "what do I know about Maya?" reads maya-chen.md and follows its source-log links.</text>
+  </g>
+</svg>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="wrap">
+    <h2><span class="num">4</span>The full toolkit Claude has</h2>
+    <p class="section-sub">Claude has 17 tools in Margins. You never call them directly. You ask Claude things in plain language and Claude picks the right tool. Useful to know what's available so you can ask for it.</p>
+
+    <table class="tools">
+      <thead>
+        <tr><th style="width:24%">Tool</th><th style="width:30%">What you'd ask Claude</th><th>What it does</th></tr>
+      </thead>
+      <tbody>
+        <tr class="group"><td colspan="3">Read the vault</td></tr>
+        <tr><td><code>margins_start</code></td><td>"What's in my vault?"</td><td>Called automatically at the start of every conversation. Returns folder stats, unprocessed files, recent preferences, and a vault primer.</td></tr>
+        <tr><td><code>search_vault</code></td><td>"Find the thing I wrote about X"</td><td>Full-text and filename search across the entire vault, including binaries via text extraction.</td></tr>
+        <tr><td><code>read_page</code></td><td>"Read the strategy doc"</td><td>Pulls one file by path. Extracts text from PDFs, DOCX, and more.</td></tr>
+        <tr><td><code>get_backlinks</code></td><td>"Who mentioned this person?"</td><td>Finds every page that wiki-links to a given slug.</td></tr>
+        <tr><td><code>list_recent</code></td><td>"What did I update yesterday?"</td><td>Most recently modified files.</td></tr>
+        <tr><td><code>list_unprocessed</code></td><td>"What haven't I filed yet?"</td><td>Files in your vault that don't have a source page yet.</td></tr>
+        <tr class="group"><td colspan="3">Build the wiki — propose, then accept</td></tr>
+        <tr><td><code>propose_compile_from_raw</code></td><td>"File this PDF as a source"</td><td>Reads a file, runs the compiler, stages a structured source page. Idempotent — won't double-stage.</td></tr>
+        <tr><td><code>propose_page</code></td><td>"Draft an entity page for this person"</td><td>Stages a new wiki page at the path you choose.</td></tr>
+        <tr><td><code>propose_edit</code></td><td>"Add this fact to that page"</td><td>Stages a string-replacement edit on an existing page.</td></tr>
+        <tr><td><code>append_to</code></td><td>"Append this to today's daily note"</td><td>Stages an append. Creates the page if it doesn't exist.</td></tr>
+        <tr><td><code>propose_wikilinks</code></td><td>"Link this page to everything it mentions"</td><td>Suggests wiki-link additions where plain text matches existing pages.</td></tr>
+        <tr class="group"><td colspan="3">Review staged changes</td></tr>
+        <tr><td><code>list_proposals</code></td><td>"Show me what's pending"</td><td>Lists every staged proposal with destination path and size.</td></tr>
+        <tr><td><code>resolve_proposal</code></td><td>"Accept that one"</td><td>Accept moves the proposal into the live vault and auto-appends a tracker row. Reject deletes it.</td></tr>
+        <tr class="group"><td colspan="3">Preferences and onboarding</td></tr>
+        <tr><td><code>record_preference</code></td><td>"Always file my meetings as projects"</td><td>Stores a one-line rule Margins re-reads at the start of every conversation.</td></tr>
+        <tr><td><code>recall_preferences</code></td><td>(used by Claude automatically)</td><td>Returns your stored preferences so proposals follow them.</td></tr>
+        <tr><td><code>record_telemetry_consent</code></td><td>(asked once at install)</td><td>Records whether you want to share anonymous usage data.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="section">
+  <div class="wrap">
+    <h2><span class="num">5</span>The shape of your first month</h2>
+    <p class="section-sub">The wiki doesn't appear at install. It grows file by file as you accept proposals. Compounding kicks in around the time you have ~15 source pages and the first entity hubs start naming patterns Claude can see across them.</p>
+
+    <div class="timeline">
+      <div class="tcard">
+        <div class="when">Install + Day 1</div>
+        <h5>Read works immediately</h5>
+        <p>Point Margins at your folder. Open Claude Desktop. Ask questions about your files. Claude reads and quotes from them. No structure required yet.</p>
+        <div class="stats">raw/: any<br>wiki/: empty<br>source pages: 0<br>entities: 0</div>
+      </div>
+      <div class="tcard">
+        <div class="when">Days 2-7</div>
+        <h5>First compiles</h5>
+        <p>Claude offers to file the most substantive files. You accept the first batch one at a time. Each accept adds a structured source page and updates the tracker.</p>
+        <div class="stats">source pages: 5-10<br>entities: 0-2<br>tracker rows: matching<br>list_unprocessed: shrinking</div>
+      </div>
+      <div class="tcard">
+        <div class="when">Weeks 2-4</div>
+        <h5>Hubs emerge</h5>
+        <p>Recurring names start showing up across 3+ sources. Claude proposes entity pages for the load-bearing ones. You accept what matters. Concepts follow the same path.</p>
+        <div class="stats">source pages: 15-30<br>entities: 5-10<br>concepts: 2-4<br>backlinks: navigable</div>
+      </div>
+      <div class="tcard">
+        <div class="when">Month 2+</div>
+        <h5>Compounding</h5>
+        <p>"What do I know about this topic?" returns the entity page and its source log instead of re-reading raw files. New sources auto-link to existing entities.</p>
+        <div class="stats">source pages: 50+<br>entities: 15-25<br>full graph<br>read → search → traverse</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="wrap">
+    <h2><span class="num">6</span>Before and after, at 30 days</h2>
+    <div class="states">
+      <div class="state">
+        <h5>Before Margins — just a folder</h5>
+        <div class="stat"><span>Files</span><span>50</span></div>
+        <div class="stat"><span>Structure</span><span>none</span></div>
+        <div class="stat"><span>"What do I know about X?"</span><span>open and skim each file</span></div>
+        <div class="stat"><span>"What changed this week?"</span><span>sort by mtime, open each</span></div>
+        <div class="stat"><span>Connections between docs</span><span>only in your head</span></div>
+        <div class="stat"><span>Time to answer</span><span>minutes to hours</span></div>
+      </div>
+      <div class="state">
+        <h5>After 30 days of Margins</h5>
+        <div class="stat"><span>Files (raw)</span><span>50, untouched</span></div>
+        <div class="stat"><span>Source pages</span><span>~30</span></div>
+        <div class="stat"><span>"What do I know about X?"</span><span>read the entity page</span></div>
+        <div class="stat"><span>"What changed this week?"</span><span>list_recent + tracker</span></div>
+        <div class="stat"><span>Connections between docs</span><span>navigable via [[wiki links]]</span></div>
+        <div class="stat"><span>Time to answer</span><span>seconds</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="wrap">
+    <h2><span class="num">7</span>What stays under your control</h2>
+    <ul class="guarantees">
+      <li><strong>Originals never move or change.</strong> Margins reads them. The compiler extracts text into a separate file. Your raw files are evidence, preserved exactly as you dropped them.</li>
+      <li><strong>Every write is a proposal.</strong> Claude stages changes in <code>proposed/</code>. Nothing lands in your vault until you say accept.</li>
+      <li><strong>The wiki layer is yours to edit.</strong> Open it in Obsidian, edit pages directly, rearrange folders. Margins re-indexes whatever you do next time it scans.</li>
+      <li><strong>The schema is opt-in.</strong> If you only ever use search and read, Margins works as a read-only assistant. The wiki forms only when you compile.</li>
+      <li><strong>Discovery is configurable.</strong> By default Margins scans <code>raw/</code> for unprocessed files. Set <code>MARGINS_INGEST_ROOTS</code> to include other folders if you want the inbox spread across your vault.</li>
+    </ul>
+
+    <div class="cta-block">
+      <h3>Try it on your own folder</h3>
+      <p>One install command. Runs locally. No API key.</p>
+      <a class="btn" href="/#get-started">Get started <span class="arrow">→</span></a>
+    </div>
+  </div>
+</section>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <span>Margins — a free, open-source MCP server for Claude Desktop and Claude Code.</span>
+    <span><a href="https://github.com/cflorczyk9/Margins">GitHub</a></span>
+  </div>
+</footer>
+
+<script>
+// Theme toggle
+(function() {
+  var btn = document.getElementById('theme-toggle');
+  if (!btn) return;
+  btn.addEventListener('click', function() {
+    var current = document.documentElement.getAttribute('data-theme') || 'light';
+    var next = current === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem('margins-theme', next); } catch (e) {}
+  });
+})();
+
+// Nav scroll shadow
+window.addEventListener('scroll', function() {
+  var nav = document.getElementById('nav');
+  if (window.scrollY > 4) nav.classList.add('is-scrolled');
+  else nav.classList.remove('is-scrolled');
+}, { passive: true });
+</script>
+
+</body>
+</html>
