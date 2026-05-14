@@ -43,8 +43,12 @@ export async function buildVaultIndex(vault, options = {}) {
     let parsed;
     try {
       parsed = parseFrontmatter(body);
-    } catch {
-      parseFailures.push(rel);
+    } catch (err) {
+      // Parse failure on a file that has frontmatter markers — surface to
+      // the doctor so the user knows their YAML is broken. We don't try to
+      // treat it as a candidate because the file clearly intended to be a
+      // structured page.
+      parseFailures.push({ path: rel, error: err.message });
       continue;
     }
 
@@ -59,6 +63,7 @@ export async function buildVaultIndex(vault, options = {}) {
 
     if (!isInIngestRoot(rel, ingestRoots)) continue;
     if (isInSkipDir(rel)) continue;
+    if (SKIP_CANDIDATE_BASENAMES.has(rel.split("/").pop())) continue;
 
     candidates.push(rel);
   }
@@ -175,6 +180,8 @@ export async function listRawFolderFiles(vault) {
   return entries
     .filter((e) => e.isFile())
     .map((e) => e.name)
-    .filter((n) => !n.startsWith(".") && n !== "README.md")
+    .filter((n) => !SKIP_CANDIDATE_BASENAMES.has(n) && !n.startsWith("."))
     .filter((n) => isSupportedDocumentPath(n));
 }
+
+const SKIP_CANDIDATE_BASENAMES = new Set(["README.md", "readme.md", "LICENSE", "LICENSE.md"]);

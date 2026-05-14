@@ -55,10 +55,23 @@ test("returns null when frontmatter is unterminated", () => {
   assert.equal(parseFrontmatter("---\ntype: source\nno closing dashes"), null);
 });
 
-test("returns null on malformed YAML", () => {
-  // tab-indent inside YAML is an error in strict mode; js-yaml may tolerate.
-  // A deliberately-broken case: unclosed flow sequence.
-  assert.equal(parseFrontmatter("---\nraw_files: [foo, bar\n---\n"), null);
+test("throws on malformed YAML that the permissive fallback can't recover", () => {
+  // Unclosed flow sequence — neither strict YAML nor permissive extract
+  // can find type/raw_file/raw_files/source. Should throw so the doctor
+  // surfaces it as a parse failure (silent skip was a v0.12.1 bug).
+  assert.throws(() => parseFrontmatter("---\nraw_files: [foo, bar\n---\n"));
+});
+
+test("permissive fallback recovers raw_file when summary breaks strict YAML", () => {
+  // Common real-world bug: unquoted summary with 'colon space' makes
+  // js-yaml fail. Margins should still see the raw_file and not silently
+  // drop the page.
+  const body = `---\ntype: source\nsummary: Key terms: this colon would break strict yaml\nraw_file: raw/foo.md\n---\nbody\n`;
+  const r = parseFrontmatter(body);
+  assert.ok(r, "should recover via permissive fallback");
+  assert.equal(r.data.type, "source");
+  assert.equal(r.data.raw_file, "raw/foo.md");
+  assert.equal(r.recovered, true);
 });
 
 test("extractRawFileRefs pulls from singular, plural, and legacy 'source' keys", () => {
