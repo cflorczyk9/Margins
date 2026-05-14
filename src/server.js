@@ -58,7 +58,7 @@ TOOLS:
 - Read: search_vault, read_page, list_recent, get_backlinks, list_unprocessed, margins_doctor
 - Propose writes: propose_page, propose_edit, append_to, propose_compile_from_raw
 - Suggest: propose_wikilinks (for A3/B3 vaults with few links)
-- Manage proposals: list_proposals, resolve_proposal
+- Manage proposals: list_proposals, resolve_proposal, margins_reset_proposals
 - Learn: record_preference
 - ChatGPT Deep Research: search, fetch`;
 
@@ -622,6 +622,52 @@ export function buildServer(vault, options = {}) {
           { type: "text", text: `${result.destinationPath}: ${result.action}.` }
         ],
         structuredContent: result
+      };
+    }
+  );
+
+  register(
+    "margins_reset_proposals",
+    {
+      description:
+        "Clear all pending proposals from proposed/. Use when proposals have accumulated from failed Claude sessions, or when the user wants a clean slate. Returns the number of files that would be deleted. Requires confirm=true to actually delete — without confirm, returns a dry-run list. Vault files are never touched; only files under proposed/.",
+      inputSchema: {
+        confirm: z
+          .boolean()
+          .optional()
+          .describe(
+            "Pass true to actually delete the pending proposals. Default false returns a dry-run preview."
+          )
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true }
+    },
+    async ({ confirm }) => {
+      const items = await proposals.listProposals();
+      if (items.length === 0) {
+        return {
+          content: [{ type: "text", text: "No pending proposals to reset." }],
+          structuredContent: { dryRun: !confirm, count: 0, paths: [] }
+        };
+      }
+      const paths = items.map((i) => i.proposalPath);
+      if (!confirm) {
+        const lines = [
+          `Dry run: ${items.length} pending proposal${items.length === 1 ? "" : "s"} would be deleted.`,
+          ...paths.map((p) => `  ${p}`),
+          "",
+          "Re-run margins_reset_proposals with confirm=true to actually delete them."
+        ];
+        return {
+          content: [{ type: "text", text: lines.join("\n") }],
+          structuredContent: { dryRun: true, count: items.length, paths }
+        };
+      }
+      const deleted = await proposals.resetAllProposals();
+      return {
+        content: [
+          { type: "text", text: `Deleted ${deleted.length} pending proposal${deleted.length === 1 ? "" : "s"}.` }
+        ],
+        structuredContent: { dryRun: false, count: deleted.length, paths: deleted }
       };
     }
   );

@@ -4,6 +4,9 @@ import { compileVault } from "./compiler/compiler.js";
 import { extractDocumentText, supportedExtensionsList } from "./document-text.js";
 import { buildVaultIndex } from "./raw-index.js";
 import { canonicalize } from "./paths.js";
+import { hashFile, shortHash } from "./hash.js";
+import { parseFrontmatter, extractRawFileRefs } from "./frontmatter.js";
+import { readFile } from "node:fs/promises";
 
 const MAX_RAW_BYTES = 50 * 1024 * 1024;       // 50MB cap on extraction inputs
 const MIN_MEANINGFUL_CHARS = 20;              // below this, treat as empty (catches image-only PDFs)
@@ -84,6 +87,7 @@ export function createCompile(vault, proposals) {
       }
     }
 
+    const rawSha = await hashFile(absRaw);
     const fullReview = buildReview(review || {}, fileName);
 
     const compiled = compileVault(
@@ -102,7 +106,20 @@ export function createCompile(vault, proposals) {
       );
     }
 
-    const markdown = rewriteRawFileRefs(sourceNode.markdown, fileName, rel);
+    // Slug collision: if another source page already lives at sourceNode.path
+    // and points to a DIFFERENT raw file, append a deterministic hash suffix
+    // so both can coexist. Idempotency check above already handled the
+    // same-raw case.
+    const disambiguatedPath = await disambiguateDestPath(vault, sourceNode.path, rel);
+    if (disambiguatedPath !== sourceNode.path) {
+      sourceNode.path = disambiguatedPath;
+      sourceNode.markdown = sourceNode.markdown.replace(
+        /^# Source: .*$/m,
+        (match) => match
+      );
+    }
+
+    const markdown = rewriteSourceMetadata(sourceNode.markdown, fileName, rel, rawSha, info.size);
 
     const destPath = sourceNode.path;
     const proposalResult = await proposals.proposePage(destPath, markdown, { force });
@@ -110,6 +127,8 @@ export function createCompile(vault, proposals) {
       ...proposalResult,
       status: "proposal-staged",
       rawFile: rel,
+      rawSha256: rawSha,
+      rawSize: info.size,
       title: sourceNode.title,
       bucket: sourceNode.path.split("/")[1] || "sources",
       summary: sourceNode.summary,
@@ -121,18 +140,48 @@ export function createCompile(vault, proposals) {
   return { proposeCompileFromRaw };
 }
 
+async function disambiguateDestPath(vault, candidatePath, currentRawRel) {
+  let destAbs;
+  try {
+    destAbs = vault.resolveInside(candidatePath);
+  } catch {
+    return candidatePath;
+  }
+  let body;
+  try {
+    body = await readFile(destAbs, "utf8");
+  } catch {
+    return candidatePath; // destination doesn't exist, no collision
+  }
+  const parsed = parseFrontmatter(body);
+  if (!parsed) return candidatePath;
+  const existingRefs = extractRawFileRefs(parsed.data).map((r) => canonicalize(r));
+  if (existingRefs.includes(canonicalize(currentRawRel))) return candidatePath; // same raw, idempotent
+  // Collision: different raw wants the same slug. Append short hash of the raw path.
+  const suffix = shortHash(currentRawRel);
+  return candidatePath.replace(/\.md$/i, `-${suffix}.md`);
+}
+
 function resolveSourceRel(rawPath) {
   const trimmed = rawPath.replace(/^\.\//, "");
   if (trimmed.includes("/")) return trimmed;
   return `raw/${trimmed}`;
 }
 
-function rewriteRawFileRefs(markdown, fileName, rel) {
+function rewriteSourceMetadata(markdown, fileName, rel, rawSha, rawSize) {
   const compilerDefault = `raw/${fileName}`;
-  if (rel === compilerDefault) return markdown;
-  return markdown
-    .replace(/^raw_file:\s*"?[^"\n]+"?\s*$/m, `raw_file: ${rel}`)
-    .replace(/Original file:\s*`raw\/[^`]+`/, `Original file: \`${rel}\``);
+  let out = markdown;
+  if (rel !== compilerDefault) {
+    out = out
+      .replace(/^raw_file:\s*"?[^"\n]+"?\s*$/m, `raw_file: ${rel}`)
+      .replace(/Original file:\s*`raw\/[^`]+`/, `Original file: \`${rel}\``);
+  }
+  // Inject raw_sha256 and raw_size after raw_file (always; even when rel matched the default).
+  out = out.replace(
+    /^raw_file:\s*([^\n]+)$/m,
+    `raw_file: $1\nraw_sha256: ${rawSha}\nraw_size: ${rawSize}`
+  );
+  return out;
 }
 
 function buildReview(input, fileName) {

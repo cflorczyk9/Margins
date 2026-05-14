@@ -95,3 +95,36 @@ test("summary reports ingest roots and counts", async () => {
   assert.equal(report.summary.pending, 1);
   assert.deepEqual(report.summary.ingest_roots, ["raw"]);
 });
+
+test("stale-source: source page records a sha that no longer matches raw", async () => {
+  await touch("raw/changes.md", "Original content, with enough body to clear the threshold.");
+  await touch(
+    "wiki/sources/source-changes.md",
+    `---\ntype: source\nraw_file: raw/changes.md\nraw_sha256: 0000000000000000000000000000000000000000000000000000000000000000\nraw_size: 999999\n---\n# Changes\n`
+  );
+  const report = await diagnoseVault(vault);
+  const stale = report.issues.filter((i) => i.kind === "stale-source");
+  assert.equal(stale.length, 1);
+  assert.equal(stale[0].rawFile, "raw/changes.md");
+  assert.equal(stale[0].reason, "size-mismatch");
+});
+
+test("clean vault with matching raw_sha256 reports no staleness", async () => {
+  // Compile via the real flow to get accurate sha
+  const fileBody = "Body that will be hashed and recorded so the doctor sees no drift.";
+  await touch("raw/synced.md", fileBody);
+  await touch(
+    "wiki/sources/source-synced.md",
+    [
+      "---",
+      "type: source",
+      "raw_file: raw/synced.md",
+      `raw_size: ${Buffer.byteLength(fileBody, "utf8")}`,
+      "---",
+      "# Synced"
+    ].join("\n")
+  );
+  const report = await diagnoseVault(vault);
+  const stale = report.issues.filter((i) => i.kind === "stale-source");
+  assert.equal(stale.length, 0);
+});

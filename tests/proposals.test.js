@@ -263,3 +263,13 @@ raw_file: clippings/foo.md
   const matches = tracker.match(/\| clippings\/foo\.md \|/g) || [];
   assert.equal(matches.length, 1);
 });
+
+test("resetAllProposals removes every staged proposal", async () => {
+  await proposals.proposePage("wiki/a.md", "a");
+  await proposals.proposePage("wiki/b.md", "b");
+  await proposals.proposePage("wiki/c.md", "c");
+  const deleted = await proposals.resetAllProposals();
+  assert.equal(deleted.length, 3);
+  const remaining = await proposals.listProposals();
+  assert.equal(remaining.length, 0);
+});

@@ -1,5 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { buildVaultIndex } from "./raw-index.js";
+import { parseFrontmatter } from "./frontmatter.js";
+import { hashFile } from "./hash.js";
 
 const LARGE_RAW_THRESHOLD = 10 * 1024 * 1024;
 const TRACKER_PATH = "wiki/ingest-tracker.md";
@@ -69,6 +71,9 @@ export async function diagnoseVault(vault) {
   const trackerIssues = await diagnoseTracker(vault, index);
   issues.push(...trackerIssues);
 
+  const staleIssues = await diagnoseStaleSources(vault, index);
+  issues.push(...staleIssues);
+
   return {
     summary: {
       candidates: index.candidates.length,
@@ -82,6 +87,66 @@ export async function diagnoseVault(vault) {
     },
     issues
   };
+}
+
+async function diagnoseStaleSources(vault, index) {
+  const stale = [];
+  for (const [rawRel, sourcePagePath] of index.referenced) {
+    let body;
+    try {
+      body = await readFile(vault.resolveInside(sourcePagePath), "utf8");
+    } catch {
+      continue;
+    }
+    const parsed = parseFrontmatter(body);
+    if (!parsed) continue;
+    const knownSha = typeof parsed.data.raw_sha256 === "string" ? parsed.data.raw_sha256 : null;
+    const knownSize = typeof parsed.data.raw_size === "number" ? parsed.data.raw_size : null;
+    if (!knownSha && knownSize == null) continue; // no staleness contract — skip silently
+
+    let info;
+    try {
+      info = await stat(vault.resolveInside(rawRel));
+    } catch {
+      continue; // raw file missing — orphan-source already reported
+    }
+
+    if (knownSize != null && info.size !== knownSize) {
+      stale.push({
+        kind: "stale-source",
+        sourcePage: sourcePagePath,
+        rawFile: rawRel,
+        reason: "size-mismatch",
+        severity: "warn",
+        message:
+          `Raw file ${rawRel} has size ${info.size} bytes but source page records ${knownSize}. ` +
+          `The raw file was modified after compile. Re-run propose_compile_from_raw with force=true to refresh the source page.`
+      });
+      continue;
+    }
+
+    if (knownSha) {
+      let currentSha;
+      try {
+        currentSha = await hashFile(vault.resolveInside(rawRel));
+      } catch {
+        continue;
+      }
+      if (currentSha !== knownSha) {
+        stale.push({
+          kind: "stale-source",
+          sourcePage: sourcePagePath,
+          rawFile: rawRel,
+          reason: "hash-mismatch",
+          severity: "warn",
+          message:
+            `Raw file ${rawRel} content has changed since it was compiled (sha256 differs). ` +
+            `Re-run propose_compile_from_raw with force=true to refresh the source page.`
+        });
+      }
+    }
+  }
+  return stale;
 }
 
 async function diagnoseTracker(vault, index) {

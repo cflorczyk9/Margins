@@ -169,12 +169,28 @@ export function createProposals(vault) {
     throw new Error(`unknown action '${action}'; use 'accept' or 'reject'`);
   }
 
+  async function resetAllProposals() {
+    const items = await listProposals();
+    const deleted = [];
+    for (const item of items) {
+      const abs = vault.resolveInside(item.proposalPath);
+      try {
+        await rm(abs, { force: true });
+        deleted.push(item.proposalPath);
+      } catch {
+        // skip files that can't be removed (concurrent delete, permission issue)
+      }
+    }
+    return deleted;
+  }
+
   return {
     proposePage,
     proposeEdit,
     appendTo,
     listProposals,
-    resolveProposal
+    resolveProposal,
+    resetAllProposals
   };
 }
 

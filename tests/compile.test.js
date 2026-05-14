@@ -326,3 +326,25 @@ test("canonical path matching: ./raw/foo.md and raw/foo.md are the same file", a
   const second = await compile.proposeCompileFromRaw("./raw/foo.md", { summary: "s" });
   assert.equal(second.status, "already-filed");
 });
+
+test("compile writes raw_sha256 and raw_size into source-page frontmatter", async () => {
+  await touch("raw/hashed.md", "Content with enough body to clear the threshold and produce a meaningful hash.");
+  const result = await compile.proposeCompileFromRaw("raw/hashed.md", { summary: "test" });
+  assert.match(result.rawSha256, /^[0-9a-f]{64}$/);
+  assert.equal(typeof result.rawSize, "number");
+  const body = await read(result.proposalPath);
+  assert.match(body, /raw_sha256: [0-9a-f]{64}/);
+  assert.match(body, /raw_size: \d+/);
+});
+
+test("slug collision: same basename in different folders gets disambiguator", async () => {
+  await touch("meetings/foo.md", "First foo with enough body to clear the empty-extraction threshold.");
+  const first = await compile.proposeCompileFromRaw("meetings/foo.md", { summary: "first" });
+  await proposals.resolveProposal(first.destinationPath, "accept");
+
+  await touch("contracts/foo.md", "Second foo with completely different content but the same basename.");
+  const second = await compile.proposeCompileFromRaw("contracts/foo.md", { summary: "second" });
+  // Should NOT be the same destination path as first
+  assert.notEqual(second.destinationPath, first.destinationPath);
+  assert.match(second.destinationPath, /source-foo-[0-9a-f]{8}\.md$/);
+});
