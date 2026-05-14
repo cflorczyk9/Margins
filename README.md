@@ -20,7 +20,7 @@ Margins works for six common starting points. `margins_start` auto-detects your 
 ## Requirements
 
 - [Node.js 18 or newer](https://nodejs.org)
-- An Obsidian vault, or any folder of Markdown files
+- An Obsidian vault, or any folder with notes, PDFs, Office/OpenDocument files, email exports, EPUBs, or plain text
 - A Claude subscription: Pro ($20/mo), Max, or Claude Code
 
 ## Install
@@ -89,9 +89,9 @@ Or:
 
 Or:
 
-> I just dropped a transcript into `raw/`. Compile it into a structured source page in my wiki.
+> I just dropped a spreadsheet into `raw/`. Compile it into a structured source page in my wiki.
 
-The model can read your vault, propose new pages, propose edits to existing ones, and pull raw sources into structured wiki pages. Every write stages to `proposed/` first; nothing lands without you accepting.
+The model can read your vault, propose new pages, propose edits to existing ones, and pull raw sources into structured wiki pages. `propose_compile_from_raw` accepts Markdown/plain text, PDFs, Word docs, spreadsheets, decks, email exports, EPUBs, OpenDocument files, RTF, HTML, CSV/TSV, JSON, YAML, and common text-ish formats. Every write stages to `proposed/` first; nothing lands without you accepting.
 
 ## Tools
 
@@ -119,7 +119,7 @@ The model can read your vault, propose new pages, propose edits to existing ones
 | `propose_page` | Stage a new page at `proposed/<path>`. |
 | `propose_edit` | Stage a string-replacement edit. `before` must appear exactly once. |
 | `append_to` | Stage an append. Creates the page if missing; stacks on pending proposals. |
-| `propose_compile_from_raw` | Turn a raw transcript/note in `raw/` into a structured source page. |
+| `propose_compile_from_raw` | Turn a raw transcript, note, PDF, Word doc, spreadsheet, deck, email, EPUB, or other supported document in `raw/` into a structured source page. |
 | `list_proposals` | List pending proposals + overwrite-risk flag per entry. |
 | `resolve_proposal` | `action: "accept"` lands the proposal; `action: "reject"` discards it. |
 
@@ -189,7 +189,7 @@ Both files live in the vault, so they travel with it. Switch machines, switch ho
 
 - v0.6: web onboarding at margins.app — pick a folder via File System Access, scaffold a vault, get the install command. Closes B2/B3 personas without requiring CLI fluency.
 - v0.6: `get_citations` (semantic embedding search, opt-in dep).
-- v0.6: PDF/DOCX support for `propose_compile_from_raw`.
+- v0.6: OCR/image, legacy Office binary, and audio/video ingestion for `propose_compile_from_raw`.
 - v0.7: HTTP / Streamable transport for claude.ai web and ChatGPT custom connectors.
 - v0.7+: Obsidian community plugin alongside MCP, if signal supports it.
 - v0.8+: file watcher / auto-scaffold on drop into `raw/`.

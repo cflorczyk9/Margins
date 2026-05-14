@@ -39,8 +39,8 @@ const GUIDANCE_BY_MODE = {
     "is non-empty, the user dropped source files into raw/ — your best move is " +
     "to start compiling the highest-priority ones into wiki source pages right " +
     "away. Call propose_compile_from_raw on each priorityQueue entry IN PARALLEL " +
-    "in a single turn (read_page first to get the body, then propose_compile_from_raw " +
-    "with a structured summary). The original stays in raw/; a summary lands in " +
+    "in a single turn (read_page first to get the readable body, including extracted PDF/DOCX text, " +
+    "then propose_compile_from_raw with a structured summary). The original stays in raw/; a summary lands in " +
     "wiki/sources/. After the first batch of proposals is staged, report back to " +
     "the user (X source pages staged, N remaining) and ask whether to continue " +
     "at this pace, focus on a specific topic, or stop. " +

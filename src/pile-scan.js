@@ -17,11 +17,10 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
+import { isSupportedDocumentPath, isTextDocumentPath } from "./document-text.js";
 
 const MAX_SCAN_BYTES = 50_000;
 const MIN_CONTENT_BYTES = 100;
-
-const TEXT_EXTS = new Set([".md", ".markdown", ".txt"]);
 
 // Recurring proper-noun candidates — single capitalized words, 3+ chars.
 // Stopwords keep sentence-openers, months, days, common verbs out. Same list
@@ -70,7 +69,7 @@ export async function scanRawForCompile(vault, options = {}) {
     .filter((d) => d.isFile())
     .map((d) => d.name)
     .filter((name) => !name.startsWith("."))
-    .filter((name) => TEXT_EXTS.has(path.extname(name).toLowerCase()));
+    .filter((name) => isSupportedDocumentPath(name));
 
   if (!rawFiles.length) return emptyScan(rawDirRel);
 
@@ -81,18 +80,15 @@ export async function scanRawForCompile(vault, options = {}) {
     const abs = path.join(rawDir, name);
     let info;
     try { info = await stat(abs); } catch { continue; }
-    let body;
-    try { body = await readFile(abs, "utf8"); } catch { body = ""; }
-    const truncated = body.slice(0, MAX_SCAN_BYTES);
-    const hash = contentHash(truncated);
+    const { content, sampledBytes, hash } = await sampleForScan(abs, name);
     const slug = path.basename(name, path.extname(name));
     records.push({
       name,
       relPath: `${rawDirRel}/${name}`,
       mtimeMs: info.mtimeMs,
       size: info.size,
-      sampledBytes: truncated.length,
-      content: truncated,
+      sampledBytes,
+      content,
       hash,
       slug,
       isCompiled: alreadyCompiled.has(slug)
@@ -210,6 +206,24 @@ export async function scanRawForCompile(vault, options = {}) {
     likelyEmpty,
     detectedPrefixes: detectPrefixes(rawFiles),
     priorityQueue: scored.slice(0, topN)
+  };
+}
+
+async function sampleForScan(abs, name) {
+  if (isTextDocumentPath(name)) {
+    let body;
+    try { body = await readFile(abs, "utf8"); } catch { body = ""; }
+    const content = body.slice(0, MAX_SCAN_BYTES);
+    return { content, sampledBytes: content.length, hash: contentHash(content) };
+  }
+
+  let buffer;
+  try { buffer = await readFile(abs); } catch { buffer = Buffer.alloc(0); }
+  const sample = buffer.subarray(0, MAX_SCAN_BYTES);
+  return {
+    content: path.basename(name, path.extname(name)).replace(/[-_]+/g, " "),
+    sampledBytes: sample.length,
+    hash: contentHash(sample.toString("base64"))
   };
 }
 

@@ -1,8 +1,11 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
+import {
+  extractDocumentText,
+  isSupportedDocumentPath,
+  isTextDocumentPath
+} from "./document-text.js";
 import { DEFAULT_SKIP_DIRS } from "./index-roots.js";
-
-const TEXT_EXTENSIONS = new Set([".md", ".markdown", ".txt"]);
 
 export function createVault(rootArg, options = {}) {
   const root = path.resolve(rootArg);
@@ -40,8 +43,7 @@ export function createVault(rootArg, options = {}) {
         if (skipDirs.has(entry.name)) continue;
         await walk(abs, out);
       } else if (entry.isFile()) {
-        const ext = path.extname(entry.name).toLowerCase();
-        if (!TEXT_EXTENSIONS.has(ext)) continue;
+        if (!isSupportedDocumentPath(entry.name)) continue;
         out.push(abs);
       }
     }
@@ -66,9 +68,10 @@ export function createVault(rootArg, options = {}) {
 
   async function readPage(relPath) {
     const abs = resolveInside(relPath);
-    const body = await readFile(abs, "utf8");
+    const rel = toRel(abs);
+    const body = await extractDocumentText(abs, rel, { allowEmpty: isTextDocumentPath(abs) });
     const info = await stat(abs);
-    return { path: toRel(abs), body, mtimeMs: info.mtimeMs, size: info.size };
+    return { path: rel, body, mtimeMs: info.mtimeMs, size: info.size };
   }
 
   async function listRecent(limit) {
@@ -94,7 +97,7 @@ export function createVault(rootArg, options = {}) {
     for (const abs of files) {
       let body;
       try {
-        body = await readFile(abs, "utf8");
+        body = await extractDocumentText(abs, toRel(abs), { allowEmpty: isTextDocumentPath(abs) });
       } catch {
         continue;
       }
@@ -130,6 +133,7 @@ export function createVault(rootArg, options = {}) {
     const files = await listFiles();
     const hits = [];
     for (const abs of files) {
+      if (!isTextDocumentPath(abs)) continue;
       let body;
       try {
         body = await readFile(abs, "utf8");
