@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640">
+  <defs>
+    <style>
+      .bg     { fill: #faf7f2; }
+      .ink    { fill: #1a1612; }
+      .ink-st { stroke: #1a1612; fill: none; }
+      .vermil { fill: #d63a2f; }
+      .mustard{ fill: #f0c14b; }
+      .cobalt { stroke: #2c5aa0; fill: none; }
+      .h1 {
+        font-family: 'Newsreader', 'Cambria', 'Georgia', serif;
+        font-weight: 500;
+        font-size: 78px;
+        letter-spacing: -0.012em;
+        fill: #1a1612;
+      }
+      .sub {
+        font-family: 'Manrope', 'Helvetica Neue', -apple-system, sans-serif;
+        font-weight: 500;
+        font-size: 26px;
+        letter-spacing: -0.003em;
+        fill: #4a423a;
+      }
+      .word {
+        font-family: 'Manrope', 'Helvetica Neue', -apple-system, sans-serif;
+        font-weight: 700;
+        font-size: 26px;
+        letter-spacing: -0.005em;
+        fill: #1a1612;
+      }
+      .foot {
+        font-family: 'Manrope', 'Helvetica Neue', -apple-system, sans-serif;
+        font-weight: 600;
+        font-size: 18px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        fill: #847a6b;
+      }
+      .disc { mix-blend-mode: multiply; }
+    </style>
+  </defs>
+
+  <!-- Paper background -->
+  <rect class="bg" width="1280" height="640"/>
+
+  <!-- Decorative composition, right-hand side -->
+  <g transform="translate(720,40)">
+    <!-- diagonal ink line -->
+    <line x1="20" y1="500" x2="540" y2="40" class="ink-st" stroke-width="1.0" opacity="0.30"/>
+    <!-- cobalt curve -->
+    <path d="M 30 160 Q 280 360 540 100" class="cobalt" stroke-width="3.0" stroke-linecap="round" opacity="0.75"/>
+    <!-- ink triangle -->
+    <polygon points="80,310 360,360 180,540" class="ink-st" stroke-width="2.2" stroke-linejoin="round"/>
+    <!-- disc stack -->
+    <g class="disc">
+      <circle cx="430" cy="200" r="110" class="mustard"/>
+    </g>
+    <g class="disc">
+      <circle cx="430" cy="200" r="62" class="vermil"/>
+    </g>
+    <circle cx="430" cy="200" r="20" class="ink"/>
+    <!-- accent dots -->
+    <circle cx="120" cy="130" r="13" fill="#6a4f8c"/>
+    <circle cx="480" cy="450" r="9"  fill="#6fa863"/>
+    <circle cx="60"  cy="450" r="6"  class="vermil"/>
+    <circle cx="540" cy="500" r="4.5" class="ink"/>
+    <circle cx="320" cy="80"  r="3.5" class="ink"/>
+  </g>
+
+  <!-- Margins wordmark -->
+  <g transform="translate(72,80)">
+    <line x1="0" y1="-22" x2="0" y2="22" stroke="#1a1612" stroke-width="3.5" stroke-linecap="round"/>
+    <g transform="translate(20,0)">
+      <circle cx="14" cy="0" r="14" class="mustard"/>
+      <circle cx="14" cy="0" r="8"  class="vermil"/>
+      <circle cx="14" cy="0" r="2.5" class="ink"/>
+    </g>
+    <text x="56" y="9" class="word">margins</text>
+  </g>
+
+  <!-- Headline -->
+  <g transform="translate(72,290)">
+    <text x="0" y="0" class="h1">Bring Claude</text>
+    <text x="0" y="86" class="h1">to your files.</text>
+  </g>
+
+  <!-- Subtitle -->
+  <text x="72" y="490" class="sub">Margins makes Claude smarter by turning your</text>
+  <text x="72" y="526" class="sub">messy files into usable context.</text>
+
+  <!-- Footer chip row -->
+  <g transform="translate(72,590)">
+    <text x="0" y="0" class="foot">Free MCP connector  ·  Runs locally  ·  No API key</text>
+  </g>
+</svg>
