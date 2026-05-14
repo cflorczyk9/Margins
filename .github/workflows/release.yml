@@ -47,7 +47,12 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/margins-mcp-*.mcpb
+          # Attach both the versioned bundle and the unversioned copy. The
+          # unversioned filename gives margins.app a stable direct-download URL:
+          # https://github.com/cflorczyk9/Margins/releases/latest/download/margins-mcp.mcpb
+          files: |
+            dist/margins-mcp-*.mcpb
+            dist/margins-mcp.mcpb
           generate_release_notes: true
           body: |
             ## Install
