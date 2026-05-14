@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Margins MCP — Claude on your Obsidian and Markdown notes</title>
-<meta name="description" content="Margins MCP is a free, local app that lets Claude read the files on your computer — your notes, your writing, your folders. Works with Obsidian, plain text, anything in a folder. No API key.">
+<title>Margins — Claude for your local files | Free MCP, no API key</title>
+<meta name="description" content="Use Claude on your local files. Ask questions across notes, transcripts, PDFs, articles. Compile raw input to wiki pages. Works with Obsidian or any folder. Free, no API key.">
 <meta name="theme-color" content="#faf7f2">
 <meta name="robots" content="index,follow,max-snippet:-1,max-image-preview:large">
 <link rel="canonical" href="https://margins.app/">
@@ -13,32 +13,32 @@
 <link rel="apple-touch-icon" sizes="192x192" href="../favicon-192.png">
 
 <!-- Open Graph -->
-<meta property="og:title" content="Margins MCP — Claude on your Obsidian and Markdown notes">
-<meta property="og:description" content="A free, local app. Claude reads the files on your computer — your notes, your writing, your folders — cites where things came from, and proposes edits you review. No API key.">
+<meta property="og:title" content="Margins — Claude for your local files | Free MCP, no API key">
+<meta property="og:description" content="Margins gives Claude access to your local files — notes, transcripts, articles, PDFs. Ask anything, cite the source, propose edits you review. Works with Obsidian or any folder. No API key.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://margins.app/">
 <meta property="og:image" content="https://margins.app/og-image.png">
-<meta property="og:image:alt" content="Margins MCP — Claude on your Obsidian vault">
-<meta property="og:site_name" content="Margins MCP">
+<meta property="og:image:alt" content="Margins — Claude reading your local files, with citations">
+<meta property="og:site_name" content="Margins">
 
 <!-- Twitter -->
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Margins MCP — Claude on your Obsidian and Markdown notes">
-<meta name="twitter:description" content="A free, local app. Claude reads the files on your computer — notes, writing, folders — and proposes edits you review. No API key.">
+<meta name="twitter:title" content="Margins — Claude for your local files | Free MCP, no API key">
+<meta name="twitter:description" content="Claude on your local files — notes, transcripts, PDFs. Ask anything, cite the source, propose edits. Works with Obsidian or any folder. No API key.">
 <meta name="twitter:image" content="https://margins.app/og-image.png">
-<meta name="twitter:image:alt" content="Margins MCP — Claude on your Obsidian vault">
+<meta name="twitter:image:alt" content="Margins — Claude reading your local files, with citations">
 
 <!-- SoftwareApplication schema -->
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
-  "name": "Margins MCP",
-  "alternateName": "margins-mcp",
+  "name": "Margins",
+  "alternateName": ["Margins MCP", "margins-mcp"],
   "applicationCategory": "DeveloperApplication",
-  "operatingSystem": "macOS, Windows",
-  "description": "Margins MCP is a free, local-first MCP server that lets Claude Desktop, Claude Code, and compatible AI clients read, search, and propose writes to an Obsidian or Markdown vault without an API key.",
-  "softwareVersion": "0.5",
+  "operatingSystem": "macOS, Windows, Linux",
+  "description": "Margins connects Claude to your local files — notes, transcripts, articles, PDFs. Ask questions across documents, compile raw input into structured pages, surface connections across hundreds of files. Works with Obsidian, plain Markdown, or any folder. Runs on your existing Claude subscription. No API key required.",
+  "softwareVersion": "0.9.0",
   "license": "https://opensource.org/licenses/MIT",
   "url": "https://margins.app/",
   "downloadUrl": "https://github.com/cflorczyk9/Margins/releases/latest/download/margins-mcp.mcpb",
@@ -64,8 +64,8 @@
       "acceptedAnswer": { "@type": "Answer", "text": "Yes. The installer writes the MCP config for both. It does not work with the claude.ai web interface, which does not yet support MCP connectors." }},
     { "@type": "Question", "name": "Where do my files live? What can Claude actually see?",
       "acceptedAnswer": { "@type": "Answer", "text": "Claude can only see the one folder you point Margins at — not your Documents, not your Desktop, not your whole machine. If you don't drop a file into that folder, Claude doesn't know it exists. Your files stay on your disk. Margins runs locally; no content is sent to any Margins-controlled server. The only data leaving your computer is what Claude needs to answer your prompt, which goes directly to Anthropic under your existing subscription." }},
-    { "@type": "Question", "name": "Does it work without Obsidian?",
-      "acceptedAnswer": { "@type": "Answer", "text": "Yes. Margins works with any folder of Markdown files. Obsidian is the most common setup, but you can point Margins at any directory of .md files." }},
+    { "@type": "Question", "name": "What kinds of files does Margins work with?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Any folder with Markdown, plain text, or PDFs in it — notes app vaults, iCloud Drive folders, project repos, transcript directories. Obsidian works particularly well because Margins understands wikilinks and backlinks, but it isn't required. If the folder is empty, Margins can scaffold a starter structure." }},
     { "@type": "Question", "name": "Can Claude edit my notes directly?",
       "acceptedAnswer": { "@type": "Answer", "text": "No. Claude can only propose writes. Proposals are staged in a proposed/ folder. You review and accept or reject each one. Your real vault is never modified without your action." }},
     { "@type": "Question", "name": "How is this different from the Filesystem MCP?",
@@ -639,6 +639,54 @@
     line-height: 1.6;
     margin: 0 0 36px;
     max-width: 62ch;
+  }
+
+  /* ============================================================ */
+  /* ============================================================ */
+  /* === Compatibility strip                                  === */
+  /* ============================================================ */
+  .compat-strip {
+    padding: 36px 0 40px;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    background: var(--paper-soft);
+    text-align: center;
+  }
+  .compat-eyebrow {
+    font: 600 11px/1 'Manrope', sans-serif;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin: 0 0 14px;
+  }
+  .compat-list {
+    list-style: none;
+    padding: 0; margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 6px 24px;
+    font: 500 14px/1.5 'Manrope', sans-serif;
+    color: var(--ink-2);
+  }
+  .compat-list li {
+    position: relative;
+  }
+  .compat-list li + li::before {
+    content: "·";
+    position: absolute;
+    left: -14px;
+    color: var(--ink-4);
+  }
+  .compat-list li:first-child {
+    color: var(--ink);
+    font-weight: 600;
+  }
+  @media (max-width: 560px) {
+    .compat-strip { padding: 28px 0 32px; }
+    .compat-list { gap: 4px 16px; font-size: 13px; }
+    .compat-list li + li::before { left: -10px; }
   }
 
   /* ============================================================ */
@@ -1796,6 +1844,267 @@
     color: var(--ink);
   }
 
+  /* ============================================================ */
+  /* === Adaptive install card (ported from variant 3)        === */
+  /* === Single card with Desktop/CLI tab switcher,           === */
+  /* === morphing body height + animated underline.           === */
+  /* ============================================================ */
+  .adaptive-card {
+    position: relative;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    box-shadow: var(--shadow-md);
+    padding: 36px;
+    overflow: hidden;
+    max-width: 760px;
+  }
+  .adaptive-card::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, var(--mustard) 0%, var(--vermillion) 50%, var(--cobalt) 100%);
+    opacity: 0.85;
+    pointer-events: none;
+  }
+  @media (max-width: 640px) { .adaptive-card { padding: 28px 22px; } }
+  @media (max-width: 380px) { .adaptive-card { padding: 22px; } }
+
+  .adaptive-tabs {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 28px;
+  }
+  .adaptive-tab {
+    position: relative;
+    appearance: none;
+    background: transparent;
+    border: 0;
+    padding: 10px 14px 14px;
+    font: 500 14px/1 'Manrope', sans-serif;
+    color: var(--ink-3);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    transition: color 200ms ease;
+    letter-spacing: -0.005em;
+  }
+  .adaptive-tab:hover { color: var(--ink-2); }
+  .adaptive-tab[aria-selected="true"] { color: var(--ink); }
+  .adaptive-tab-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    border: 1.5px solid var(--ink-4);
+    background: transparent;
+    flex-shrink: 0;
+    transition: all 220ms ease;
+  }
+  .adaptive-tab[aria-selected="true"] .adaptive-tab-dot {
+    background: var(--vermillion);
+    border-color: var(--vermillion);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  .adaptive-tab-underline {
+    position: absolute;
+    bottom: -1px; left: 0;
+    height: 2px; width: 0;
+    background: var(--vermillion);
+    border-radius: 2px;
+    transition: transform 300ms cubic-bezier(0.4, 0, 0.2, 1),
+                width 300ms cubic-bezier(0.4, 0, 0.2, 1);
+    will-change: transform, width;
+  }
+  .adaptive-help-btn {
+    margin-left: auto; margin-bottom: 8px;
+    appearance: none;
+    background: transparent;
+    border: 1px solid var(--accent-line);
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    color: var(--vermillion);
+    font: italic 500 13px/1 'Newsreader', Georgia, serif;
+    cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: all 180ms ease;
+  }
+  .adaptive-help-btn:hover { background: var(--accent-soft); border-color: var(--vermillion); }
+  .adaptive-help-btn[aria-expanded="true"] {
+    background: var(--vermillion);
+    color: var(--paper);
+    border-color: var(--vermillion);
+  }
+  .adaptive-help-tooltip {
+    overflow: hidden;
+    max-height: 0;
+    opacity: 0;
+    margin-bottom: 0;
+    border-radius: 10px;
+    background: var(--paper-soft);
+    border: 1px solid var(--line);
+    color: var(--ink-2);
+    font-size: 13.5px; line-height: 1.55;
+    transition: max-height 280ms cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 200ms ease,
+                margin 280ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .adaptive-help-tooltip.open {
+    max-height: 200px; opacity: 1; margin-bottom: 24px;
+  }
+  .adaptive-help-tooltip-inner { padding: 14px 16px; }
+  .adaptive-help-tooltip strong { color: var(--ink); font-weight: 600; }
+  .adaptive-help-tooltip .row + .row { margin-top: 6px; }
+
+  .adaptive-body-frame {
+    position: relative;
+    transition: height 320ms cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+  }
+  .adaptive-body { transition: opacity 280ms ease; will-change: opacity; }
+  .adaptive-body.fade-out { opacity: 0; }
+
+  .adaptive-install-heading {
+    font: 500 26px/1.15 'Newsreader', Georgia, serif;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+    margin: 4px 0 22px;
+  }
+  @media (max-width: 640px) { .adaptive-install-heading { font-size: 22px; } }
+
+  .adaptive-download-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--ink);
+    color: var(--paper);
+    border: 1px solid var(--ink);
+    border-radius: 10px;
+    padding: 14px 22px;
+    font: 600 15px/1 'Manrope', sans-serif;
+    letter-spacing: -0.005em;
+    text-decoration: none;
+    cursor: pointer;
+    transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
+    box-shadow: 0 1px 2px rgba(26, 22, 18, 0.18);
+  }
+  .adaptive-download-btn:hover {
+    transform: translateY(-1px);
+    background: #2a2520;
+    box-shadow: 0 4px 12px rgba(26, 22, 18, 0.22);
+  }
+  .adaptive-download-btn:active { transform: translateY(0); }
+  .adaptive-arrow { display: inline-block; transition: transform 200ms ease; }
+  .adaptive-download-btn:hover .adaptive-arrow { transform: translateY(2px); }
+  @media (max-width: 640px) { .adaptive-download-btn { width: 100%; justify-content: center; } }
+
+  .adaptive-meta {
+    margin: 12px 0 0;
+    font-size: 12.5px;
+    color: var(--ink-3);
+    font-feature-settings: "tnum" 1;
+    letter-spacing: 0.005em;
+  }
+  .adaptive-meta .adaptive-sep { display: inline-block; margin: 0 8px; color: var(--ink-4); }
+
+  .adaptive-body-copy {
+    margin: 24px 0 0;
+    color: var(--ink-2);
+    font-size: 15px;
+    line-height: 1.6;
+    max-width: 56ch;
+  }
+  .adaptive-body-copy .adaptive-accent { color: var(--ink); font-weight: 500; }
+
+  .adaptive-cmd-list {
+    margin: 4px 0 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .adaptive-cmd {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 12px;
+    background: var(--paper-soft);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 12px 14px;
+    transition: border-color 180ms ease;
+  }
+  .adaptive-cmd:hover { border-color: var(--line-strong); }
+  .adaptive-cmd code {
+    font: 13.5px/1 ui-monospace, 'SF Mono', Menlo, monospace;
+    color: var(--ink);
+    background: transparent;
+    border: 0; padding: 0;
+    overflow-x: auto;
+    white-space: nowrap;
+    padding-right: 4px;
+  }
+  .adaptive-cmd code .adaptive-prompt {
+    color: var(--ink-4);
+    user-select: none;
+    margin-right: 8px;
+  }
+  .adaptive-inline-code {
+    font: 0.9em ui-monospace, 'SF Mono', Menlo, monospace;
+    color: var(--ink);
+    background: var(--paper-soft);
+    border: 1px solid var(--line);
+    padding: 1px 6px;
+    border-radius: 4px;
+  }
+
+  .cmd-copy {
+    appearance: none;
+    border: 1px solid var(--line-strong);
+    background: var(--paper);
+    color: var(--ink-2);
+    font: 600 12px/1 'Manrope', sans-serif;
+    letter-spacing: 0.02em;
+    padding: 6px 12px;
+    border-radius: 7px;
+    cursor: pointer;
+    transition: all 180ms ease;
+    min-width: 72px;
+    text-align: center;
+    text-transform: lowercase;
+  }
+  .cmd-copy:hover { border-color: var(--ink-3); color: var(--ink); }
+  .cmd-copy.copied {
+    background: var(--vermillion);
+    border-color: var(--vermillion);
+    color: var(--paper);
+  }
+
+  .adaptive-scaffold-line {
+    margin: 22px 0 0;
+    font-size: 14px;
+    color: var(--ink-3);
+    max-width: 760px;
+  }
+  .adaptive-scaffold-line a {
+    color: var(--ink-2);
+    text-decoration: underline;
+    text-decoration-color: var(--line-strong);
+    text-underline-offset: 4px;
+    transition: color 180ms ease, text-decoration-color 180ms ease;
+    border-bottom: none;
+  }
+  .adaptive-scaffold-line a:hover {
+    color: var(--vermillion);
+    text-decoration-color: var(--vermillion);
+  }
+  .adaptive-scaffold-line .adaptive-arrow { transition: transform 180ms ease; }
+  .adaptive-scaffold-line a:hover .adaptive-arrow { transform: translateX(2px); }
+
   code, pre { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 13.5px; }
   pre {
     background: var(--paper-soft); padding: 14px 16px; border-radius: 10px;
@@ -1924,8 +2233,10 @@
           <a href="#demo" class="btn btn-ghost">See it work</a>
         </div>
       </div>
-      <div class="hero-art cascading" aria-hidden="true">
+      <div class="hero-art cascading" role="img" aria-labelledby="hero-art-title hero-art-desc">
         <svg viewBox="0 0 320 320">
+          <title id="hero-art-title">Margins — Kandinsky-inspired logo</title>
+          <desc id="hero-art-desc">A composition of an ink diagonal line, a curved cobalt path, concentric mustard and vermillion discs with a black center, an ink-outlined triangle, and five accent dots in violet, green, vermillion, and ink — Margins' visual mark.</desc>
           <g class="parallax-layer p-line" data-depth="0.08">
             <line x1="20" y1="280" x2="300" y2="40" class="ink-stroke" stroke-width="0.6"/>
           </g>
@@ -1971,6 +2282,25 @@
 </section>
 
 <!-- ============================================================== -->
+<!-- COMPATIBILITY STRIP — confirms Margins works with multiple      -->
+<!-- environments so non-Obsidian users don't bounce, while keeping  -->
+<!-- Obsidian users explicitly invited.                              -->
+<!-- ============================================================== -->
+<section class="compat-strip reveal" aria-label="Compatible setups">
+  <div class="wrap">
+    <p class="compat-eyebrow">Works with</p>
+    <ul class="compat-list">
+      <li>Obsidian</li>
+      <li>iCloud Drive</li>
+      <li>plain Markdown</li>
+      <li>transcripts</li>
+      <li>PDFs</li>
+      <li>any folder of files</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============================================================== -->
 <!-- HOW IT WORKS                                                    -->
 <!-- ============================================================== -->
 <section class="block reveal" id="how" aria-labelledby="how-heading">
@@ -2005,18 +2335,18 @@
 <section class="demo-section reveal" id="demo">
   <div class="wrap">
     <div class="demo-header">
-      <p class="eyebrow">Demo</p>
-      <h2>What it looks like inside Claude Desktop.</h2>
-      <p class="section-sub">Three different setups. Same move: Claude pulls the obvious context, follows the thread sideways, and finds the connection you wouldn't have made yourself — a meeting that overlaps with another, a forgotten promise, a pattern across months of notes.</p>
+      <p class="eyebrow">Use cases</p>
+      <h2>See Margins answer real questions across your files.</h2>
+      <p class="section-sub">Seven scenarios. Notes, transcripts, PDFs, code, decisions — same move every time. Claude pulls the context, follows the thread, and finds what you'd miss.</p>
 
-      <div class="demo-tabs" role="tablist" aria-label="Demo scenarios">
-        <button class="demo-tab is-active" type="button" data-persona="coffee" role="tab" aria-selected="true">Coffee prep</button>
-        <button class="demo-tab" type="button" data-persona="anki" role="tab" aria-selected="false">Anki cards</button>
-        <button class="demo-tab" type="button" data-persona="code" role="tab" aria-selected="false">Code archaeology</button>
-        <button class="demo-tab" type="button" data-persona="writer" role="tab" aria-selected="false">Newsletter draft</button>
-        <button class="demo-tab" type="button" data-persona="decide" role="tab" aria-selected="false">Decision brief</button>
-        <button class="demo-tab" type="button" data-persona="health" role="tab" aria-selected="false">Doctor visit</button>
-        <button class="demo-tab" type="button" data-persona="equity" role="tab" aria-selected="false">Earnings prep</button>
+      <div class="demo-tabs" role="tablist" aria-label="Use cases">
+        <button class="demo-tab is-active" type="button" data-persona="coffee" role="tab" aria-selected="true">Prep for a meeting</button>
+        <button class="demo-tab" type="button" data-persona="anki" role="tab" aria-selected="false">Study with active recall</button>
+        <button class="demo-tab" type="button" data-persona="code" role="tab" aria-selected="false">Find decisions in old code</button>
+        <button class="demo-tab" type="button" data-persona="writer" role="tab" aria-selected="false">Draft from your archive</button>
+        <button class="demo-tab" type="button" data-persona="decide" role="tab" aria-selected="false">Brief yourself on a decision</button>
+        <button class="demo-tab" type="button" data-persona="health" role="tab" aria-selected="false">Prep for a doctor visit</button>
+        <button class="demo-tab" type="button" data-persona="equity" role="tab" aria-selected="false">Prep an earnings call</button>
       </div>
     </div>
   </div>
@@ -2099,7 +2429,7 @@
 <!-- ============================================================== -->
 <section class="block reveal" id="compare">
   <p class="eyebrow">Compare</p>
-  <h2>How Margins compares.</h2>
+  <h2>How Margins compares to other AI tools for your files.</h2>
   <p class="section-sub">There are a few other ways to point an AI at your notes. Here's where they overlap with Margins and where Margins is more specific.</p>
 
   <div class="matrix-card">
@@ -2223,7 +2553,7 @@
 <!-- ============================================================== -->
 <section class="block reveal" id="faq">
   <p class="eyebrow">FAQ</p>
-  <h2>Common questions.</h2>
+  <h2>Common questions about Margins.</h2>
 
   <div class="faq-list">
     <details class="faq-item">
@@ -2256,9 +2586,10 @@
     </details>
 
     <details class="faq-item">
-      <summary>Does it work without Obsidian?</summary>
+      <summary>What kinds of files does it work with?</summary>
       <div class="faq-body">
-        <p>Yes. Margins works with any folder of Markdown files. Obsidian is the most common setup and gets the most out of the wikilink-aware tools, but you can point Margins at any directory of <code>.md</code> files — a notes folder you keep in iCloud, a synced Markdown workspace, whatever you have.</p>
+        <p>Any folder with Markdown, plain text, or PDFs in it — Margins doesn't care if it's a notes app's vault, an iCloud Drive folder, a project repo, or a directory of meeting transcripts. Obsidian works particularly well because Margins understands wikilinks and backlinks, but it isn't required.</p>
+        <p>If you point Margins at a folder that doesn't have a structure yet, the installer can scaffold a starter — <code>raw/</code> for inputs, <code>proposed/</code> for staged writes, and a <code>CLAUDE.md</code> operator manual.</p>
       </div>
     </details>
 
@@ -2291,86 +2622,141 @@
 <!-- ============================================================== -->
 <section class="block reveal" id="get-started">
   <p class="eyebrow">Get started</p>
-  <h2>One file, one double-click.</h2>
-  <p class="section-sub">If you already use Claude Desktop, that's all of it.</p>
+  <h2>Install Margins.</h2>
+  <p class="section-sub">You saw it. Now run it on your files.</p>
 
-  <div class="install-card">
-    <div class="install-headline">
-      <h3>Download for Claude Desktop</h3>
-      <span class="pill">Easiest</span>
+  <div class="adaptive-card" aria-labelledby="install-title">
+    <div class="adaptive-tabs" role="tablist" aria-label="Install path">
+      <button
+        class="adaptive-tab"
+        role="tab"
+        id="tab-desktop"
+        aria-controls="panel-desktop"
+        aria-selected="true"
+        data-tab="desktop"
+      >
+        <span class="adaptive-tab-dot" aria-hidden="true"></span>
+        <span>Claude Desktop</span>
+      </button>
+      <button
+        class="adaptive-tab"
+        role="tab"
+        id="tab-cli"
+        aria-controls="panel-cli"
+        aria-selected="false"
+        data-tab="cli"
+        tabindex="-1"
+      >
+        <span class="adaptive-tab-dot" aria-hidden="true"></span>
+        <span>Claude Code / CLI</span>
+      </button>
+
+      <button
+        class="adaptive-help-btn"
+        id="adaptiveHelpBtn"
+        aria-expanded="false"
+        aria-controls="adaptiveHelpTooltip"
+        aria-label="What's the difference?"
+        title="What's the difference?"
+      >?</button>
+
+      <span class="adaptive-tab-underline" id="adaptiveTabUnderline" aria-hidden="true"></span>
     </div>
-    <p class="lede">Margins ships as a single <code>.mcpb</code> bundle. Double-click it and Claude Desktop installs the connector. No terminal, no config files.</p>
 
-    <div class="download-row">
-      <a class="btn btn-download btn-lg" href="https://github.com/cflorczyk9/Margins/releases/latest/download/margins-mcp.mcpb" download rel="noopener">
-        Download margins-mcp.mcpb
-      </a>
-      <span class="meta"><strong>~2 MB</strong> · macOS &amp; Windows · MIT</span>
-    </div>
-
-    <ol class="steps">
-      <li>
-        <span class="step-n">1</span>
-        <span class="step-body"><strong>Double-click</strong> the file you just downloaded. Claude Desktop opens and installs it.</span>
-      </li>
-      <li>
-        <span class="step-n">2</span>
-        <span class="step-body"><strong>Pick the folder</strong> Claude should read. Your Obsidian vault works, an iCloud Drive folder works, any folder on your computer works.</span>
-      </li>
-      <li>
-        <span class="step-n">3</span>
-        <span class="step-body"><strong>Ask Claude</strong> about your notes. Margins shows up in the connector list with its logo.</span>
-      </li>
-    </ol>
-  </div>
-
-  <div class="alt-paths">
-
-    <details class="alt" id="alt-cli">
-      <summary>
-        <span>Prefer the terminal? Install via npm.</span>
-        <span class="alt-sub">Claude Code · CLI users</span>
-      </summary>
-      <div class="alt-body">
-        <p>Install the package globally:</p>
-        <pre><button class="copy-btn" data-copy="cli-install">copy</button><code id="cli-install">npm install -g margins-mcp</code></pre>
-
-        <p>Find your vault path (in Obsidian: right-click vault → <strong>Reveal in Finder</strong>) and run:</p>
-        <pre><button class="copy-btn" data-copy="cli-run">copy</button><code id="cli-run">margins-mcp install --vault /absolute/path/to/your/vault</code></pre>
-
-        <p>The installer writes the configs for Claude Desktop and Claude Code, scaffolds <code>raw/</code>, <code>proposed/</code>, and <code>.margins/</code> in your vault, and runs a verification probe.</p>
-
-        <p>Try it in any Claude conversation:</p>
-        <pre><code>Use margins to give me a summary of my recent notes.</code></pre>
-
-        <p style="color: var(--ink-3); font-size: 13px;">To update: <code>margins-mcp install --update</code>.</p>
+    <div class="adaptive-help-tooltip" id="adaptiveHelpTooltip" role="region" aria-label="Difference between install paths">
+      <div class="adaptive-help-tooltip-inner">
+        <div class="row"><strong>Desktop</strong> — double-click install with the .mcpb bundle. Works on macOS &amp; Windows.</div>
+        <div class="row"><strong>CLI</strong> — npm package, works with Claude Code or anywhere you have Node. Linux too.</div>
       </div>
-    </details>
+    </div>
 
-    <details class="alt" id="alt-fresh">
-      <summary>
-        <span>No vault yet? Margins can scaffold one for you.</span>
-        <span class="alt-sub">First-time setup</span>
-      </summary>
-      <div class="alt-body">
-        <p>Margins creates a starter vault in the folder you pick — wiki, raw, proposed, plus an operator manual and a <code>CLAUDE.md</code>.</p>
+    <div class="adaptive-body-frame" id="adaptiveBodyFrame">
+      <div
+        class="adaptive-body"
+        id="panel-desktop"
+        role="tabpanel"
+        aria-labelledby="tab-desktop"
+        data-panel="desktop"
+      >
+        <h3 class="adaptive-install-heading" id="install-title">Install for Claude Desktop.</h3>
 
-        <div id="fs-support-check"></div>
+        <a
+          class="adaptive-download-btn"
+          href="https://github.com/cflorczyk9/Margins/releases/latest/download/margins-mcp.mcpb"
+          download
+        >
+          Download for Claude Desktop
+          <span class="adaptive-arrow" aria-hidden="true">↓</span>
+        </a>
+        <p class="adaptive-meta">~2 MB<span class="adaptive-sep">·</span>macOS &amp; Windows<span class="adaptive-sep">·</span>MIT</p>
 
-        <p style="margin-top:14px;">
-          <button class="btn btn-primary" id="scaffold-btn">Pick parent folder and scaffold</button>
+        <p class="adaptive-body-copy">
+          <span class="adaptive-accent">Double-click. Pick a folder. Ask Claude.</span>
+          Margins shows up in your Connector list with its logo.
         </p>
-        <div id="scaffold-status"></div>
-
-        <div id="step-2-body" class="hidden" style="margin-top:14px;">
-          <p>Now install the connector (the <a href="#get-started">.mcpb download</a> above is the easiest path) and point it at the <code>Margins/</code> folder you just created.</p>
-          <p>Open a Claude conversation:</p>
-          <pre><code>Use margins to help me start writing in my new vault.</code></pre>
-        </div>
       </div>
-    </details>
 
+      <div
+        class="adaptive-body"
+        id="panel-cli"
+        role="tabpanel"
+        aria-labelledby="tab-cli"
+        data-panel="cli"
+        hidden
+      >
+        <h3 class="adaptive-install-heading">Install via npm.</h3>
+
+        <ul class="adaptive-cmd-list">
+          <li class="adaptive-cmd">
+            <code><span class="adaptive-prompt">$</span>npm install -g margins-mcp</code>
+            <button class="cmd-copy" data-copy-text="npm install -g margins-mcp" type="button">copy</button>
+          </li>
+          <li class="adaptive-cmd">
+            <code><span class="adaptive-prompt">$</span>margins-mcp install --vault /absolute/path/to/your/files</code>
+            <button class="cmd-copy" data-copy-text="margins-mcp install --vault /absolute/path/to/your/files" type="button">copy</button>
+          </li>
+        </ul>
+
+        <p class="adaptive-body-copy">
+          The installer writes configs for Claude Desktop and Claude Code, scaffolds
+          <code class="adaptive-inline-code">raw/</code>,
+          <code class="adaptive-inline-code">proposed/</code>, and
+          <code class="adaptive-inline-code">.margins</code>
+          in your folder, and verifies. To update later: <code class="adaptive-inline-code">margins-mcp install --update</code>.
+        </p>
+      </div>
+    </div>
   </div>
+
+  <p class="adaptive-scaffold-line">
+    Don't have a folder of files yet?
+    <a href="#alt-fresh-deep">Margins can scaffold a starter <span class="adaptive-arrow">→</span></a>
+  </p>
+
+  <!-- Scaffold-a-vault path preserved as a deep-linked details panel below the
+       main install card. Demoted because it's a less-common starting state. -->
+  <details class="alt" id="alt-fresh-deep" style="margin-top: 14px;">
+    <summary>
+      <span>Scaffold a starter folder</span>
+      <span class="alt-sub">First-time setup</span>
+    </summary>
+    <div class="alt-body">
+      <p>Margins can create a starter folder for you — <code>wiki/</code>, <code>raw/</code>, <code>proposed/</code>, plus an operator manual and a <code>CLAUDE.md</code>.</p>
+
+      <div id="fs-support-check"></div>
+
+      <p style="margin-top:14px;">
+        <button class="btn btn-primary" id="scaffold-btn">Pick parent folder and scaffold</button>
+      </p>
+      <div id="scaffold-status"></div>
+
+      <div id="step-2-body" class="hidden" style="margin-top:14px;">
+        <p>Now install the connector (the <a href="#get-started">.mcpb download</a> above is the easiest path) and point it at the <code>Margins/</code> folder you just created.</p>
+        <p>Open a Claude conversation:</p>
+        <pre><code>Use margins to help me start writing in my new folder.</code></pre>
+      </div>
+    </div>
+  </details>
 </section>
 
 </main>
@@ -2560,6 +2946,179 @@ function bindCopyButtons() {
   }
 }
 bindCopyButtons();
+
+/* ============ Adaptive install card (tabs + persistence) ============ */
+(function () {
+  const STORAGE_KEY = 'margins.install.tab';
+  const tabs = Array.from(document.querySelectorAll('.adaptive-tab'));
+  const underline = document.getElementById('adaptiveTabUnderline');
+  const frame = document.getElementById('adaptiveBodyFrame');
+  if (!tabs.length || !underline || !frame) return;
+
+  const panels = {
+    desktop: document.getElementById('panel-desktop'),
+    cli: document.getElementById('panel-cli')
+  };
+  const helpBtn = document.getElementById('adaptiveHelpBtn');
+  const helpTooltip = document.getElementById('adaptiveHelpTooltip');
+
+  function placeUnderline(activeTab) {
+    const rect = activeTab.getBoundingClientRect();
+    const parentRect = activeTab.parentElement.getBoundingClientRect();
+    underline.style.width = rect.width + 'px';
+    underline.style.transform = `translateX(${rect.left - parentRect.left}px)`;
+  }
+
+  function syncFrameHeight(targetPanel) {
+    const prevHidden = targetPanel.hasAttribute('hidden');
+    const prevDisplay = targetPanel.style.display;
+    const prevVisibility = targetPanel.style.visibility;
+    const prevPosition = targetPanel.style.position;
+    if (prevHidden) {
+      targetPanel.style.visibility = 'hidden';
+      targetPanel.style.position = 'absolute';
+      targetPanel.style.display = 'block';
+      targetPanel.removeAttribute('hidden');
+    }
+    const h = targetPanel.offsetHeight;
+    if (prevHidden) {
+      targetPanel.setAttribute('hidden', '');
+      targetPanel.style.visibility = prevVisibility;
+      targetPanel.style.position = prevPosition;
+      targetPanel.style.display = prevDisplay;
+    }
+    frame.style.height = h + 'px';
+  }
+
+  function selectTab(name, opts = {}) {
+    const newTab = tabs.find((t) => t.dataset.tab === name);
+    const oldTab = tabs.find((t) => t.getAttribute('aria-selected') === 'true');
+    if (!newTab) return;
+    if (oldTab === newTab && !opts.force) {
+      placeUnderline(newTab);
+      return;
+    }
+    tabs.forEach((t) => {
+      const sel = t === newTab;
+      t.setAttribute('aria-selected', sel ? 'true' : 'false');
+      t.setAttribute('tabindex', sel ? '0' : '-1');
+    });
+    placeUnderline(newTab);
+
+    const oldPanel = panels[oldTab ? oldTab.dataset.tab : 'desktop'];
+    const newPanel = panels[name];
+    syncFrameHeight(newPanel);
+
+    if (opts.skipAnim) {
+      if (oldPanel && oldPanel !== newPanel) oldPanel.setAttribute('hidden', '');
+      newPanel.removeAttribute('hidden');
+      newPanel.classList.remove('fade-out');
+      return;
+    }
+    if (oldPanel) oldPanel.classList.add('fade-out');
+    setTimeout(() => {
+      if (oldPanel && oldPanel !== newPanel) {
+        oldPanel.setAttribute('hidden', '');
+        oldPanel.classList.remove('fade-out');
+      }
+      newPanel.removeAttribute('hidden');
+      newPanel.classList.add('fade-out');
+      void newPanel.offsetWidth;
+      newPanel.classList.remove('fade-out');
+      syncFrameHeight(newPanel);
+    }, 220);
+
+    try { localStorage.setItem(STORAGE_KEY, name); } catch (_) {}
+    if (history.replaceState) {
+      history.replaceState(null, '', '#install=' + name);
+    }
+  }
+
+  tabs.forEach((t) => {
+    t.addEventListener('click', () => selectTab(t.dataset.tab));
+    t.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+        e.preventDefault();
+        const idx = tabs.indexOf(t);
+        const next = e.key === 'ArrowRight'
+          ? tabs[(idx + 1) % tabs.length]
+          : tabs[(idx - 1 + tabs.length) % tabs.length];
+        next.focus();
+        selectTab(next.dataset.tab);
+      }
+    });
+  });
+
+  if (helpBtn && helpTooltip) {
+    helpBtn.addEventListener('click', () => {
+      const open = helpTooltip.classList.toggle('open');
+      helpBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+  }
+
+  document.querySelectorAll('.cmd-copy').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const text = btn.getAttribute('data-copy-text') || '';
+      const done = () => {
+        btn.textContent = '✓ copied';
+        btn.classList.add('copied');
+        setTimeout(() => {
+          btn.classList.remove('copied');
+          btn.textContent = 'copy';
+        }, 1200);
+      };
+      const fallback = () => {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); } catch (_) {}
+        document.body.removeChild(ta);
+        done();
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, fallback);
+      } else {
+        fallback();
+      }
+    });
+  });
+
+  function initialTab() {
+    const m = (location.hash || '').match(/install=(desktop|cli)/i);
+    if (m) return m[1].toLowerCase();
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored === 'desktop' || stored === 'cli') return stored;
+    } catch (_) {}
+    return 'desktop';
+  }
+  function init() {
+    const initial = initialTab();
+    selectTab(initial, { skipAnim: true, force: true });
+    const activeTab = tabs.find((t) => t.dataset.tab === initial);
+    if (activeTab) placeUnderline(activeTab);
+    syncFrameHeight(panels[initial]);
+  }
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(init);
+  } else {
+    init();
+  }
+  window.addEventListener('resize', () => {
+    const active = tabs.find((t) => t.getAttribute('aria-selected') === 'true');
+    if (active) {
+      placeUnderline(active);
+      syncFrameHeight(panels[active.dataset.tab]);
+    }
+  });
+  window.addEventListener('hashchange', () => {
+    const m = (location.hash || '').match(/install=(desktop|cli)/i);
+    if (m) selectTab(m[1].toLowerCase());
+  });
+})();
 
 /* ====================================================================== */
 /* === Claude Desktop demo conversation                               === */
