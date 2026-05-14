@@ -224,7 +224,7 @@
     transition: transform 80ms linear;
   }
 
-  .wrap { max-width: 980px; margin: 0 auto; padding: 0 32px; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 32px; }
   @media (max-width: 560px) { .wrap { padding: 0 20px; } }
 
   /* ============================================================ */
@@ -404,8 +404,6 @@
     text-decoration: none;
     letter-spacing: -0.005em;
   }
-  a.btn { border-bottom: 1px solid transparent; }
-
   /* Primary: ink-filled pill, vermillion-accent on hover */
   .btn-primary {
     background: var(--ink);
@@ -506,7 +504,8 @@
   }
 
   /* ============================================================ */
-  /* === How it works (3 cards, borderless, generous)         === */
+  /* === How it works (3 cards, polychrome top accent, lift on   */
+  /* === hover; styling ported from compact-demo-v3-confident)  */
   /* ============================================================ */
   .how-strip {
     display: grid;
@@ -517,62 +516,309 @@
   @media (max-width: 720px) {
     .how-strip { grid-template-columns: 1fr; gap: 14px; }
   }
+
   .how-card {
-    background: transparent;
+    background: var(--paper);
     border: 1px solid var(--line);
     border-radius: 14px;
-    padding: 28px 26px 26px;
+    padding: 26px 24px 24px;
     position: relative;
-    transition: border-color 200ms ease, background 200ms ease;
+    overflow: hidden;
+    transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 240ms ease, border-color 200ms ease;
+    box-shadow: var(--shadow-sm);
+  }
+  .how-card::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 3px;
+    background: var(--c, var(--accent));
+    opacity: 0.85;
   }
   .how-card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-md);
     border-color: var(--line-strong);
-    background: color-mix(in srgb, var(--paper) 60%, transparent);
   }
-  .how-num {
+  .how-card:nth-child(1) { --c: var(--mustard); }
+  .how-card:nth-child(2) { --c: var(--cobalt); }
+  .how-card:nth-child(3) { --c: var(--vermillion); }
+
+  .how-card .how-num {
     font-family: 'Manrope', sans-serif;
-    font-size: 11px;
-    font-weight: 700;
+    font-size: 11px; font-weight: 700;
     letter-spacing: 0.12em;
     text-transform: uppercase;
-    color: var(--ink-3);
-    margin: 0 0 14px;
+    color: var(--c, var(--accent));
+    margin: 0 0 12px;
     display: inline-flex; align-items: center; gap: 8px;
   }
-  .how-num::before {
-    content: ""; display: inline-block;
-    width: 6px; height: 6px;
+  .how-card .how-num::before {
+    display: inline-flex;
+    width: 18px; height: 18px;
     border-radius: 50%;
-    background: var(--accent);
+    background: color-mix(in srgb, var(--c, var(--accent)) 16%, transparent);
+    border: 1px solid color-mix(in srgb, var(--c, var(--accent)) 35%, transparent);
+    color: var(--c, var(--accent));
+    font-size: 11px; font-weight: 800;
+    align-items: center; justify-content: center;
   }
+  .how-card:nth-child(1) .how-num::before { content: "1"; }
+  .how-card:nth-child(2) .how-num::before { content: "2"; }
+  .how-card:nth-child(3) .how-num::before { content: "3"; }
+
   .how-card h3 {
-    font-family: 'Newsreader', Georgia, "Times New Roman", serif;
-    font-size: 21px;
-    font-weight: 500;
-    letter-spacing: -0.01em;
+    font-family: 'Manrope', sans-serif;
+    font-size: 18px; font-weight: 700;
+    letter-spacing: -0.010em;
     margin: 0 0 10px;
     color: var(--ink);
     line-height: 1.25;
   }
   .how-card p {
     color: var(--ink-2);
-    font-size: 15px;
-    line-height: 1.6;
+    font-size: 14.8px;
+    line-height: 1.58;
     margin: 0;
   }
-  .how-card p + p { margin-top: 8px; }
+  .how-card p + p { margin-top: 10px; }
   .how-card code {
     background: var(--paper-soft);
     border: 1px solid var(--line);
     padding: 1px 6px;
     border-radius: 4px;
-    font-size: 0.86em;
-    color: var(--ink);
+    font-size: 0.88em;
+    color: var(--accent);
   }
 
   /* ============================================================ */
-  /* === Comparison table                                     === */
+  /* === Comparison matrix (variant B, ported from              */
+  /* === compare-variant-b-matrix.html)                         */
   /* ============================================================ */
+  .matrix-card {
+    position: relative;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    box-shadow: var(--shadow-md);
+    padding: 8px;
+    overflow: hidden;
+  }
+  .matrix {
+    display: grid;
+    grid-template-columns:
+      minmax(220px, 1.5fr)
+      minmax(170px, 1.1fr)
+      minmax(170px, 1fr)
+      minmax(170px, 1fr)
+      minmax(170px, 1fr);
+    position: relative;
+  }
+  .m-head { display: contents; }
+  .m-head > div {
+    padding: 22px 18px 18px;
+    font: 600 12.5px/1.3 'Manrope', sans-serif;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    border-bottom: 1px solid var(--line-strong);
+    position: relative;
+  }
+  .m-head .h-label { color: transparent; user-select: none; }
+  .m-head .h-us {
+    color: var(--accent);
+    letter-spacing: 0.04em;
+    text-transform: none;
+    font-size: 13.5px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .m-head .h-us::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 14px; right: 14px;
+    height: 2px;
+    background: var(--vermillion);
+    border-radius: 2px;
+  }
+  .kandinsky {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    height: 12px;
+  }
+  .kandinsky .disc-m {
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--mustard);
+    position: relative;
+  }
+  .kandinsky .disc-m::after {
+    content: "";
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--vermillion);
+  }
+  .m-row { display: contents; }
+  .m-row > .cell {
+    padding: 18px;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    text-align: center;
+    min-height: 76px;
+    transition: background-color 180ms ease;
+  }
+  .m-row > .cell.label {
+    align-items: flex-start;
+    text-align: left;
+    justify-content: center;
+    color: var(--ink);
+    font-size: 14.5px;
+    font-weight: 500;
+    line-height: 1.4;
+  }
+  .m-row:last-child > .cell { border-bottom: none; }
+  .m-row.even > .cell { background: color-mix(in srgb, var(--paper-soft) 30%, transparent); }
+  .matrix:hover .m-row:hover > .cell { background: color-mix(in srgb, var(--paper-soft) 60%, transparent); }
+  .matrix:hover .m-row:hover > .cell.label { box-shadow: inset 2px 0 0 var(--ink); }
+  .m-row > .cell.us,
+  .m-head .h-us { background: var(--accent-soft); }
+  .us-ring {
+    position: absolute;
+    top: 0;
+    width: 0;
+    pointer-events: none;
+    border: 1.75px solid var(--vermillion);
+    border-radius: 14px;
+    box-shadow:
+      0 0 0 4px var(--paper),
+      0 8px 24px rgba(214, 58, 47, 0.10);
+    transition: opacity 200ms ease;
+    opacity: 0;
+  }
+  [data-theme="dark"] .us-ring {
+    box-shadow:
+      0 0 0 4px var(--paper),
+      0 8px 24px rgba(224, 75, 63, 0.15);
+  }
+  /* Indicators */
+  .ind {
+    width: 28px; height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .ind.yes-us .dot { width: 12px; height: 12px; background: var(--vermillion); border-radius: 50%; }
+  .ind.yes-them .dot { width: 12px; height: 12px; background: var(--ink-3); border-radius: 50%; }
+  .ind.partial { position: relative; }
+  .ind.partial .ring {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    border: 1.5px solid var(--mustard);
+    position: relative;
+    overflow: hidden;
+    background: transparent;
+  }
+  .ind.partial .ring::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: var(--mustard);
+    clip-path: polygon(0 50%, 100% 50%, 100% 100%, 0 100%);
+  }
+  .ind.no .dash { width: 14px; height: 2px; background: var(--ink-4); border-radius: 2px; }
+  .caption {
+    font: 500 11.5px/1.35 'Manrope', sans-serif;
+    color: var(--ink-3);
+    max-width: 18ch;
+  }
+  .cell.us .caption { color: var(--ink-2); }
+
+  /* Mobile collapse for matrix */
+  @media (max-width: 720px) {
+    .matrix { display: none; }
+    .us-ring { display: none; }
+    .matrix-card {
+      padding: 0;
+      background: transparent;
+      border: none;
+      box-shadow: none;
+    }
+    .m-stack { display: flex; flex-direction: column; gap: 16px; }
+    .tool-card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 22px 20px;
+      box-shadow: var(--shadow-sm);
+    }
+    .tool-card.is-us {
+      border: 1.75px solid var(--vermillion);
+      background: linear-gradient(180deg, var(--accent-soft), var(--paper) 60%);
+      position: relative;
+    }
+    .tool-card.is-us::before {
+      content: "";
+      position: absolute;
+      top: 0; left: 18px; right: 18px;
+      height: 2px;
+      background: var(--vermillion);
+      border-radius: 2px;
+    }
+    .tool-card h3 {
+      font: 700 13px/1 'Manrope', sans-serif;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--ink-3);
+      margin: 0 0 18px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .tool-card.is-us h3 {
+      color: var(--vermillion);
+      text-transform: none;
+      letter-spacing: 0.01em;
+      font-size: 15px;
+    }
+    .tool-card ul {
+      list-style: none;
+      padding: 0; margin: 0;
+      display: flex; flex-direction: column; gap: 14px;
+    }
+    .tool-card li {
+      display: grid;
+      grid-template-columns: 32px 1fr;
+      gap: 12px;
+      align-items: start;
+    }
+    .tool-card .li-label {
+      font-size: 14.5px;
+      color: var(--ink);
+      line-height: 1.4;
+      font-weight: 500;
+    }
+    .tool-card .li-caption {
+      display: block;
+      font-size: 12.5px;
+      color: var(--ink-3);
+      margin-top: 2px;
+      font-weight: 400;
+    }
+  }
+  @media (min-width: 721px) {
+    .m-stack { display: none; }
+  }
+
+  /* === Legacy compare-table (kept for safety; no longer used) === */
   .compare-wrap {
     border: 1px solid var(--line);
     border-radius: 14px;
@@ -802,7 +1048,7 @@
   }
   .sticky-stage > .wrap > .cwd {
     width: 100%;
-    max-width: 960px;
+    max-width: 1140px;
     margin: 0 auto;
   }
   @media (max-width: 720px) {
@@ -1243,12 +1489,22 @@
   }
 
   .demo-controls {
-    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
     margin-top: 16px;
-    max-width: 760px;
-    margin-left: auto; margin-right: auto;
+    padding: 0 4px;
   }
-  .demo-controls .demo-note { font-size: 13px; color: var(--ink-3); }
+  .demo-controls .demo-note {
+    font-size: 13px; color: var(--ink-3);
+    flex: 1 1 auto; text-align: center;
+  }
+  .demo-controls .demo-transcript { margin: 0; flex: 0 0 auto; }
+  .demo-controls .demo-transcript > summary { padding: 6px 0; }
+  @media (max-width: 720px) {
+    .demo-controls { justify-content: center; }
+    .demo-controls .demo-note { flex: 1 1 100%; text-align: center; order: 3; }
+  }
+  .demo-transcript-body-section { margin-top: 18px; }
+  .demo-transcript-body-section .demo-transcript-body { max-width: 1140px; margin: 0 auto; }
   .replay-btn {
     background: transparent;
     border: 1px solid var(--line-strong);
@@ -1263,18 +1519,26 @@
   .replay-btn:hover { border-color: var(--ink-3); color: var(--ink); }
 
   /* ============================================================ */
-  /* === Get started                                          === */
+  /* === Get started  (ported from compact-demo-v3-confident)  === */
   /* ============================================================ */
   .install-card {
     background: var(--paper);
     border: 1px solid var(--line);
     border-radius: 16px;
-    padding: 40px;
+    padding: 36px;
     box-shadow: var(--shadow-md);
+    position: relative;
+    overflow: hidden;
   }
-  @media (max-width: 720px) {
-    .install-card { padding: 28px 22px; border-radius: 14px; }
+  .install-card::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 4px;
+    background: linear-gradient(90deg, var(--mustard) 0%, var(--vermillion) 50%, var(--cobalt) 100%);
   }
+  @media (max-width: 720px) { .install-card { padding: 26px; border-radius: 14px; } }
+  @media (max-width: 380px) { .install-card { padding: 22px; } }
 
   .install-headline {
     display: flex; align-items: baseline; gap: 14px;
@@ -1282,26 +1546,23 @@
     margin-bottom: 8px;
   }
   .install-headline h3 {
-    font-family: 'Newsreader', Georgia, "Times New Roman", serif;
-    font-size: 26px;
-    font-weight: 500;
-    letter-spacing: -0.012em;
+    font-family: 'Manrope', sans-serif;
+    font-size: 22px; font-weight: 700; letter-spacing: -0.015em;
     margin: 0;
   }
   .install-headline .pill {
-    font-size: 10px; font-weight: 700;
-    letter-spacing: 0.1em;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.10em;
     text-transform: uppercase;
     color: var(--accent);
     background: var(--accent-soft);
     border: 1px solid var(--accent-line);
-    padding: 3px 10px;
+    padding: 4px 10px;
     border-radius: 999px;
   }
   .install-card p.lede {
     color: var(--ink-2); font-size: 15.5px;
     margin: 0 0 26px;
-    max-width: 60ch;
+    max-width: 56ch;
     line-height: 1.6;
   }
   .install-card p.lede code {
@@ -1313,7 +1574,7 @@
     color: var(--ink);
   }
 
-  .download-row { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+  .download-row { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
   .download-row .meta { font-size: 13px; color: var(--ink-3); }
   .download-row .meta strong { color: var(--ink-2); font-weight: 600; }
 
@@ -1321,28 +1582,36 @@
     list-style: none; padding: 0; margin: 32px 0 0;
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 16px;
+    gap: 14px;
+    counter-reset: step;
   }
   @media (max-width: 720px) { .steps { grid-template-columns: 1fr; } }
   .steps li {
-    background: transparent;
+    background: color-mix(in srgb, var(--paper-soft) 60%, transparent);
     border: 1px solid var(--line);
     border-radius: 12px;
-    padding: 20px 22px;
+    padding: 18px 20px;
     display: flex; align-items: flex-start; gap: 14px;
     font-size: 14.5px;
     color: var(--ink-2);
     line-height: 1.55;
-    transition: border-color 200ms ease;
+    transition: transform 200ms ease, border-color 200ms ease, box-shadow 200ms ease;
   }
-  .steps li:hover { border-color: var(--line-strong); }
+  .steps li:hover {
+    transform: translateY(-2px);
+    border-color: var(--line-strong);
+    box-shadow: var(--shadow-sm);
+  }
+  .steps li:nth-child(1) .step-n { color: var(--mustard); border-color: color-mix(in srgb, var(--mustard) 50%, var(--line-strong)); }
+  .steps li:nth-child(2) .step-n { color: var(--cobalt); border-color: color-mix(in srgb, var(--cobalt) 45%, var(--line-strong)); }
+  .steps li:nth-child(3) .step-n { color: var(--accent); border-color: var(--accent-line); }
   .step-n {
     flex: 0 0 auto;
-    width: 24px; height: 24px;
+    width: 28px; height: 28px;
     border-radius: 50%;
-    background: var(--paper-soft);
+    background: var(--paper);
     border: 1px solid var(--line-strong);
-    font-size: 12px; font-weight: 700;
+    font-size: 13px; font-weight: 700;
     color: var(--ink);
     display: flex; align-items: center; justify-content: center;
     margin-top: 1px;
@@ -1351,19 +1620,19 @@
   .step-body strong { color: var(--ink); font-weight: 600; }
 
   /* Disclosure rows */
-  .alt-paths { margin-top: 22px; display: grid; gap: 10px; }
+  .alt-paths { margin-top: 24px; display: grid; gap: 10px; }
   details.alt {
     background: var(--paper);
     border: 1px solid var(--line);
     border-radius: 12px;
     padding: 0;
-    transition: border-color 200ms ease;
+    transition: border-color 0.18s ease, box-shadow 0.2s ease;
   }
-  details.alt[open] { border-color: var(--line-strong); }
+  details.alt[open] { border-color: var(--line-strong); box-shadow: var(--shadow-sm); }
   details.alt > summary {
     list-style: none;
     cursor: pointer;
-    padding: 16px 20px;
+    padding: 15px 20px;
     display: flex; align-items: center; justify-content: space-between;
     gap: 12px;
     font-size: 14.5px; font-weight: 600; color: var(--ink);
@@ -1376,7 +1645,7 @@
   details.alt > summary::after {
     content: "+";
     font-family: ui-monospace, Menlo, monospace;
-    font-size: 16px;
+    font-size: 18px;
     font-weight: 400;
     color: var(--ink-3);
     margin-left: 10px;
@@ -1384,7 +1653,7 @@
     transition: transform 0.2s ease;
   }
   details.alt[open] > summary::after { content: "−"; color: var(--accent); }
-  .alt-body { padding: 4px 20px 20px; font-size: 14.5px; color: var(--ink-2); line-height: 1.6; }
+  .alt-body { padding: 6px 20px 20px; font-size: 14.5px; color: var(--ink-2); line-height: 1.62; }
   .alt-body > * + * { margin-top: 12px; }
   .alt-body p { margin: 0; }
   .alt-body code {
@@ -1432,23 +1701,24 @@
   footer {
     color: var(--ink-3);
     font-size: 13.5px;
-    padding: 48px 0 64px;
-    margin-top: 32px;
+    padding: 36px 0 64px;
+    margin-top: 24px;
+    position: relative;
   }
-  footer .footer-row {
-    display: flex; align-items: center; gap: 14px;
-    flex-wrap: wrap;
-    border-top: 1px solid var(--line);
-    padding-top: 32px;
+  footer::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--mustard) 0%, var(--vermillion) 50%, var(--cobalt) 100%);
+    opacity: 0.85;
   }
   footer .accent-line {
-    display: inline-block; height: 2px; width: 28px;
-    background: var(--accent); vertical-align: middle;
-    margin-right: 4px;
+    display: inline-block; height: 2px; width: 32px;
+    background: var(--accent); vertical-align: 4px; margin-right: 12px;
   }
-  footer .sep { color: var(--ink-4); }
-  footer a { border-bottom-color: transparent; }
-  footer a:hover { border-bottom-color: var(--accent); }
+  footer a { color: var(--ink-2); border-bottom-color: transparent; }
+  footer a:hover { color: var(--accent); border-bottom-color: var(--accent); }
 
   .hidden { display: none; }
 
@@ -1656,6 +1926,9 @@
         <div class="demo-controls">
           <button class="replay-btn" id="replay-btn" type="button">↻ Replay</button>
           <span class="demo-note">Recorded conversation. Real tools, real flow. Your vault stays on your disk.</span>
+          <details class="demo-transcript" id="demo-transcript">
+            <summary>Demo transcript (text version)</summary>
+          </details>
         </div>
       </div>
     </div>
@@ -1665,23 +1938,20 @@
 <main class="wrap">
 
 <!-- ============================================================== -->
-<!-- DEMO TRANSCRIPT (crawlable text version of the Coffee scenario) -->
+<!-- DEMO TRANSCRIPT BODY (toggled by .demo-transcript summary above) -->
 <!-- ============================================================== -->
-<section class="block reveal" id="transcript" aria-label="Demo transcript">
-  <details class="demo-transcript">
-    <summary>Demo transcript (text version)</summary>
-    <div class="demo-transcript-body">
-      <p><span class="role">User</span>Coffee with Casey Tran tomorrow at 9am. We met at the conference back in March. Brief me — I don't remember much. Use margins.</p>
-      <p><span class="role">Claude</span>Loaded tools, used Margins — <code>margins_start</code>, <code>search_vault</code> for "Casey Tran" (5 matches), <code>get_backlinks</code> for casey-tran (7 pages link back).</p>
-      <p><span class="role">Claude</span>Three direct touch points. Pulling the entity page, the conference notes, and the follow-up on LinkedIn — <code>wiki/entities/casey-tran.md</code>, <code>raw/2026-03-15-conference-dinner.md</code>, <code>raw/2026-04-22-casey-linkedin.md</code>.</p>
-      <p><span class="role">Claude</span>Casey runs platform partnerships at Lumen. Her current obsession is agentic workflows for sales teams. Checking whether anything else in the vault touches that — <code>search_vault</code> for "agentic workflows" surfaces an article you clipped in April and a coffee with Sam on April 22 where he called Lumen "the one to watch in agentic sales tooling."</p>
-      <p><span class="role">Claude</span><strong>Casey Tran — coffee tomorrow, 9am.</strong> Platform partnerships at Lumen, ex-Stripe, intro'd by Jordan at the March conference dinner. Current focus: agentic workflows for sales teams.</p>
-      <p><strong>Where you left it.</strong> You owe her your post on vendor consolidation (never sent). She offered an intro to her old Stripe colleague at Plaid; you said you'd come back with a clearer ask.</p>
-      <p><strong>Why she's circling back.</strong> Her April LinkedIn message says her team is "rethinking surface area" and asked what you've been seeing on the seller side. Probably evaluating you as a partner.</p>
-      <p><strong>Connections worth surfacing.</strong> The Information piece you clipped on April 10 is a long read on agentic workflows for B2B sales — Casey's exact territory. Reference it directly. And Sam, on April 22 (<code>raw/2026-04-22-coffee-sam.md</code>), called Lumen "the one to watch" without knowing you'd already met her.</p>
-      <p><strong>Posture.</strong> Lead with the post you owe — apologize fast and move on. Ask about the surface-area reset. Hold the Plaid intro back unless she opens it.</p>
-    </div>
-  </details>
+<section class="demo-transcript-body-section" id="demo-transcript-body-section" aria-label="Demo transcript" hidden>
+  <div class="demo-transcript-body" id="demo-transcript-body">
+    <p><span class="role">User</span>Coffee with Casey Tran tomorrow at 9am. We met at the conference back in March. Brief me — I don't remember much. Use margins.</p>
+    <p><span class="role">Claude</span>Loaded tools, used Margins — <code>margins_start</code>, <code>search_vault</code> for "Casey Tran" (5 matches), <code>get_backlinks</code> for casey-tran (7 pages link back).</p>
+    <p><span class="role">Claude</span>Three direct touch points. Pulling the entity page, the conference notes, and the follow-up on LinkedIn — <code>wiki/entities/casey-tran.md</code>, <code>raw/2026-03-15-conference-dinner.md</code>, <code>raw/2026-04-22-casey-linkedin.md</code>.</p>
+    <p><span class="role">Claude</span>Casey runs platform partnerships at Lumen. Her current obsession is agentic workflows for sales teams. Checking whether anything else in the vault touches that — <code>search_vault</code> for "agentic workflows" surfaces an article you clipped in April and a coffee with Sam on April 22 where he called Lumen "the one to watch in agentic sales tooling."</p>
+    <p><span class="role">Claude</span><strong>Casey Tran — coffee tomorrow, 9am.</strong> Platform partnerships at Lumen, ex-Stripe, intro'd by Jordan at the March conference dinner. Current focus: agentic workflows for sales teams.</p>
+    <p><strong>Where you left it.</strong> You owe her your post on vendor consolidation (never sent). She offered an intro to her old Stripe colleague at Plaid; you said you'd come back with a clearer ask.</p>
+    <p><strong>Why she's circling back.</strong> Her April LinkedIn message says her team is "rethinking surface area" and asked what you've been seeing on the seller side. Probably evaluating you as a partner.</p>
+    <p><strong>Connections worth surfacing.</strong> The Information piece you clipped on April 10 is a long read on agentic workflows for B2B sales — Casey's exact territory. Reference it directly. And Sam, on April 22 (<code>raw/2026-04-22-coffee-sam.md</code>), called Lumen "the one to watch" without knowing you'd already met her.</p>
+    <p><strong>Posture.</strong> Lead with the post you owe — apologize fast and move on. Ask about the surface-area reset. Hold the Plaid intro back unless she opens it.</p>
+  </div>
 </section>
 
 <!-- ============================================================== -->
@@ -1692,64 +1962,120 @@
   <h2>How Margins compares.</h2>
   <p class="section-sub">There are a few other ways to point an AI at your notes. Here's where they overlap with Margins and where Margins is more specific.</p>
 
-  <div class="compare-wrap">
-    <table class="compare-table" aria-label="Comparison of Margins MCP with related tools">
-      <thead>
-        <tr>
-          <th scope="col"></th>
-          <th scope="col" class="is-us">Margins MCP</th>
-          <th scope="col">Filesystem MCP</th>
-          <th scope="col">Smart Connections</th>
-          <th scope="col">NotebookLM</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>Finds connections across files (wikilinks, backlinks, cross-document synthesis)</td>
-          <td class="is-us"><span class="ck">✓</span></td>
-          <td><span class="x">✗</span></td>
-          <td><span class="partial">partial (semantic, no graph)</span></td>
-          <td><span class="partial">partial (Q&amp;A only, no graph)</span></td>
-        </tr>
-        <tr>
-          <td>Compiles raw inputs into structured pages</td>
-          <td class="is-us"><span class="ck">✓</span></td>
-          <td><span class="x">✗</span></td>
-          <td><span class="x">✗</span></td>
-          <td><span class="x">✗</span></td>
-        </tr>
-        <tr>
-          <td>Write capability</td>
-          <td class="is-us">propose-only (you review)</td>
-          <td>direct (no review step)</td>
-          <td>read-only</td>
-          <td>read-only</td>
-        </tr>
-        <tr>
-          <td>Free to run</td>
-          <td class="is-us"><span class="ck">✓</span> uses your Claude subscription</td>
-          <td><span class="ck">✓</span> uses your Claude subscription</td>
-          <td><span class="x">✗</span> BYOK OpenAI</td>
-          <td><span class="ck">✓</span> Google account</td>
-        </tr>
-        <tr>
-          <td>Files stay on your disk</td>
-          <td class="is-us"><span class="ck">✓</span></td>
-          <td><span class="ck">✓</span></td>
-          <td><span class="ck">✓</span></td>
-          <td><span class="x">✗</span> uploaded to Google</td>
-        </tr>
-        <tr>
-          <td>Works in Claude Desktop and Claude Code</td>
-          <td class="is-us"><span class="ck">✓</span></td>
-          <td><span class="ck">✓</span></td>
-          <td><span class="x">✗</span> in-Obsidian only</td>
-          <td><span class="x">✗</span></td>
-        </tr>
-      </tbody>
-    </table>
+  <div class="matrix-card">
+    <div class="us-ring" id="usRing" aria-hidden="true"></div>
+
+    <div class="matrix" id="matrix" role="table" aria-label="Comparison of Margins MCP with related tools">
+      <div class="m-head" role="row">
+        <div class="h-label" role="columnheader">Capability</div>
+        <div class="h-us" role="columnheader" data-col="us">
+          <span>Margins MCP</span>
+          <span class="kandinsky" aria-hidden="true"><span class="disc-m"></span></span>
+        </div>
+        <div role="columnheader">Filesystem MCP</div>
+        <div role="columnheader">Smart Connections</div>
+        <div role="columnheader">NotebookLM</div>
+      </div>
+
+      <div class="m-row" role="row">
+        <div class="cell label">Finds connections across files (wikilinks, backlinks, cross-document synthesis)</div>
+        <div class="cell us"><span class="ind yes-us" aria-label="Yes"><span class="dot"></span></span></div>
+        <div class="cell"><span class="ind no" aria-label="No"><span class="dash"></span></span></div>
+        <div class="cell"><span class="ind partial" aria-label="Partial"><span class="ring"></span></span><span class="caption">semantic, no graph</span></div>
+        <div class="cell"><span class="ind partial" aria-label="Partial"><span class="ring"></span></span><span class="caption">Q&amp;A only, no graph</span></div>
+      </div>
+
+      <div class="m-row even" role="row">
+        <div class="cell label">Compiles raw inputs into structured pages</div>
+        <div class="cell us"><span class="ind yes-us" aria-label="Yes"><span class="dot"></span></span></div>
+        <div class="cell"><span class="ind no" aria-label="No"><span class="dash"></span></span></div>
+        <div class="cell"><span class="ind no" aria-label="No"><span class="dash"></span></span></div>
+        <div class="cell"><span class="ind no" aria-label="No"><span class="dash"></span></span></div>
+      </div>
+
+      <div class="m-row" role="row">
+        <div class="cell label">Write capability</div>
+        <div class="cell us"><span class="ind yes-us" aria-label="Yes"><span class="dot"></span></span><span class="caption">propose-only (you review)</span></div>
+        <div class="cell"><span class="ind yes-them" aria-label="Yes"><span class="dot"></span></span><span class="caption">direct (no review step)</span></div>
+        <div class="cell"><span class="ind no" aria-label="No"><span class="dash"></span></span><span class="caption">read-only</span></div>
+        <div class="cell"><span class="ind no" aria-label="No"><span class="dash"></span></span><span class="caption">read-only</span></div>
+      </div>
+
+      <div class="m-row even" role="row">
+        <div class="cell label">Free to run</div>
+        <div class="cell us"><span class="ind yes-us" aria-label="Yes"><span class="dot"></span></span><span class="caption">uses your Claude subscription</span></div>
+        <div class="cell"><span class="ind yes-them" aria-label="Yes"><span class="dot"></span></span><span class="caption">uses your Claude subscription</span></div>
+        <div class="cell"><span class="ind no" aria-label="No"><span class="dash"></span></span><span class="caption">BYOK OpenAI</span></div>
+        <div class="cell"><span class="ind yes-them" aria-label="Yes"><span class="dot"></span></span><span class="caption">Google account</span></div>
+      </div>
+
+      <div class="m-row" role="row">
+        <div class="cell label">Files stay on your disk</div>
+        <div class="cell us"><span class="ind yes-us" aria-label="Yes"><span class="dot"></span></span></div>
+        <div class="cell"><span class="ind yes-them" aria-label="Yes"><span class="dot"></span></span></div>
+        <div class="cell"><span class="ind yes-them" aria-label="Yes"><span class="dot"></span></span></div>
+        <div class="cell"><span class="ind no" aria-label="No"><span class="dash"></span></span><span class="caption">uploaded to Google</span></div>
+      </div>
+
+      <div class="m-row even" role="row">
+        <div class="cell label">Works in Claude Desktop and Claude Code</div>
+        <div class="cell us"><span class="ind yes-us" aria-label="Yes"><span class="dot"></span></span></div>
+        <div class="cell"><span class="ind yes-them" aria-label="Yes"><span class="dot"></span></span></div>
+        <div class="cell"><span class="ind no" aria-label="No"><span class="dash"></span></span><span class="caption">in-Obsidian only</span></div>
+        <div class="cell"><span class="ind no" aria-label="No"><span class="dash"></span></span></div>
+      </div>
+    </div>
+
+    <div class="m-stack" aria-hidden="false">
+      <div class="tool-card is-us">
+        <h3>
+          <span>Margins MCP</span>
+          <span class="kandinsky" aria-hidden="true"><span class="disc-m"></span></span>
+        </h3>
+        <ul>
+          <li><span class="ind yes-us"><span class="dot"></span></span><span class="li-label">Finds connections across files</span></li>
+          <li><span class="ind yes-us"><span class="dot"></span></span><span class="li-label">Compiles raw inputs into structured pages</span></li>
+          <li><span class="ind yes-us"><span class="dot"></span></span><span class="li-label">Write capability<span class="li-caption">propose-only (you review)</span></span></li>
+          <li><span class="ind yes-us"><span class="dot"></span></span><span class="li-label">Free to run<span class="li-caption">uses your Claude subscription</span></span></li>
+          <li><span class="ind yes-us"><span class="dot"></span></span><span class="li-label">Files stay on your disk</span></li>
+          <li><span class="ind yes-us"><span class="dot"></span></span><span class="li-label">Works in Claude Desktop and Claude Code</span></li>
+        </ul>
+      </div>
+      <div class="tool-card">
+        <h3>Filesystem MCP</h3>
+        <ul>
+          <li><span class="ind no"><span class="dash"></span></span><span class="li-label">Finds connections across files</span></li>
+          <li><span class="ind no"><span class="dash"></span></span><span class="li-label">Compiles raw inputs into structured pages</span></li>
+          <li><span class="ind yes-them"><span class="dot"></span></span><span class="li-label">Write capability<span class="li-caption">direct (no review step)</span></span></li>
+          <li><span class="ind yes-them"><span class="dot"></span></span><span class="li-label">Free to run<span class="li-caption">uses your Claude subscription</span></span></li>
+          <li><span class="ind yes-them"><span class="dot"></span></span><span class="li-label">Files stay on your disk</span></li>
+          <li><span class="ind yes-them"><span class="dot"></span></span><span class="li-label">Works in Claude Desktop and Claude Code</span></li>
+        </ul>
+      </div>
+      <div class="tool-card">
+        <h3>Smart Connections</h3>
+        <ul>
+          <li><span class="ind partial"><span class="ring"></span></span><span class="li-label">Finds connections across files<span class="li-caption">semantic, no graph</span></span></li>
+          <li><span class="ind no"><span class="dash"></span></span><span class="li-label">Compiles raw inputs into structured pages</span></li>
+          <li><span class="ind no"><span class="dash"></span></span><span class="li-label">Write capability<span class="li-caption">read-only</span></span></li>
+          <li><span class="ind no"><span class="dash"></span></span><span class="li-label">Free to run<span class="li-caption">BYOK OpenAI</span></span></li>
+          <li><span class="ind yes-them"><span class="dot"></span></span><span class="li-label">Files stay on your disk</span></li>
+          <li><span class="ind no"><span class="dash"></span></span><span class="li-label">Works in Claude Desktop and Claude Code<span class="li-caption">in-Obsidian only</span></span></li>
+        </ul>
+      </div>
+      <div class="tool-card">
+        <h3>NotebookLM</h3>
+        <ul>
+          <li><span class="ind partial"><span class="ring"></span></span><span class="li-label">Finds connections across files<span class="li-caption">Q&amp;A only, no graph</span></span></li>
+          <li><span class="ind no"><span class="dash"></span></span><span class="li-label">Compiles raw inputs into structured pages</span></li>
+          <li><span class="ind no"><span class="dash"></span></span><span class="li-label">Write capability<span class="li-caption">read-only</span></span></li>
+          <li><span class="ind yes-them"><span class="dot"></span></span><span class="li-label">Free to run<span class="li-caption">Google account</span></span></li>
+          <li><span class="ind no"><span class="dash"></span></span><span class="li-label">Files stay on your disk<span class="li-caption">uploaded to Google</span></span></li>
+          <li><span class="ind no"><span class="dash"></span></span><span class="li-label">Works in Claude Desktop and Claude Code</span></li>
+        </ul>
+      </div>
+    </div>
   </div>
-  <p class="compare-caveat">These aren't pure substitutes. Filesystem MCP gives Claude raw file access for any folder; Smart Connections is an Obsidian-internal semantic search plugin; NotebookLM is a Google-hosted document-Q&amp;A tool. The table shows where they overlap with Margins and where Margins is more specific.</p>
 </section>
 
 <!-- ============================================================== -->
@@ -1911,17 +2237,7 @@
 
 <footer>
   <div class="wrap">
-    <div class="footer-row">
-      <span><span class="accent-line"></span> Margins runs locally. No vault content leaves your machine.</span>
-      <span class="sep">·</span>
-      <a href="https://github.com/cflorczyk9/Margins#privacy">Privacy details</a>
-      <span class="sep">·</span>
-      <a href="https://github.com/cflorczyk9/Margins">Source</a>
-      <span class="sep">·</span>
-      <a href="https://www.npmjs.com/package/margins-mcp">npm</a>
-      <span class="sep">·</span>
-      <span>MIT</span>
-    </div>
+    <span class="accent-line"></span>Margins runs locally. No vault content goes to Margins servers; Claude only sees the folder and excerpts you ask it to use. <a href="https://github.com/cflorczyk9/Margins#privacy">Privacy details</a> · <a href="https://github.com/cflorczyk9/Margins">Source</a> · <a href="https://www.npmjs.com/package/margins-mcp">npm</a> · MIT
   </div>
 </footer>
 
@@ -1960,6 +2276,30 @@ function updateNavScrolled() {
 }
 document.addEventListener("scroll", updateNavScrolled, { passive: true });
 updateNavScrolled();
+
+/* ============ Compare matrix: vermillion ring around Margins column ============ */
+// Pure CSS can't ring an arbitrary grid column with rounded outer corners while
+// staying inside card padding, so we measure the header cell and position the
+// ring overlay. Re-runs on theme switch and window resize.
+const matrixEl = document.getElementById("matrix");
+const usRingEl = document.getElementById("usRing");
+function positionUsRing() {
+  if (!matrixEl || !usRingEl) return;
+  const usHead = matrixEl.querySelector(".h-us");
+  if (!usHead) return;
+  const cardRect = matrixEl.getBoundingClientRect();
+  const usRect = usHead.getBoundingClientRect();
+  usRingEl.style.left = (usRect.left - cardRect.left - 6) + "px";
+  usRingEl.style.width = (usRect.width + 12) + "px";
+  usRingEl.style.top = "-4px";
+  usRingEl.style.height = (matrixEl.offsetHeight + 8) + "px";
+  usRingEl.style.opacity = window.innerWidth <= 720 ? "0" : "1";
+}
+window.addEventListener("load", positionUsRing);
+window.addEventListener("resize", positionUsRing);
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(positionUsRing);
+// Re-position when theme changes (paper background shifts the ring color)
+themeToggle?.addEventListener("click", () => requestAnimationFrame(positionUsRing));
 
 /* ============ Scroll progress bar ============ */
 const progress = document.getElementById("scroll-progress");
@@ -3048,6 +3388,18 @@ replayBtn.addEventListener("click", () => {
   demoStarted = true;
   playDemo();
 });
+
+/* ---------------- Demo transcript toggle ---------------- */
+const transcriptDetails = document.getElementById("demo-transcript");
+const transcriptBodySection = document.getElementById("demo-transcript-body-section");
+if (transcriptDetails && transcriptBodySection) {
+  transcriptDetails.addEventListener("toggle", () => {
+    transcriptBodySection.hidden = !transcriptDetails.open;
+    if (transcriptDetails.open) {
+      transcriptBodySection.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  });
+}
 
 /* ---------------- Persona tab switching ---------------- */
 const cwdTitleEl = document.querySelector('.cwd-title');
