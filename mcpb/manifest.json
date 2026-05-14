@@ -1,5 +1,5 @@
 {
-  "mcpb_version": "0.2",
+  "manifest_version": "0.2",
   "name": "margins",
   "display_name": "Margins",
   "version": "0.9.0",
