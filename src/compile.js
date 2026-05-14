@@ -3,6 +3,10 @@ import path from "node:path";
 import { compileVault } from "./compiler/compiler.js";
 import { extractDocumentText, supportedExtensionsList } from "./document-text.js";
 import { buildVaultIndex } from "./raw-index.js";
+import { canonicalize } from "./paths.js";
+
+const MAX_RAW_BYTES = 50 * 1024 * 1024;       // 50MB cap on extraction inputs
+const MIN_MEANINGFUL_CHARS = 20;              // below this, treat as empty (catches image-only PDFs)
 
 export function createCompile(vault, proposals) {
   async function proposeCompileFromRaw(rawPath, review) {
@@ -10,7 +14,7 @@ export function createCompile(vault, proposals) {
       throw new Error("rawPath is required");
     }
 
-    const rel = resolveSourceRel(rawPath);
+    const rel = canonicalize(resolveSourceRel(rawPath));
     const absRaw = vault.resolveInside(rel);
 
     let info;
@@ -20,7 +24,16 @@ export function createCompile(vault, proposals) {
       throw new Error(await buildNotFoundError(vault, rel));
     }
     if (!info.isFile()) {
-      throw new Error(`not a file: ${rel}`);
+      throw new Error(
+        `'${rel}' is not a regular file. propose_compile_from_raw needs a file path, not a directory or symlink target.`
+      );
+    }
+    if (info.size > MAX_RAW_BYTES) {
+      const mb = (info.size / 1024 / 1024).toFixed(1);
+      throw new Error(
+        `'${rel}' is ${mb}MB. Margins refuses to extract files over 50MB to avoid hangs. ` +
+        `Split the file, OCR a subset, or compile a smaller representative excerpt.`
+      );
     }
 
     const fileName = path.basename(absRaw);
@@ -34,12 +47,42 @@ export function createCompile(vault, proposals) {
           status: "already-filed",
           rawFile: rel,
           existingPath,
-          message: `Source already exists at ${existingPath}. Pass force=true to replace.`
+          message: `Source page already exists at ${existingPath} for raw file ${rel}. Pass force=true to compile again and replace it.`
         };
       }
     }
 
-    const text = await extractDocumentText(absRaw, rel);
+    let text;
+    try {
+      text = await extractDocumentText(absRaw, rel);
+    } catch (err) {
+      throw new Error(
+        `Failed to extract text from '${rel}': ${err.message}. ` +
+        `If the file is a scanned/image-only PDF, run OCR on it first (e.g. ocrmypdf), then retry.`
+      );
+    }
+
+    // TOCTOU check: if the file changed during extraction, the source page we
+    // generated will be stale. Abort and tell the user to re-run.
+    let postInfo;
+    try { postInfo = await stat(absRaw); } catch { postInfo = null; }
+    if (postInfo && (postInfo.mtimeMs !== info.mtimeMs || postInfo.size !== info.size)) {
+      throw new Error(
+        `'${rel}' changed during compile (file was edited while Margins was reading it). ` +
+        `Re-run propose_compile_from_raw to capture the latest content.`
+      );
+    }
+
+    if (!force) {
+      const meaningfulChars = text.replace(/\s+/g, "").length;
+      if (meaningfulChars < MIN_MEANINGFUL_CHARS) {
+        throw new Error(
+          `'${rel}' produced only ${meaningfulChars} characters of extractable text. ` +
+          `This usually means an image-only PDF (try OCR — ocrmypdf works well), a corrupted file, ` +
+          `or an empty document. Pass force=true to stage anyway if this is intentional.`
+        );
+      }
+    }
 
     const fullReview = buildReview(review || {}, fileName);
 

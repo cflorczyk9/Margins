@@ -177,4 +177,5 @@ test("probeServer starts margins-mcp and lists expected tools", async () => {
   assert.ok(names.includes("propose_compile_from_raw"));
   assert.ok(names.includes("propose_page"));
   assert.ok(names.includes("list_unprocessed"));
+  assert.ok(names.includes("margins_doctor"));
 });

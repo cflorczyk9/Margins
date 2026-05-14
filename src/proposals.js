@@ -1,5 +1,7 @@
 import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { parseFrontmatter, extractRawFileRefs, getType } from "./frontmatter.js";
+import { canonicalize } from "./paths.js";
 
 const PROPOSED_DIR = "proposed";
 
@@ -147,10 +149,21 @@ export function createProposals(vault) {
     if (action === "accept") {
       const destAbs = vault.resolveInside(rel);
       const proposalBody = await readFile(proposalAbs, "utf8");
+
+      // Order matters. Write destination first (atomically). If the tracker
+      // update fails, the source page exists but the tracker is out of sync —
+      // detectable and repairable via margins_doctor. If we wrote the tracker
+      // first and the destination write failed, the tracker would point to a
+      // non-existent file, which is harder to diagnose.
       await mkdir(path.dirname(destAbs), { recursive: true });
-      await rm(destAbs, { force: true });
-      await rename(proposalAbs, destAbs);
+      await atomicWrite(destAbs, proposalBody);
+
       const trackerUpdate = await maybeAppendTrackerRow(vault, rel, proposalBody);
+
+      // Only delete the proposal after both writes succeeded. If the tracker
+      // step throws, the proposal stays — user can re-run resolve_proposal.
+      await rm(proposalAbs, { force: true });
+
       return { destinationPath: rel, action: "accepted", trackerUpdated: trackerUpdate };
     }
     throw new Error(`unknown action '${action}'; use 'accept' or 'reject'`);
@@ -191,8 +204,12 @@ const TRACKER_FOOTER = `
 `;
 
 async function maybeAppendTrackerRow(vault, destPath, body) {
-  const parsed = parseSourceFrontmatter(body);
-  if (!parsed || !parsed.rawFile) return { changed: false, reason: "no-raw-file" };
+  const parsed = parseFrontmatter(body);
+  if (!parsed) return { changed: false, reason: "no-frontmatter" };
+  if (getType(parsed.data) !== "source") return { changed: false, reason: "not-a-source-page" };
+  const refs = extractRawFileRefs(parsed.data);
+  if (!refs.length) return { changed: false, reason: "no-raw-file" };
+  const rawFile = canonicalize(refs[0]);
 
   const trackerAbs = vault.resolveInside(TRACKER_PATH);
   let current;
@@ -203,18 +220,18 @@ async function maybeAppendTrackerRow(vault, destPath, body) {
   }
 
   const slug = destPath.split("/").pop().replace(/\.md$/i, "");
-  const rowKey = `| ${parsed.rawFile} |`;
-  const row = `| ${parsed.rawFile} | ingested | [[${slug}]] | - |  |  |`;
+  const rowKey = `| ${rawFile} |`;
+  const row = `| ${rawFile} | ingested | [[${slug}]] | - |  |  |`;
 
   if (current === null) {
     const text = TRACKER_HEADER + row + "\n" + TRACKER_FOOTER;
     await mkdir(path.dirname(trackerAbs), { recursive: true });
-    await writeFile(trackerAbs, text, "utf8");
-    return { changed: true, action: "created", rawFile: parsed.rawFile };
+    await atomicWrite(trackerAbs, text);
+    return { changed: true, action: "created", rawFile };
   }
 
   if (current.includes(rowKey)) {
-    return { changed: false, reason: "already-tracked", rawFile: parsed.rawFile };
+    return { changed: false, reason: "already-tracked", rawFile };
   }
 
   const lines = current.split("\n");
@@ -227,24 +244,23 @@ async function maybeAppendTrackerRow(vault, destPath, body) {
   }
   if (insertAt < 0) {
     const next = current.endsWith("\n") ? current + row + "\n" : current + "\n" + row + "\n";
-    await writeFile(trackerAbs, next, "utf8");
-    return { changed: true, action: "appended-end", rawFile: parsed.rawFile };
+    await atomicWrite(trackerAbs, next);
+    return { changed: true, action: "appended-end", rawFile };
   }
   lines.splice(insertAt, 0, row);
-  await writeFile(trackerAbs, lines.join("\n"), "utf8");
-  return { changed: true, action: "appended", rawFile: parsed.rawFile };
+  await atomicWrite(trackerAbs, lines.join("\n"));
+  return { changed: true, action: "appended", rawFile };
 }
 
-function parseSourceFrontmatter(body) {
-  if (!body || !body.startsWith("---\n")) return null;
-  const end = body.indexOf("\n---", 4);
-  if (end < 0) return null;
-  const fm = body.slice(4, end);
-  const typeMatch = fm.match(/^type:\s*"?source"?\s*$/m);
-  if (!typeMatch) return null;
-  const rawMatch = fm.match(/^raw_file:\s*"?([^"\n]+?)"?\s*$/m);
-  if (!rawMatch) return null;
-  return { rawFile: rawMatch[1].trim() };
+async function atomicWrite(absPath, content) {
+  const tmp = `${absPath}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  try {
+    await writeFile(tmp, content, "utf8");
+    await rename(tmp, absPath);
+  } catch (err) {
+    try { await rm(tmp, { force: true }); } catch {}
+    throw err;
+  }
 }
 
 function countOccurrences(haystack, needle) {

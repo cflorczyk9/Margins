@@ -71,7 +71,7 @@ test("compiles a markdown raw source into a proposal", async () => {
 });
 
 test("accepts a 'raw/' prefix or bare filename", async () => {
-  await touch("raw/foo.md", "body");
+  await touch("raw/foo.md", "This is the body of a short test note for fixture purposes.");
   const a = await compile.proposeCompileFromRaw("raw/foo.md", { summary: "s" });
   const b = await compile.proposeCompileFromRaw("foo.md", { summary: "s" });
   assert.equal(a.rawFile, b.rawFile);
@@ -102,7 +102,7 @@ test("error suggests closest match for a mistyped raw filename", async () => {
 });
 
 test("error lists available files when no close match", async () => {
-  await touch("raw/foo.md", "body");
+  await touch("raw/foo.md", "This is the body of a short test note for fixture purposes.");
   await touch("raw/bar.md", "body");
   await assert.rejects(
     () => compile.proposeCompileFromRaw("totally-different-and-long-name.md", { summary: "s" }),
@@ -152,7 +152,7 @@ test("compiles common text-like document formats", async () => {
 });
 
 test("supports destination_path override", async () => {
-  await touch("raw/note.md", "body");
+  await touch("raw/note.md", "Test fixture content for the compile idempotency tests, deliberately long enough to clear the empty-extraction threshold.");
   const result = await compile.proposeCompileFromRaw("note.md", {
     summary: "s",
     destination_path: "wiki/career/source-note.md"
@@ -216,7 +216,7 @@ function xmlEscape(text) {
 }
 
 test("idempotent: second compile of same raw file returns already-filed", async () => {
-  await touch("raw/note.md", "# Note\n\nFirst content.");
+  await touch("raw/note.md", "# Note\n\nFirst content of the idempotency test, with enough text to clear the empty-extraction threshold.");
   const first = await compile.proposeCompileFromRaw("note.md", { summary: "First take." });
   assert.equal(first.status, "proposal-staged");
   await proposals.resolveProposal(first.destinationPath, "accept");
@@ -229,7 +229,7 @@ test("idempotent: second compile of same raw file returns already-filed", async 
 });
 
 test("force=true bypasses idempotency check and stages replacement proposal", async () => {
-  await touch("raw/note2.md", "# Note 2\n\nOriginal.");
+  await touch("raw/note2.md", "# Note 2\n\nOriginal content of the force-replace test, with enough text to clear the threshold.");
   const first = await compile.proposeCompileFromRaw("note2.md", { summary: "Original." });
   await proposals.resolveProposal(first.destinationPath, "accept");
 
@@ -258,7 +258,7 @@ test("compiles a file located outside raw/ (vault-root path)", async () => {
 });
 
 test("idempotency check works for files outside raw/", async () => {
-  await touch("clippings/article.md", "# Article\n\nBody.");
+  await touch("clippings/article.md", "# Article\n\nBody content for the clippings idempotency test, with enough text to clear the threshold.");
   const first = await compile.proposeCompileFromRaw("clippings/article.md", {
     summary: "An article."
   });
@@ -272,9 +272,57 @@ test("idempotency check works for files outside raw/", async () => {
 });
 
 test("bare filename still defaults to raw/ for back-compat", async () => {
-  await touch("raw/legacy.md", "# Legacy\n\nOld habit.");
+  await touch("raw/legacy.md", "# Legacy\n\nOld habit, with enough body content to clear the empty-extraction threshold.");
   const result = await compile.proposeCompileFromRaw("legacy.md", {
     summary: "Legacy file."
   });
   assert.equal(result.rawFile, "raw/legacy.md");
+});
+
+test("near-empty extraction refuses without force", async () => {
+  // 'hi.\n' = 3 meaningful chars, under the 20-char threshold but not so
+  // empty that extractDocumentText itself throws.
+  await touch("raw/tiny.md", "hi.\n");
+  await assert.rejects(
+    () => compile.proposeCompileFromRaw("raw/tiny.md", { summary: "s" }),
+    /produced only \d+ characters of extractable text/
+  );
+});
+
+test("near-empty extraction can be force-staged anyway", async () => {
+  await touch("raw/tiny2.md", "tiny");
+  const result = await compile.proposeCompileFromRaw("raw/tiny2.md", { summary: "s", force: true });
+  assert.equal(result.status, "proposal-staged");
+});
+
+test("fully empty file falls through to extractor error with OCR hint", async () => {
+  await touch("raw/empty.md", "   \n");
+  await assert.rejects(
+    () => compile.proposeCompileFromRaw("raw/empty.md", { summary: "s" }),
+    /OCR|empty|image-only/
+  );
+});
+
+test("oversized files (over 50MB) rejected with actionable error", async () => {
+  // Create a file just over the 50MB cap. Use a sparse write to keep the test fast.
+  const big = path.join(tmpRoot, "raw/huge.md");
+  await mkdir(path.dirname(big), { recursive: true });
+  const fh = await import("node:fs/promises").then((m) => m.open(big, "w"));
+  try {
+    await fh.truncate(50 * 1024 * 1024 + 100);
+  } finally {
+    await fh.close();
+  }
+  await assert.rejects(
+    () => compile.proposeCompileFromRaw("raw/huge.md", { summary: "s" }),
+    /refuses to extract files over 50MB/
+  );
+});
+
+test("canonical path matching: ./raw/foo.md and raw/foo.md are the same file", async () => {
+  await touch("raw/foo.md", "Real body content for the canonical-path matching test, long enough to clear the threshold.");
+  const first = await compile.proposeCompileFromRaw("raw/foo.md", { summary: "s" });
+  await proposals.resolveProposal(first.destinationPath, "accept");
+  const second = await compile.proposeCompileFromRaw("./raw/foo.md", { summary: "s" });
+  assert.equal(second.status, "already-filed");
 });

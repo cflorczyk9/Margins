@@ -8,6 +8,7 @@ import { createPrimer, formatSummary } from "./primer.js";
 import { createCompile } from "./compile.js";
 import { supportedExtensionsList } from "./document-text.js";
 import { buildVaultIndex } from "./raw-index.js";
+import { diagnoseVault } from "./doctor.js";
 import { loadTelemetry, writeConsent } from "./telemetry.js";
 import { createPreferences } from "./preferences.js";
 import { createWikilinks } from "./wikilinks.js";
@@ -54,7 +55,7 @@ INGESTING: source documents (transcripts, notes, PDFs, Word docs, spreadsheets, 
 
 TOOLS:
 - Context: margins_start, recall_preferences
-- Read: search_vault, read_page, list_recent, get_backlinks, list_unprocessed
+- Read: search_vault, read_page, list_recent, get_backlinks, list_unprocessed, margins_doctor
 - Propose writes: propose_page, propose_edit, append_to, propose_compile_from_raw
 - Suggest: propose_wikilinks (for A3/B3 vaults with few links)
 - Manage proposals: list_proposals, resolve_proposal
@@ -493,6 +494,38 @@ export function buildServer(vault, options = {}) {
       return {
         content: [{ type: "text", text: lines.join("\n") }],
         structuredContent: result
+      };
+    }
+  );
+
+  register(
+    "margins_doctor",
+    {
+      description:
+        "Diagnose the vault's health. Returns a structured report of issues: orphan source pages (raw_file points to a missing file), tracker drift (source pages without tracker rows, or tracker rows for missing sources), files with malformed frontmatter, and large raw files. Read-only — never modifies the vault. Use when the user asks 'is anything broken?', 'check my vault', or before major operations.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true }
+    },
+    async () => {
+      const report = await diagnoseVault(vault);
+      const { summary, issues } = report;
+      const lines = [
+        `Vault health: ${summary.issues_found} issue${summary.issues_found === 1 ? "" : "s"} (${summary.errors} error, ${summary.warnings} warning).`,
+        `Candidates: ${summary.candidates} | filed: ${summary.filed} | pending: ${summary.pending} | source pages: ${summary.source_pages}.`,
+        `Ingest roots: ${summary.ingest_roots.join(", ")}.`
+      ];
+      if (issues.length === 0) {
+        lines.push("", "No issues found.");
+      } else {
+        lines.push("");
+        for (const issue of issues) {
+          const tag = issue.severity === "error" ? "[error]" : issue.severity === "warn" ? "[warn]" : "[info]";
+          lines.push(`${tag} ${issue.kind}: ${issue.message}`);
+        }
+      }
+      return {
+        content: [{ type: "text", text: lines.join("\n") }],
+        structuredContent: report
       };
     }
   );

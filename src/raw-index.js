@@ -1,11 +1,8 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { isSupportedDocumentPath } from "./document-text.js";
-
-const RAW_FILE_RE = /^raw_file:\s*"?([^"\n]+?)"?\s*$/m;
-const RAW_FILES_BLOCK_RE = /^raw_files:\s*\n((?:[ \t]*-\s+.+(?:\n|$))+)/m;
-const RAW_FILES_ITEM_RE = /^\s*-\s+"?([^"\n]+?)"?\s*$/gm;
-const TYPE_RE = /^type:\s*"?([^"\n]+?)"?\s*$/m;
+import { parseFrontmatter, extractRawFileRefs, getType } from "./frontmatter.js";
+import { canonicalize } from "./paths.js";
 
 const META_PATHS = new Set([
   "wiki/ingest-tracker.md",
@@ -29,17 +26,32 @@ export async function buildVaultIndex(vault, options = {}) {
 
   const candidates = [];
   const sourcePages = [];
+  const parseFailures = [];
 
   for (const abs of allFiles) {
-    const rel = vault.toRel(abs);
+    const rel = canonicalize(vault.toRel(abs));
     if (META_PATHS.has(rel)) continue;
     if (!isSupportedDocumentPath(rel)) continue;
 
-    const fm = await readFrontmatter(abs);
-    const fmType = fm?.match(TYPE_RE)?.[1]?.trim();
+    let body;
+    try {
+      body = await readFile(abs, "utf8");
+    } catch {
+      continue;
+    }
+
+    let parsed;
+    try {
+      parsed = parseFrontmatter(body);
+    } catch {
+      parseFailures.push(rel);
+      continue;
+    }
+
+    const fmType = parsed ? getType(parsed.data) : null;
 
     if (fmType === "source" || fmType === "synthesis") {
-      sourcePages.push({ abs, rel, fm });
+      sourcePages.push({ abs, rel, data: parsed.data });
       continue;
     }
 
@@ -58,17 +70,10 @@ export async function buildVaultIndex(vault, options = {}) {
 
   const referenced = new Map();
   for (const page of sourcePages) {
-    const single = page.fm.match(RAW_FILE_RE);
-    if (single) {
-      const target = normalizeRef(single[1].trim());
+    const refs = extractRawFileRefs(page.data);
+    for (const ref of refs) {
+      const target = canonicalize(ref);
       if (target && !referenced.has(target)) referenced.set(target, page.rel);
-    }
-    const list = page.fm.match(RAW_FILES_BLOCK_RE);
-    if (list) {
-      for (const item of list[1].matchAll(RAW_FILES_ITEM_RE)) {
-        const target = normalizeRef(item[1].trim());
-        if (target && !referenced.has(target)) referenced.set(target, page.rel);
-      }
     }
   }
 
@@ -78,7 +83,8 @@ export async function buildVaultIndex(vault, options = {}) {
     referenced,
     pending,
     sourcePagesCount: sourcePages.length,
-    ingestRoots
+    ingestRoots,
+    parseFailures
   };
 }
 
@@ -125,24 +131,6 @@ function isInSkipDir(rel) {
   return false;
 }
 
-function normalizeRef(value) {
-  if (!value) return null;
-  return value.replace(/^\.\//, "");
-}
-
-async function readFrontmatter(abs) {
-  let body;
-  try {
-    body = await readFile(abs, "utf8");
-  } catch {
-    return null;
-  }
-  if (!body.startsWith("---\n")) return null;
-  const end = body.indexOf("\n---", 4);
-  if (end < 0) return null;
-  return body.slice(4, end + 1);
-}
-
 async function collectProposedSourcePages(vault, out) {
   const proposedRoot = vault.resolveInside("proposed");
   await walkForSourcePages(vault, proposedRoot, out);
@@ -163,10 +151,17 @@ async function walkForSourcePages(vault, dir, out) {
     }
     if (!entry.isFile()) continue;
     if (!isSupportedDocumentPath(entry.name)) continue;
-    const fm = await readFrontmatter(abs);
-    const fmType = fm?.match(TYPE_RE)?.[1]?.trim();
+    let body;
+    try {
+      body = await readFile(abs, "utf8");
+    } catch {
+      continue;
+    }
+    const parsed = parseFrontmatter(body);
+    if (!parsed) continue;
+    const fmType = getType(parsed.data);
     if (fmType !== "source" && fmType !== "synthesis") continue;
-    out.push({ abs, rel: vault.toRel(abs), fm });
+    out.push({ abs, rel: canonicalize(vault.toRel(abs)), data: parsed.data });
   }
 }
 
