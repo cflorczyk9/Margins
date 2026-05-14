@@ -5,7 +5,10 @@ import { hashFile } from "./hash.js";
 
 const LARGE_RAW_THRESHOLD = 10 * 1024 * 1024;
 const TRACKER_PATH = "wiki/ingest-tracker.md";
-const TRACKER_ROW_RE = /^\|\s+(\S+\/\S+?)\s+\|\s+(\S+)\s+\|\s+\[\[([^\]]+)\]\]/;
+// Match a tracker row regardless of spaces or special characters in the raw
+// filename. The path is "anything between '| ' and ' |' that contains a slash."
+// `[^|\n]+?` is non-greedy and pipe-excluding so the column boundary is hard.
+const TRACKER_ROW_RE = /^\|\s+([^|\n]+?\/[^|\n]+?)\s+\|\s+(\S+)\s+\|\s+\[\[([^\]]+)\]\]/;
 
 /**
  * Diagnose a Margins vault. Returns a structured report of issues a user
