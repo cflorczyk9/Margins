@@ -77,39 +77,17 @@
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,400&display=swap" rel="stylesheet">
-
-<!-- Apply theme before paint to prevent flash -->
-<script>
-(function() {
-  try {
-    var stored = localStorage.getItem('margins-theme');
-    var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-    var theme = stored || (prefersDark ? 'dark' : 'light');
-    document.documentElement.setAttribute('data-theme', theme);
-  } catch (e) {
-    document.documentElement.setAttribute('data-theme', 'light');
-  }
-})();
-</script>
-
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&display=swap" rel="stylesheet">
 <style>
-  /* ============================================================ */
-  /* === Tokens — light                                       === */
-  /* ============================================================ */
   :root {
-    /* Warm paper palette */
     --bg: #faf7f2;
     --paper: #ffffff;
     --paper-soft: #f5f1ea;
     --ink: #1a1612;
     --ink-2: #4a423a;
     --ink-3: #847a6b;
-    --ink-4: #b0a99b;
-    --line: #ece6d9;
+    --line: #e8e2d6;
     --line-strong: #d8d0bf;
-
-    /* Accent + Kandinsky palette */
     --accent: #d63a2f;
     --accent-dark: #b22618;
     --accent-soft: rgba(214, 58, 47, 0.10);
@@ -122,17 +100,11 @@
     --green-poly: #6fa863;
     --good: #5b7d57;
     --good-soft: rgba(91, 125, 87, 0.10);
+    --shadow-sm: 0 1px 0 rgba(26,22,18,0.04), 0 6px 18px rgba(26,22,18,0.04);
+    --shadow-md: 0 1px 0 rgba(26,22,18,0.06), 0 12px 36px rgba(26,22,18,0.10);
+    --shadow-lg: 0 1px 0 rgba(26,22,18,0.06), 0 30px 60px rgba(26,22,18,0.16);
 
-    /* Shadows (gentle, Stripe-style) */
-    --shadow-sm: 0 1px 1px rgba(26,22,18,0.04), 0 2px 6px rgba(26,22,18,0.04);
-    --shadow-md: 0 2px 4px rgba(26,22,18,0.05), 0 12px 28px rgba(26,22,18,0.06);
-    --shadow-lg: 0 4px 8px rgba(26,22,18,0.06), 0 30px 60px rgba(26,22,18,0.10);
-
-    /* Hero SVG inkline color (themes with page) */
-    --svg-ink: #1a1612;
-    --svg-ink-opacity: 0.30;
-
-    /* Dark-mode Claude Desktop palette — STATIC, never themed */
+    /* Dark-mode Claude Desktop palette */
     --cwd-bg: #1F1E1B;
     --cwd-chrome: #232220;
     --cwd-border: #33302B;
@@ -149,230 +121,96 @@
     --cwd-good: #6FA863;
   }
 
-  /* ============================================================ */
-  /* === Tokens — dark                                        === */
-  /* ============================================================ */
-  [data-theme="dark"] {
-    --bg: #15110d;
-    --paper: #1F1A14;
-    --paper-soft: #1A1612;
-    --ink: #E8E2D6;
-    --ink-2: #C8C2B5;
-    --ink-3: #8A857A;
-    --ink-4: #5C574F;
-    --line: #2E281F;
-    --line-strong: #3D362B;
-
-    --accent: #E04B3F;
-    --accent-dark: #f06458;
-    --accent-soft: rgba(224, 75, 63, 0.12);
-    --accent-line: rgba(224, 75, 63, 0.28);
-    --on-accent: #1a1612;
-    --vermillion: #E04B3F;
-    --cobalt: #5B86C9;
-    --mustard: #F0C14B;
-    --violet: #9A7FBE;
-    --green-poly: #8AC078;
-    --good: #8AC078;
-    --good-soft: rgba(138, 192, 120, 0.12);
-
-    --shadow-sm: 0 1px 2px rgba(0,0,0,0.20), 0 4px 12px rgba(0,0,0,0.20);
-    --shadow-md: 0 2px 6px rgba(0,0,0,0.25), 0 14px 32px rgba(0,0,0,0.30);
-    --shadow-lg: 0 6px 12px rgba(0,0,0,0.30), 0 30px 60px rgba(0,0,0,0.40);
-
-    --svg-ink: #E8E2D6;
-    --svg-ink-opacity: 0.40;
-  }
-
-  /* ============================================================ */
-  /* === Base                                                 === */
-  /* ============================================================ */
   *, *::before, *::after { box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
   html, body {
     margin: 0; padding: 0;
     background: var(--bg);
     color: var(--ink);
     font-family: 'Manrope', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-    font-size: 16px;
+    font-size: 15px;
     line-height: 1.6;
     letter-spacing: -0.005em;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
-    transition: background-color 240ms ease, color 240ms ease;
   }
-  a {
-    color: var(--ink);
-    text-decoration: none;
-    border-bottom: 1px solid var(--accent-line);
-    transition: color 200ms ease, border-color 200ms ease;
-  }
+  a { color: var(--ink); text-decoration: none; border-bottom: 1px solid var(--accent-line); }
   a:hover { color: var(--accent); border-bottom-color: var(--accent); }
-  a:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; border-radius: 2px; }
   button, input, select, textarea { font: inherit; }
-  button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
   h1, h2, h3, p { margin: 0; }
-  ::selection { background: var(--accent); color: var(--on-accent); }
 
-  /* Scroll progress (kept subtle) */
   .scroll-progress {
     position: fixed; top: 0; left: 0;
     height: 2px; width: 100%;
     transform: scaleX(0); transform-origin: 0 50%;
-    background: var(--accent);
+    background: linear-gradient(90deg, var(--mustard) 0%, var(--vermillion) 50%, var(--cobalt) 100%);
     z-index: 100; pointer-events: none; will-change: transform;
-    transition: transform 80ms linear;
   }
 
   .wrap { max-width: 980px; margin: 0 auto; padding: 0 32px; }
-  @media (max-width: 560px) { .wrap { padding: 0 20px; } }
 
-  /* ============================================================ */
-  /* === Top nav                                              === */
-  /* ============================================================ */
-  .nav {
-    position: sticky;
-    top: 0;
-    z-index: 50;
-    background: color-mix(in srgb, var(--bg) 92%, transparent);
-    backdrop-filter: saturate(180%) blur(14px);
-    -webkit-backdrop-filter: saturate(180%) blur(14px);
-    border-bottom: 1px solid transparent;
-    transition: border-color 220ms ease, background-color 220ms ease;
-  }
-  .nav.is-scrolled { border-bottom-color: var(--line); }
-  .nav-row {
-    display: flex; align-items: center; justify-content: space-between;
-    gap: 18px;
-    padding: 16px 0;
-  }
-  .brand {
-    display: inline-flex; align-items: center; gap: 10px;
-    font-weight: 700; font-size: 16px;
-    letter-spacing: -0.01em;
-    color: var(--ink); border: none;
-  }
-  .brand-mark { width: 28px; height: 24px; flex: 0 0 auto; display: block; }
-  .nav-links {
-    display: inline-flex; align-items: center; gap: 22px;
-    font-size: 13.5px; font-weight: 500;
-    color: var(--ink-2);
-  }
-  .nav-links a {
-    border: none;
-    color: var(--ink-2);
-    padding: 4px 0;
-    position: relative;
-  }
-  .nav-links a:hover { color: var(--ink); }
-  .nav-links a::after {
-    content: ""; position: absolute; left: 0; right: 0; bottom: -2px;
-    height: 1px; background: var(--ink);
-    transform: scaleX(0); transform-origin: 0 50%;
-    transition: transform 200ms ease;
-  }
-  .nav-links a:hover::after { transform: scaleX(1); }
+  /* === Top nav === */
+  .nav { padding: 28px 0 0; }
+  .nav-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+  .brand { display: inline-flex; align-items: center; gap: 12px; font-weight: 700; font-size: 17px; letter-spacing: -0.01em; color: var(--ink); border: none; }
+  .brand-mark { width: 32px; height: 26px; flex: 0 0 auto; display: block; }
+  .nav-links { display: inline-flex; align-items: center; gap: 18px; font-size: 13px; font-weight: 500; color: var(--ink-2); }
+  .nav-links a { border: none; color: var(--ink-2); }
+  .nav-links a:hover { color: var(--accent); }
 
-  .theme-toggle {
-    background: transparent;
-    border: 1px solid var(--line-strong);
-    border-radius: 8px;
-    width: 34px; height: 34px;
-    padding: 0;
-    cursor: pointer;
-    color: var(--ink-2);
-    display: inline-flex; align-items: center; justify-content: center;
-    transition: color 200ms ease, border-color 200ms ease, background 200ms ease;
-    flex: 0 0 auto;
-  }
-  .theme-toggle:hover { color: var(--ink); border-color: var(--ink-3); }
-  .theme-toggle svg { width: 16px; height: 16px; display: block; }
-  .theme-toggle .icon-sun { display: none; }
-  .theme-toggle .icon-moon { display: block; }
-  [data-theme="dark"] .theme-toggle .icon-sun { display: block; }
-  [data-theme="dark"] .theme-toggle .icon-moon { display: none; }
-
-  @media (max-width: 720px) {
-    .nav-links { gap: 14px; font-size: 13px; }
-    .nav-links a.nav-secondary { display: none; }
-  }
-  @media (max-width: 560px) {
-    .nav-links a.nav-tertiary { display: none; }
-  }
-
-  /* ============================================================ */
-  /* === Hero                                                 === */
-  /* ============================================================ */
-  .hero { padding: 96px 0 88px; }
+  /* === Hero === */
+  .hero { padding: 72px 0 56px; }
   .hero-row {
     display: grid;
     grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
-    gap: 56px;
+    gap: 48px;
     align-items: center;
   }
   @media (max-width: 880px) {
-    .hero { padding: 56px 0 56px; }
-    .hero-row { grid-template-columns: 1fr; gap: 36px; }
+    .hero-row { grid-template-columns: 1fr; gap: 32px; }
+    .hero { padding: 48px 0 40px; }
   }
   .kicker {
-    display: inline-flex; align-items: center; gap: 8px;
-    font-size: 11px; font-weight: 700;
-    letter-spacing: 0.12em;
+    display: inline-block;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.10em;
     text-transform: uppercase;
     color: var(--accent);
-    margin: 0 0 22px;
-  }
-  .kicker::before {
-    content: ""; display: inline-block;
-    width: 18px; height: 1px; background: var(--accent);
+    margin: 0 0 18px;
   }
   h1.hero-title {
-    font-family: 'Newsreader', Georgia, "Times New Roman", serif;
-    font-size: clamp(38px, 5.4vw, 60px);
-    font-weight: 500;
+    font-family: 'Manrope', sans-serif;
+    font-size: clamp(34px, 4.6vw, 50px);
+    font-weight: 600;
     line-height: 1.04;
-    letter-spacing: -0.022em;
-    margin: 0 0 24px;
+    letter-spacing: -0.025em;
+    margin: 0 0 22px;
     color: var(--ink);
   }
   h1.hero-title em {
-    font-style: italic;
-    color: var(--accent);
-    position: relative;
-    display: inline-block;
-    font-weight: 500;
+    font-style: normal; color: var(--accent); position: relative; display: inline-block;
   }
   h1.hero-title em::after {
-    content: ""; position: absolute; left: 0; bottom: 0;
-    height: 2px; width: 100%;
-    background: var(--vermillion);
+    content: ""; position: absolute; left: 0; bottom: -2px;
+    height: 2px; width: 100%; background: var(--vermillion);
     transform: scaleX(0); transform-origin: 0 50%;
     animation: underline-draw 700ms cubic-bezier(0.22, 1, 0.36, 1) 0.9s forwards;
   }
   @keyframes underline-draw { to { transform: scaleX(1); } }
   .hero-sub {
-    font-size: 17px;
+    font-size: 16.5px;
     color: var(--ink-2);
-    margin: 0 0 32px;
-    max-width: 54ch;
-    line-height: 1.55;
+    margin: 0 0 28px;
+    max-width: 52ch;
   }
   .hero-cta { display: inline-flex; gap: 10px; flex-wrap: wrap; }
 
   .hero-art { max-width: 380px; aspect-ratio: 1 / 1; width: 100%; margin-left: auto; }
   @media (max-width: 880px) { .hero-art { margin: 0 auto; max-width: 320px; } }
   .hero-art svg { width: 100%; height: 100%; display: block; overflow: visible; }
-  .hero-art svg .ink-stroke { stroke: var(--svg-ink); opacity: var(--svg-ink-opacity); }
-  .hero-art svg .ink-fill { fill: var(--svg-ink); }
-  .hero-art svg .ink-tri { stroke: var(--svg-ink); }
   @keyframes breathe {
     0%, 100% { transform: scale(1); }
     50%      { transform: scale(1.035); }
   }
   .breathing-disc { transform-origin: center; animation: breathe 6.5s ease-in-out infinite; }
-  /* Discs blend into warm paper in light mode; render straight in dark mode to keep their color visible. */
-  .hero-disc { mix-blend-mode: multiply; }
-  [data-theme="dark"] .hero-disc { mix-blend-mode: normal; }
   .breathing-disc.delay-1 { animation-delay: -1.8s; }
   .breathing-disc.delay-2 { animation-delay: -3.2s; }
 
@@ -389,175 +227,72 @@
   .hero .hero-sub   { animation-delay: 0.32s; }
   .hero .hero-cta   { animation-delay: 0.50s; }
 
-  /* ============================================================ */
-  /* === Buttons (Stripe-press, restrained)                   === */
-  /* ============================================================ */
+  /* === Buttons === */
   .btn {
     display: inline-flex; align-items: center; gap: 8px;
-    border-radius: 999px;
-    font-family: inherit; font-size: 14px; font-weight: 600;
-    line-height: 1;
-    padding: 11px 18px;
-    border: 1px solid transparent;
-    cursor: pointer;
-    transition: background 200ms ease, border-color 200ms ease, color 200ms ease, box-shadow 200ms ease;
+    border-radius: 8px; font-family: inherit; font-size: 14px; font-weight: 700; line-height: 1;
+    padding: 11px 16px; border: 1px solid transparent; cursor: pointer;
+    transition: background 140ms ease, border-color 140ms ease, color 140ms ease, transform 140ms ease, box-shadow 140ms ease;
     text-decoration: none;
-    letter-spacing: -0.005em;
   }
   a.btn { border-bottom: 1px solid transparent; }
+  .btn-primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); box-shadow: var(--shadow-sm); }
+  .btn-primary:hover { background: var(--accent-dark); border-color: var(--accent-dark); transform: translateY(-1px); color: var(--on-accent); }
+  .btn-ghost { background: var(--paper); color: var(--ink); border-color: var(--line-strong); box-shadow: var(--shadow-sm); }
+  .btn-ghost:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+  .btn .arrow { font-size: 11px; opacity: 0.8; }
+  .btn-lg { font-size: 15px; padding: 14px 22px; border-radius: 10px; }
 
-  /* Primary: ink-filled pill, vermillion-accent on hover */
-  .btn-primary {
-    background: var(--ink);
-    color: var(--bg);
-    border-color: var(--ink);
+  /* === Sections === */
+  section.block { padding: 56px 0; border-top: 1px solid var(--line); }
+  section.block:first-of-type { border-top: none; }
+  h2 { font-family: 'Manrope', sans-serif; font-size: 24px; font-weight: 600; letter-spacing: -0.015em; margin: 0 0 12px; color: var(--ink); }
+  h2 .accent-dot {
+    display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent); margin-right: 12px; vertical-align: 4px;
   }
-  .btn-primary:hover {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: var(--on-accent);
-  }
+  h3 { font-family: 'Manrope', sans-serif; font-size: 16px; font-weight: 700; margin: 0 0 8px; color: var(--ink); letter-spacing: -0.005em; }
+  .section-sub { color: var(--ink-2); font-size: 15px; margin: 0 0 28px; max-width: 60ch; }
 
-  /* Ghost: outline */
-  .btn-ghost {
-    background: transparent;
-    color: var(--ink);
-    border-color: var(--line-strong);
-  }
-  .btn-ghost:hover {
-    border-color: var(--ink);
-    color: var(--ink);
-  }
-
-  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
-  .btn .arrow {
-    font-size: 12px;
-    opacity: 0.8;
-    transition: transform 200ms ease;
-  }
-  .btn:hover .arrow { transform: translateX(2px); }
-  .btn-lg { font-size: 15px; padding: 14px 24px; }
-
-  /* The download button — confident dark pill with subtle accent-on-hover */
-  .btn-download {
-    background: var(--ink);
-    color: var(--bg);
-    border-color: var(--ink);
-    font-weight: 600;
-    box-shadow: var(--shadow-sm);
-  }
-  .btn-download:hover {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: var(--on-accent);
-    box-shadow: var(--shadow-md);
-  }
-
-  /* ============================================================ */
-  /* === Sections                                             === */
-  /* ============================================================ */
-  /* Air-as-separator; no horizontal rules between sections. */
-  section.block {
-    padding: 88px 0;
-  }
-  @media (max-width: 720px) {
-    section.block { padding: 56px 0; }
-  }
-
-  /* Section eyebrow — small upper-cased label above each section title */
-  .eyebrow {
-    display: inline-flex; align-items: center; gap: 8px;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--ink-3);
-    margin: 0 0 14px;
-  }
-  .eyebrow::before {
-    content: ""; display: inline-block;
-    width: 18px; height: 1px;
-    background: var(--ink-3);
-  }
-
-  h2 {
-    font-family: 'Newsreader', Georgia, "Times New Roman", serif;
-    font-size: clamp(28px, 3.4vw, 36px);
-    font-weight: 500;
-    line-height: 1.15;
-    letter-spacing: -0.018em;
-    margin: 0 0 14px;
-    color: var(--ink);
-  }
-  h3 {
-    font-family: 'Manrope', sans-serif;
-    font-size: 17px;
-    font-weight: 600;
-    margin: 0 0 8px;
-    color: var(--ink);
-    letter-spacing: -0.005em;
-  }
-  .section-sub {
-    color: var(--ink-2);
-    font-size: 16.5px;
-    line-height: 1.6;
-    margin: 0 0 36px;
-    max-width: 62ch;
-  }
-
-  /* ============================================================ */
-  /* === How it works (3 cards, borderless, generous)         === */
-  /* ============================================================ */
+  /* === How it works strip === */
   .how-strip {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 20px;
+    gap: 16px;
     margin: 8px 0 0;
   }
   @media (max-width: 720px) {
-    .how-strip { grid-template-columns: 1fr; gap: 14px; }
+    .how-strip { grid-template-columns: 1fr; }
   }
   .how-card {
-    background: transparent;
+    background: var(--paper);
     border: 1px solid var(--line);
-    border-radius: 14px;
-    padding: 28px 26px 26px;
+    border-radius: 12px;
+    padding: 22px 22px 20px;
     position: relative;
-    transition: border-color 200ms ease, background 200ms ease;
   }
-  .how-card:hover {
-    border-color: var(--line-strong);
-    background: color-mix(in srgb, var(--paper) 60%, transparent);
-  }
-  .how-num {
+  .how-card .how-num {
     font-family: 'Manrope', sans-serif;
     font-size: 11px;
     font-weight: 700;
-    letter-spacing: 0.12em;
+    letter-spacing: 0.10em;
     text-transform: uppercase;
-    color: var(--ink-3);
-    margin: 0 0 14px;
-    display: inline-flex; align-items: center; gap: 8px;
-  }
-  .how-num::before {
-    content: ""; display: inline-block;
-    width: 6px; height: 6px;
-    border-radius: 50%;
-    background: var(--accent);
+    color: var(--accent);
+    margin: 0 0 10px;
   }
   .how-card h3 {
-    font-family: 'Newsreader', Georgia, "Times New Roman", serif;
-    font-size: 21px;
-    font-weight: 500;
-    letter-spacing: -0.01em;
-    margin: 0 0 10px;
+    font-family: 'Manrope', sans-serif;
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: -0.005em;
+    margin: 0 0 8px;
     color: var(--ink);
-    line-height: 1.25;
   }
   .how-card p {
     color: var(--ink-2);
-    font-size: 15px;
-    line-height: 1.6;
+    font-size: 14.5px;
+    line-height: 1.55;
     margin: 0;
   }
   .how-card p + p { margin-top: 8px; }
@@ -566,131 +301,84 @@
     border: 1px solid var(--line);
     padding: 1px 6px;
     border-radius: 4px;
-    font-size: 0.86em;
-    color: var(--ink);
+    font-size: 0.88em;
+    color: var(--accent);
   }
 
-  /* ============================================================ */
-  /* === Comparison table                                     === */
-  /* ============================================================ */
-  .compare-wrap {
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    overflow: hidden;
-    background: var(--paper);
-    box-shadow: var(--shadow-sm);
-  }
+  /* === Comparison table === */
   .compare-table {
     width: 100%;
     border-collapse: collapse;
+    margin: 8px 0 16px;
     font-size: 14.5px;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
   }
   .compare-table th, .compare-table td {
-    padding: 14px 16px;
+    padding: 12px 14px;
     text-align: left;
     border-bottom: 1px solid var(--line);
     vertical-align: top;
   }
   .compare-table thead th {
     background: var(--paper-soft);
-    font-size: 12.5px;
+    font-size: 13px;
     font-weight: 700;
-    letter-spacing: 0.01em;
+    letter-spacing: -0.005em;
     color: var(--ink);
     border-bottom: 1px solid var(--line-strong);
   }
   .compare-table thead th:first-child { background: transparent; }
   .compare-table thead th.is-us { color: var(--accent); }
   .compare-table tbody tr:last-child td { border-bottom: none; }
-  .compare-table td:first-child {
-    font-weight: 500;
-    color: var(--ink-2);
-    width: 32%;
-  }
-  .compare-table td.is-us {
-    background: var(--accent-soft);
-    font-weight: 500;
-  }
+  .compare-table td:first-child { font-weight: 500; color: var(--ink-2); width: 32%; }
+  .compare-table td.is-us { background: rgba(214,58,47,0.04); font-weight: 500; }
   .compare-table .ck { color: var(--good); font-weight: 700; }
-  .compare-table .x  { color: var(--ink-4); }
+  .compare-table .x { color: var(--ink-3); }
   .compare-table .partial { color: #b08838; font-weight: 500; }
-  [data-theme="dark"] .compare-table .partial { color: #d4a850; }
-
-  .compare-caveat {
-    font-size: 14px;
-    color: var(--ink-3);
-    margin: 14px 0 0;
-    max-width: 68ch;
-    line-height: 1.55;
-  }
+  .compare-caveat { font-size: 13.5px; color: var(--ink-3); margin: 4px 0 0; max-width: 64ch; }
   @media (max-width: 720px) {
-    .compare-wrap { overflow-x: auto; }
-    .compare-table { font-size: 13px; min-width: 640px; }
+    .compare-table { font-size: 13px; display: block; overflow-x: auto; white-space: nowrap; }
     .compare-table td:first-child { white-space: normal; }
   }
 
-  /* ============================================================ */
-  /* === FAQ                                                  === */
-  /* ============================================================ */
-  .faq-list { display: grid; gap: 0; margin: 8px 0 0; border-top: 1px solid var(--line); }
+  /* === FAQ === */
+  .faq-list { display: grid; gap: 10px; margin: 8px 0 0; }
   .faq-item {
-    background: transparent;
-    border-bottom: 1px solid var(--line);
-    border-radius: 0;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 10px;
     padding: 0;
-    transition: background 200ms ease;
   }
-  .faq-item:hover { background: color-mix(in srgb, var(--paper-soft) 50%, transparent); }
-  .faq-item[open] { background: color-mix(in srgb, var(--paper-soft) 35%, transparent); }
+  .faq-item[open] { border-color: var(--line-strong); }
   .faq-item > summary {
     list-style: none;
     cursor: pointer;
-    padding: 22px 4px;
-    font-size: 16px;
-    font-weight: 500;
+    padding: 14px 18px;
+    font-size: 15px;
+    font-weight: 600;
     color: var(--ink);
     display: flex; align-items: center; justify-content: space-between;
     gap: 12px;
-    letter-spacing: -0.005em;
   }
   .faq-item > summary::-webkit-details-marker { display: none; }
   .faq-item > summary::after {
-    content: "";
-    width: 12px; height: 12px;
-    background:
-      linear-gradient(to bottom, currentColor 0 100%) center / 12px 1.4px no-repeat,
-      linear-gradient(to right, currentColor 0 100%) center / 1.4px 12px no-repeat;
+    content: "+";
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 18px;
+    font-weight: 400;
     color: var(--ink-3);
-    transition: transform 240ms ease, color 200ms ease;
-    flex: 0 0 auto;
     margin-left: 10px;
+    width: 16px; text-align: center;
   }
-  .faq-item[open] > summary::after {
-    background:
-      linear-gradient(to bottom, currentColor 0 100%) center / 12px 1.4px no-repeat;
-    color: var(--accent);
-    transform: rotate(180deg);
-  }
-  .faq-item .faq-body {
-    padding: 0 4px 22px;
-    font-size: 15.5px;
-    color: var(--ink-2);
-    line-height: 1.65;
-    max-width: 74ch;
-  }
-  .faq-item .faq-body > p + p { margin-top: 12px; }
-  .faq-item .faq-body code {
-    background: var(--paper-soft);
-    border: 1px solid var(--line);
-    padding: 1px 6px;
-    border-radius: 4px;
-    font-size: 0.88em;
-    color: var(--ink);
-  }
+  .faq-item[open] > summary::after { content: "−"; color: var(--accent); }
+  .faq-item .faq-body { padding: 0 18px 18px; font-size: 14.5px; color: var(--ink-2); line-height: 1.6; max-width: 72ch; }
+  .faq-item .faq-body > p + p { margin-top: 10px; }
 
-  /* ============================================================ */
-  /* === Demo transcript                                      === */
-  /* ============================================================ */
+  /* === Demo transcript === */
   .demo-transcript { margin: 12px 0 0; }
   .demo-transcript > summary {
     list-style: none;
@@ -710,77 +398,68 @@
   .demo-transcript[open] > summary::before { content: "▾ "; }
   .demo-transcript-body {
     border-left: 2px solid var(--line);
-    padding: 6px 0 6px 18px;
-    margin: 10px 0 0 4px;
+    padding: 4px 0 4px 16px;
+    margin: 8px 0 0 4px;
     color: var(--ink-2);
-    font-size: 14.5px;
-    line-height: 1.65;
+    font-size: 14px;
+    line-height: 1.6;
   }
   .demo-transcript-body p { margin: 0 0 10px; }
   .demo-transcript-body .role {
     font-family: 'Manrope', sans-serif;
     font-weight: 700;
-    font-size: 11px;
-    letter-spacing: 0.1em;
+    font-size: 11.5px;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--ink-3);
-    margin-right: 10px;
+    margin-right: 8px;
   }
   .demo-transcript-body code {
     background: var(--paper-soft);
-    border: 1px solid var(--line);
     padding: 1px 6px;
     border-radius: 4px;
     font-size: 0.9em;
-    color: var(--ink);
+    color: var(--accent);
   }
 
-  /* ============================================================ */
-  /* === Section reveal                                       === */
-  /* ============================================================ */
+  /* === Section reveal === */
   .reveal {
     opacity: 0; transform: translateY(14px);
-    transition: opacity 700ms cubic-bezier(0.22, 1, 0.36, 1), transform 700ms cubic-bezier(0.22, 1, 0.36, 1);
+    transition: opacity 750ms cubic-bezier(0.22, 1, 0.36, 1), transform 750ms cubic-bezier(0.22, 1, 0.36, 1);
     will-change: opacity, transform;
   }
   .reveal.is-in { opacity: 1; transform: translateY(0); }
 
-  /* ============================================================ */
-  /* === Demo section (sticky pin)                            === */
-  /* ============================================================ */
-  .demo-section { padding: 88px 0 0; }
-  @media (max-width: 720px) { .demo-section { padding: 56px 0 0; } }
-  .demo-section .demo-header { margin-bottom: 28px; }
-
-  /* Persona tabs */
+  /* ===================================================================== */
+  /* === STICKY-PIN demo wrapper                                         === */
+  /* ===================================================================== */
+  .demo-section { padding-top: 56px; padding-bottom: 0; border-top: 1px solid var(--line); }
+  .demo-section .demo-header { margin-bottom: 24px; }
+  /* Persona tabs above the chat */
   .demo-tabs {
     display: flex;
-    gap: 8px;
-    margin: 8px 0 24px;
+    gap: 6px;
+    margin: 14px 0 20px;
     flex-wrap: wrap;
   }
   .demo-tab {
     background: transparent;
     border: 1px solid var(--line-strong);
     border-radius: 999px;
-    padding: 7px 14px;
+    padding: 6px 14px;
     font-family: inherit;
     font-size: 13px;
     font-weight: 500;
     color: var(--ink-2);
     cursor: pointer;
     line-height: 1.3;
-    letter-spacing: -0.003em;
-    transition: border-color 200ms ease, color 200ms ease, background 200ms ease;
+    transition: border-color 140ms ease, color 140ms ease, background 140ms ease;
   }
-  .demo-tab:hover {
-    border-color: var(--ink-3);
-    color: var(--ink);
-  }
+  .demo-tab:hover { border-color: var(--accent); color: var(--accent); }
   .demo-tab.is-active {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: var(--on-accent);
+    background: var(--ink);
+    border-color: var(--ink);
+    color: var(--paper);
   }
 
   .sticky-wrap {
@@ -807,17 +486,17 @@
   }
   @media (max-width: 720px) {
     .sticky-wrap { height: auto; }
-    .sticky-stage { position: static; height: auto; display: block; padding: 16px 0 0; }
+    .sticky-stage { position: static; height: auto; display: block; }
   }
 
-  /* ============================================================ */
-  /* === Claude Desktop demo window — palette pinned to dark === */
-  /* ============================================================ */
+  /* ===================================================================== */
+  /* === Claude Desktop demo window                                      === */
+  /* ===================================================================== */
   .cwd {
     background: var(--cwd-bg);
     border: 1px solid var(--cwd-border);
-    border-radius: 14px;
-    box-shadow: 0 30px 70px rgba(0,0,0,0.30), 0 2px 8px rgba(0,0,0,0.15);
+    border-radius: 12px;
+    box-shadow: 0 30px 70px rgba(26,22,18,0.25), 0 2px 6px rgba(26,22,18,0.10);
     overflow: hidden;
     color: var(--cwd-ink);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, "Helvetica Neue", Helvetica, Arial, sans-serif;
@@ -869,6 +548,7 @@
   }
   @media (max-width: 540px) { .cwd-progress-rail { display: none; } }
 
+  /* Chat body: holds the messages list + the floating burst */
   .cwd-bodywrap {
     position: relative;
     background: var(--cwd-bg);
@@ -887,11 +567,8 @@
   @media (max-width: 640px) {
     .cwd-body { padding: 18px 16px 56px; height: 420px; }
   }
-  @media (max-width: 400px) {
-    .cwd-body { padding: 16px 12px 48px; height: 380px; }
-  }
 
-  /* Thinking burst */
+  /* Thinking burst — lives in-flow at the end of the message stream */
   .cwd-burst {
     width: 24px;
     height: 24px;
@@ -902,6 +579,7 @@
     display: block;
     pointer-events: none;
   }
+  /* Hide the burst when no messages have streamed in yet */
   .cwd-body:not(:has(.cwd-msg)) .cwd-burst { visibility: hidden; }
   .cwd-burst .claude-burst { width: 100%; height: 100%; display: block; }
   .cwd-burst.active { opacity: 1; animation: burst-pulse 1.2s ease-in-out infinite, burst-rotate 12s linear infinite; transform-origin: 50% 50%; }
@@ -914,7 +592,7 @@
     to   { rotate:  3deg; }
   }
 
-  /* Messages */
+  /* User and assistant messages */
   .cwd-msg {
     margin: 0 0 22px;
     opacity: 0;
@@ -934,6 +612,7 @@
     color: var(--cwd-ink);
     line-height: 1.45;
   }
+  /* User bubble flies up from composer */
   .cwd-msg.user.fly {
     animation: user-fly 600ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
   }
@@ -942,7 +621,9 @@
     to   { opacity: 1; transform: translateY(0); }
   }
 
-  .cwd-msg.assistant { display: block; }
+  .cwd-msg.assistant {
+    display: block;
+  }
   .cwd-content { min-width: 0; }
   .cwd-content > * + * { margin-top: 12px; }
   .cwd-content > .cwd-text.numbered + .cwd-text.numbered { margin-top: 4px; }
@@ -984,8 +665,16 @@
     font-feature-settings: "tnum";
     font-weight: 500;
   }
-  .cwd-text.bullet .cwd-bullet { text-align: center; font-size: 1em; }
-  .cwd-text.title { font-weight: 600; font-size: 19px; line-height: 1.4; margin-top: 22px; }
+  .cwd-text.bullet .cwd-bullet {
+    text-align: center;
+    font-size: 1em;
+  }
+  .cwd-text.title {
+    font-weight: 600;
+    font-size: 19px;
+    line-height: 1.4;
+    margin-top: 22px;
+  }
   .cwd-content > .cwd-text.title + .cwd-text.subtitle { margin-top: 2px; }
   .cwd-text.subtitle {
     font-size: 14.5px;
@@ -994,8 +683,9 @@
     line-height: 1.5;
   }
   .cwd-text strong { font-weight: 600; color: var(--cwd-ink); }
+  /* aside removed — Claude Desktop has no such surface */
 
-  /* Tool-use group */
+  /* Collapsed tool-use indicator */
   .cwd-toolgroup { margin: 0; }
   .cwd-toolgroup-toggle {
     display: inline-flex; align-items: center; gap: 8px;
@@ -1033,7 +723,11 @@
     margin-top: 12px;
   }
 
-  .cwd-timeline { position: relative; padding: 4px 0; }
+  /* === TIMELINE === */
+  .cwd-timeline {
+    position: relative;
+    padding: 4px 0 4px 0;
+  }
   .cwd-timeline::before {
     content: "";
     position: absolute;
@@ -1064,9 +758,17 @@
     margin-top: 1px;
   }
   .cwd-tl-icon svg { width: 13px; height: 13px; display: block; }
-  .cwd-tl-icon.done { color: var(--cwd-good); border-color: var(--cwd-good); }
+  .cwd-tl-icon.done {
+    color: var(--cwd-good);
+    border-color: var(--cwd-good);
+  }
   .cwd-tl-body { min-width: 0; }
-  .cwd-tl-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; line-height: 1.3; }
+  .cwd-tl-head {
+    display: flex; align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    line-height: 1.3;
+  }
   .cwd-tl-name {
     color: var(--cwd-ink-2);
     font-size: 15px;
@@ -1084,8 +786,15 @@
     border-radius: 4px;
     letter-spacing: 0;
   }
-  .cwd-tl-done { color: var(--cwd-ink-2); font-size: 14px; font-weight: 500; }
-  .cwd-tl-result { margin-top: 6px; }
+  .cwd-tl-done {
+    color: var(--cwd-ink-2);
+    font-size: 14px;
+    font-weight: 500;
+  }
+  .cwd-tl-result {
+    margin-top: 6px;
+    margin-left: 0;
+  }
   .cwd-tl-result-pill {
     display: inline-flex;
     align-items: center;
@@ -1132,6 +841,7 @@
     padding: 8px 10px;
   }
 
+  /* Streaming cursor */
   .cwd-cursor {
     display: inline-block;
     width: 7px; height: 1.0em;
@@ -1142,14 +852,20 @@
   }
   @keyframes cwd-blink { 50% { opacity: 0; } }
 
+  /* Action icons row (post-message) */
   .cwd-actions {
-    display: flex; align-items: center; gap: 4px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
     margin-top: 16px;
     opacity: 0;
     transform: translateY(4px);
     transition: opacity 300ms ease, transform 300ms ease;
   }
-  .cwd-actions.in { opacity: 1; transform: translateY(0); }
+  .cwd-actions.in {
+    opacity: 1;
+    transform: translateY(0);
+  }
   .cwd-action-btn {
     background: transparent;
     border: none;
@@ -1207,8 +923,12 @@
     line-height: 1.4;
     position: relative;
   }
-  .cwd-composer-placeholder { color: var(--cwd-ink-3); }
-  .cwd-composer-typed { color: var(--cwd-ink); }
+  .cwd-composer-placeholder {
+    color: var(--cwd-ink-3);
+  }
+  .cwd-composer-typed {
+    color: var(--cwd-ink);
+  }
   .cwd-composer-caret {
     display: inline-block;
     width: 1px;
@@ -1242,75 +962,58 @@
     .cwd-composer-model { font-size: 11px; padding: 3px 8px; }
   }
 
+  /* Demo controls */
   .demo-controls {
     display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
     margin-top: 16px;
     max-width: 760px;
     margin-left: auto; margin-right: auto;
   }
-  .demo-controls .demo-note { font-size: 13px; color: var(--ink-3); }
-  .replay-btn {
-    background: transparent;
-    border: 1px solid var(--line-strong);
-    border-radius: 999px;
-    padding: 6px 14px;
-    font-size: 12.5px;
-    font-weight: 500;
-    cursor: pointer;
-    color: var(--ink-2);
-    transition: border-color 200ms ease, color 200ms ease;
+  .demo-controls .demo-note {
+    font-size: 12.5px; color: var(--ink-3);
   }
-  .replay-btn:hover { border-color: var(--ink-3); color: var(--ink); }
+  .replay-btn {
+    background: var(--paper); border: 1px solid var(--line-strong);
+    border-radius: 6px; padding: 6px 12px; font-size: 12.5px; font-weight: 600;
+    cursor: pointer; color: var(--ink-2);
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .replay-btn:hover { border-color: var(--accent); color: var(--accent); }
 
-  /* ============================================================ */
-  /* === Get started                                          === */
-  /* ============================================================ */
+  /* ===================================================================== */
+  /* === Get started === */
+  /* ===================================================================== */
   .install-card {
     background: var(--paper);
     border: 1px solid var(--line);
-    border-radius: 16px;
-    padding: 40px;
+    border-radius: 14px;
+    padding: 32px;
     box-shadow: var(--shadow-md);
   }
-  @media (max-width: 720px) {
-    .install-card { padding: 28px 22px; border-radius: 14px; }
-  }
+  @media (max-width: 720px) { .install-card { padding: 24px; border-radius: 12px; } }
 
   .install-headline {
     display: flex; align-items: baseline; gap: 14px;
     flex-wrap: wrap;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
   }
   .install-headline h3 {
-    font-family: 'Newsreader', Georgia, "Times New Roman", serif;
-    font-size: 26px;
-    font-weight: 500;
-    letter-spacing: -0.012em;
+    font-size: 20px; font-weight: 700; letter-spacing: -0.01em;
     margin: 0;
   }
   .install-headline .pill {
-    font-size: 10px; font-weight: 700;
-    letter-spacing: 0.1em;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--accent);
     background: var(--accent-soft);
     border: 1px solid var(--accent-line);
-    padding: 3px 10px;
+    padding: 3px 8px;
     border-radius: 999px;
   }
   .install-card p.lede {
-    color: var(--ink-2); font-size: 15.5px;
-    margin: 0 0 26px;
-    max-width: 60ch;
-    line-height: 1.6;
-  }
-  .install-card p.lede code {
-    background: var(--paper-soft);
-    border: 1px solid var(--line);
-    padding: 1px 6px;
-    border-radius: 4px;
-    font-size: 0.88em;
-    color: var(--ink);
+    color: var(--ink-2); font-size: 15px;
+    margin: 0 0 22px;
+    max-width: 56ch;
   }
 
   .download-row { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
@@ -1318,35 +1021,34 @@
   .download-row .meta strong { color: var(--ink-2); font-weight: 600; }
 
   .steps {
-    list-style: none; padding: 0; margin: 32px 0 0;
+    list-style: none; padding: 0; margin: 28px 0 0;
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 16px;
   }
-  @media (max-width: 720px) { .steps { grid-template-columns: 1fr; } }
-  .steps li {
-    background: transparent;
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    padding: 20px 22px;
-    display: flex; align-items: flex-start; gap: 14px;
-    font-size: 14.5px;
-    color: var(--ink-2);
-    line-height: 1.55;
-    transition: border-color 200ms ease;
+  @media (max-width: 720px) {
+    .steps { grid-template-columns: 1fr; }
   }
-  .steps li:hover { border-color: var(--line-strong); }
+  .steps li {
+    background: var(--paper-soft);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px 18px;
+    display: flex; align-items: flex-start; gap: 12px;
+    font-size: 14px;
+    color: var(--ink-2);
+    line-height: 1.5;
+  }
   .step-n {
     flex: 0 0 auto;
     width: 24px; height: 24px;
     border-radius: 50%;
-    background: var(--paper-soft);
+    background: var(--paper);
     border: 1px solid var(--line-strong);
     font-size: 12px; font-weight: 700;
     color: var(--ink);
     display: flex; align-items: center; justify-content: center;
     margin-top: 1px;
-    font-variant-numeric: tabular-nums;
   }
   .step-body strong { color: var(--ink); font-weight: 600; }
 
@@ -1355,18 +1057,18 @@
   details.alt {
     background: var(--paper);
     border: 1px solid var(--line);
-    border-radius: 12px;
+    border-radius: 10px;
     padding: 0;
-    transition: border-color 200ms ease;
+    transition: border-color 0.15s ease;
   }
   details.alt[open] { border-color: var(--line-strong); }
   details.alt > summary {
     list-style: none;
     cursor: pointer;
-    padding: 16px 20px;
+    padding: 14px 18px;
     display: flex; align-items: center; justify-content: space-between;
     gap: 12px;
-    font-size: 14.5px; font-weight: 600; color: var(--ink);
+    font-size: 14px; font-weight: 600; color: var(--ink);
   }
   details.alt > summary::-webkit-details-marker { display: none; }
   details.alt > summary .alt-sub {
@@ -1384,76 +1086,42 @@
     transition: transform 0.2s ease;
   }
   details.alt[open] > summary::after { content: "−"; color: var(--accent); }
-  .alt-body { padding: 4px 20px 20px; font-size: 14.5px; color: var(--ink-2); line-height: 1.6; }
-  .alt-body > * + * { margin-top: 12px; }
+  .alt-body { padding: 4px 18px 18px; font-size: 14px; color: var(--ink-2); }
+  .alt-body > * + * { margin-top: 10px; }
   .alt-body p { margin: 0; }
-  .alt-body code {
-    background: var(--paper-soft);
-    border: 1px solid var(--line);
-    padding: 1px 6px;
-    border-radius: 4px;
-    font-size: 0.88em;
-    color: var(--ink);
-  }
 
   code, pre { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 13.5px; }
   pre {
-    background: var(--paper-soft); padding: 14px 16px; border-radius: 10px;
+    background: var(--paper-soft); padding: 14px 16px; border-radius: 8px;
     border: 1px solid var(--line); overflow-x: auto; position: relative;
     margin: 0;
-    color: var(--ink);
   }
-  pre code { background: transparent; padding: 0; border: none; color: var(--ink); }
+  pre code { background: transparent; padding: 0; }
   pre .copy-btn {
     position: absolute; top: 8px; right: 8px;
     background: var(--paper); border: 1px solid var(--line-strong);
     border-radius: 6px; padding: 4px 10px; font-size: 11px; font-weight: 600;
     cursor: pointer; color: var(--ink-2);
-    transition: border-color 200ms, color 200ms;
+    transition: border-color 0.15s, color 0.15s;
   }
-  pre .copy-btn:hover { border-color: var(--ink-3); color: var(--ink); }
-  p code, li code {
-    background: var(--paper-soft);
-    border: 1px solid var(--line);
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-size: 0.92em;
-    color: var(--ink);
-  }
+  pre .copy-btn:hover { border-color: var(--accent); color: var(--accent); }
+  p code, li code { background: var(--paper-soft); padding: 2px 6px; border-radius: 4px; font-size: 0.92em; color: var(--ink); }
   kbd { background: var(--paper); border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: 4px; padding: 1px 6px; font-size: 0.85em; font-family: ui-monospace, Menlo, monospace; }
 
   .status { margin-top: 12px; padding: 12px 14px; border-radius: 8px; font-size: 14px; }
   .status.ok { background: var(--good-soft); border: 1px solid color-mix(in srgb, var(--good) 25%, transparent); color: var(--good); }
-  .status.err { background: var(--accent-soft); border: 1px solid var(--accent-line); color: var(--accent-dark); }
+  .status.err { background: rgba(214,58,47,0.06); border: 1px solid var(--accent-line); color: var(--accent-dark); }
   .status.warn { background: rgba(240,193,75,0.10); border: 1px solid rgba(240,193,75,0.45); color: #8d5f00; }
-  [data-theme="dark"] .status.warn { color: #d4a850; }
 
-  /* Footer */
-  footer {
-    color: var(--ink-3);
-    font-size: 13.5px;
-    padding: 48px 0 64px;
-    margin-top: 32px;
-  }
-  footer .footer-row {
-    display: flex; align-items: center; gap: 14px;
-    flex-wrap: wrap;
-    border-top: 1px solid var(--line);
-    padding-top: 32px;
-  }
+  /* === Footer === */
+  footer { color: var(--ink-3); font-size: 13px; padding: 32px 0 56px; border-top: 1px solid var(--line); margin-top: 16px; }
   footer .accent-line {
-    display: inline-block; height: 2px; width: 28px;
-    background: var(--accent); vertical-align: middle;
-    margin-right: 4px;
+    display: inline-block; height: 2px; width: 32px; background: var(--accent); vertical-align: 4px; margin-right: 12px;
   }
-  footer .sep { color: var(--ink-4); }
-  footer a { border-bottom-color: transparent; }
-  footer a:hover { border-bottom-color: var(--accent); }
 
   .hidden { display: none; }
 
   @media (prefers-reduced-motion: reduce) {
-    html { scroll-behavior: auto; }
     .breathing-disc, .scroll-progress { animation: none; }
     h1.hero-title em::after { transform: scaleX(1); animation: none; }
     .hero .kicker, .hero h1.hero-title, .hero .hero-sub, .hero .hero-cta, .hero .hero-art { animation: none; }
@@ -1471,41 +1139,25 @@
 
 <div class="scroll-progress" id="scroll-progress"></div>
 
-<nav class="nav" id="nav">
+<nav class="nav">
   <div class="wrap">
     <div class="nav-row">
       <a href="#" class="brand">
         <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
-          <rect x="4" y="4" width="3" height="24" fill="currentColor"/>
+          <rect x="4" y="4" width="3" height="24" fill="#1a1612"/>
           <circle cx="20" cy="16" r="11" fill="#f0c14b"/>
           <circle cx="20" cy="16" r="7" fill="#d63a2f"/>
-          <circle cx="20" cy="16" r="2.5" fill="currentColor"/>
+          <circle cx="20" cy="16" r="2.5" fill="#1a1612"/>
         </svg>
         <span>Margins</span>
       </a>
       <div class="nav-links">
-        <a href="#how" class="nav-secondary">How it works</a>
+        <a href="#how">How it works</a>
         <a href="#demo">Demo</a>
-        <a href="#compare" class="nav-tertiary">Compare</a>
-        <a href="#faq" class="nav-secondary">FAQ</a>
+        <a href="#compare">Compare</a>
+        <a href="#faq">FAQ</a>
         <a href="#get-started">Install</a>
-        <a href="https://github.com/cflorczyk9/Margins" class="nav-tertiary">GitHub</a>
-        <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode" title="Toggle theme">
-          <svg class="icon-moon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M13.5 9.4a5.5 5.5 0 0 1-7-7 5.5 5.5 0 1 0 7 7z"/>
-          </svg>
-          <svg class="icon-sun" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <circle cx="8" cy="8" r="3.2"/>
-            <line x1="8" y1="1.5" x2="8" y2="3"/>
-            <line x1="8" y1="13" x2="8" y2="14.5"/>
-            <line x1="1.5" y1="8" x2="3" y2="8"/>
-            <line x1="13" y1="8" x2="14.5" y2="8"/>
-            <line x1="3.4" y1="3.4" x2="4.4" y2="4.4"/>
-            <line x1="11.6" y1="11.6" x2="12.6" y2="12.6"/>
-            <line x1="3.4" y1="12.6" x2="4.4" y2="11.6"/>
-            <line x1="11.6" y1="4.4" x2="12.6" y2="3.4"/>
-          </svg>
-        </button>
+        <a href="https://github.com/cflorczyk9/Margins">GitHub</a>
       </div>
     </div>
   </div>
@@ -1519,41 +1171,41 @@
         <h1 class="hero-title">Your Claude subscription, on your <em>files</em>.</h1>
         <p class="hero-sub">A small, free app. You give Margins access to a folder; Claude only sees what's inside it. Drop in your notes, writing, PDFs, transcripts — Claude reads each one and helps you turn it into a clean source page you can search later. Works with Obsidian, plain text, or any folder of files. No API key. Your files stay on your machine.</p>
         <div class="hero-cta">
-          <a href="#get-started" class="btn btn-primary">Get started <span class="arrow">→</span></a>
+          <a href="#get-started" class="btn btn-primary">Get started <span class="arrow">↓</span></a>
           <a href="#demo" class="btn btn-ghost">See it work</a>
         </div>
       </div>
       <div class="hero-art" aria-hidden="true">
         <svg viewBox="0 0 320 320">
           <g class="parallax-layer" data-depth="0.08">
-            <line x1="20" y1="280" x2="300" y2="40" class="ink-stroke" stroke-width="0.6"/>
+            <line x1="20" y1="280" x2="300" y2="40" stroke="#1a1612" stroke-width="0.6" opacity="0.30"/>
           </g>
           <g class="parallax-layer" data-depth="0.30">
             <path d="M 30 90 Q 160 200 290 60" fill="none" stroke="#2c5aa0" stroke-width="1.8" stroke-linecap="round" opacity="0.75"/>
           </g>
           <g class="parallax-layer" data-depth="0.10">
             <g class="breathing-disc">
-              <circle class="hero-disc" cx="225" cy="115" r="56" fill="#f0c14b"/>
+              <circle cx="225" cy="115" r="56" fill="#f0c14b" style="mix-blend-mode: multiply;"/>
             </g>
           </g>
           <g class="parallax-layer" data-depth="0.10">
             <g class="breathing-disc delay-1">
-              <circle class="hero-disc" cx="225" cy="115" r="32" fill="#d63a2f"/>
+              <circle cx="225" cy="115" r="32" fill="#d63a2f" style="mix-blend-mode: multiply;"/>
             </g>
           </g>
           <g class="parallax-layer" data-depth="0.12">
             <g class="breathing-disc delay-2">
-              <circle cx="225" cy="115" r="10" class="ink-fill"/>
+              <circle cx="225" cy="115" r="10" fill="#1a1612"/>
             </g>
           </g>
           <g class="parallax-layer" data-depth="0.22">
-            <polygon points="60,180 200,205 110,300" fill="none" class="ink-tri" stroke-width="1.3" stroke-linejoin="round"/>
+            <polygon points="60,180 200,205 110,300" fill="none" stroke="#1a1612" stroke-width="1.3" stroke-linejoin="round"/>
           </g>
           <g class="parallax-layer" data-depth="0.55"><circle cx="80" cy="80" r="7" fill="#6a4f8c"/></g>
           <g class="parallax-layer" data-depth="0.60"><circle cx="250" cy="240" r="5" fill="#6fa863"/></g>
           <g class="parallax-layer" data-depth="0.70"><circle cx="40" cy="240" r="3.5" fill="#d63a2f"/></g>
-          <g class="parallax-layer" data-depth="0.80"><circle cx="285" cy="270" r="2.5" class="ink-fill"/></g>
-          <g class="parallax-layer" data-depth="0.80"><circle cx="180" cy="60" r="2" class="ink-fill"/></g>
+          <g class="parallax-layer" data-depth="0.80"><circle cx="285" cy="270" r="2.5" fill="#1a1612"/></g>
+          <g class="parallax-layer" data-depth="0.80"><circle cx="180" cy="60" r="2" fill="#1a1612"/></g>
         </svg>
       </div>
     </div>
@@ -1565,9 +1217,8 @@
 <!-- ============================================================== -->
 <section class="block reveal" id="how" aria-labelledby="how-heading">
   <div class="wrap">
-    <p class="eyebrow">How it works</p>
-    <h2 id="how-heading">Three steps. You stay in the driver's seat.</h2>
-    <p class="section-sub">You decide what Claude can see, you decide what Claude writes, you ask later.</p>
+    <h2 id="how-heading"><span class="accent-dot"></span>How it works</h2>
+    <p class="section-sub">Three steps. You decide what Claude can see, you decide what Claude writes, you ask later.</p>
 
     <div class="how-strip">
       <div class="how-card">
@@ -1595,19 +1246,18 @@
 <section class="demo-section reveal" id="demo">
   <div class="wrap">
     <div class="demo-header">
-      <p class="eyebrow">Demo</p>
-      <h2>What it looks like inside Claude Desktop.</h2>
+      <h2><span class="accent-dot"></span>What it looks like inside Claude Desktop</h2>
       <p class="section-sub">Three different setups. Same move: Claude pulls the obvious context, follows the thread sideways, and finds the connection you wouldn't have made yourself — a meeting that overlaps with another, a forgotten promise, a pattern across months of notes.</p>
 
-      <div class="demo-tabs" role="tablist" aria-label="Demo scenarios">
-        <button class="demo-tab is-active" type="button" data-persona="coffee" role="tab" aria-selected="true">Coffee prep</button>
-        <button class="demo-tab" type="button" data-persona="anki" role="tab" aria-selected="false">Anki cards</button>
-        <button class="demo-tab" type="button" data-persona="code" role="tab" aria-selected="false">Code archaeology</button>
-        <button class="demo-tab" type="button" data-persona="writer" role="tab" aria-selected="false">Newsletter draft</button>
-        <button class="demo-tab" type="button" data-persona="decide" role="tab" aria-selected="false">Decision brief</button>
-        <button class="demo-tab" type="button" data-persona="health" role="tab" aria-selected="false">Doctor visit</button>
-        <button class="demo-tab" type="button" data-persona="equity" role="tab" aria-selected="false">Earnings prep</button>
-      </div>
+  <div class="demo-tabs" role="tablist" aria-label="Demo scenarios">
+    <button class="demo-tab is-active" type="button" data-persona="coffee" role="tab" aria-selected="true">Coffee prep</button>
+    <button class="demo-tab" type="button" data-persona="anki" role="tab" aria-selected="false">Anki cards</button>
+    <button class="demo-tab" type="button" data-persona="code" role="tab" aria-selected="false">Code archaeology</button>
+    <button class="demo-tab" type="button" data-persona="writer" role="tab" aria-selected="false">Newsletter draft</button>
+    <button class="demo-tab" type="button" data-persona="decide" role="tab" aria-selected="false">Decision brief</button>
+    <button class="demo-tab" type="button" data-persona="health" role="tab" aria-selected="false">Doctor visit</button>
+    <button class="demo-tab" type="button" data-persona="equity" role="tab" aria-selected="false">Earnings prep</button>
+  </div>
     </div>
   </div>
 
@@ -1688,67 +1338,64 @@
 <!-- COMPARISON TABLE                                                -->
 <!-- ============================================================== -->
 <section class="block reveal" id="compare">
-  <p class="eyebrow">Compare</p>
-  <h2>How Margins compares.</h2>
+  <h2><span class="accent-dot"></span>How Margins compares</h2>
   <p class="section-sub">There are a few other ways to point an AI at your notes. Here's where they overlap with Margins and where Margins is more specific.</p>
 
-  <div class="compare-wrap">
-    <table class="compare-table" aria-label="Comparison of Margins MCP with related tools">
-      <thead>
-        <tr>
-          <th scope="col"></th>
-          <th scope="col" class="is-us">Margins MCP</th>
-          <th scope="col">Filesystem MCP</th>
-          <th scope="col">Smart Connections</th>
-          <th scope="col">NotebookLM</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>Finds connections across files (wikilinks, backlinks, cross-document synthesis)</td>
-          <td class="is-us"><span class="ck">✓</span></td>
-          <td><span class="x">✗</span></td>
-          <td><span class="partial">partial (semantic, no graph)</span></td>
-          <td><span class="partial">partial (Q&amp;A only, no graph)</span></td>
-        </tr>
-        <tr>
-          <td>Compiles raw inputs into structured pages</td>
-          <td class="is-us"><span class="ck">✓</span></td>
-          <td><span class="x">✗</span></td>
-          <td><span class="x">✗</span></td>
-          <td><span class="x">✗</span></td>
-        </tr>
-        <tr>
-          <td>Write capability</td>
-          <td class="is-us">propose-only (you review)</td>
-          <td>direct (no review step)</td>
-          <td>read-only</td>
-          <td>read-only</td>
-        </tr>
-        <tr>
-          <td>Free to run</td>
-          <td class="is-us"><span class="ck">✓</span> uses your Claude subscription</td>
-          <td><span class="ck">✓</span> uses your Claude subscription</td>
-          <td><span class="x">✗</span> BYOK OpenAI</td>
-          <td><span class="ck">✓</span> Google account</td>
-        </tr>
-        <tr>
-          <td>Files stay on your disk</td>
-          <td class="is-us"><span class="ck">✓</span></td>
-          <td><span class="ck">✓</span></td>
-          <td><span class="ck">✓</span></td>
-          <td><span class="x">✗</span> uploaded to Google</td>
-        </tr>
-        <tr>
-          <td>Works in Claude Desktop and Claude Code</td>
-          <td class="is-us"><span class="ck">✓</span></td>
-          <td><span class="ck">✓</span></td>
-          <td><span class="x">✗</span> in-Obsidian only</td>
-          <td><span class="x">✗</span></td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
+  <table class="compare-table" aria-label="Comparison of Margins MCP with related tools">
+    <thead>
+      <tr>
+        <th scope="col"></th>
+        <th scope="col" class="is-us">Margins MCP</th>
+        <th scope="col">Filesystem MCP</th>
+        <th scope="col">Smart Connections</th>
+        <th scope="col">NotebookLM</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Finds connections across files (wikilinks, backlinks, cross-document synthesis)</td>
+        <td class="is-us"><span class="ck">✓</span></td>
+        <td><span class="x">✗</span></td>
+        <td><span class="partial">partial (semantic, no graph)</span></td>
+        <td><span class="partial">partial (Q&amp;A only, no graph)</span></td>
+      </tr>
+      <tr>
+        <td>Compiles raw inputs into structured pages</td>
+        <td class="is-us"><span class="ck">✓</span></td>
+        <td><span class="x">✗</span></td>
+        <td><span class="x">✗</span></td>
+        <td><span class="x">✗</span></td>
+      </tr>
+      <tr>
+        <td>Write capability</td>
+        <td class="is-us">propose-only (you review)</td>
+        <td>direct (no review step)</td>
+        <td>read-only</td>
+        <td>read-only</td>
+      </tr>
+      <tr>
+        <td>Free to run</td>
+        <td class="is-us"><span class="ck">✓</span> uses your Claude subscription</td>
+        <td><span class="ck">✓</span> uses your Claude subscription</td>
+        <td><span class="x">✗</span> BYOK OpenAI</td>
+        <td><span class="ck">✓</span> Google account</td>
+      </tr>
+      <tr>
+        <td>Files stay on your disk</td>
+        <td class="is-us"><span class="ck">✓</span></td>
+        <td><span class="ck">✓</span></td>
+        <td><span class="ck">✓</span></td>
+        <td><span class="x">✗</span> uploaded to Google</td>
+      </tr>
+      <tr>
+        <td>Works in Claude Desktop and Claude Code</td>
+        <td class="is-us"><span class="ck">✓</span></td>
+        <td><span class="ck">✓</span></td>
+        <td><span class="x">✗</span> in-Obsidian only</td>
+        <td><span class="x">✗</span></td>
+      </tr>
+    </tbody>
+  </table>
   <p class="compare-caveat">These aren't pure substitutes. Filesystem MCP gives Claude raw file access for any folder; Smart Connections is an Obsidian-internal semantic search plugin; NotebookLM is a Google-hosted document-Q&amp;A tool. The table shows where they overlap with Margins and where Margins is more specific.</p>
 </section>
 
@@ -1756,8 +1403,7 @@
 <!-- FAQ                                                             -->
 <!-- ============================================================== -->
 <section class="block reveal" id="faq">
-  <p class="eyebrow">FAQ</p>
-  <h2>Common questions.</h2>
+  <h2><span class="accent-dot"></span>Common questions</h2>
 
   <div class="faq-list">
     <details class="faq-item">
@@ -1824,9 +1470,8 @@
 <!-- GET STARTED                                                     -->
 <!-- ============================================================== -->
 <section class="block reveal" id="get-started">
-  <p class="eyebrow">Get started</p>
-  <h2>One file, one double-click.</h2>
-  <p class="section-sub">If you already use Claude Desktop, that's all of it.</p>
+  <h2><span class="accent-dot"></span>Get started</h2>
+  <p class="section-sub">One file, one double-click. If you already use Claude Desktop, that's all of it.</p>
 
   <div class="install-card">
     <div class="install-headline">
@@ -1836,7 +1481,7 @@
     <p class="lede">Margins ships as a single <code>.mcpb</code> bundle. Double-click it and Claude Desktop installs the connector. No terminal, no config files.</p>
 
     <div class="download-row">
-      <a class="btn btn-download btn-lg" href="https://github.com/cflorczyk9/Margins/releases/latest/download/margins-mcp.mcpb" download rel="noopener">
+      <a class="btn btn-primary btn-lg" href="https://github.com/cflorczyk9/Margins/releases/latest/download/margins-mcp.mcpb" download rel="noopener">
         Download margins-mcp.mcpb
       </a>
       <span class="meta"><strong>~2 MB</strong> · macOS &amp; Windows · MIT</span>
@@ -1911,55 +1556,12 @@
 
 <footer>
   <div class="wrap">
-    <div class="footer-row">
-      <span><span class="accent-line"></span> Margins runs locally. No vault content leaves your machine.</span>
-      <span class="sep">·</span>
-      <a href="https://github.com/cflorczyk9/Margins#privacy">Privacy details</a>
-      <span class="sep">·</span>
-      <a href="https://github.com/cflorczyk9/Margins">Source</a>
-      <span class="sep">·</span>
-      <a href="https://www.npmjs.com/package/margins-mcp">npm</a>
-      <span class="sep">·</span>
-      <span>MIT</span>
-    </div>
+    <span class="accent-line"></span>Margins runs locally. No vault content leaves your machine. <a href="https://github.com/cflorczyk9/Margins#privacy">Privacy details</a> · <a href="https://github.com/cflorczyk9/Margins">Source</a> · <a href="https://www.npmjs.com/package/margins-mcp">npm</a> · MIT
   </div>
 </footer>
 
 <script type="module">
 const prefersReduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-/* ============ Theme toggle ============ */
-const themeToggle = document.getElementById("theme-toggle");
-function setTheme(theme, persist = true) {
-  document.documentElement.setAttribute("data-theme", theme);
-  if (persist) {
-    try { localStorage.setItem("margins-theme", theme); } catch (e) {}
-  }
-  // Update theme-color meta
-  const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute("content", theme === "dark" ? "#15110d" : "#faf7f2");
-}
-themeToggle?.addEventListener("click", () => {
-  const current = document.documentElement.getAttribute("data-theme") || "light";
-  setTheme(current === "dark" ? "light" : "dark");
-});
-// Respond to system theme changes only if user hasn't chosen
-try {
-  const mq = window.matchMedia("(prefers-color-scheme: dark)");
-  mq.addEventListener && mq.addEventListener("change", (e) => {
-    const stored = localStorage.getItem("margins-theme");
-    if (!stored) setTheme(e.matches ? "dark" : "light", false);
-  });
-} catch (e) {}
-
-/* ============ Sticky nav border ============ */
-const navEl = document.getElementById("nav");
-function updateNavScrolled() {
-  if (!navEl) return;
-  navEl.classList.toggle("is-scrolled", window.scrollY > 6);
-}
-document.addEventListener("scroll", updateNavScrolled, { passive: true });
-updateNavScrolled();
 
 /* ============ Scroll progress bar ============ */
 const progress = document.getElementById("scroll-progress");

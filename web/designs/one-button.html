@@ -1,0 +1,701 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Margins</title>
+<meta name="description" content="A tiny open-source connector that lets Claude read and propose writes to your Obsidian vault.">
+<meta name="theme-color" content="#f7f4ee">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<!--
+  Candidate sentences (kept for posterity):
+  - "Let Claude read your notes."
+  - "Claude, on your Obsidian vault."
+  - "The shortest path between your notes and Claude."
+  - "Your Claude subscription, on your Obsidian vault."
+  Shipping: "Let Claude read your notes."  Sub: explains the rest.
+-->
+<style>
+  :root {
+    --bg: #f7f4ee;
+    --paper: #ffffff;
+    --paper-soft: #efeae0;
+    --ink: #1a1714;
+    --ink-2: #4a423a;
+    --ink-3: #8a7f6f;
+    --ink-4: #b8ad9a;
+    --line: #e6dfd1;
+    --line-strong: #d4ccba;
+    --accent: #c9402d;
+    --accent-dark: #a0301f;
+    --good: #5b7d57;
+    --good-soft: rgba(91, 125, 87, 0.08);
+    --warn-bg: rgba(214, 167, 49, 0.08);
+    --warn-bd: rgba(214, 167, 49, 0.45);
+    --warn-fg: #7a5400;
+    --err-bg: rgba(201, 64, 45, 0.06);
+    --err-bd: rgba(201, 64, 45, 0.22);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  body { overflow-x: hidden; }
+
+  a { color: var(--ink); text-decoration: none; border-bottom: 1px solid var(--line-strong); transition: border-color 160ms ease, color 160ms ease; }
+  a:hover { border-bottom-color: var(--accent); color: var(--accent); }
+  button, input { font: inherit; }
+  h1, h2, h3, p { margin: 0; font-weight: 400; }
+
+  .wrap { max-width: 720px; margin: 0 auto; padding: 0 32px; }
+
+  /* ===== Above the fold ===== */
+  .stage {
+    min-height: 100vh;
+    min-height: 100dvh;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    padding: 28px 0 18px;
+  }
+  .stage-top, .stage-bottom { display: flex; align-items: center; }
+  .stage-top { justify-content: space-between; }
+  .stage-mid {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 24px 0;
+  }
+  .wordmark {
+    font-family: 'Fraunces', Georgia, serif;
+    font-size: 20px;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    border: none;
+  }
+  .nav-right {
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    color: var(--ink-3);
+    letter-spacing: 0.01em;
+  }
+  .nav-right a { color: var(--ink-3); border: none; }
+  .nav-right a + a { margin-left: 18px; }
+  .nav-right a:hover { color: var(--accent); }
+
+  h1.title {
+    font-family: 'Fraunces', Georgia, serif;
+    font-weight: 400;
+    font-size: clamp(44px, 7vw, 88px);
+    line-height: 1.02;
+    letter-spacing: -0.035em;
+    color: var(--ink);
+    max-width: 14ch;
+    margin: 0 0 28px;
+    position: relative;
+  }
+  h1.title .annotated {
+    position: relative;
+    display: inline-block;
+  }
+  h1.title .annotated .underline {
+    position: absolute;
+    left: 0; right: 0;
+    bottom: -0.04em;
+    height: 2px;
+    background: var(--accent);
+    transform: scaleX(0);
+    transform-origin: 0 50%;
+    border-radius: 2px;
+  }
+  /* the marginalia */
+  .margin-note {
+    position: absolute;
+    font-family: 'Fraunces', Georgia, serif;
+    font-style: italic;
+    font-size: 17px;
+    color: var(--accent);
+    line-height: 1.3;
+    white-space: nowrap;
+    opacity: 0;
+    transform: translateY(4px);
+    pointer-events: none;
+  }
+  .margin-note .arrow {
+    display: inline-block;
+    margin-right: 6px;
+    font-style: normal;
+  }
+  /* desktop margin annotation sits to the right of the title */
+  @media (min-width: 880px) {
+    .margin-note {
+      top: 0.55em;
+      left: calc(100% + 18px);
+    }
+  }
+  /* on small screens, drop the floating annotation under the headline */
+  @media (max-width: 879px) {
+    h1.title { max-width: 100%; }
+    .margin-note {
+      position: static;
+      display: block;
+      margin: 14px 0 0;
+      white-space: normal;
+      font-size: 15px;
+    }
+  }
+
+  .sentence {
+    font-family: 'Inter', sans-serif;
+    font-size: clamp(17px, 1.8vw, 20px);
+    line-height: 1.55;
+    color: var(--ink-2);
+    max-width: 38ch;
+    margin: 0 0 36px;
+    font-weight: 400;
+  }
+  .sentence em { font-style: normal; color: var(--ink); border-bottom: 1px solid var(--line-strong); padding-bottom: 1px; }
+
+  .cta-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 18px;
+    flex-wrap: wrap;
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-family: 'Inter', sans-serif;
+    font-size: 15px;
+    font-weight: 500;
+    line-height: 1;
+    padding: 16px 22px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: background 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+    text-decoration: none;
+    letter-spacing: -0.005em;
+  }
+  a.btn { border-bottom: 1px solid transparent; }
+  .btn-primary {
+    background: var(--ink);
+    color: var(--bg);
+    border-color: var(--ink);
+    box-shadow: 0 1px 0 rgba(26,23,20,0.04), 0 8px 24px rgba(26,23,20,0.12);
+  }
+  .btn-primary:hover {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+    transform: translateY(-1px);
+    box-shadow: 0 1px 0 rgba(201,64,45,0.04), 0 12px 28px rgba(201,64,45,0.22);
+  }
+  .btn-primary .arrow { display: inline-block; transition: transform 200ms ease; }
+  .btn-primary:hover .arrow { transform: translate(2px, -2px); }
+  .btn-ghost {
+    background: transparent;
+    color: var(--ink-2);
+    border-color: transparent;
+    padding: 16px 4px;
+  }
+  .btn-ghost:hover { color: var(--accent); transform: none; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
+
+  .pretext {
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    color: var(--ink-3);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin: 0 0 36px;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .pretext::before {
+    content: "";
+    display: inline-block;
+    width: 24px;
+    height: 1px;
+    background: var(--ink-3);
+  }
+
+  /* scroll cue at the bottom of the fold */
+  .scroll-cue {
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    color: var(--ink-3);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border: none;
+    padding-bottom: 1px;
+    cursor: pointer;
+    background: none;
+  }
+  .scroll-cue:hover { color: var(--accent); }
+  .scroll-cue .chev {
+    display: inline-block;
+    animation: bob 2.4s ease-in-out infinite;
+  }
+  @keyframes bob {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(3px); }
+  }
+
+  /* ===== Lower content ===== */
+  .below { padding: 88px 0 56px; }
+  .section { margin-bottom: 96px; }
+  .section:last-child { margin-bottom: 0; }
+  .section h2 {
+    font-family: 'Fraunces', Georgia, serif;
+    font-size: 28px;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    margin: 0 0 24px;
+  }
+  .section p { font-size: 16px; color: var(--ink-2); margin: 0 0 14px; max-width: 56ch; }
+  .section .lede { font-size: 17px; color: var(--ink); margin-bottom: 24px; }
+
+  /* big single install card */
+  .install-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    padding: 28px 30px;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    box-shadow: 0 1px 0 rgba(26,23,20,0.02), 0 8px 28px rgba(26,23,20,0.05);
+    flex-wrap: wrap;
+  }
+  .install-card .text { flex: 1 1 240px; min-width: 0; }
+  .install-card .text strong { font-weight: 600; color: var(--ink); display: block; margin-bottom: 4px; font-size: 16px; }
+  .install-card .text span { font-size: 14px; color: var(--ink-3); }
+  .install-card .btn { flex: 0 0 auto; }
+
+  .small-print {
+    font-size: 13px;
+    color: var(--ink-3);
+    margin-top: 14px;
+  }
+  .small-print kbd {
+    background: var(--paper);
+    border: 1px solid var(--line-strong);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 0.85em;
+    font-family: ui-monospace, Menlo, monospace;
+    color: var(--ink-2);
+  }
+
+  /* ===== Disclosures ===== */
+  details {
+    border-top: 1px solid var(--line);
+    padding: 22px 0;
+  }
+  details:last-of-type { border-bottom: 1px solid var(--line); }
+  details summary {
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    color: var(--ink-2);
+    font-size: 15px;
+    font-weight: 500;
+    transition: color 160ms ease;
+  }
+  details summary::-webkit-details-marker { display: none; }
+  details summary:hover { color: var(--accent); }
+  details summary .plus {
+    font-family: 'Inter', sans-serif;
+    font-size: 18px;
+    color: var(--ink-3);
+    width: 18px; text-align: center;
+    transition: transform 200ms ease;
+  }
+  details[open] summary .plus { transform: rotate(45deg); color: var(--accent); }
+  details .body { padding-top: 18px; }
+  details .body p { font-size: 15px; }
+
+  /* code blocks */
+  pre {
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 13.5px;
+    background: var(--paper-soft);
+    padding: 14px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    overflow-x: auto;
+    position: relative;
+    margin: 10px 0;
+    line-height: 1.5;
+    color: var(--ink);
+  }
+  pre code { background: transparent; padding: 0; font-family: inherit; }
+  pre .copy-btn {
+    position: absolute; top: 8px; right: 8px;
+    background: var(--paper); border: 1px solid var(--line-strong);
+    border-radius: 6px; padding: 4px 10px; font-size: 11px; font-weight: 500;
+    cursor: pointer; color: var(--ink-3); font-family: 'Inter', sans-serif;
+    transition: border-color 140ms, color 140ms;
+  }
+  pre .copy-btn:hover { border-color: var(--accent); color: var(--accent); }
+  p code, li code { background: var(--paper-soft); padding: 2px 6px; border-radius: 4px; font-size: 0.9em; font-family: ui-monospace, Menlo, monospace; color: var(--ink); }
+
+  /* status banners */
+  .status { margin-top: 14px; padding: 12px 14px; border-radius: 8px; font-size: 14px; line-height: 1.5; }
+  .status.ok { background: var(--good-soft); border: 1px solid color-mix(in srgb, var(--good) 25%, transparent); color: var(--good); }
+  .status.err { background: var(--err-bg); border: 1px solid var(--err-bd); color: var(--accent-dark); }
+  .status.warn { background: var(--warn-bg); border: 1px solid var(--warn-bd); color: var(--warn-fg); }
+
+  /* ===== Footer ===== */
+  footer {
+    border-top: 1px solid var(--line);
+    padding: 32px 0 48px;
+    color: var(--ink-3);
+    font-size: 13px;
+  }
+  footer .foot-row {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 24px; flex-wrap: wrap;
+  }
+  footer a { color: var(--ink-3); border-bottom: 1px solid var(--line); }
+  footer a:hover { color: var(--accent); border-color: var(--accent); }
+  footer .privacy { max-width: 42ch; }
+
+  .hidden { display: none !important; }
+
+  /* ===== Motion ===== */
+  .fade-in {
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 700ms cubic-bezier(0.22, 1, 0.36, 1), transform 700ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .fade-in.is-in { opacity: 1; transform: translateY(0); }
+
+  /* sequence delay helpers for the fold */
+  .seq-1 { animation: rise 900ms cubic-bezier(0.18, 0.72, 0.22, 1) 0.05s backwards; }
+  .seq-2 { animation: rise 900ms cubic-bezier(0.18, 0.72, 0.22, 1) 0.20s backwards; }
+  .seq-3 { animation: rise 900ms cubic-bezier(0.18, 0.72, 0.22, 1) 0.40s backwards; }
+  .seq-4 { animation: rise 900ms cubic-bezier(0.18, 0.72, 0.22, 1) 0.55s backwards; }
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(14px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .seq-1, .seq-2, .seq-3, .seq-4 { animation: none; }
+    .fade-in { opacity: 1; transform: none; transition: none; }
+    .scroll-cue .chev { animation: none; }
+    h1.title .annotated .underline { transform: scaleX(1); }
+    .margin-note { opacity: 1; transform: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="stage">
+  <header class="stage-top wrap">
+    <a href="#" class="wordmark seq-1">Margins</a>
+    <nav class="nav-right seq-1">
+      <a href="https://github.com/cflorczyk9/Margins">GitHub</a>
+      <a href="https://www.npmjs.com/package/margins-mcp">npm</a>
+    </nav>
+  </header>
+
+  <div class="stage-mid wrap">
+    <p class="pretext seq-2">Open source · MIT · v0.5</p>
+
+    <h1 class="title seq-3">
+      Let Claude read your <span class="annotated" id="annotated">notes<span class="underline" id="underline" aria-hidden="true"></span></span>.
+      <span class="margin-note" id="margin-note" aria-hidden="true"><span class="arrow">←</span>read these too</span>
+    </h1>
+
+    <p class="sentence seq-4">
+      A tiny <em>MCP connector</em> that opens your Obsidian vault to Claude Pro or Max. Read, search, draft, propose edits. Files stay on your machine.
+    </p>
+
+    <div class="cta-row seq-4">
+      <a class="btn btn-primary"
+         href="https://github.com/cflorczyk9/Margins/releases/latest/download/margins-mcp.mcpb"
+         download
+         rel="noopener">
+        Download for Claude Desktop
+        <span class="arrow" aria-hidden="true">↗</span>
+      </a>
+      <button class="btn btn-ghost" id="cli-jump" type="button">or install via CLI</button>
+    </div>
+  </div>
+
+  <footer class="stage-bottom wrap">
+    <button class="scroll-cue" id="scroll-cue" type="button">
+      <span>How to install</span>
+      <span class="chev" aria-hidden="true">↓</span>
+    </button>
+  </footer>
+</div>
+
+<main class="wrap below" id="install">
+
+  <section class="section fade-in" id="install-section">
+    <h2>Install</h2>
+    <p class="lede">Two ways in. Pick whichever fits.</p>
+
+    <div class="install-card">
+      <div class="text">
+        <strong>Claude Desktop · one file</strong>
+        <span>Double-click <code>margins-mcp.mcpb</code>, point at your vault, restart.</span>
+      </div>
+      <a class="btn btn-primary"
+         href="https://github.com/cflorczyk9/Margins/releases/latest/download/margins-mcp.mcpb"
+         download
+         rel="noopener">
+        Download .mcpb
+      </a>
+    </div>
+
+    <p class="small-print">After it installs, quit Claude with <kbd>Cmd-Q</kbd> and reopen. You'll see Margins in the Connectors list. To try it, open a new chat and ask: <em>"Use margins to summarize my recent notes."</em></p>
+
+    <details id="cli-details">
+      <summary>
+        <span>Install via CLI (Claude Code, terminal lovers)</span>
+        <span class="plus" aria-hidden="true">+</span>
+      </summary>
+      <div class="body">
+        <p>Install the package globally:</p>
+        <pre><button class="copy-btn" data-copy="cli-install">copy</button><code id="cli-install">npm install -g margins-mcp</code></pre>
+        <p>Find your vault path (in Obsidian: right-click the vault → Reveal in Finder), then run:</p>
+        <pre><button class="copy-btn" data-copy="cli-run">copy</button><code id="cli-run">margins-mcp install --vault /absolute/path/to/your/vault</code></pre>
+        <p>The installer writes the Claude Desktop and Claude Code configs, scaffolds <code>raw/</code>, <code>proposed/</code>, and <code>.margins/</code> inside the vault, and runs a verification probe.</p>
+        <p class="small-print">To update later: <code>margins-mcp install --update</code>.</p>
+      </div>
+    </details>
+
+    <details id="fresh-details">
+      <summary>
+        <span>No vault yet? Scaffold one in your browser.</span>
+        <span class="plus" aria-hidden="true">+</span>
+      </summary>
+      <div class="body">
+        <p>Pick a parent folder; Margins creates a <code>Margins/</code> directory with the right shape (wiki, raw, proposed, .margins, plus a starter <code>CLAUDE.md</code>).</p>
+
+        <div id="fs-support-check"></div>
+
+        <p style="margin-top: 16px;">
+          <button class="btn btn-primary" id="scaffold-btn" type="button">Pick folder and scaffold</button>
+        </p>
+        <div id="scaffold-status"></div>
+
+        <div id="step-2-body" class="hidden">
+          <p style="margin-top: 18px;">Then connect it with the CLI:</p>
+          <pre><button class="copy-btn" data-copy="fresh-install">copy</button><code id="fresh-install">npm install -g margins-mcp
+margins-mcp install</code></pre>
+          <p>The installer auto-detects <code>~/Margins/</code> and wires it to Claude. Restart Claude Desktop when it finishes.</p>
+        </div>
+      </div>
+    </details>
+  </section>
+
+  <section class="section fade-in">
+    <h2>What it is</h2>
+    <p>An open-source MCP server. About 700 lines of TypeScript. It runs locally on your machine, exposes six tools to Claude (read, search, list, propose a write, list proposals, accept), and uses your existing Claude Pro or Max subscription. No API key. No embedding pipelines. No vendor cloud sitting between you and your files.</p>
+    <p>Vault content never leaves your disk. Claude reads files through the connector; it never sees your folder unless you tell it to look.</p>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap foot-row">
+    <span class="privacy">Margins runs locally. No vault content leaves your machine.</span>
+    <span>
+      <a href="https://github.com/cflorczyk9/Margins">Source</a> ·
+      <a href="https://www.npmjs.com/package/margins-mcp">npm</a> ·
+      <a href="https://github.com/cflorczyk9/Margins#privacy">Privacy</a> ·
+      MIT
+    </span>
+  </div>
+</footer>
+
+<script>
+(function() {
+  "use strict";
+  const prefersReduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // ===== Headline annotation: draws underline + writes margin note =====
+  const annotated = document.getElementById("annotated");
+  const underline = document.getElementById("underline");
+  const marginNote = document.getElementById("margin-note");
+
+  function runAnnotation() {
+    if (!underline || !marginNote) return;
+    if (prefersReduce) {
+      underline.style.transform = "scaleX(1)";
+      marginNote.style.opacity = "1";
+      marginNote.style.transform = "translateY(0)";
+      return;
+    }
+    // 1) draw the underline
+    underline.style.transition = "transform 650ms cubic-bezier(0.22, 1, 0.36, 1)";
+    requestAnimationFrame(() => { underline.style.transform = "scaleX(1)"; });
+
+    // 2) then write the margin note (typewriter)
+    const text = "read these too";
+    const arrowSpan = marginNote.querySelector(".arrow");
+    const after = document.createElement("span");
+    after.textContent = "";
+    // clear any existing trailing text node
+    while (marginNote.lastChild && marginNote.lastChild !== arrowSpan) {
+      marginNote.removeChild(marginNote.lastChild);
+    }
+    marginNote.appendChild(after);
+
+    marginNote.style.transition = "opacity 400ms ease, transform 400ms ease";
+    setTimeout(() => {
+      marginNote.style.opacity = "1";
+      marginNote.style.transform = "translateY(0)";
+      let i = 0;
+      const interval = setInterval(() => {
+        i += 1;
+        after.textContent = text.slice(0, i);
+        if (i >= text.length) clearInterval(interval);
+      }, 38);
+    }, 520);
+  }
+
+  // delay until the hero rise has settled
+  setTimeout(runAnnotation, prefersReduce ? 0 : 1100);
+
+  // ===== Scroll cue + "install via CLI" jump =====
+  const scrollCue = document.getElementById("scroll-cue");
+  const cliJump = document.getElementById("cli-jump");
+  const installAnchor = document.getElementById("install-section");
+  const cliDetails = document.getElementById("cli-details");
+
+  scrollCue?.addEventListener("click", () => {
+    installAnchor.scrollIntoView({ behavior: prefersReduce ? "auto" : "smooth", block: "start" });
+  });
+
+  cliJump?.addEventListener("click", () => {
+    cliDetails.open = true;
+    cliDetails.scrollIntoView({ behavior: prefersReduce ? "auto" : "smooth", block: "center" });
+  });
+
+  // ===== Fade-in sections =====
+  const io = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (e.isIntersecting) {
+        e.target.classList.add("is-in");
+        io.unobserve(e.target);
+      }
+    }
+  }, { threshold: 0.12 });
+  for (const el of document.querySelectorAll(".fade-in")) io.observe(el);
+
+  // ===== Copy buttons =====
+  for (const btn of document.querySelectorAll(".copy-btn")) {
+    btn.addEventListener("click", async () => {
+      const target = document.getElementById(btn.dataset.copy);
+      if (!target) return;
+      try {
+        await navigator.clipboard.writeText(target.textContent);
+        const original = btn.textContent;
+        btn.textContent = "copied";
+        setTimeout(() => { btn.textContent = original; }, 1200);
+      } catch {
+        btn.textContent = "(copy failed)";
+      }
+    });
+  }
+
+  // ===== File System Access scaffolder =====
+  const fsSupportCheck = document.getElementById("fs-support-check");
+  const scaffoldBtn = document.getElementById("scaffold-btn");
+  const scaffoldStatus = document.getElementById("scaffold-status");
+  const step2Body = document.getElementById("step-2-body");
+
+  const SUPPORTS_FSA = typeof window.showDirectoryPicker === "function";
+
+  if (!SUPPORTS_FSA) {
+    fsSupportCheck.innerHTML =
+      '<div class="status warn">Your browser doesn\'t support the File System Access API (Chrome and Edge do; Firefox and Safari don\'t yet). Use the CLI fallback: <code>npm install -g margins-mcp &amp;&amp; margins-mcp install --starter-vault ~/Margins</code></div>';
+    if (scaffoldBtn) scaffoldBtn.disabled = true;
+  }
+
+  const STARTER_FILES = {
+    "CLAUDE.md": "# CLAUDE.md\n\nThis vault was scaffolded by Margins. Drop your operating rules here.\n\n## How to use it\n- Raw transcripts and notes go in `raw/`. Ask Claude to compile them with `propose_compile_from_raw`.\n- Wiki pages live in `wiki/`. Sources, concepts, entities, syntheses.\n- Proposed writes stage at `proposed/` until you accept them.\n- Vault-specific rules and conventions live in this file.\n",
+    "operator-manual.md": "# Operator manual\n\n1. Raw files in `raw/` are evidence. They don't get edited.\n2. Wiki pages in `wiki/` are navigable. Link them, tag them.\n3. Proposed writes stay in `proposed/` until you accept.\n4. Claude is a drafter, not an autonomous editor. Review before accepting.\n",
+    "wiki/index.md": "# Index\n\nYour vault map. Add links to durable pages as they appear.\n\n1. Drop a markdown note into `wiki/daily/` to start today.\n2. Or drop a transcript into `raw/` and ask Claude to compile it.\n3. Or just ask Claude to summarize what's here once the vault grows.\n",
+    ".margins/preferences.md": "# Vault preferences\n\nMargins-learned conventions. Claude appends here when you correct a\nproposal in a durable way. Plain Markdown - you can audit it, hand-edit\nit, or delete sections that no longer apply.\n"
+  };
+  const STARTER_DIRS = ["wiki/daily", "wiki/sources", "wiki/entities", "wiki/concepts", "raw", "proposed", ".margins"];
+
+  async function ensureDir(parent, name) {
+    return parent.getDirectoryHandle(name, { create: true });
+  }
+  async function ensureDirPath(root, relPath) {
+    let cur = root;
+    for (const part of relPath.split("/")) {
+      if (!part) continue;
+      cur = await ensureDir(cur, part);
+    }
+    return cur;
+  }
+  async function writeFile(parent, name, content) {
+    const fh = await parent.getFileHandle(name, { create: true });
+    const w = await fh.createWritable();
+    await w.write(content);
+    await w.close();
+  }
+
+  scaffoldBtn?.addEventListener("click", async () => {
+    scaffoldStatus.innerHTML = "";
+    let parentHandle;
+    try {
+      parentHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+    } catch (err) {
+      if (err && err.name === "AbortError") return;
+      scaffoldStatus.innerHTML = '<div class="status err">Folder pick canceled or denied: ' + (err && err.message ? err.message : err) + '</div>';
+      return;
+    }
+    try {
+      const marginsDir = await parentHandle.getDirectoryHandle("Margins", { create: true });
+      for (const rel of STARTER_DIRS) await ensureDirPath(marginsDir, rel);
+      for (const [rel, content] of Object.entries(STARTER_FILES)) {
+        const parts = rel.split("/");
+        const name = parts.pop();
+        const dirPath = parts.join("/");
+        const parent = dirPath ? await ensureDirPath(marginsDir, dirPath) : marginsDir;
+        await writeFile(parent, name, content);
+      }
+      scaffoldStatus.innerHTML =
+        '<div class="status ok">Scaffolded a Margins vault inside the folder you picked. It has wiki/, raw/, proposed/, .margins/, plus CLAUDE.md and operator-manual.md.<br><br>Move it to <code>~/Margins/</code> if it isn\'t there already - the CLI installer auto-detects that path.</div>';
+      step2Body.classList.remove("hidden");
+      setTimeout(() => step2Body.scrollIntoView({ behavior: prefersReduce ? "auto" : "smooth", block: "start" }), 100);
+    } catch (err) {
+      scaffoldStatus.innerHTML = '<div class="status err">Scaffold failed: ' + (err && err.message ? err.message : err) + '</div>';
+    }
+  });
+})();
+</script>
+</body>
+</html>

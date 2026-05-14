@@ -1,0 +1,839 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Margins — a letter, with notes</title>
+<meta name="description" content="A small open-source MCP connector that lets Claude read and propose writes to your Obsidian vault. No API key. Files stay on your disk.">
+<meta name="theme-color" content="#f6f1e4">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Caveat:wght@400;500;600&family=Reenie+Beanie&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #f6f1e4;
+    --paper-warm: #efe7d2;
+    --rule: #d9cfa9;
+    --ink: #1c1a14;
+    --ink-soft: #4a4438;
+    --ink-faint: #837a66;
+    --pen: #1a2a5e;        /* margin annotation ink — fountain-pen blue */
+    --pen-soft: rgba(26, 42, 94, 0.55);
+    --highlight: #f3d56b;  /* hand-drawn yellow highlight */
+    --red-pen: #a8341d;
+    --shadow: 0 1px 0 rgba(28, 26, 20, 0.04), 0 14px 30px rgba(28, 26, 20, 0.07);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'Newsreader', Georgia, 'Times New Roman', serif;
+    font-size: 19px;
+    line-height: 1.65;
+    letter-spacing: -0.003em;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    /* faint ruled-paper texture: very low contrast horizontal lines */
+    background-image:
+      radial-gradient(ellipse at top left, rgba(255, 246, 218, 0.45), transparent 60%),
+      radial-gradient(ellipse at bottom right, rgba(232, 220, 188, 0.35), transparent 65%),
+      repeating-linear-gradient(
+        to bottom,
+        transparent 0,
+        transparent 31px,
+        rgba(180, 160, 110, 0.07) 31px,
+        rgba(180, 160, 110, 0.07) 32px
+      );
+    background-attachment: fixed, fixed, scroll;
+    min-height: 100vh;
+  }
+
+  a { color: var(--ink); text-decoration: underline; text-decoration-color: rgba(28,26,20,0.25); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  a:hover { text-decoration-color: var(--red-pen); color: var(--red-pen); }
+
+  /* ============================================================ */
+  /* Layout: a wide page with a main column and a wide right margin */
+  /* ============================================================ */
+  .page {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 56px 56px 96px;
+    position: relative;
+  }
+  @media (max-width: 900px) { .page { padding: 36px 22px 72px; } }
+
+  /* The main writing column. Reads like a letter. */
+  .letter {
+    max-width: 620px;
+    position: relative;
+  }
+  @media (min-width: 1000px) {
+    /* On wide screens, the letter sits offset to the left so the right margin breathes. */
+    .letter { margin-left: 40px; }
+  }
+
+  /* Nameplate */
+  .nameplate {
+    display: flex;
+    align-items: baseline;
+    gap: 18px;
+    margin-bottom: 64px;
+    border-bottom: 1px solid var(--rule);
+    padding-bottom: 16px;
+  }
+  .nameplate h1 {
+    font-family: 'Newsreader', serif;
+    font-weight: 500;
+    font-size: 38px;
+    letter-spacing: -0.02em;
+    margin: 0;
+    font-style: italic;
+  }
+  .nameplate .dateline {
+    margin-left: auto;
+    font-family: 'Caveat', cursive;
+    font-size: 22px;
+    color: var(--pen);
+    transform: rotate(-2deg);
+  }
+  @media (max-width: 700px) {
+    .nameplate { flex-direction: column; gap: 6px; align-items: flex-start; margin-bottom: 40px; }
+    .nameplate h1 { font-size: 30px; }
+    .nameplate .dateline { margin-left: 0; }
+  }
+
+  /* Body text */
+  .letter p {
+    margin: 0 0 1.1em;
+  }
+  .letter p.salutation {
+    font-style: italic;
+    color: var(--ink-soft);
+    margin-bottom: 1.6em;
+  }
+  .letter p.sign-off {
+    margin-top: 2.2em;
+    font-family: 'Caveat', cursive;
+    font-size: 30px;
+    color: var(--pen);
+    transform: rotate(-1.5deg);
+    transform-origin: 0 50%;
+    display: inline-block;
+  }
+
+  /* Phrases that get pointed at by margin notes. */
+  .target {
+    position: relative;
+    cursor: help;
+    transition: background 220ms ease;
+    border-radius: 2px;
+    padding: 0 2px;
+  }
+  .target.is-lit {
+    background: linear-gradient(180deg, transparent 55%, rgba(243, 213, 107, 0.85) 55%, rgba(243, 213, 107, 0.85) 92%, transparent 92%);
+  }
+  /* tiny pencil-circled underline appears when lit, like someone drew on it */
+  .target::after {
+    content: "";
+    position: absolute;
+    left: -3px; right: -3px; bottom: -2px;
+    height: 3px;
+    background: var(--red-pen);
+    border-radius: 2px;
+    opacity: 0;
+    transform: scaleX(0.2);
+    transform-origin: 0 50%;
+    transition: opacity 200ms ease, transform 380ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .target.is-lit::after { opacity: 0.55; transform: scaleX(1); }
+
+  /* ============================================================ */
+  /* Margin annotations                                            */
+  /* ============================================================ */
+  /* Each annotation is absolutely positioned. JS aligns it vertically with its target. */
+  .marginalia {
+    position: absolute;
+    width: 220px;
+    font-family: 'Caveat', 'Reenie Beanie', cursive;
+    color: var(--pen);
+    font-size: 20px;
+    line-height: 1.25;
+    letter-spacing: 0.005em;
+    opacity: 0;
+    transform: translateY(8px) rotate(var(--rot, -1deg));
+    transition: opacity 600ms ease, transform 600ms cubic-bezier(0.22, 1, 0.36, 1);
+    pointer-events: auto;
+    cursor: default;
+  }
+  .marginalia.is-in { opacity: 1; transform: translateY(0) rotate(var(--rot, -1deg)); }
+  .marginalia.side-right { left: calc(660px + 60px); }
+  .marginalia.side-left  { left: -260px; text-align: right; }
+  @media (max-width: 1000px) {
+    /* below 1000px, annotations collapse below the paragraph they annotate */
+    .marginalia { position: static !important; width: auto; max-width: 100%; left: auto !important; text-align: left !important; margin: 4px 0 22px 12px; padding-left: 12px; border-left: 2px solid var(--pen-soft); opacity: 1 !important; transform: none !important; }
+  }
+
+  .marginalia em { font-style: normal; color: var(--red-pen); }
+  .marginalia .arrow-svg {
+    position: absolute;
+    pointer-events: none;
+    overflow: visible;
+  }
+  @media (max-width: 1000px) {
+    .marginalia .arrow-svg { display: none; }
+  }
+
+  /* ============================================================ */
+  /* Install card — a sticky note pinned to the paper             */
+  /* ============================================================ */
+  .install {
+    margin-top: 64px;
+    border-top: 1px dashed var(--rule);
+    padding-top: 36px;
+  }
+  .install h2 {
+    font-family: 'Newsreader', serif;
+    font-weight: 500;
+    font-style: italic;
+    font-size: 26px;
+    margin: 0 0 6px;
+    letter-spacing: -0.01em;
+  }
+  .install .h2-note {
+    font-family: 'Caveat', cursive;
+    color: var(--pen);
+    font-size: 20px;
+    margin-bottom: 22px;
+    display: block;
+  }
+
+  .paths {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 22px;
+  }
+  @media (max-width: 760px) { .paths { grid-template-columns: 1fr; } }
+
+  .path {
+    background: var(--paper-warm);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 22px 22px 20px;
+    position: relative;
+    box-shadow: var(--shadow);
+  }
+  .path.tilt-l { transform: rotate(-0.35deg); }
+  .path.tilt-r { transform: rotate(0.4deg); }
+  .path h3 {
+    font-family: 'Newsreader', serif;
+    font-size: 19px;
+    font-weight: 600;
+    margin: 0 0 4px;
+    letter-spacing: -0.005em;
+  }
+  .path .tag {
+    font-family: 'Caveat', cursive;
+    color: var(--pen);
+    font-size: 18px;
+    display: block;
+    margin-bottom: 14px;
+  }
+  .path p { font-size: 16px; line-height: 1.55; color: var(--ink-soft); margin: 0 0 12px; }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--ink);
+    color: var(--paper);
+    font-family: 'Newsreader', serif;
+    font-weight: 500;
+    font-size: 16px;
+    padding: 10px 16px;
+    border-radius: 3px;
+    border: none;
+    cursor: pointer;
+    text-decoration: none;
+    transition: transform 140ms ease, background 140ms ease;
+  }
+  .btn:hover { background: var(--red-pen); transform: translateY(-1px); color: var(--paper); text-decoration: none; }
+  .btn .arr { font-family: 'Caveat', cursive; font-size: 22px; line-height: 1; }
+  .btn-ghost {
+    background: transparent;
+    color: var(--ink);
+    border: 1px solid var(--ink);
+  }
+  .btn-ghost:hover { background: var(--ink); color: var(--paper); }
+
+  /* Code shown as a typewriter strip */
+  pre.code {
+    font-family: 'iA Writer Mono', ui-monospace, Menlo, Consolas, monospace;
+    font-size: 14px;
+    line-height: 1.55;
+    background: #fbf7eb;
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 12px 14px;
+    margin: 8px 0 14px;
+    overflow-x: auto;
+    color: var(--ink);
+    position: relative;
+  }
+  pre.code .copy {
+    position: absolute;
+    top: 6px; right: 6px;
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    font-family: 'Caveat', cursive;
+    font-size: 16px;
+    color: var(--pen);
+    padding: 2px 10px;
+    border-radius: 3px;
+    cursor: pointer;
+    line-height: 1.2;
+  }
+  pre.code .copy:hover { color: var(--red-pen); border-color: var(--red-pen); }
+
+  /* Status messages from the scaffolder */
+  .status {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: 3px;
+    font-family: 'Newsreader', serif;
+    font-size: 15px;
+    line-height: 1.5;
+  }
+  .status.ok   { background: #e7eedb; border: 1px solid #b9c79a; color: #3d5022; }
+  .status.err  { background: #f6dccf; border: 1px solid #d8a08a; color: #6b2a17; }
+  .status.warn { background: #f5e7b6; border: 1px solid #d8c374; color: #6d5410; }
+  .status code { background: rgba(0,0,0,0.04); padding: 1px 5px; border-radius: 3px; font-size: 13px; }
+
+  .hidden { display: none !important; }
+
+  /* Tiny FAQ-ish closing block — handwritten margin facts */
+  .facts {
+    margin-top: 56px;
+    padding-top: 20px;
+    border-top: 1px dashed var(--rule);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px 36px;
+    font-family: 'Caveat', cursive;
+    color: var(--pen);
+    font-size: 20px;
+    line-height: 1.35;
+  }
+  @media (max-width: 700px) { .facts { grid-template-columns: 1fr; } }
+  .facts .fact strong { color: var(--ink); font-family: 'Newsreader', serif; font-weight: 600; font-style: italic; font-size: 17px; display: block; margin-bottom: 2px; }
+
+  footer {
+    margin-top: 64px;
+    padding-top: 22px;
+    border-top: 1px solid var(--rule);
+    font-family: 'Newsreader', serif;
+    font-size: 14px;
+    color: var(--ink-faint);
+    line-height: 1.6;
+  }
+  footer a { color: var(--ink-faint); }
+  footer .pen {
+    font-family: 'Caveat', cursive;
+    font-size: 18px;
+    color: var(--pen);
+    display: block;
+    margin-bottom: 6px;
+    transform: rotate(-1deg);
+    transform-origin: 0 50%;
+    display: inline-block;
+  }
+
+  /* Small accent: a curled "M" colophon at top-left of the page */
+  .colophon {
+    position: absolute;
+    top: 32px;
+    left: 56px;
+    font-family: 'Reenie Beanie', cursive;
+    font-size: 26px;
+    color: var(--pen);
+    transform: rotate(-6deg);
+  }
+  @media (max-width: 900px) { .colophon { left: 22px; top: 18px; font-size: 22px; } }
+
+  @media (prefers-reduced-motion: reduce) {
+    .marginalia { opacity: 1; transform: none; transition: none; }
+    .target.is-lit::after { transition: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <span class="colophon">M.</span>
+
+  <header class="nameplate">
+    <h1>Margins</h1>
+    <span class="dateline">a letter, with notes</span>
+  </header>
+
+  <!-- ========================================================== -->
+  <!-- THE LETTER (main column, user voice)                        -->
+  <!-- ========================================================== -->
+  <article class="letter">
+
+    <p class="salutation">Dear reader,</p>
+
+    <p>
+      I keep my thinking in a folder of Markdown files. So do you, maybe — or you have an
+      <span class="target" id="t-obsidian" data-note="n-obsidian">Obsidian vault</span>
+      doing the same job under a friendlier name. It's a quiet, private place. Searchable.
+      Versionable. Yours.
+    </p>
+
+    <p>
+      Meanwhile I pay $20 a month for Claude. It reads almost everything I read,
+      drafts almost everything I draft, and answers <span class="target" id="t-questions" data-note="n-questions">most of my questions</span>
+      better than the search bar of any app I own. The one thing it doesn't see
+      is the folder. The folder is where the memory lives.
+    </p>
+
+    <p>
+      Margins is the seam between those two things. It's a small open-source
+      <span class="target" id="t-connector" data-note="n-connector">MCP connector</span>
+      I built to give Claude read access to my notes, plus the ability to
+      <span class="target" id="t-propose" data-note="n-propose">propose writes</span>
+      that I either accept or throw away. Nothing is autonomous. Nothing leaves the disk.
+      No API key, no per-token bill, no embedding pipeline to maintain.
+    </p>
+
+    <p>
+      What I wanted, honestly, was for Claude to be able to say <em>"you wrote about
+      this six months ago, here's the page,"</em> and for the version that gets written
+      next to fall into the right folder with the right links. Margins is the
+      smallest thing that makes that work. It runs locally. It speaks Markdown.
+      It uses the <span class="target" id="t-subscription" data-note="n-subscription">subscription you already pay for</span>.
+    </p>
+
+    <p>
+      The conversation in the right column is what Claude is actually doing
+      while you read this — pointing at phrases, asking questions, making notes.
+      That's the whole product, more or less. A second voice in the margin of
+      your own thinking, useful enough to leave running.
+    </p>
+
+    <p class="sign-off">— Connor</p>
+
+  </article>
+
+  <!-- ========================================================== -->
+  <!-- THE MARGINALIA (Claude voice, right column)                -->
+  <!-- ========================================================== -->
+  <!-- Each note is positioned by JS to align vertically with its target. -->
+
+  <aside class="marginalia side-right" data-target="t-obsidian" style="--rot: -1.5deg;">
+    yes — any folder of <em>.md</em> files works, Obsidian just makes the graph view nice
+    <svg class="arrow-svg" width="80" height="40" viewBox="0 0 80 40" aria-hidden="true">
+      <path d="M 78 8 Q 40 4, 8 22 L 16 18 M 8 22 L 14 26" fill="none" stroke="#1a2a5e" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </aside>
+
+  <aside class="marginalia side-right" data-target="t-questions" style="--rot: 1deg;">
+    this is the part the folder can't do alone
+    <svg class="arrow-svg" width="90" height="50" viewBox="0 0 90 50" aria-hidden="true">
+      <path d="M 86 12 C 60 8, 30 18, 6 30 L 14 26 M 6 30 L 12 34" fill="none" stroke="#1a2a5e" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </aside>
+
+  <aside class="marginalia side-right" data-target="t-connector" style="--rot: -0.5deg;">
+    <em>MCP</em> = Model Context Protocol. Anthropic's plug for letting models talk to outside stuff.
+    <svg class="arrow-svg" width="84" height="44" viewBox="0 0 84 44" aria-hidden="true">
+      <path d="M 80 10 Q 50 8, 18 26 Q 14 28, 8 30 L 14 26 M 8 30 L 14 34" fill="none" stroke="#1a2a5e" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </aside>
+
+  <aside class="marginalia side-right" data-target="t-propose" style="--rot: 1.2deg;">
+    drafts land in <em>proposed/</em>. you read them. you accept the good ones. claude never touches files directly.
+    <svg class="arrow-svg" width="76" height="38" viewBox="0 0 76 38" aria-hidden="true">
+      <path d="M 72 10 Q 36 6, 8 22 L 16 18 M 8 22 L 14 26" fill="none" stroke="#1a2a5e" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </aside>
+
+  <aside class="marginalia side-right" data-target="t-subscription" style="--rot: -1.8deg;">
+    pro $20 or max $100+. <em>no</em> api keys, no surprise bills at month-end ✓
+    <svg class="arrow-svg" width="92" height="46" viewBox="0 0 92 46" aria-hidden="true">
+      <path d="M 88 12 C 60 8, 30 22, 6 28 L 14 24 M 6 28 L 12 32" fill="none" stroke="#1a2a5e" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </aside>
+
+  <!-- A loose floating note that isn't tied to a specific phrase -->
+  <aside class="marginalia side-right is-loose" style="--rot: 2.5deg;" id="cta-marginalia">
+    <span style="font-size: 22px;">next →</span><br>
+    install below ↓
+  </aside>
+
+  <!-- ========================================================== -->
+  <!-- INSTALL CARD                                                -->
+  <!-- ========================================================== -->
+  <section class="install" id="install">
+    <h2>To get this running</h2>
+    <span class="h2-note">two paths. pick one.</span>
+
+    <div class="paths">
+
+      <!-- Path 1: download .mcpb -->
+      <div class="path tilt-l">
+        <h3>One double-click</h3>
+        <span class="tag">claude desktop, easiest</span>
+        <p>
+          Download the bundle. Double-click it. Claude Desktop will ask for
+          your vault path, then show Margins in its connectors list.
+        </p>
+        <p style="margin-top: 14px;">
+          <a class="btn" href="https://github.com/cflorczyk9/Margins/releases/latest/download/margins-mcp.mcpb" rel="noopener" download>
+            Download .mcpb <span class="arr">↓</span>
+          </a>
+        </p>
+        <p style="font-family: 'Caveat', cursive; color: var(--pen); font-size: 18px; margin-top: 12px; line-height: 1.3;">
+          quit and reopen claude after install
+        </p>
+      </div>
+
+      <!-- Path 2: CLI -->
+      <div class="path tilt-r">
+        <h3>Two commands</h3>
+        <span class="tag">claude code + terminal people</span>
+        <p>Install once:</p>
+        <pre class="code"><button class="copy" data-copy="cmd-install">copy</button><code id="cmd-install">npm install -g margins-mcp</code></pre>
+        <p>Then point it at your vault:</p>
+        <pre class="code"><button class="copy" data-copy="cmd-run">copy</button><code id="cmd-run">margins-mcp install --vault /absolute/path/to/your/vault</code></pre>
+        <p style="font-family: 'Caveat', cursive; color: var(--pen); font-size: 18px; margin-top: 4px; line-height: 1.3;">
+          writes the configs, scaffolds raw/ proposed/ .margins/, runs a probe
+        </p>
+      </div>
+
+    </div>
+
+    <!-- Starting fresh — softer, optional sub-section -->
+    <details id="fresh-block" style="margin-top: 28px;">
+      <summary style="cursor: pointer; font-family: 'Newsreader', serif; font-style: italic; font-size: 19px; color: var(--ink-soft); user-select: none;">
+        I don't have a vault yet — scaffold one for me
+        <span style="font-family: 'Caveat', cursive; color: var(--pen); font-size: 17px; margin-left: 6px;">(opens in this browser)</span>
+      </summary>
+      <div style="margin-top: 18px; max-width: 620px;">
+        <div id="fs-support-check"></div>
+        <p style="font-family: 'Newsreader', serif; font-size: 17px; color: var(--ink-soft); line-height: 1.55;">
+          Pick a parent folder; Margins creates a <code style="font-family: ui-monospace, Menlo, monospace; font-size: 14px;">Margins/</code> directory inside with
+          <code style="font-family: ui-monospace, Menlo, monospace; font-size: 14px;">wiki/</code>,
+          <code style="font-family: ui-monospace, Menlo, monospace; font-size: 14px;">raw/</code>,
+          <code style="font-family: ui-monospace, Menlo, monospace; font-size: 14px;">proposed/</code>,
+          <code style="font-family: ui-monospace, Menlo, monospace; font-size: 14px;">.margins/</code>, plus a starter
+          <code style="font-family: ui-monospace, Menlo, monospace; font-size: 14px;">CLAUDE.md</code> and operator manual.
+        </p>
+        <button class="btn btn-ghost" id="scaffold-btn">Pick a folder and scaffold <span class="arr">→</span></button>
+        <div id="scaffold-status"></div>
+
+        <div id="step-2-body" class="hidden" style="margin-top: 20px;">
+          <p style="font-family: 'Newsreader', serif; font-size: 17px; color: var(--ink-soft);">Now connect it:</p>
+          <pre class="code"><button class="copy" data-copy="fresh-install">copy</button><code id="fresh-install">npm install -g margins-mcp
+margins-mcp install</code></pre>
+          <p style="font-family: 'Caveat', cursive; color: var(--pen); font-size: 18px;">
+            the installer auto-detects <code style="font-family: ui-monospace, Menlo, monospace; font-size: 14px;">~/Margins/</code> if it's there. restart claude desktop when it finishes.
+          </p>
+        </div>
+      </div>
+    </details>
+
+  </section>
+
+  <!-- ========================================================== -->
+  <!-- HANDWRITTEN FACTS (closing margin facts, no headers)        -->
+  <!-- ========================================================== -->
+  <section class="facts">
+    <div class="fact">
+      <strong>what it sees</strong>
+      Markdown files on disk. Not Notion, not Roam, not Mem.
+    </div>
+    <div class="fact">
+      <strong>where the data goes</strong>
+      Nowhere. The connector runs on your machine. Your vault never leaves.
+    </div>
+    <div class="fact">
+      <strong>what claude can do</strong>
+      Search, read, list recent, follow backlinks, propose new pages, propose edits, append to a daily note.
+    </div>
+    <div class="fact">
+      <strong>what claude can't do</strong>
+      Edit your files directly. Every write is a proposal in <em>proposed/</em> until you accept it.
+    </div>
+    <div class="fact">
+      <strong>where it works</strong>
+      Claude Desktop and Claude Code. Not claude.ai in the browser (MCP isn't there yet).
+    </div>
+    <div class="fact">
+      <strong>license + version</strong>
+      MIT, currently v0.5. The whole thing is on
+      <a href="https://github.com/cflorczyk9/Margins" style="color: var(--pen); text-decoration-color: var(--pen-soft);">GitHub</a>
+      and
+      <a href="https://www.npmjs.com/package/margins-mcp" style="color: var(--pen); text-decoration-color: var(--pen-soft);">npm</a>.
+    </div>
+  </section>
+
+  <footer>
+    <span class="pen">P.S.</span>
+    Margins runs locally. No vault content leaves your machine.
+    <a href="https://github.com/cflorczyk9/Margins#privacy">Privacy details</a> ·
+    <a href="https://github.com/cflorczyk9/Margins">Source</a> ·
+    <a href="https://www.npmjs.com/package/margins-mcp">npm</a> ·
+    MIT
+  </footer>
+
+</div>
+
+<script>
+(() => {
+  const prefersReduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // ============================================================
+  // Align each marginalia note vertically with its target phrase.
+  // We do this in JS because the targets are inline inside flowing
+  // text — their vertical positions depend on width, font load, etc.
+  // ============================================================
+  const notes = Array.from(document.querySelectorAll(".marginalia[data-target]"));
+  const looseNote = document.getElementById("cta-marginalia");
+  const page = document.querySelector(".page");
+
+  function layoutMarginalia() {
+    const wide = window.matchMedia("(min-width: 1001px)").matches;
+    // On narrow screens, CSS makes the notes static. Don't touch them.
+    if (!wide) {
+      for (const n of notes) {
+        n.style.top = "";
+        n.style.left = "";
+      }
+      if (looseNote) { looseNote.style.top = ""; looseNote.style.left = ""; }
+      return;
+    }
+
+    const pageRect = page.getBoundingClientRect();
+    const pageTop = pageRect.top + window.scrollY;
+
+    for (const n of notes) {
+      const targetId = n.dataset.target;
+      const target = document.getElementById(targetId);
+      if (!target) continue;
+      const r = target.getBoundingClientRect();
+      const middleY = r.top + window.scrollY + r.height / 2;
+      // Place the note so its vertical center roughly matches the target's center.
+      const top = middleY - pageTop - 22;
+      n.style.top = top + "px";
+    }
+
+    // Loose CTA note sits next to the install heading
+    if (looseNote) {
+      const install = document.getElementById("install");
+      if (install) {
+        const r = install.getBoundingClientRect();
+        const top = r.top + window.scrollY - pageTop - 8;
+        looseNote.style.top = top + "px";
+      }
+    }
+  }
+
+  // Run after fonts have loaded — handwriting fonts change line heights.
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(layoutMarginalia);
+  }
+  window.addEventListener("load", layoutMarginalia);
+  window.addEventListener("resize", layoutMarginalia);
+  // Re-run a couple times in case images/layout shift after first paint
+  setTimeout(layoutMarginalia, 80);
+  setTimeout(layoutMarginalia, 400);
+  setTimeout(layoutMarginalia, 1200);
+
+  // ============================================================
+  // Reveal each marginalia note as you scroll past it.
+  // Light up the target phrase + the note in sync.
+  // ============================================================
+  if ("IntersectionObserver" in window) {
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (!e.isIntersecting) continue;
+        const target = e.target;
+        target.classList.add("is-lit");
+        const noteId = target.dataset.note;
+        const note = noteId ? document.querySelector(`.marginalia[data-target="${target.id}"]`) : null;
+        if (note) {
+          // Stagger slightly so the underline appears just before the note settles
+          setTimeout(() => note.classList.add("is-in"), prefersReduce ? 0 : 120);
+        }
+      }
+    }, { threshold: 0.6, rootMargin: "0px 0px -10% 0px" });
+
+    for (const t of document.querySelectorAll(".target")) io.observe(t);
+
+    // Loose CTA note appears when the install block is in view
+    const loose = document.getElementById("cta-marginalia");
+    const install = document.getElementById("install");
+    if (loose && install) {
+      const io2 = new IntersectionObserver((entries) => {
+        for (const e of entries) if (e.isIntersecting) {
+          loose.classList.add("is-in");
+          io2.unobserve(e.target);
+        }
+      }, { threshold: 0.15 });
+      io2.observe(install);
+    }
+  } else {
+    // Fallback: just show everything
+    for (const t of document.querySelectorAll(".target")) t.classList.add("is-lit");
+    for (const n of document.querySelectorAll(".marginalia")) n.classList.add("is-in");
+  }
+
+  // ============================================================
+  // Hover a note → re-light its target (for re-reading)
+  // Hover a target → light its note
+  // ============================================================
+  for (const note of notes) {
+    const target = document.getElementById(note.dataset.target);
+    if (!target) continue;
+    note.addEventListener("mouseenter", () => target.classList.add("is-lit"));
+    target.addEventListener("mouseenter", () => note.classList.add("is-in"));
+  }
+
+  // ============================================================
+  // Copy buttons
+  // ============================================================
+  for (const btn of document.querySelectorAll(".copy")) {
+    btn.addEventListener("click", async () => {
+      const target = document.getElementById(btn.dataset.copy);
+      if (!target) return;
+      const original = btn.textContent;
+      try {
+        await navigator.clipboard.writeText(target.textContent.trim());
+        btn.textContent = "copied ✓";
+        setTimeout(() => { btn.textContent = original; }, 1200);
+      } catch {
+        btn.textContent = "(failed)";
+        setTimeout(() => { btn.textContent = original; }, 1500);
+      }
+    });
+  }
+
+  // ============================================================
+  // File System Access scaffolder
+  // (Carried over from the original page; kept the verbatim
+  // STARTER_FILES / STARTER_DIRS content so vault layouts match.)
+  // ============================================================
+  const fsSupportCheck = document.getElementById("fs-support-check");
+  const scaffoldBtn = document.getElementById("scaffold-btn");
+  const scaffoldStatus = document.getElementById("scaffold-status");
+  const step2Body = document.getElementById("step-2-body");
+
+  const SUPPORTS_FSA = typeof window.showDirectoryPicker === "function";
+
+  if (!SUPPORTS_FSA) {
+    fsSupportCheck.innerHTML = `
+      <div class="status warn">
+        Your browser doesn't support the File System Access API (Chrome and Edge do; Firefox and Safari don't yet).
+        Use the CLI fallback: <code>npm install -g margins-mcp &amp;&amp; margins-mcp install --starter-vault ~/Margins</code>
+      </div>`;
+    if (scaffoldBtn) scaffoldBtn.disabled = true;
+  }
+
+  const STARTER_FILES = {
+    "CLAUDE.md": `# CLAUDE.md
+
+This vault was scaffolded by Margins. Drop your operating rules here.
+
+## How to use it
+- Raw transcripts and notes go in \`raw/\`. Ask Claude to compile them with \`propose_compile_from_raw\`.
+- Wiki pages live in \`wiki/\`. Sources, concepts, entities, syntheses.
+- Proposed writes stage at \`proposed/\` until you accept them.
+- Vault-specific rules and conventions live in this file.
+`,
+    "operator-manual.md": `# Operator manual
+
+1. Raw files in \`raw/\` are evidence. They don't get edited.
+2. Wiki pages in \`wiki/\` are navigable. Link them, tag them.
+3. Proposed writes stay in \`proposed/\` until you accept.
+4. Claude is a drafter, not an autonomous editor. Review before accepting.
+`,
+    "wiki/index.md": `# Index
+
+Your vault map. Add links to durable pages as they appear.
+
+1. Drop a markdown note into \`wiki/daily/\` to start today.
+2. Or drop a transcript into \`raw/\` and ask Claude to compile it.
+3. Or just ask Claude to summarize what's here once the vault grows.
+`,
+    ".margins/preferences.md": `# Vault preferences
+
+Margins-learned conventions. Claude appends here when you correct a
+proposal in a durable way. Plain Markdown - you can audit it, hand-edit
+it, or delete sections that no longer apply.
+`
+  };
+  const STARTER_DIRS = ["wiki/daily", "wiki/sources", "wiki/entities", "wiki/concepts", "raw", "proposed", ".margins"];
+
+  async function ensureDir(parent, name) {
+    return parent.getDirectoryHandle(name, { create: true });
+  }
+  async function ensureDirPath(root, relPath) {
+    let cur = root;
+    for (const part of relPath.split("/")) {
+      if (!part) continue;
+      cur = await ensureDir(cur, part);
+    }
+    return cur;
+  }
+  async function writeFile(parent, name, content) {
+    const fh = await parent.getFileHandle(name, { create: true });
+    const w = await fh.createWritable();
+    await w.write(content);
+    await w.close();
+  }
+
+  if (scaffoldBtn) {
+    scaffoldBtn.addEventListener("click", async () => {
+      scaffoldStatus.innerHTML = "";
+      let parentHandle;
+      try {
+        parentHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+      } catch (err) {
+        if (err && err.name === "AbortError") return;
+        scaffoldStatus.innerHTML = `<div class="status err">Folder pick canceled or denied: ${err.message}</div>`;
+        return;
+      }
+
+      try {
+        const marginsDir = await parentHandle.getDirectoryHandle("Margins", { create: true });
+        for (const rel of STARTER_DIRS) await ensureDirPath(marginsDir, rel);
+        for (const [rel, content] of Object.entries(STARTER_FILES)) {
+          const dirPath = rel.split("/").slice(0, -1).join("/");
+          const name = rel.split("/").pop();
+          const parent = dirPath ? await ensureDirPath(marginsDir, dirPath) : marginsDir;
+          await writeFile(parent, name, content);
+        }
+
+        scaffoldStatus.innerHTML = `
+          <div class="status ok">
+            Scaffolded a Margins vault inside the folder you picked. It contains wiki/, raw/, proposed/, .margins/, plus CLAUDE.md and operator-manual.md.
+            <br><br>
+            Move it to <code>~/Margins/</code> if it isn't there already — the CLI installer auto-detects that path.
+          </div>`;
+
+        step2Body.classList.remove("hidden");
+        setTimeout(() => step2Body.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
+        // Layout could shift; re-place the marginalia.
+        setTimeout(layoutMarginalia, 250);
+      } catch (err) {
+        scaffoldStatus.innerHTML = `<div class="status err">Scaffold failed: ${err.message}</div>`;
+      }
+    });
+  }
+})();
+</script>
+</body>
+</html>
