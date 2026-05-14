@@ -1,0 +1,598 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Compare — Variant A · Editorial</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,500&display=swap" rel="stylesheet" />
+
+<!-- Pre-paint theme to avoid FOUC -->
+<script>
+(function(){
+  try {
+    var stored = localStorage.getItem('margins-theme');
+    var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    var theme = stored || (prefersDark ? 'dark' : 'light');
+    document.documentElement.setAttribute('data-theme', theme);
+  } catch(e) {
+    document.documentElement.setAttribute('data-theme', 'light');
+  }
+})();
+</script>
+
+<style>
+  /* ============================================================
+     Tokens — light
+     ============================================================ */
+  :root {
+    --bg: #faf7f2;
+    --paper: #ffffff;
+    --paper-soft: #f5f1ea;
+    --ink: #1a1612;
+    --ink-2: #4a4339;
+    --ink-3: #6f6855;
+    --line: #ece6d9;
+    --line-strong: #d8d0bf;
+    --accent: #d63a2f;
+    --accent-soft: rgba(214, 58, 47, 0.06);
+    --vermillion: #d63a2f;
+    --mustard: #f0c14b;
+    --good: #5b7d57;
+  }
+  [data-theme="dark"] {
+    --bg: #15110d;
+    --paper: #1F1A14;
+    --paper-soft: #1A1612;
+    --ink: #E8E2D6;
+    --ink-2: #BFB6A4;
+    --ink-3: #8E8675;
+    --line: #2E281F;
+    --line-strong: #3D362B;
+    --accent: #E04B3F;
+    --accent-soft: rgba(224, 75, 63, 0.08);
+    --vermillion: #E04B3F;
+    --mustard: #f0c14b;
+    --good: #8AC078;
+  }
+
+  /* ============================================================
+     Base
+     ============================================================ */
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Manrope', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    letter-spacing: -0.005em;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    transition: background-color 240ms ease, color 240ms ease;
+  }
+  h1, h2, h3, p { margin: 0; }
+
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 32px; }
+  @media (max-width: 560px) { .wrap { padding: 0 20px; } }
+
+  /* ============================================================
+     Theme toggle
+     ============================================================ */
+  .theme-toggle {
+    position: fixed; top: 20px; right: 20px;
+    z-index: 100;
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    background: var(--paper);
+    border: 1px solid var(--line-strong);
+    color: var(--ink-2);
+    cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: background-color 200ms ease, color 200ms ease, border-color 200ms ease, transform 200ms ease;
+  }
+  .theme-toggle:hover { color: var(--accent); border-color: var(--accent); transform: rotate(15deg); }
+  .theme-toggle svg { width: 16px; height: 16px; display: block; }
+  [data-theme="light"] .theme-toggle .moon { display: block; }
+  [data-theme="light"] .theme-toggle .sun  { display: none;  }
+  [data-theme="dark"]  .theme-toggle .moon { display: none;  }
+  [data-theme="dark"]  .theme-toggle .sun  { display: block; }
+
+  /* ============================================================
+     Section header
+     ============================================================ */
+  .section { padding: 96px 0; }
+  .section-head { max-width: 740px; margin-bottom: 56px; }
+  .eyebrow {
+    font-family: 'Manrope', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--vermillion);
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    margin: 0 0 20px 0;
+  }
+  .eyebrow::before {
+    content: '';
+    width: 18px;
+    height: 1px;
+    background: var(--vermillion);
+    display: inline-block;
+  }
+  h2.section-title {
+    font-family: 'Newsreader', Georgia, serif;
+    font-weight: 500;
+    font-size: 46px;
+    line-height: 1.08;
+    letter-spacing: -0.018em;
+    color: var(--ink);
+    margin: 0 0 20px 0;
+  }
+  .section-sub {
+    font-size: 18px;
+    line-height: 1.55;
+    color: var(--ink-2);
+    max-width: 62ch;
+  }
+  @media (max-width: 720px) {
+    .section { padding: 64px 0; }
+    h2.section-title { font-size: 34px; }
+    .section-sub { font-size: 16.5px; }
+  }
+
+  /* ============================================================
+     Scorecard
+     ============================================================ */
+  .scorecard {
+    position: relative;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    padding: 8px 40px 32px;
+  }
+  @media (max-width: 720px) { .scorecard { padding: 8px 0 24px; border: none; background: transparent; } }
+
+  /* Kandinsky corner mark */
+  .corner-mark {
+    position: absolute;
+    top: -14px; right: 32px;
+    width: 64px; height: 28px;
+    pointer-events: none;
+  }
+  .corner-mark .disc {
+    fill: var(--mustard);
+  }
+  .corner-mark .dot {
+    fill: var(--vermillion);
+  }
+
+  /* Column header row */
+  .sc-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1.15fr) repeat(3, minmax(0, 1fr));
+    gap: 24px;
+    padding: 28px 0 18px;
+    border-bottom: 1px solid var(--line-strong);
+    align-items: end;
+  }
+  .sc-head .col {
+    font-family: 'Manrope', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    line-height: 1.3;
+  }
+  .sc-head .col.is-us {
+    font-family: 'Newsreader', Georgia, serif;
+    font-style: normal;
+    font-weight: 500;
+    font-size: 22px;
+    letter-spacing: -0.012em;
+    text-transform: none;
+    color: var(--vermillion);
+    line-height: 1.1;
+  }
+  .sc-head .col.is-row-title { color: transparent; }
+
+  /* Row */
+  .sc-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1.15fr) repeat(3, minmax(0, 1fr));
+    gap: 24px;
+    padding: 28px 0;
+    border-bottom: 1px solid var(--line);
+    align-items: start;
+    position: relative;
+  }
+  .sc-row:last-child { border-bottom: none; }
+
+  .row-title {
+    font-family: 'Newsreader', Georgia, serif;
+    font-weight: 500;
+    font-size: 22px;
+    line-height: 1.22;
+    letter-spacing: -0.012em;
+    color: var(--ink);
+  }
+  .row-title .num {
+    font-family: 'Manrope', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    color: var(--ink-3);
+    display: block;
+    margin-bottom: 6px;
+  }
+
+  /* Cell */
+  .cell {
+    font-size: 14.5px;
+    line-height: 1.5;
+    color: var(--ink-2);
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .cell .label {
+    flex: 1;
+    min-width: 0;
+  }
+  .cell.is-us {
+    color: var(--ink);
+    font-weight: 500;
+  }
+
+  /* Vermillion left rail for the Margins column */
+  .sc-row .us-rail {
+    position: absolute;
+    top: 16px;
+    bottom: 16px;
+    width: 2px;
+    background: var(--vermillion);
+    border-radius: 1px;
+  }
+  /* Position the rail to sit just inside the second column.
+     The second column starts after the row-title column + gap. */
+  .sc-row .us-rail {
+    /* computed via CSS grid: use a wrapper instead — see structure */
+  }
+
+  /* Warm-cream wash behind the Margins column cell */
+  .cell.is-us-wrap {
+    position: relative;
+    background: var(--accent-soft);
+    margin: -10px -12px;
+    padding: 10px 12px 10px 18px;
+    border-radius: 2px;
+  }
+  .cell.is-us-wrap::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 4px; bottom: 4px;
+    width: 2px;
+    background: var(--vermillion);
+    border-radius: 1px;
+  }
+
+  /* Indicator glyphs (SVG inline) */
+  .ind {
+    flex: 0 0 14px;
+    width: 14px;
+    height: 14px;
+    margin-top: 4px;
+    display: inline-block;
+  }
+  .ind.yes circle { fill: var(--good); }
+  .ind.no   circle { fill: none; stroke: var(--line-strong); stroke-width: 1.5; }
+  .ind.no   line   { stroke: var(--line-strong); stroke-width: 1.5; }
+  .ind.partial circle.ring { fill: none; stroke: var(--mustard); stroke-width: 1.5; }
+  .ind.partial path.half   { fill: var(--mustard); }
+  .ind.note circle { fill: none; stroke: var(--ink-3); stroke-width: 1.5; stroke-dasharray: 2 2; }
+
+  /* When the indicator is in the "us" cell, the yes disc is vermillion */
+  .cell.is-us-wrap .ind.yes circle { fill: var(--vermillion); }
+
+  /* Caption */
+  .sc-caption {
+    margin-top: 28px;
+    font-family: 'Newsreader', Georgia, serif;
+    font-style: italic;
+    font-weight: 500;
+    font-size: 16.5px;
+    line-height: 1.55;
+    color: var(--ink-3);
+    max-width: 62ch;
+  }
+
+  /* ============================================================
+     Mobile — stack into per-tool cards
+     ============================================================ */
+  @media (max-width: 720px) {
+    .sc-head { display: none; }
+    .sc-row {
+      display: block;
+      padding: 24px 0;
+    }
+    .row-title {
+      font-size: 22px;
+      margin-bottom: 16px;
+    }
+    .row-title .num { margin-bottom: 4px; }
+    .cell {
+      padding: 10px 0;
+      border-top: 1px solid var(--line);
+    }
+    .cell:first-of-type { border-top: none; }
+    .cell::before {
+      content: attr(data-tool);
+      font-family: 'Manrope', sans-serif;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--ink-3);
+      flex: 0 0 130px;
+      padding-top: 4px;
+    }
+    .cell.is-us::before { color: var(--vermillion); }
+    .cell.is-us-wrap {
+      margin: 10px 0;
+      padding: 12px 14px 12px 18px;
+    }
+  }
+
+  /* ============================================================
+     Reveal on scroll
+     ============================================================ */
+  .reveal {
+    opacity: 0;
+    transform: translateY(12px);
+    transition: opacity 600ms ease, transform 600ms ease;
+  }
+  .reveal.in {
+    opacity: 1;
+    transform: none;
+  }
+</style>
+</head>
+
+<body>
+
+<!-- Theme toggle -->
+<button class="theme-toggle" type="button" aria-label="Toggle color theme" id="themeToggle">
+  <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+  </svg>
+  <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <circle cx="12" cy="12" r="4"/>
+    <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+  </svg>
+</button>
+
+<section class="section" id="compare">
+  <div class="wrap">
+
+    <!-- Header -->
+    <div class="section-head reveal">
+      <p class="eyebrow">Compare</p>
+      <h2 class="section-title">How Margins compares.</h2>
+      <p class="section-sub">There are a few other ways to point an AI at your notes. Here&rsquo;s where they overlap with Margins and where Margins is more specific.</p>
+    </div>
+
+    <!-- Scorecard -->
+    <div class="scorecard reveal" role="region" aria-label="Comparison of Margins MCP with related tools">
+
+      <!-- Decorative Kandinsky mark -->
+      <svg class="corner-mark" viewBox="0 0 64 28" aria-hidden="true">
+        <circle class="disc" cx="14" cy="14" r="12"/>
+        <circle class="dot"  cx="44" cy="14" r="4"/>
+      </svg>
+
+      <!-- Column headers -->
+      <div class="sc-head">
+        <div class="col is-row-title">Capability</div>
+        <div class="col is-us">Margins MCP</div>
+        <div class="col">Filesystem MCP</div>
+        <div class="col">Smart Connections</div>
+        <div class="col">NotebookLM</div>
+      </div>
+
+      <!-- Row 1 -->
+      <div class="sc-row">
+        <div class="row-title">
+          <span class="num">01</span>
+          Finds connections across files
+        </div>
+        <div class="cell is-us-wrap" data-tool="Margins MCP">
+          <svg class="ind yes" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="5"/></svg>
+          <span class="label">Wikilinks, backlinks, cross-document synthesis</span>
+        </div>
+        <div class="cell" data-tool="Filesystem MCP">
+          <svg class="ind no" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="5"/><line x1="3.5" y1="10.5" x2="10.5" y2="3.5"/></svg>
+          <span class="label">No graph awareness</span>
+        </div>
+        <div class="cell" data-tool="Smart Connections">
+          <svg class="ind partial" viewBox="0 0 14 14" aria-hidden="true">
+            <circle class="ring" cx="7" cy="7" r="5"/>
+            <path class="half" d="M7 2 A5 5 0 0 1 7 12 Z"/>
+          </svg>
+          <span class="label">Semantic only, no graph</span>
+        </div>
+        <div class="cell" data-tool="NotebookLM">
+          <svg class="ind partial" viewBox="0 0 14 14" aria-hidden="true">
+            <circle class="ring" cx="7" cy="7" r="5"/>
+            <path class="half" d="M7 2 A5 5 0 0 1 7 12 Z"/>
+          </svg>
+          <span class="label">Q&amp;A only, no graph</span>
+        </div>
+      </div>
+
+      <!-- Row 2 -->
+      <div class="sc-row">
+        <div class="row-title">
+          <span class="num">02</span>
+          Compiles inputs into structured pages
+        </div>
+        <div class="cell is-us-wrap" data-tool="Margins MCP">
+          <svg class="ind yes" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="5"/></svg>
+          <span class="label">Raw notes become wiki pages</span>
+        </div>
+        <div class="cell" data-tool="Filesystem MCP">
+          <svg class="ind no" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="5"/><line x1="3.5" y1="10.5" x2="10.5" y2="3.5"/></svg>
+          <span class="label">&mdash;</span>
+        </div>
+        <div class="cell" data-tool="Smart Connections">
+          <svg class="ind no" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="5"/><line x1="3.5" y1="10.5" x2="10.5" y2="3.5"/></svg>
+          <span class="label">&mdash;</span>
+        </div>
+        <div class="cell" data-tool="NotebookLM">
+          <svg class="ind no" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="5"/><line x1="3.5" y1="10.5" x2="10.5" y2="3.5"/></svg>
+          <span class="label">&mdash;</span>
+        </div>
+      </div>
+
+      <!-- Row 3 -->
+      <div class="sc-row">
+        <div class="row-title">
+          <span class="num">03</span>
+          Write capability
+        </div>
+        <div class="cell is-us-wrap" data-tool="Margins MCP">
+          <svg class="ind partial" viewBox="0 0 14 14" aria-hidden="true">
+            <circle class="ring" cx="7" cy="7" r="5"/>
+            <path class="half" d="M7 2 A5 5 0 0 1 7 12 Z"/>
+          </svg>
+          <span class="label">Propose-only, you review</span>
+        </div>
+        <div class="cell" data-tool="Filesystem MCP">
+          <svg class="ind yes" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="5"/></svg>
+          <span class="label">Direct, no review step</span>
+        </div>
+        <div class="cell" data-tool="Smart Connections">
+          <svg class="ind note" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="5"/></svg>
+          <span class="label">Read-only</span>
+        </div>
+        <div class="cell" data-tool="NotebookLM">
+          <svg class="ind note" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="5"/></svg>
+          <span class="label">Read-only</span>
+        </div>
+      </div>
+
+      <!-- Row 4 -->
+      <div class="sc-row">
+        <div class="row-title">
+          <span class="num">04</span>
+          Free to run
+        </div>
+        <div class="cell is-us-wrap" data-tool="Margins MCP">
+          <svg class="ind yes" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="5"/></svg>
+          <span class="label">Your Claude subscription</span>
+        </div>
+        <div class="cell" data-tool="Filesystem MCP">
+          <svg class="ind yes" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="5"/></svg>
+          <span class="label">Your Claude subscription</span>
+        </div>
+        <div class="cell" data-tool="Smart Connections">
+          <svg class="ind no" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="5"/><line x1="3.5" y1="10.5" x2="10.5" y2="3.5"/></svg>
+          <span class="label">BYOK OpenAI</span>
+        </div>
+        <div class="cell" data-tool="NotebookLM">
+          <svg class="ind yes" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="5"/></svg>
+          <span class="label">Google account</span>
+        </div>
+      </div>
+
+      <!-- Row 5 -->
+      <div class="sc-row">
+        <div class="row-title">
+          <span class="num">05</span>
+          Files stay on your disk
+        </div>
+        <div class="cell is-us-wrap" data-tool="Margins MCP">
+          <svg class="ind yes" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="5"/></svg>
+          <span class="label">Local</span>
+        </div>
+        <div class="cell" data-tool="Filesystem MCP">
+          <svg class="ind yes" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="5"/></svg>
+          <span class="label">Local</span>
+        </div>
+        <div class="cell" data-tool="Smart Connections">
+          <svg class="ind yes" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="5"/></svg>
+          <span class="label">Local</span>
+        </div>
+        <div class="cell" data-tool="NotebookLM">
+          <svg class="ind no" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="5"/><line x1="3.5" y1="10.5" x2="10.5" y2="3.5"/></svg>
+          <span class="label">Uploaded to Google</span>
+        </div>
+      </div>
+
+      <!-- Row 6 -->
+      <div class="sc-row">
+        <div class="row-title">
+          <span class="num">06</span>
+          Works in Claude Desktop and Claude Code
+        </div>
+        <div class="cell is-us-wrap" data-tool="Margins MCP">
+          <svg class="ind yes" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="5"/></svg>
+          <span class="label">Both surfaces</span>
+        </div>
+        <div class="cell" data-tool="Filesystem MCP">
+          <svg class="ind yes" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="5"/></svg>
+          <span class="label">Both surfaces</span>
+        </div>
+        <div class="cell" data-tool="Smart Connections">
+          <svg class="ind no" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="5"/><line x1="3.5" y1="10.5" x2="10.5" y2="3.5"/></svg>
+          <span class="label">In-Obsidian only</span>
+        </div>
+        <div class="cell" data-tool="NotebookLM">
+          <svg class="ind no" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="5"/><line x1="3.5" y1="10.5" x2="10.5" y2="3.5"/></svg>
+          <span class="label">&mdash;</span>
+        </div>
+      </div>
+
+      <p class="sc-caption">Filled disc, full support. Half disc, partial. Open ring, none.</p>
+    </div>
+
+  </div>
+</section>
+
+<script>
+  // Theme toggle
+  (function(){
+    var btn = document.getElementById('themeToggle');
+    if (!btn) return;
+    btn.addEventListener('click', function(){
+      var current = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+      var next = current === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      try { localStorage.setItem('margins-theme', next); } catch(e) {}
+    });
+  })();
+
+  // Reveal on scroll
+  (function(){
+    if (!('IntersectionObserver' in window)) {
+      document.querySelectorAll('.reveal').forEach(function(el){ el.classList.add('in'); });
+      return;
+    }
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(entry){
+        if (entry.isIntersecting) {
+          entry.target.classList.add('in');
+          io.unobserve(entry.target);
+        }
+      });
+    }, { rootMargin: '0px 0px -60px 0px', threshold: 0.05 });
+    document.querySelectorAll('.reveal').forEach(function(el){ io.observe(el); });
+  })();
+</script>
+
+</body>
+</html>

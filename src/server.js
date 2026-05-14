@@ -7,7 +7,7 @@ import { detectIndexRoots } from "./index-roots.js";
 import { createPrimer, formatSummary } from "./primer.js";
 import { createCompile } from "./compile.js";
 import { supportedExtensionsList } from "./document-text.js";
-import { loadTelemetry, writeConsent } from "./telemetry.js";
+import { loadTelemetry, writeConsent, selfTagEnabled } from "./telemetry.js";
 import { createPreferences } from "./preferences.js";
 import { createWikilinks } from "./wikilinks.js";
 
@@ -604,6 +604,6 @@ export async function runStdio({ vaultRoot } = {}) {
   console.error(
     `margins-mcp: serving vault at ${vault.root} ` +
       `(index roots: ${roots.join(", ")}, detected via ${source}, ` +
-      `telemetry: ${telemetry.enabled ? "on" : "off"})`
+      `telemetry: ${telemetry.enabled ? (selfTagEnabled() ? "on/self-tagged" : "on") : "off"})`
   );
 }

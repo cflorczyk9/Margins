@@ -39,6 +39,17 @@ export function envOverride() {
   return null;
 }
 
+export function selfTagEnabled() {
+  const value = process.env.MARGINS_TELEMETRY_SELF;
+  if (!value) return false;
+  return value === "1" || value.toLowerCase() === "on" || value.toLowerCase() === "true";
+}
+
+export function applySelfTag(eventPath) {
+  if (!selfTagEnabled()) return eventPath;
+  return `/dev${eventPath.startsWith("/") ? "" : "/"}${eventPath}`;
+}
+
 export function createTelemetry({ consent, fetch = globalThis.fetch } = {}) {
   const envFlag = envOverride();
   const enabled =
@@ -52,7 +63,8 @@ export function createTelemetry({ consent, fetch = globalThis.fetch } = {}) {
   async function postEvent(eventPath) {
     if (!enabled) return { sent: false, reason: "disabled" };
     try {
-      const url = `${endpoint.replace(/\/$/, "")}/count?p=${encodeURIComponent(eventPath)}`;
+      const tagged = applySelfTag(eventPath);
+      const url = `${endpoint.replace(/\/$/, "")}/count?p=${encodeURIComponent(tagged)}`;
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
       try {
