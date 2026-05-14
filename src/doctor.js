@@ -38,14 +38,16 @@ export async function diagnoseVault(vault) {
     }
   }
 
-  for (const rel of index.parseFailures || []) {
+  for (const entry of index.parseFailures || []) {
+    const rel = typeof entry === "string" ? entry : entry.path;
+    const errDetail = typeof entry === "object" && entry.error ? ` (${entry.error})` : "";
     issues.push({
       kind: "parse-failure",
       path: rel,
       severity: "error",
       message:
-        `Failed to parse frontmatter in ${rel}. Common causes: a stray '---' line in the body, a quoting error in YAML, or a corrupted file. ` +
-        `Open the file and fix the frontmatter manually.`
+        `Failed to parse frontmatter in ${rel}${errDetail}. Common cause: an unquoted YAML value containing a colon-space sequence (e.g., "summary: Key terms: ...") — wrap the value in double quotes. ` +
+        `Margins's permissive fallback couldn't recover type/raw_file either, so the page is silently invisible to ingest detection until fixed.`
     });
   }
 
