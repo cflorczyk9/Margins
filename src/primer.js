@@ -1,11 +1,10 @@
-import { readdir } from "node:fs/promises";
-import path from "node:path";
 import { readVaultManual } from "./vault-manual.js";
 import { classifyVault, suggestionsForPersona } from "./persona.js";
 import { samplePileBySnippets, detectFilenamePatterns } from "./pile-sampler.js";
 import { scanRawForCompile } from "./pile-scan.js";
 import { checkForUpdate } from "./version-check.js";
 import { readConsent } from "./telemetry.js";
+import { buildVaultIndex } from "./raw-index.js";
 
 // Mode dispatch. Each persona maps to a response shape tuned for what that
 // user actually needs from Claude at the start of a conversation.
@@ -139,35 +138,8 @@ function foldersByCount(files, vault) {
 }
 
 async function detectUningestedRaw(vault) {
-  const rawDir = vault.resolveInside("raw");
-  let rawFiles;
-  try {
-    rawFiles = await readdir(rawDir, { withFileTypes: true });
-  } catch {
-    return { count: 0, files: [] };
-  }
-  const rawNames = rawFiles
-    .filter((d) => d.isFile())
-    .map((d) => d.name)
-    .filter((name) => !name.startsWith("."));
-
-  if (!rawNames.length) return { count: 0, files: [] };
-
-  const allFiles = await vault.listFiles();
-  const ingestedSlugs = new Set();
-  for (const abs of allFiles) {
-    const base = path.basename(abs, path.extname(abs));
-    if (base.startsWith("source-")) {
-      ingestedSlugs.add(base.slice("source-".length));
-    }
-  }
-
-  const uningested = rawNames.filter((name) => {
-    const slug = path.basename(name, path.extname(name));
-    return !ingestedSlugs.has(slug);
-  });
-
-  return { count: uningested.length, files: uningested.slice(0, 10) };
+  const index = await buildVaultIndex(vault);
+  return { count: index.pending.length, files: index.pending.slice(0, 10) };
 }
 
 export function formatSummary(summary) {
@@ -299,9 +271,9 @@ function formatSynthesisSummary(summary) {
 function appendCommonSections(lines, summary) {
   if (summary.uningestedRaw.count > 0) {
     lines.push("");
-    lines.push(`Uningested raw files: ${summary.uningestedRaw.count}`);
-    for (const f of summary.uningestedRaw.files) lines.push(`  raw/${f}`);
-    lines.push("  -> Ingest by calling propose_compile_from_raw on each one.");
+    lines.push(`Unprocessed files: ${summary.uningestedRaw.count}`);
+    for (const f of summary.uningestedRaw.files) lines.push(`  ${f}`);
+    lines.push("  -> Compile them into wiki source pages so they can link with the rest of the vault. Call propose_compile_from_raw on each.");
   }
   if (summary.pendingProposals.count > 0) {
     lines.push("");

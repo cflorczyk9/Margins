@@ -2,29 +2,92 @@ import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { compileVault } from "./compiler/compiler.js";
 import { extractDocumentText, supportedExtensionsList } from "./document-text.js";
+import { buildVaultIndex } from "./raw-index.js";
+import { canonicalize } from "./paths.js";
+import { hashFile, shortHash } from "./hash.js";
+import { parseFrontmatter, extractRawFileRefs } from "./frontmatter.js";
+import { readFile } from "node:fs/promises";
+
+const MAX_RAW_BYTES = 50 * 1024 * 1024;       // 50MB cap on extraction inputs
+const MIN_MEANINGFUL_CHARS = 20;              // below this, treat as empty (catches image-only PDFs)
 
 export function createCompile(vault, proposals) {
   async function proposeCompileFromRaw(rawPath, review) {
     if (!rawPath || typeof rawPath !== "string") {
       throw new Error("rawPath is required");
     }
-    const normalized = rawPath.replace(/^raw\//, "");
-    const fullRawPath = `raw/${normalized}`;
-    const absRaw = vault.resolveInside(fullRawPath);
+
+    const rel = canonicalize(resolveSourceRel(rawPath));
+    const absRaw = vault.resolveInside(rel);
 
     let info;
     try {
       info = await stat(absRaw);
     } catch {
-      throw new Error(await buildNotFoundError(vault, fullRawPath, normalized));
+      throw new Error(await buildNotFoundError(vault, rel));
     }
     if (!info.isFile()) {
-      throw new Error(`not a file: ${fullRawPath}`);
+      throw new Error(
+        `'${rel}' is not a regular file. propose_compile_from_raw needs a file path, not a directory or symlink target.`
+      );
+    }
+    if (info.size > MAX_RAW_BYTES) {
+      const mb = (info.size / 1024 / 1024).toFixed(1);
+      throw new Error(
+        `'${rel}' is ${mb}MB. Margins refuses to extract files over 50MB to avoid hangs. ` +
+        `Split the file, OCR a subset, or compile a smaller representative excerpt.`
+      );
     }
 
-    const text = await extractDocumentText(absRaw, fullRawPath);
     const fileName = path.basename(absRaw);
+    const force = Boolean(review && review.force);
 
+    if (!force) {
+      const index = await buildVaultIndex(vault);
+      const existingPath = index.referenced.get(rel);
+      if (existingPath) {
+        return {
+          status: "already-filed",
+          rawFile: rel,
+          existingPath,
+          message: `Source page already exists at ${existingPath} for raw file ${rel}. Pass force=true to compile again and replace it.`
+        };
+      }
+    }
+
+    let text;
+    try {
+      text = await extractDocumentText(absRaw, rel);
+    } catch (err) {
+      throw new Error(
+        `Failed to extract text from '${rel}': ${err.message}. ` +
+        `If the file is a scanned/image-only PDF, run OCR on it first (e.g. ocrmypdf), then retry.`
+      );
+    }
+
+    // TOCTOU check: if the file changed during extraction, the source page we
+    // generated will be stale. Abort and tell the user to re-run.
+    let postInfo;
+    try { postInfo = await stat(absRaw); } catch { postInfo = null; }
+    if (postInfo && (postInfo.mtimeMs !== info.mtimeMs || postInfo.size !== info.size)) {
+      throw new Error(
+        `'${rel}' changed during compile (file was edited while Margins was reading it). ` +
+        `Re-run propose_compile_from_raw to capture the latest content.`
+      );
+    }
+
+    if (!force) {
+      const meaningfulChars = text.replace(/\s+/g, "").length;
+      if (meaningfulChars < MIN_MEANINGFUL_CHARS) {
+        throw new Error(
+          `'${rel}' produced only ${meaningfulChars} characters of extractable text. ` +
+          `This usually means an image-only PDF (try OCR — ocrmypdf works well), a corrupted file, ` +
+          `or an empty document. Pass force=true to stage anyway if this is intentional.`
+        );
+      }
+    }
+
+    const rawSha = await hashFile(absRaw);
     const fullReview = buildReview(review || {}, fileName);
 
     const compiled = compileVault(
@@ -43,11 +106,29 @@ export function createCompile(vault, proposals) {
       );
     }
 
+    // Slug collision: if another source page already lives at sourceNode.path
+    // and points to a DIFFERENT raw file, append a deterministic hash suffix
+    // so both can coexist. Idempotency check above already handled the
+    // same-raw case.
+    const disambiguatedPath = await disambiguateDestPath(vault, sourceNode.path, rel);
+    if (disambiguatedPath !== sourceNode.path) {
+      sourceNode.path = disambiguatedPath;
+      sourceNode.markdown = sourceNode.markdown.replace(
+        /^# Source: .*$/m,
+        (match) => match
+      );
+    }
+
+    const markdown = rewriteSourceMetadata(sourceNode.markdown, fileName, rel, rawSha, info.size);
+
     const destPath = sourceNode.path;
-    const proposalResult = await proposals.proposePage(destPath, sourceNode.markdown);
+    const proposalResult = await proposals.proposePage(destPath, markdown, { force });
     return {
       ...proposalResult,
-      rawFile: fullRawPath,
+      status: "proposal-staged",
+      rawFile: rel,
+      rawSha256: rawSha,
+      rawSize: info.size,
       title: sourceNode.title,
       bucket: sourceNode.path.split("/")[1] || "sources",
       summary: sourceNode.summary,
@@ -57,6 +138,50 @@ export function createCompile(vault, proposals) {
   }
 
   return { proposeCompileFromRaw };
+}
+
+async function disambiguateDestPath(vault, candidatePath, currentRawRel) {
+  let destAbs;
+  try {
+    destAbs = vault.resolveInside(candidatePath);
+  } catch {
+    return candidatePath;
+  }
+  let body;
+  try {
+    body = await readFile(destAbs, "utf8");
+  } catch {
+    return candidatePath; // destination doesn't exist, no collision
+  }
+  const parsed = parseFrontmatter(body);
+  if (!parsed) return candidatePath;
+  const existingRefs = extractRawFileRefs(parsed.data).map((r) => canonicalize(r));
+  if (existingRefs.includes(canonicalize(currentRawRel))) return candidatePath; // same raw, idempotent
+  // Collision: different raw wants the same slug. Append short hash of the raw path.
+  const suffix = shortHash(currentRawRel);
+  return candidatePath.replace(/\.md$/i, `-${suffix}.md`);
+}
+
+function resolveSourceRel(rawPath) {
+  const trimmed = rawPath.replace(/^\.\//, "");
+  if (trimmed.includes("/")) return trimmed;
+  return `raw/${trimmed}`;
+}
+
+function rewriteSourceMetadata(markdown, fileName, rel, rawSha, rawSize) {
+  const compilerDefault = `raw/${fileName}`;
+  let out = markdown;
+  if (rel !== compilerDefault) {
+    out = out
+      .replace(/^raw_file:\s*"?[^"\n]+"?\s*$/m, `raw_file: ${rel}`)
+      .replace(/Original file:\s*`raw\/[^`]+`/, `Original file: \`${rel}\``);
+  }
+  // Inject raw_sha256 and raw_size after raw_file (always; even when rel matched the default).
+  out = out.replace(
+    /^raw_file:\s*([^\n]+)$/m,
+    `raw_file: $1\nraw_sha256: ${rawSha}\nraw_size: ${rawSize}`
+  );
+  return out;
 }
 
 function buildReview(input, fileName) {
@@ -106,28 +231,32 @@ function titleize(slug) {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-async function buildNotFoundError(vault, fullRawPath, requested) {
-  // If raw/ itself is missing, that's the actionable hint.
-  let entries;
-  try {
-    entries = await readdir(vault.resolveInside("raw"), { withFileTypes: true });
-  } catch {
-    return `raw/ directory not found in this vault. Drop a supported source file (${supportedExtensionsList()}) at <vault>/raw/<your-file> first, then try again.`;
+async function buildNotFoundError(vault, rel) {
+  const wantedInRaw = rel.startsWith("raw/");
+  if (wantedInRaw) {
+    const requested = rel.slice(4);
+    let entries;
+    try {
+      entries = await readdir(vault.resolveInside("raw"), { withFileTypes: true });
+    } catch {
+      return `raw/ directory not found in this vault. Drop a supported source file (${supportedExtensionsList()}) anywhere in the vault, then try again. (Files can live anywhere — raw/ is the conventional inbox.)`;
+    }
+    const available = entries
+      .filter((e) => e.isFile())
+      .map((e) => e.name)
+      .filter((n) => !n.startsWith("."));
+    if (available.length === 0) {
+      return `file not found: ${rel}. The raw/ folder is empty — drop your source file in the vault (anywhere; raw/ is just a convention).`;
+    }
+    const closest = findClosest(requested, available);
+    if (closest && closest !== requested) {
+      return `file not found: ${rel}. Did you mean: raw/${closest}?`;
+    }
+    const preview = available.slice(0, 5).join(", ");
+    const more = available.length > 5 ? `, +${available.length - 5} more` : "";
+    return `file not found: ${rel}. Available in raw/: ${preview}${more}.`;
   }
-  const available = entries
-    .filter((e) => e.isFile())
-    .map((e) => e.name)
-    .filter((n) => !n.startsWith("."));
-  if (available.length === 0) {
-    return `raw file not found: ${fullRawPath}. The raw/ folder is empty — drop your source file there first.`;
-  }
-  const closest = findClosest(requested, available);
-  if (closest && closest !== requested) {
-    return `raw file not found: ${fullRawPath}. Did you mean: raw/${closest}?`;
-  }
-  const preview = available.slice(0, 5).join(", ");
-  const more = available.length > 5 ? `, +${available.length - 5} more` : "";
-  return `raw file not found: ${fullRawPath}. Available in raw/: ${preview}${more}.`;
+  return `file not found: ${rel}. Confirm the path is relative to the vault root.`;
 }
 
 function findClosest(target, candidates) {
@@ -142,7 +271,6 @@ function findClosest(target, candidates) {
       best = c;
     }
   }
-  // Only suggest if reasonably close — half the longer string's length, min 2.
   const threshold = Math.max(2, Math.floor(Math.max(target.length, best.length) / 2));
   if (bestDistance > threshold) return null;
   return best;

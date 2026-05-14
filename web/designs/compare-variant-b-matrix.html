@@ -1,0 +1,712 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Compare — Variant B: Feature Matrix Card</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&display=swap" rel="stylesheet">
+
+<script>
+(function () {
+  try {
+    var stored = localStorage.getItem('margins-theme');
+    var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    var theme = stored || (prefersDark ? 'dark' : 'light');
+    document.documentElement.setAttribute('data-theme', theme);
+  } catch (e) {
+    document.documentElement.setAttribute('data-theme', 'light');
+  }
+})();
+</script>
+
+<style>
+  :root {
+    --bg: #faf7f2;
+    --paper: #ffffff;
+    --paper-soft: #f5f1ea;
+    --ink: #1a1612;
+    --ink-2: #4a4339;
+    --ink-3: #6f6855;
+    --ink-4: #9b937f;
+    --line: #ece6d9;
+    --line-strong: #d8d0bf;
+    --accent: #d63a2f;
+    --accent-soft: rgba(214, 58, 47, 0.06);
+    --accent-line: rgba(214, 58, 47, 0.22);
+    --vermillion: #d63a2f;
+    --mustard: #f0c14b;
+    --good: #5b7d57;
+    --on-accent: #ffffff;
+
+    --shadow-card:
+      0 1px 1px rgba(26,22,18,0.04),
+      0 2px 6px rgba(26,22,18,0.04),
+      0 18px 48px rgba(26,22,18,0.07),
+      0 40px 80px rgba(26,22,18,0.05);
+  }
+
+  [data-theme="dark"] {
+    --bg: #15110d;
+    --paper: #1F1A14;
+    --paper-soft: #1A1612;
+    --ink: #E8E2D6;
+    --ink-2: #BFB6A4;
+    --ink-3: #8E8675;
+    --ink-4: #6A6354;
+    --line: #2E281F;
+    --line-strong: #3D362B;
+    --accent: #E04B3F;
+    --accent-soft: rgba(224, 75, 63, 0.08);
+    --accent-line: rgba(224, 75, 63, 0.30);
+    --vermillion: #E04B3F;
+    --mustard: #F0C14B;
+    --good: #8AC078;
+    --on-accent: #15110d;
+
+    --shadow-card:
+      0 1px 2px rgba(0,0,0,0.30),
+      0 8px 20px rgba(0,0,0,0.30),
+      0 30px 60px rgba(0,0,0,0.40);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Manrope', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    letter-spacing: -0.005em;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    transition: background-color 240ms ease, color 240ms ease;
+  }
+  h1, h2, h3, p { margin: 0; }
+
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 32px; }
+  @media (max-width: 560px) { .wrap { padding: 0 20px; } }
+
+  .section {
+    padding: 96px 0 120px;
+  }
+
+  /* Theme toggle */
+  .theme-toggle {
+    position: fixed;
+    top: 20px; right: 20px;
+    z-index: 50;
+    background: var(--paper);
+    color: var(--ink-2);
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    padding: 8px 14px;
+    font: 500 12.5px/1 'Manrope', sans-serif;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    cursor: pointer;
+    box-shadow: var(--shadow-card);
+    transition: color 200ms ease, border-color 200ms ease, transform 200ms ease;
+  }
+  .theme-toggle:hover { color: var(--ink); border-color: var(--ink-3); transform: translateY(-1px); }
+
+  /* Section header */
+  .eyebrow {
+    font: 600 11.5px/1 'Manrope', sans-serif;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 16px;
+  }
+  h2 {
+    font-family: 'Newsreader', Georgia, serif;
+    font-weight: 500;
+    font-size: clamp(34px, 4.4vw, 46px);
+    line-height: 1.08;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    margin-bottom: 18px;
+  }
+  .section-sub {
+    color: var(--ink-2);
+    font-size: 17.5px;
+    line-height: 1.55;
+    max-width: 64ch;
+    margin-bottom: 48px;
+  }
+
+  /* ============================================================ */
+  /* === MATRIX CARD                                          === */
+  /* ============================================================ */
+  .matrix-card {
+    position: relative;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    box-shadow: var(--shadow-card);
+    padding: 8px;
+    overflow: hidden;
+  }
+
+  /* The grid: 1 label column + 4 tool columns */
+  .matrix {
+    display: grid;
+    grid-template-columns:
+      minmax(220px, 1.5fr)
+      minmax(170px, 1.1fr)
+      minmax(170px, 1fr)
+      minmax(170px, 1fr)
+      minmax(170px, 1fr);
+    position: relative;
+  }
+
+  /* ----- Header row ----- */
+  .m-head {
+    display: contents;
+  }
+  .m-head > div {
+    padding: 22px 18px 18px;
+    font: 600 12.5px/1.3 'Manrope', sans-serif;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    border-bottom: 1px solid var(--line-strong);
+    position: relative;
+  }
+  .m-head .h-label { color: transparent; user-select: none; }
+
+  .m-head .h-us {
+    color: var(--accent);
+    letter-spacing: 0.04em;
+    text-transform: none;
+    font-size: 13.5px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  /* Vermillion top accent above Margins column */
+  .m-head .h-us::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 14px; right: 14px;
+    height: 2px;
+    background: var(--vermillion);
+    border-radius: 2px;
+  }
+
+  /* Kandinsky motif beside Margins label */
+  .kandinsky {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    height: 12px;
+  }
+  .kandinsky .disc-m {
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--mustard);
+    position: relative;
+  }
+  .kandinsky .disc-m::after {
+    content: "";
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--vermillion);
+  }
+
+  /* ----- Body rows ----- */
+  .m-row {
+    display: contents;
+  }
+  .m-row > .cell {
+    padding: 18px;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    text-align: center;
+    min-height: 76px;
+    transition: background-color 180ms ease;
+  }
+  .m-row > .cell.label {
+    align-items: flex-start;
+    text-align: left;
+    justify-content: center;
+    color: var(--ink);
+    font-size: 14.5px;
+    font-weight: 500;
+    line-height: 1.4;
+  }
+  .m-row:last-child > .cell { border-bottom: none; }
+
+  /* Alternating bands (subtle) */
+  .m-row.even > .cell {
+    background: color-mix(in srgb, var(--paper-soft) 30%, transparent);
+  }
+
+  /* Hover row */
+  .matrix:hover .m-row:hover > .cell {
+    background: color-mix(in srgb, var(--paper-soft) 60%, transparent);
+  }
+  .matrix:hover .m-row:hover > .cell.label {
+    box-shadow: inset 2px 0 0 var(--ink);
+  }
+
+  /* ----- Margins column emphasis ----- */
+  /* The Margins column is the 2nd column. Apply tint to every cell in col 2. */
+  .m-row > .cell.us,
+  .m-head .h-us {
+    background: var(--accent-soft);
+  }
+
+  /* Column ring overlay — sits above grid, doesn't shift layout */
+  .us-ring {
+    position: absolute;
+    top: 0;
+    /* will be positioned via JS */
+    width: 0;
+    pointer-events: none;
+    border: 1.75px solid var(--vermillion);
+    border-radius: 14px;
+    box-shadow:
+      0 0 0 4px var(--paper),
+      0 8px 24px rgba(214, 58, 47, 0.10);
+    transition: opacity 200ms ease;
+  }
+  [data-theme="dark"] .us-ring {
+    box-shadow:
+      0 0 0 4px var(--paper),
+      0 8px 24px rgba(224, 75, 63, 0.15);
+  }
+
+  /* ----- Indicator visuals ----- */
+  .ind {
+    width: 28px; height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  /* YES — filled disc */
+  .ind.yes-us .dot {
+    width: 12px; height: 12px;
+    background: var(--vermillion);
+    border-radius: 50%;
+  }
+  .ind.yes-them .dot {
+    width: 12px; height: 12px;
+    background: var(--ink-3);
+    border-radius: 50%;
+  }
+
+  /* PARTIAL — outlined ring with inset arc */
+  .ind.partial {
+    position: relative;
+  }
+  .ind.partial .ring {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    border: 1.5px solid var(--mustard);
+    position: relative;
+    overflow: hidden;
+    background: transparent;
+  }
+  .ind.partial .ring::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: var(--mustard);
+    /* lower half arc */
+    clip-path: polygon(0 50%, 100% 50%, 100% 100%, 0 100%);
+  }
+
+  /* NO — em-dash stroke */
+  .ind.no .dash {
+    width: 14px; height: 2px;
+    background: var(--ink-4);
+    border-radius: 2px;
+  }
+
+  /* Caption under indicator */
+  .caption {
+    font: 500 11.5px/1.35 'Manrope', sans-serif;
+    color: var(--ink-3);
+    max-width: 18ch;
+  }
+  .cell.us .caption {
+    color: var(--ink-2);
+  }
+
+  /* ============================================================ */
+  /* === Mobile collapse                                      === */
+  /* ============================================================ */
+  @media (max-width: 720px) {
+    .section { padding: 64px 0 80px; }
+    .matrix { display: none; }
+    .us-ring { display: none; }
+    .matrix-card {
+      padding: 0;
+      background: transparent;
+      border: none;
+      box-shadow: none;
+    }
+
+    .m-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .tool-card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 22px 20px;
+      box-shadow: var(--shadow-card);
+    }
+    .tool-card.is-us {
+      border: 1.75px solid var(--vermillion);
+      background: linear-gradient(180deg, var(--accent-soft), var(--paper) 60%);
+      position: relative;
+    }
+    .tool-card.is-us::before {
+      content: "";
+      position: absolute;
+      top: 0; left: 18px; right: 18px;
+      height: 2px;
+      background: var(--vermillion);
+      border-radius: 2px;
+    }
+    .tool-card h3 {
+      font: 700 13px/1 'Manrope', sans-serif;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--ink-3);
+      margin-bottom: 18px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .tool-card.is-us h3 {
+      color: var(--vermillion);
+      text-transform: none;
+      letter-spacing: 0.01em;
+      font-size: 15px;
+    }
+    .tool-card ul {
+      list-style: none;
+      padding: 0; margin: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .tool-card li {
+      display: grid;
+      grid-template-columns: 32px 1fr;
+      gap: 12px;
+      align-items: start;
+    }
+    .tool-card .li-label {
+      font-size: 14.5px;
+      color: var(--ink);
+      line-height: 1.4;
+      font-weight: 500;
+    }
+    .tool-card .li-caption {
+      display: block;
+      font-size: 12.5px;
+      color: var(--ink-3);
+      margin-top: 2px;
+      font-weight: 400;
+    }
+  }
+
+  @media (min-width: 721px) {
+    .m-stack { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<button class="theme-toggle" id="themeToggle" aria-label="Toggle color theme">Theme</button>
+
+<section class="section" id="compare">
+  <div class="wrap">
+    <p class="eyebrow">Compare</p>
+    <h2>How Margins compares.</h2>
+    <p class="section-sub">There are a few other ways to point an AI at your notes. Here's where they overlap with Margins and where Margins is more specific.</p>
+
+    <div class="matrix-card">
+      <!-- Vermillion ring around Margins column (positioned in JS) -->
+      <div class="us-ring" id="usRing" aria-hidden="true"></div>
+
+      <!-- DESKTOP/TABLET MATRIX -->
+      <div class="matrix" id="matrix" role="table" aria-label="Comparison of Margins MCP with related tools">
+
+        <!-- Header -->
+        <div class="m-head" role="row">
+          <div class="h-label" role="columnheader">Capability</div>
+          <div class="h-us" role="columnheader" data-col="us">
+            <span>Margins MCP</span>
+            <span class="kandinsky" aria-hidden="true"><span class="disc-m"></span></span>
+          </div>
+          <div role="columnheader">Filesystem MCP</div>
+          <div role="columnheader">Smart Connections</div>
+          <div role="columnheader">NotebookLM</div>
+        </div>
+
+        <!-- Row 1 -->
+        <div class="m-row" role="row">
+          <div class="cell label">Finds connections across files (wikilinks, backlinks, cross-document synthesis)</div>
+          <div class="cell us">
+            <span class="ind yes-us" aria-label="Yes"><span class="dot"></span></span>
+          </div>
+          <div class="cell">
+            <span class="ind no" aria-label="No"><span class="dash"></span></span>
+          </div>
+          <div class="cell">
+            <span class="ind partial" aria-label="Partial"><span class="ring"></span></span>
+            <span class="caption">semantic, no graph</span>
+          </div>
+          <div class="cell">
+            <span class="ind partial" aria-label="Partial"><span class="ring"></span></span>
+            <span class="caption">Q&amp;A only, no graph</span>
+          </div>
+        </div>
+
+        <!-- Row 2 -->
+        <div class="m-row even" role="row">
+          <div class="cell label">Compiles raw inputs into structured pages</div>
+          <div class="cell us">
+            <span class="ind yes-us" aria-label="Yes"><span class="dot"></span></span>
+          </div>
+          <div class="cell">
+            <span class="ind no" aria-label="No"><span class="dash"></span></span>
+          </div>
+          <div class="cell">
+            <span class="ind no" aria-label="No"><span class="dash"></span></span>
+          </div>
+          <div class="cell">
+            <span class="ind no" aria-label="No"><span class="dash"></span></span>
+          </div>
+        </div>
+
+        <!-- Row 3 — write capability (all qualifier text) -->
+        <div class="m-row" role="row">
+          <div class="cell label">Write capability</div>
+          <div class="cell us">
+            <span class="ind yes-us" aria-label="Yes"><span class="dot"></span></span>
+            <span class="caption">propose-only (you review)</span>
+          </div>
+          <div class="cell">
+            <span class="ind yes-them" aria-label="Yes"><span class="dot"></span></span>
+            <span class="caption">direct (no review step)</span>
+          </div>
+          <div class="cell">
+            <span class="ind no" aria-label="No"><span class="dash"></span></span>
+            <span class="caption">read-only</span>
+          </div>
+          <div class="cell">
+            <span class="ind no" aria-label="No"><span class="dash"></span></span>
+            <span class="caption">read-only</span>
+          </div>
+        </div>
+
+        <!-- Row 4 — free to run -->
+        <div class="m-row even" role="row">
+          <div class="cell label">Free to run</div>
+          <div class="cell us">
+            <span class="ind yes-us" aria-label="Yes"><span class="dot"></span></span>
+            <span class="caption">uses your Claude subscription</span>
+          </div>
+          <div class="cell">
+            <span class="ind yes-them" aria-label="Yes"><span class="dot"></span></span>
+            <span class="caption">uses your Claude subscription</span>
+          </div>
+          <div class="cell">
+            <span class="ind no" aria-label="No"><span class="dash"></span></span>
+            <span class="caption">BYOK OpenAI</span>
+          </div>
+          <div class="cell">
+            <span class="ind yes-them" aria-label="Yes"><span class="dot"></span></span>
+            <span class="caption">Google account</span>
+          </div>
+        </div>
+
+        <!-- Row 5 — files on disk -->
+        <div class="m-row" role="row">
+          <div class="cell label">Files stay on your disk</div>
+          <div class="cell us">
+            <span class="ind yes-us" aria-label="Yes"><span class="dot"></span></span>
+          </div>
+          <div class="cell">
+            <span class="ind yes-them" aria-label="Yes"><span class="dot"></span></span>
+          </div>
+          <div class="cell">
+            <span class="ind yes-them" aria-label="Yes"><span class="dot"></span></span>
+          </div>
+          <div class="cell">
+            <span class="ind no" aria-label="No"><span class="dash"></span></span>
+            <span class="caption">uploaded to Google</span>
+          </div>
+        </div>
+
+        <!-- Row 6 — Claude Desktop / Code -->
+        <div class="m-row even" role="row">
+          <div class="cell label">Works in Claude Desktop and Claude Code</div>
+          <div class="cell us">
+            <span class="ind yes-us" aria-label="Yes"><span class="dot"></span></span>
+          </div>
+          <div class="cell">
+            <span class="ind yes-them" aria-label="Yes"><span class="dot"></span></span>
+          </div>
+          <div class="cell">
+            <span class="ind no" aria-label="No"><span class="dash"></span></span>
+            <span class="caption">in-Obsidian only</span>
+          </div>
+          <div class="cell">
+            <span class="ind no" aria-label="No"><span class="dash"></span></span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- MOBILE STACK -->
+      <div class="m-stack" aria-hidden="false">
+
+        <div class="tool-card is-us">
+          <h3>
+            <span>Margins MCP</span>
+            <span class="kandinsky" aria-hidden="true"><span class="disc-m"></span></span>
+          </h3>
+          <ul>
+            <li>
+              <span class="ind yes-us"><span class="dot"></span></span>
+              <span class="li-label">Finds connections across files</span>
+            </li>
+            <li>
+              <span class="ind yes-us"><span class="dot"></span></span>
+              <span class="li-label">Compiles raw inputs into structured pages</span>
+            </li>
+            <li>
+              <span class="ind yes-us"><span class="dot"></span></span>
+              <span class="li-label">Write capability<span class="li-caption">propose-only (you review)</span></span>
+            </li>
+            <li>
+              <span class="ind yes-us"><span class="dot"></span></span>
+              <span class="li-label">Free to run<span class="li-caption">uses your Claude subscription</span></span>
+            </li>
+            <li>
+              <span class="ind yes-us"><span class="dot"></span></span>
+              <span class="li-label">Files stay on your disk</span>
+            </li>
+            <li>
+              <span class="ind yes-us"><span class="dot"></span></span>
+              <span class="li-label">Works in Claude Desktop and Claude Code</span>
+            </li>
+          </ul>
+        </div>
+
+        <div class="tool-card">
+          <h3>Filesystem MCP</h3>
+          <ul>
+            <li><span class="ind no"><span class="dash"></span></span><span class="li-label">Finds connections across files</span></li>
+            <li><span class="ind no"><span class="dash"></span></span><span class="li-label">Compiles raw inputs into structured pages</span></li>
+            <li><span class="ind yes-them"><span class="dot"></span></span><span class="li-label">Write capability<span class="li-caption">direct (no review step)</span></span></li>
+            <li><span class="ind yes-them"><span class="dot"></span></span><span class="li-label">Free to run<span class="li-caption">uses your Claude subscription</span></span></li>
+            <li><span class="ind yes-them"><span class="dot"></span></span><span class="li-label">Files stay on your disk</span></li>
+            <li><span class="ind yes-them"><span class="dot"></span></span><span class="li-label">Works in Claude Desktop and Claude Code</span></li>
+          </ul>
+        </div>
+
+        <div class="tool-card">
+          <h3>Smart Connections</h3>
+          <ul>
+            <li><span class="ind partial"><span class="ring"></span></span><span class="li-label">Finds connections across files<span class="li-caption">semantic, no graph</span></span></li>
+            <li><span class="ind no"><span class="dash"></span></span><span class="li-label">Compiles raw inputs into structured pages</span></li>
+            <li><span class="ind no"><span class="dash"></span></span><span class="li-label">Write capability<span class="li-caption">read-only</span></span></li>
+            <li><span class="ind no"><span class="dash"></span></span><span class="li-label">Free to run<span class="li-caption">BYOK OpenAI</span></span></li>
+            <li><span class="ind yes-them"><span class="dot"></span></span><span class="li-label">Files stay on your disk</span></li>
+            <li><span class="ind no"><span class="dash"></span></span><span class="li-label">Works in Claude Desktop and Claude Code<span class="li-caption">in-Obsidian only</span></span></li>
+          </ul>
+        </div>
+
+        <div class="tool-card">
+          <h3>NotebookLM</h3>
+          <ul>
+            <li><span class="ind partial"><span class="ring"></span></span><span class="li-label">Finds connections across files<span class="li-caption">Q&amp;A only, no graph</span></span></li>
+            <li><span class="ind no"><span class="dash"></span></span><span class="li-label">Compiles raw inputs into structured pages</span></li>
+            <li><span class="ind no"><span class="dash"></span></span><span class="li-label">Write capability<span class="li-caption">read-only</span></span></li>
+            <li><span class="ind yes-them"><span class="dot"></span></span><span class="li-label">Free to run<span class="li-caption">Google account</span></span></li>
+            <li><span class="ind no"><span class="dash"></span></span><span class="li-label">Files stay on your disk<span class="li-caption">uploaded to Google</span></span></li>
+            <li><span class="ind no"><span class="dash"></span></span><span class="li-label">Works in Claude Desktop and Claude Code</span></li>
+          </ul>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  // Theme toggle
+  (function () {
+    var btn = document.getElementById('themeToggle');
+    function label() {
+      var t = document.documentElement.getAttribute('data-theme');
+      btn.textContent = t === 'dark' ? 'Light' : 'Dark';
+    }
+    label();
+    btn.addEventListener('click', function () {
+      var cur = document.documentElement.getAttribute('data-theme');
+      var next = cur === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      try { localStorage.setItem('margins-theme', next); } catch (e) {}
+      label();
+      requestAnimationFrame(positionRing);
+    });
+  })();
+
+  // Position the vermillion ring around the Margins column.
+  // Pure CSS can't ring an arbitrary grid column with rounded outer corners
+  // while staying inside card padding, so we measure the header cell.
+  var ring = document.getElementById('usRing');
+  var matrix = document.getElementById('matrix');
+
+  function positionRing() {
+    if (!ring || !matrix) return;
+    var usHead = matrix.querySelector('.h-us');
+    if (!usHead) return;
+    var cardRect = matrix.getBoundingClientRect();
+    var usRect = usHead.getBoundingClientRect();
+    var left = usRect.left - cardRect.left - 6;
+    var width = usRect.width + 12;
+    var top = -4;
+    var height = matrix.offsetHeight + 8;
+    ring.style.left = left + 'px';
+    ring.style.width = width + 'px';
+    ring.style.top = top + 'px';
+    ring.style.height = height + 'px';
+    ring.style.opacity = window.innerWidth <= 720 ? '0' : '1';
+  }
+
+  window.addEventListener('load', positionRing);
+  window.addEventListener('resize', positionRing);
+  // Fonts can shift widths after load
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(positionRing);
+  }
+</script>
+
+</body>
+</html>

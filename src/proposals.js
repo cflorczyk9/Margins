@@ -1,5 +1,7 @@
 import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { parseFrontmatter, extractRawFileRefs, getType } from "./frontmatter.js";
+import { canonicalize } from "./paths.js";
 
 const PROPOSED_DIR = "proposed";
 
@@ -42,7 +44,7 @@ export function createProposals(vault) {
     return { proposalPath: relProposal(rel), destinationPath: rel };
   }
 
-  async function proposePage(rel, body) {
+  async function proposePage(rel, body, options = {}) {
     if (!rel || typeof rel !== "string") {
       throw new Error("path is required");
     }
@@ -50,14 +52,15 @@ export function createProposals(vault) {
       throw new Error(`destination path cannot start with ${PROPOSED_DIR}/`);
     }
     const vaultAbs = vault.resolveInside(rel);
-    if (await exists(vaultAbs)) {
+    const replacesVaultFile = await exists(vaultAbs);
+    if (replacesVaultFile && !options.force) {
       throw new Error(
         `${rel} already exists in vault. Use propose_edit or append_to instead.`
       );
     }
     const replaced = await exists(resolveProposed(rel));
     const result = await writeProposal(rel, body);
-    return { ...result, replacedExisting: replaced };
+    return { ...result, replacedExisting: replaced, replacesVaultFile };
   }
 
   async function proposeEdit(rel, before, after) {
@@ -145,11 +148,40 @@ export function createProposals(vault) {
     }
     if (action === "accept") {
       const destAbs = vault.resolveInside(rel);
+      const proposalBody = await readFile(proposalAbs, "utf8");
+
+      // Order matters. Write destination first (atomically). If the tracker
+      // update fails, the source page exists but the tracker is out of sync —
+      // detectable and repairable via margins_doctor. If we wrote the tracker
+      // first and the destination write failed, the tracker would point to a
+      // non-existent file, which is harder to diagnose.
       await mkdir(path.dirname(destAbs), { recursive: true });
-      await rename(proposalAbs, destAbs);
-      return { destinationPath: rel, action: "accepted" };
+      await atomicWrite(destAbs, proposalBody);
+
+      const trackerUpdate = await maybeAppendTrackerRow(vault, rel, proposalBody);
+
+      // Only delete the proposal after both writes succeeded. If the tracker
+      // step throws, the proposal stays — user can re-run resolve_proposal.
+      await rm(proposalAbs, { force: true });
+
+      return { destinationPath: rel, action: "accepted", trackerUpdated: trackerUpdate };
     }
     throw new Error(`unknown action '${action}'; use 'accept' or 'reject'`);
+  }
+
+  async function resetAllProposals() {
+    const items = await listProposals();
+    const deleted = [];
+    for (const item of items) {
+      const abs = vault.resolveInside(item.proposalPath);
+      try {
+        await rm(abs, { force: true });
+        deleted.push(item.proposalPath);
+      } catch {
+        // skip files that can't be removed (concurrent delete, permission issue)
+      }
+    }
+    return deleted;
   }
 
   return {
@@ -157,8 +189,94 @@ export function createProposals(vault) {
     proposeEdit,
     appendTo,
     listProposals,
-    resolveProposal
+    resolveProposal,
+    resetAllProposals
   };
+}
+
+const TRACKER_PATH = "wiki/ingest-tracker.md";
+const TRACKER_HEADER = `---
+type: tracker
+bucket: system
+summary: Source-file processing tracker for this Margins vault.
+tags: [tracker, ingest, system]
+voice: claude-draft
+---
+
+# Ingest Tracker
+
+This is the single source of truth for which source files in raw/ have been converted into wiki pages. Update it whenever ingest creates, rewrites, or skips a source.
+
+| Source file | Status | Source page | Connected pages | Words | Notes |
+|---|---|---|---|---:|---|
+`;
+const TRACKER_FOOTER = `
+## Status Vocabulary
+
+- ingested: source text was available and a wiki source page exists.
+- needs-extraction: the original file is preserved in raw/, but readable text was not available to the compiler.
+- skipped: the user intentionally chose not to file this source.
+- superseded: a newer source replaced this one as the preferred reference.
+`;
+
+async function maybeAppendTrackerRow(vault, destPath, body) {
+  const parsed = parseFrontmatter(body);
+  if (!parsed) return { changed: false, reason: "no-frontmatter" };
+  if (getType(parsed.data) !== "source") return { changed: false, reason: "not-a-source-page" };
+  const refs = extractRawFileRefs(parsed.data);
+  if (!refs.length) return { changed: false, reason: "no-raw-file" };
+  const rawFile = canonicalize(refs[0]);
+
+  const trackerAbs = vault.resolveInside(TRACKER_PATH);
+  let current;
+  try {
+    current = await readFile(trackerAbs, "utf8");
+  } catch {
+    current = null;
+  }
+
+  const slug = destPath.split("/").pop().replace(/\.md$/i, "");
+  const rowKey = `| ${rawFile} |`;
+  const row = `| ${rawFile} | ingested | [[${slug}]] | - |  |  |`;
+
+  if (current === null) {
+    const text = TRACKER_HEADER + row + "\n" + TRACKER_FOOTER;
+    await mkdir(path.dirname(trackerAbs), { recursive: true });
+    await atomicWrite(trackerAbs, text);
+    return { changed: true, action: "created", rawFile };
+  }
+
+  if (current.includes(rowKey)) {
+    return { changed: false, reason: "already-tracked", rawFile };
+  }
+
+  const lines = current.split("\n");
+  let insertAt = -1;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (/^\|\s+\S+\/\S+\s+\|/.test(lines[i]) || lines[i].startsWith("|---")) {
+      insertAt = i + 1;
+      break;
+    }
+  }
+  if (insertAt < 0) {
+    const next = current.endsWith("\n") ? current + row + "\n" : current + "\n" + row + "\n";
+    await atomicWrite(trackerAbs, next);
+    return { changed: true, action: "appended-end", rawFile };
+  }
+  lines.splice(insertAt, 0, row);
+  await atomicWrite(trackerAbs, lines.join("\n"));
+  return { changed: true, action: "appended", rawFile };
+}
+
+async function atomicWrite(absPath, content) {
+  const tmp = `${absPath}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  try {
+    await writeFile(tmp, content, "utf8");
+    await rename(tmp, absPath);
+  } catch (err) {
+    try { await rm(tmp, { force: true }); } catch {}
+    throw err;
+  }
 }
 
 function countOccurrences(haystack, needle) {

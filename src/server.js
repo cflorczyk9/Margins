@@ -7,7 +7,9 @@ import { detectIndexRoots } from "./index-roots.js";
 import { createPrimer, formatSummary } from "./primer.js";
 import { createCompile } from "./compile.js";
 import { supportedExtensionsList } from "./document-text.js";
-import { loadTelemetry, writeConsent } from "./telemetry.js";
+import { buildVaultIndex } from "./raw-index.js";
+import { diagnoseVault } from "./doctor.js";
+import { loadTelemetry, writeConsent, selfTagEnabled } from "./telemetry.js";
 import { createPreferences } from "./preferences.js";
 import { createWikilinks } from "./wikilinks.js";
 
@@ -49,16 +51,14 @@ with a one-line rule capturing the correction. Margins remembers it for
 next time. Don't record every minor disagreement; record durable rules
 about filing conventions, naming patterns, structural rules.
 
-INGESTING: raw transcripts, notes, PDFs, Word docs, spreadsheets, decks, emails, EPUBs, and other supported documents live in raw/<filename>. To file one
-into the vault, call propose_compile_from_raw with a summary you generate
-by reading the file.
+INGESTING: source documents (transcripts, notes, PDFs, Word docs, spreadsheets, decks, emails, EPUBs, etc.) live in folders Margins watches for compilation. By default that's raw/, but the user can set MARGINS_INGEST_ROOTS (comma-separated paths) to point Margins at additional folders. Call list_unprocessed to see files that haven't been compiled. To file one into the wiki, call propose_compile_from_raw with the file's vault-relative path and a summary you generate by reading the file. Files outside the watched roots are still compilable if you pass an explicit path — they just won't appear in list_unprocessed.
 
 TOOLS:
 - Context: margins_start, recall_preferences
-- Read: search_vault, read_page, list_recent, get_backlinks
+- Read: search_vault, read_page, list_recent, get_backlinks, list_unprocessed, margins_doctor
 - Propose writes: propose_page, propose_edit, append_to, propose_compile_from_raw
 - Suggest: propose_wikilinks (for A3/B3 vaults with few links)
-- Manage proposals: list_proposals, resolve_proposal
+- Manage proposals: list_proposals, resolve_proposal, margins_reset_proposals
 - Learn: record_preference
 - ChatGPT Deep Research: search, fetch`;
 
@@ -424,13 +424,13 @@ export function buildServer(vault, options = {}) {
     "propose_compile_from_raw",
     {
       description:
-        "Compile a supported source file under raw/ into a structured source page proposal. Supports: " +
+        "Compile a supported source file from anywhere in the vault into a structured wiki source page proposal. Supports: " +
         `${supportedExtensionsList()}. ` +
-        "You (the model) provide the review metadata: a summary, optional bucket, optional takeaways. Margins extracts readable text when needed, runs its compiler, and stages the result at proposed/<wiki path>. Use this when the user has dropped a raw transcript, note, PDF, Word doc, spreadsheet, deck, email, EPUB, article, or similar document into raw/ and wants it filed into the wiki.",
+        "The file can live at the vault root, in raw/, or in any custom subfolder — pass its vault-relative path. You (the model) provide the review metadata: a summary, optional bucket, optional takeaways. Margins extracts readable text, runs its compiler, and stages the result at proposed/<wiki path>. Use this whenever the user wants a document filed into the wiki where it can link to other notes.",
       inputSchema: {
         rawPath: z
           .string()
-          .describe("Path of the raw file. Either 'raw/foo.pdf' or just 'foo.pdf' (auto-prefixed)."),
+          .describe("Vault-relative path of the source file. Examples: 'raw/foo.pdf', 'meetings/march-7.md', 'lawyer/contract.pdf'. A bare filename (e.g. 'foo.pdf') is auto-prefixed with 'raw/' for back-compat."),
         summary: z.string().describe("1-3 sentence summary of what this source is about."),
         title: z.string().optional().describe("Title for the source page. Defaults to titlecased filename."),
         bucket: z.string().optional().describe("Wiki bucket. Default 'sources'. Try 'projects', 'career', 'ideas', etc."),
@@ -447,19 +447,39 @@ export function buildServer(vault, options = {}) {
           )
           .optional()
           .describe("Key takeaways. Either strings or {point, evidence} objects."),
-        summaryBullets: z.array(z.string()).optional().describe("Short summary bullets.")
+        summaryBullets: z.array(z.string()).optional().describe("Short summary bullets."),
+        force: z
+          .boolean()
+          .optional()
+          .describe(
+            "Replace an existing source page for this raw file. Default false — by default, a second compile call returns the existing source page rather than overwriting it."
+          )
       },
       annotations: { readOnlyHint: false, destructiveHint: false }
     },
-    async ({ rawPath, summary, title, bucket, destination_path, takeaways, summaryBullets }) => {
+    async ({ rawPath, summary, title, bucket, destination_path, takeaways, summaryBullets, force }) => {
       const result = await compile.proposeCompileFromRaw(rawPath, {
         summary,
         title,
         bucket,
         destination_path,
         takeaways,
-        summaryBullets
+        summaryBullets,
+        force
       });
+      if (result.status === "already-filed") {
+        return {
+          content: [
+            {
+              type: "text",
+              text:
+                `${result.rawFile} is already filed at ${result.existingPath}. ` +
+                "No proposal staged. Pass force=true to compile again and replace."
+            }
+          ],
+          structuredContent: result
+        };
+      }
       const lines = [
         `Compiled ${result.rawFile} → staged at ${result.proposalPath}`,
         `Title: ${result.title}`,
@@ -474,6 +494,81 @@ export function buildServer(vault, options = {}) {
       return {
         content: [{ type: "text", text: lines.join("\n") }],
         structuredContent: result
+      };
+    }
+  );
+
+  register(
+    "margins_doctor",
+    {
+      description:
+        "Diagnose the vault's health. Returns a structured report of issues: orphan source pages (raw_file points to a missing file), tracker drift (source pages without tracker rows, or tracker rows for missing sources), files with malformed frontmatter, and large raw files. Read-only — never modifies the vault. Use when the user asks 'is anything broken?', 'check my vault', or before major operations.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true }
+    },
+    async () => {
+      const report = await diagnoseVault(vault);
+      const { summary, issues } = report;
+      const lines = [
+        `Vault health: ${summary.issues_found} issue${summary.issues_found === 1 ? "" : "s"} (${summary.errors} error, ${summary.warnings} warning).`,
+        `Candidates: ${summary.candidates} | filed: ${summary.filed} | pending: ${summary.pending} | source pages: ${summary.source_pages}.`,
+        `Ingest roots: ${summary.ingest_roots.join(", ")}.`
+      ];
+      if (issues.length === 0) {
+        lines.push("", "No issues found.");
+      } else {
+        lines.push("");
+        for (const issue of issues) {
+          const tag = issue.severity === "error" ? "[error]" : issue.severity === "warn" ? "[warn]" : "[info]";
+          lines.push(`${tag} ${issue.kind}: ${issue.message}`);
+        }
+      }
+      return {
+        content: [{ type: "text", text: lines.join("\n") }],
+        structuredContent: report
+      };
+    }
+  );
+
+  register(
+    "list_unprocessed",
+    {
+      description:
+        "List vault files that have not yet been compiled into a wiki source page. Files can live anywhere in the vault (raw/ is conventional but not required) — detection works on raw_file: frontmatter, not folder placement. Use this when the user asks 'what haven't I filed yet?' or before a compile pass. Each item is a vault-relative path you can pass directly to propose_compile_from_raw.",
+      inputSchema: {
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(500)
+          .optional()
+          .describe("Maximum pending files to return. Default 50.")
+      },
+      annotations: { readOnlyHint: true }
+    },
+    async ({ limit }) => {
+      const index = await buildVaultIndex(vault);
+      const cap = limit ?? 50;
+      const shown = index.pending.slice(0, cap);
+      const filed = index.candidates.length - index.pending.length;
+      const header =
+        `Vault: ${index.candidates.length} compilation candidates. ` +
+        `${filed} already filed, ${index.pending.length} unprocessed.`;
+      const body =
+        shown.length === 0
+          ? "(nothing pending)"
+          : shown.map((n) => `  ${n}`).join("\n") +
+            (index.pending.length > shown.length
+              ? `\n  ... and ${index.pending.length - shown.length} more`
+              : "");
+      return {
+        content: [{ type: "text", text: `${header}\n${body}` }],
+        structuredContent: {
+          total_candidates: index.candidates.length,
+          filed,
+          pending_count: index.pending.length,
+          pending: shown
+        }
       };
     }
   );
@@ -527,6 +622,52 @@ export function buildServer(vault, options = {}) {
           { type: "text", text: `${result.destinationPath}: ${result.action}.` }
         ],
         structuredContent: result
+      };
+    }
+  );
+
+  register(
+    "margins_reset_proposals",
+    {
+      description:
+        "Clear all pending proposals from proposed/. Use when proposals have accumulated from failed Claude sessions, or when the user wants a clean slate. Returns the number of files that would be deleted. Requires confirm=true to actually delete — without confirm, returns a dry-run list. Vault files are never touched; only files under proposed/.",
+      inputSchema: {
+        confirm: z
+          .boolean()
+          .optional()
+          .describe(
+            "Pass true to actually delete the pending proposals. Default false returns a dry-run preview."
+          )
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true }
+    },
+    async ({ confirm }) => {
+      const items = await proposals.listProposals();
+      if (items.length === 0) {
+        return {
+          content: [{ type: "text", text: "No pending proposals to reset." }],
+          structuredContent: { dryRun: !confirm, count: 0, paths: [] }
+        };
+      }
+      const paths = items.map((i) => i.proposalPath);
+      if (!confirm) {
+        const lines = [
+          `Dry run: ${items.length} pending proposal${items.length === 1 ? "" : "s"} would be deleted.`,
+          ...paths.map((p) => `  ${p}`),
+          "",
+          "Re-run margins_reset_proposals with confirm=true to actually delete them."
+        ];
+        return {
+          content: [{ type: "text", text: lines.join("\n") }],
+          structuredContent: { dryRun: true, count: items.length, paths }
+        };
+      }
+      const deleted = await proposals.resetAllProposals();
+      return {
+        content: [
+          { type: "text", text: `Deleted ${deleted.length} pending proposal${deleted.length === 1 ? "" : "s"}.` }
+        ],
+        structuredContent: { dryRun: false, count: deleted.length, paths: deleted }
       };
     }
   );
@@ -604,6 +745,6 @@ export async function runStdio({ vaultRoot } = {}) {
   console.error(
     `margins-mcp: serving vault at ${vault.root} ` +
       `(index roots: ${roots.join(", ")}, detected via ${source}, ` +
-      `telemetry: ${telemetry.enabled ? "on" : "off"})`
+      `telemetry: ${telemetry.enabled ? (selfTagEnabled() ? "on/self-tagged" : "on") : "off"})`
   );
 }

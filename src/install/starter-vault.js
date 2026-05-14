@@ -6,10 +6,11 @@ const CLAUDE_MD = `# CLAUDE.md
 This vault was scaffolded by margins-mcp.
 
 ## How to use it
-- Drop raw transcripts, PDFs, Word docs, spreadsheets, decks, emails, EPUBs, or articles into \`raw/\`. Ask Claude to compile them with \`propose_compile_from_raw\`.
+- Drop any supported file (PDFs, Word, transcripts, spreadsheets, decks, emails, EPUBs, articles) into \`raw/\`. Files anywhere else in the vault are also compilable, but Margins only auto-discovers files in folders listed in \`MARGINS_INGEST_ROOTS\` (default: \`raw\`). To watch additional folders, set the env var like \`MARGINS_INGEST_ROOTS=raw,meetings,clippings\`.
+- Ask Claude to compile them with \`propose_compile_from_raw\` — each becomes a source page in \`wiki/sources/\` that links to people, concepts, and other notes. The linking is where the magic compounds.
 - Wiki pages live in \`wiki/\`. Sources, concepts, entities, syntheses, and your own structure are all welcome.
 - Proposals (Claude's suggested writes) stage at \`proposed/\` before landing. Review them with \`list_proposals\` and \`resolve_proposal\`.
-- Margins indexes everything under \`wiki/\` by default. Set \`MARGINS_INDEX_ROOTS\` to override.
+- \`list_unprocessed\` shows files in your ingest roots that haven't been compiled yet.
 
 ## Closed-set vocabulary for the log
 ingest | query | compile | lint | update
@@ -19,14 +20,14 @@ const OPERATOR_MANUAL = `# Operator manual
 
 This is the starter operator-manual. Margins assumes:
 
-1. Raw files are evidence. They live under \`raw/\` and don't get edited.
+1. Source files are evidence. They live anywhere in the vault and don't get edited. The \`raw/\` folder is the conventional inbox, but Margins works on files in any location.
 2. Wiki pages are the navigable layer. They live under \`wiki/\` and get linked, tagged, summarized.
 3. Proposed writes stay in \`proposed/\` until you accept them.
 4. The model is a drafter, not an autonomous editor. Always review proposals before accepting.
 
 When you ingest a new source, the typical flow is:
-- \`propose_compile_from_raw\` to turn the raw file into a structured source page
-- review, accept the source page
+- \`propose_compile_from_raw\` to turn the source file into a structured source page (pass its vault-relative path; files outside raw/ work too)
+- review, accept the source page — Margins auto-appends a row to \`wiki/ingest-tracker.md\`
 - ask Claude to update related entity / concept pages via \`propose_edit\` or \`append_to\`
 - review, accept each one
 

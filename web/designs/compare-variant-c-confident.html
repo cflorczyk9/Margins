@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>How Margins compares — Variant C (Confident-Playful)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&display=swap" rel="stylesheet">
+
+<!-- Apply theme before paint to prevent flash -->
+<script>
+(function() {
+  try {
+    var stored = localStorage.getItem('margins-theme');
+    var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    var theme = stored || (prefersDark ? 'dark' : 'light');
+    document.documentElement.setAttribute('data-theme', theme);
+  } catch (e) {
+    document.documentElement.setAttribute('data-theme', 'light');
+  }
+})();
+</script>
+
+<style>
+  /* ============================================================ */
+  /* Tokens — Light                                                */
+  /* ============================================================ */
+  :root {
+    --bg: #faf7f2;
+    --paper: #ffffff;
+    --paper-soft: #f5f1ea;
+    --ink: #1a1612;
+    --ink-2: #4a4339;
+    --ink-3: #6f6855;
+    --ink-4: #9b937f;
+    --line: #ece6d9;
+    --line-strong: #d8d0bf;
+    --accent: #d63a2f;
+    --accent-soft: rgba(214, 58, 47, 0.06);
+    --accent-line: rgba(214, 58, 47, 0.22);
+    --vermillion: #d63a2f;
+    --mustard: #f0c14b;
+    --cobalt: #2c5aa0;
+    --good: #5b7d57;
+
+    --tool-margins: var(--vermillion);
+    --tool-margins-ring: var(--mustard);
+    --tool-filesystem: #2a241c;
+    --tool-smart: var(--cobalt);
+    --tool-notebooklm: #8a8475;
+
+    --shadow-sm: 0 1px 1px rgba(26,22,18,0.04), 0 2px 6px rgba(26,22,18,0.04);
+    --shadow-md: 0 2px 4px rgba(26,22,18,0.05), 0 14px 32px rgba(26,22,18,0.07);
+  }
+
+  /* ============================================================ */
+  /* Tokens — Dark                                                 */
+  /* ============================================================ */
+  [data-theme="dark"] {
+    --bg: #15110d;
+    --paper: #1F1A14;
+    --paper-soft: #1A1612;
+    --ink: #E8E2D6;
+    --ink-2: #BFB6A4;
+    --ink-3: #8E8675;
+    --ink-4: #6A6354;
+    --line: #2E281F;
+    --line-strong: #3D362B;
+    --accent: #E04B3F;
+    --accent-soft: rgba(224, 75, 63, 0.10);
+    --accent-line: rgba(224, 75, 63, 0.28);
+    --vermillion: #E04B3F;
+    --mustard: #F0C14B;
+    --cobalt: #5B86C6;
+    --good: #8AC078;
+
+    --tool-margins: var(--vermillion);
+    --tool-margins-ring: var(--mustard);
+    --tool-filesystem: #BFB6A4;
+    --tool-smart: var(--cobalt);
+    --tool-notebooklm: #7A7466;
+
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.20), 0 4px 12px rgba(0,0,0,0.20);
+    --shadow-md: 0 2px 6px rgba(0,0,0,0.25), 0 14px 32px rgba(0,0,0,0.30);
+  }
+
+  /* ============================================================ */
+  /* Base                                                          */
+  /* ============================================================ */
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Manrope', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    letter-spacing: -0.005em;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    transition: background-color 240ms ease, color 240ms ease;
+  }
+  h1, h2, h3, p { margin: 0; }
+  ::selection { background: var(--accent); color: #fff; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 32px; }
+  @media (max-width: 560px) { .wrap { padding: 0 20px; } }
+
+  /* ============================================================ */
+  /* Theme toggle                                                  */
+  /* ============================================================ */
+  .theme-toggle {
+    position: fixed; top: 22px; right: 22px;
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    border: 1px solid var(--line-strong);
+    background: var(--paper);
+    color: var(--ink-2);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+    box-shadow: var(--shadow-sm);
+    z-index: 50;
+    transition: background-color 200ms ease, color 200ms ease, border-color 200ms ease;
+  }
+  .theme-toggle:hover { color: var(--accent); border-color: var(--accent-line); }
+  .theme-toggle .sun { display: none; }
+  .theme-toggle .moon { display: block; }
+  [data-theme="dark"] .theme-toggle .sun { display: block; }
+  [data-theme="dark"] .theme-toggle .moon { display: none; }
+
+  /* ============================================================ */
+  /* Section                                                       */
+  /* ============================================================ */
+  .compare-section {
+    position: relative;
+    padding: 96px 0 120px;
+    overflow: hidden;
+  }
+  .flourish {
+    position: absolute;
+    top: -60px; left: -120px;
+    width: 380px; height: 380px;
+    opacity: 0.18;
+    pointer-events: none;
+    z-index: 0;
+  }
+  [data-theme="dark"] .flourish { opacity: 0.10; }
+  .flourish svg { width: 100%; height: 100%; display: block; }
+
+  .compare-section .wrap { position: relative; z-index: 1; }
+
+  .eyebrow {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 14px;
+  }
+  .h-main {
+    font-family: 'Newsreader', Georgia, serif;
+    font-weight: 500;
+    font-size: 46px;
+    line-height: 1.08;
+    letter-spacing: -0.018em;
+    color: var(--ink);
+    margin-bottom: 18px;
+  }
+  .section-sub {
+    font-size: 17px;
+    line-height: 1.55;
+    color: var(--ink-2);
+    max-width: 64ch;
+    margin-bottom: 56px;
+  }
+  @media (max-width: 720px) {
+    .h-main { font-size: 34px; }
+    .section-sub { font-size: 16px; margin-bottom: 40px; }
+  }
+
+  /* ============================================================ */
+  /* Legend                                                        */
+  /* ============================================================ */
+  .legend {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin-bottom: 28px;
+    padding: 18px 22px;
+    background: var(--paper-soft);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+  }
+  .legend-glyph {
+    flex: 0 0 auto;
+    width: 32px; height: 32px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .legend-text {
+    min-width: 0;
+  }
+  .legend-name {
+    font-family: 'Manrope', sans-serif;
+    font-weight: 600;
+    font-size: 13.5px;
+    color: var(--ink);
+    line-height: 1.2;
+    letter-spacing: -0.005em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .legend-name.is-us { color: var(--accent); }
+  .legend-blurb {
+    font-size: 11.5px;
+    color: var(--ink-3);
+    line-height: 1.3;
+    margin-top: 2px;
+  }
+  @media (max-width: 720px) {
+    .legend {
+      grid-template-columns: repeat(2, 1fr);
+      padding: 16px;
+      gap: 14px 12px;
+    }
+  }
+  @media (max-width: 420px) {
+    .legend { grid-template-columns: 1fr; }
+  }
+
+  /* ============================================================ */
+  /* Rows                                                          */
+  /* ============================================================ */
+  .row-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .row-card {
+    position: relative;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 22px;
+    box-shadow: var(--shadow-sm);
+    padding: 28px 32px;
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+    align-items: center;
+    gap: 32px;
+    overflow: hidden;
+    transition: transform 220ms ease, box-shadow 220ms ease, border-color 220ms ease;
+  }
+  .row-card:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+    border-color: var(--line-strong);
+  }
+  /* vermillion accent rail anchored to the Margins glyph corner */
+  .row-card::after {
+    content: "";
+    position: absolute;
+    right: 0; bottom: 0;
+    height: 3px;
+    width: 96px;
+    background: var(--vermillion);
+    border-radius: 3px 0 22px 0;
+    opacity: 0.85;
+  }
+
+  .row-claim {
+    font-family: 'Newsreader', Georgia, serif;
+    font-weight: 500;
+    font-size: 22px;
+    line-height: 1.32;
+    color: var(--ink);
+    letter-spacing: -0.012em;
+  }
+  .row-claim em {
+    font-style: italic;
+    color: var(--ink-2);
+    font-weight: 400;
+  }
+
+  .tool-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    align-items: start;
+  }
+  .tool-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .tool-cell .tool-glyph {
+    width: 40px; height: 40px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .tool-caption {
+    font-size: 11.5px;
+    line-height: 1.3;
+    color: var(--ink-3);
+    font-weight: 500;
+    max-width: 14ch;
+  }
+  .tool-cell.is-us .tool-caption {
+    color: var(--ink-2);
+  }
+
+  @media (max-width: 860px) {
+    .row-card {
+      grid-template-columns: 1fr;
+      gap: 22px;
+      padding: 24px 22px;
+    }
+    .row-claim { font-size: 20px; }
+  }
+  @media (max-width: 560px) {
+    .tool-row { gap: 8px; }
+    .tool-caption { font-size: 11px; }
+  }
+
+  /* ============================================================ */
+  /* Footnote                                                      */
+  /* ============================================================ */
+  .footnote {
+    margin-top: 28px;
+    font-size: 12.5px;
+    color: var(--ink-3);
+    letter-spacing: 0.02em;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px;
+    align-items: center;
+  }
+  .footnote .swatch {
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .footnote .dot {
+    display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+    border: 1.5px solid var(--ink-3);
+  }
+  .footnote .dot.full {
+    background: var(--ink-3);
+  }
+  .footnote .dot.partial {
+    background: radial-gradient(circle, var(--ink-3) 0 30%, transparent 32%);
+  }
+  .footnote .dot.none {
+    background: transparent;
+  }
+</style>
+</head>
+<body>
+
+<button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
+  <span class="sun">☀</span>
+  <span class="moon">☾</span>
+</button>
+
+<section class="compare-section" id="compare">
+  <!-- Decorative Kandinsky-ish flourish -->
+  <div class="flourish" aria-hidden="true">
+    <svg viewBox="0 0 380 380" fill="none">
+      <circle cx="190" cy="190" r="150" stroke="var(--mustard)" stroke-width="2.5" fill="none" />
+      <circle cx="190" cy="190" r="110" stroke="var(--mustard)" stroke-width="1.5" fill="none" stroke-dasharray="3 6" />
+      <circle cx="240" cy="140" r="14" fill="var(--vermillion)" opacity="0.55" />
+      <line x1="60" y1="260" x2="120" y2="200" stroke="var(--cobalt)" stroke-width="2" stroke-linecap="round" />
+    </svg>
+  </div>
+
+  <div class="wrap">
+    <p class="eyebrow">Compare</p>
+    <h2 class="h-main">How Margins compares.</h2>
+    <p class="section-sub">There are a few other ways to point an AI at your notes. Here's where they overlap with Margins and where Margins is more specific.</p>
+
+    <!-- ============================================================ -->
+    <!-- LEGEND                                                        -->
+    <!-- ============================================================ -->
+    <div class="legend" role="list" aria-label="Tool legend">
+      <div class="legend-item" role="listitem">
+        <div class="legend-glyph">
+          <!-- Margins: vermillion disc + mustard ring -->
+          <svg viewBox="0 0 32 32" width="32" height="32" aria-hidden="true">
+            <circle cx="16" cy="16" r="13" fill="none" stroke="var(--mustard)" stroke-width="2.5" />
+            <circle cx="16" cy="16" r="8" fill="var(--vermillion)" />
+          </svg>
+        </div>
+        <div class="legend-text">
+          <div class="legend-name is-us">Margins MCP</div>
+          <div class="legend-blurb">vermillion + mustard</div>
+        </div>
+      </div>
+
+      <div class="legend-item" role="listitem">
+        <div class="legend-glyph">
+          <!-- Filesystem MCP: ink ring -->
+          <svg viewBox="0 0 32 32" width="32" height="32" aria-hidden="true">
+            <circle cx="16" cy="16" r="12" fill="none" stroke="var(--tool-filesystem)" stroke-width="2.25" />
+            <line x1="6" y1="22" x2="26" y2="10" stroke="var(--tool-filesystem)" stroke-width="1.5" stroke-linecap="round" />
+          </svg>
+        </div>
+        <div class="legend-text">
+          <div class="legend-name">Filesystem MCP</div>
+          <div class="legend-blurb">ink ring</div>
+        </div>
+      </div>
+
+      <div class="legend-item" role="listitem">
+        <div class="legend-glyph">
+          <!-- Smart Connections: cobalt circle -->
+          <svg viewBox="0 0 32 32" width="32" height="32" aria-hidden="true">
+            <circle cx="16" cy="16" r="12" fill="none" stroke="var(--cobalt)" stroke-width="2.25" />
+            <circle cx="16" cy="16" r="5" fill="var(--cobalt)" opacity="0.85" />
+          </svg>
+        </div>
+        <div class="legend-text">
+          <div class="legend-name">Smart Connections</div>
+          <div class="legend-blurb">cobalt circle</div>
+        </div>
+      </div>
+
+      <div class="legend-item" role="listitem">
+        <div class="legend-glyph">
+          <!-- NotebookLM: gray disc -->
+          <svg viewBox="0 0 32 32" width="32" height="32" aria-hidden="true">
+            <circle cx="16" cy="16" r="12" fill="none" stroke="var(--tool-notebooklm)" stroke-width="2.25" />
+            <circle cx="16" cy="16" r="7" fill="var(--tool-notebooklm)" opacity="0.45" />
+          </svg>
+        </div>
+        <div class="legend-text">
+          <div class="legend-name">NotebookLM</div>
+          <div class="legend-blurb">quiet gray</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- ROW CARDS                                                     -->
+    <!-- ============================================================ -->
+    <div class="row-stack">
+
+      <!-- Row 1: Connections across files -->
+      <article class="row-card">
+        <div class="row-claim">Finds connections across files — wikilinks, backlinks, cross-document synthesis.</div>
+        <div class="tool-row">
+          <!-- Margins: YES -->
+          <div class="tool-cell is-us">
+            <div class="tool-glyph">
+              <svg viewBox="0 0 40 40" width="40" height="40" aria-label="Margins: yes">
+                <circle cx="20" cy="20" r="16" fill="none" stroke="var(--mustard)" stroke-width="2.75" />
+                <circle cx="20" cy="20" r="10" fill="var(--vermillion)" />
+              </svg>
+            </div>
+            <div class="tool-caption">yes</div>
+          </div>
+          <!-- Filesystem: NO -->
+          <div class="tool-cell">
+            <div class="tool-glyph">
+              <svg viewBox="0 0 40 40" width="40" height="40" aria-label="Filesystem: no">
+                <line x1="10" y1="20" x2="30" y2="20" stroke="var(--tool-filesystem)" stroke-width="2.25" stroke-linecap="round" opacity="0.55" />
+              </svg>
+            </div>
+            <div class="tool-caption">no</div>
+          </div>
+          <!-- Smart Connections: PARTIAL -->
+          <div class="tool-cell">
+            <div class="tool-glyph">
+              <svg viewBox="0 0 40 40" width="40" height="40" aria-label="Smart Connections: partial">
+                <circle cx="20" cy="20" r="14" fill="none" stroke="var(--cobalt)" stroke-width="2.25" />
+                <circle cx="20" cy="20" r="4" fill="var(--cobalt)" opacity="0.85" />
+              </svg>
+            </div>
+            <div class="tool-caption">semantic, no graph</div>
+          </div>
+          <!-- NotebookLM: PARTIAL -->
+          <div class="tool-cell">
+            <div class="tool-glyph">
+              <svg viewBox="0 0 40 40" width="40" height="40" aria-label="NotebookLM: partial">
+                <circle cx="20" cy="20" r="14" fill="none" stroke="var(--tool-notebooklm)" stroke-width="2.25" />
+                <circle cx="20" cy="20" r="4" fill="var(--tool-notebooklm)" opacity="0.7" />
+              </svg>
+            </div>
+            <div class="tool-caption">Q&amp;A only, no graph</div>
+          </div>
+        </div>
+      </article>
+
+      <!-- Row 2: Compiles raw inputs -->
+      <article class="row-card">
+        <div class="row-claim">Compiles raw inputs into structured pages.</div>
+        <div class="tool-row">
+          <!-- Margins: YES -->
+          <div class="tool-cell is-us">
+            <div class="tool-glyph">
+              <svg viewBox="0 0 40 40" width="40" height="40" aria-label="Margins: yes">
+                <circle cx="20" cy="20" r="16" fill="none" stroke="var(--mustard)" stroke-width="2.75" />
+                <circle cx="20" cy="20" r="10" fill="var(--vermillion)" />
+              </svg>
+            </div>
+            <div class="tool-caption">yes</div>
+          </div>
+          <!-- Filesystem: NO -->
+          <div class="tool-cell">
+            <div class="tool-glyph">
+              <svg viewBox="0 0 40 40" width="40" height="40" aria-label="Filesystem: no">
+                <line x1="10" y1="20" x2="30" y2="20" stroke="var(--tool-filesystem)" stroke-width="2.25" stroke-linecap="round" opacity="0.55" />
+              </svg>
+            </div>
+            <div class="tool-caption">no</div>
+          </div>
+          <!-- Smart: NO -->
+          <div class="tool-cell">
+            <div class="tool-glyph">
+              <svg viewBox="0 0 40 40" width="40" height="40" aria-label="Smart Connections: no">
+                <line x1="10" y1="20" x2="30" y2="20" stroke="var(--cobalt)" stroke-width="2.25" stroke-linecap="round" opacity="0.55" />
+              </svg>
+            </div>
+            <div class="tool-caption">no</div>
+          </div>
+          <!-- NotebookLM: NO -->
+          <div class="tool-cell">
+            <div class="tool-glyph">
+              <svg viewBox="0 0 40 40" width="40" height="40" aria-label="NotebookLM: no">
+                <line x1="10" y1="20" x2="30" y2="20" stroke="var(--tool-notebooklm)" stroke-width="2.25" stroke-linecap="round" opacity="0.55" />
+              </svg>
+            </div>
+            <div class="tool-caption">no</div>
+          </div>
+        </div>
+      </article>
+
+      <!-- Row 3: Write capability -->
+      <article class="row-card">
+        <div class="row-claim">Write capability — how it changes your files.</div>
+        <div class="tool-row">
+          <!-- Margins: YES (propose-only) -->
+          <div class="tool-cell is-us">
+            <div class="tool-glyph">
+              <svg viewBox="0 0 40 40" width="40" height="40" aria-label="Margins: yes (propose-only)">
+                <circle cx="20" cy="20" r="16" fill="none" stroke="var(--mustard)" stroke-width="2.75" />
+                <circle cx="20" cy="20" r="10" fill="var(--vermillion)" />
+              </svg>
+            </div>
+            <div class="tool-caption">propose-only<br/>(you review)</div>
+          </div>
+          <!-- Filesystem: YES (direct) -->
+          <div class="tool-cell">
+            <div class="tool-glyph">
+              <svg viewBox="0 0 40 40" width="40" height="40" aria-label="Filesystem: yes (direct)">
+                <circle cx="20" cy="20" r="14" fill="var(--tool-filesystem)" />
+              </svg>
+            </div>
+            <div class="tool-caption">direct, no review</div>
+          </div>
+          <!-- Smart: NO (read-only) -->
+          <div class="tool-cell">
+            <div class="tool-glyph">
+              <svg viewBox="0 0 40 40" width="40" height="40" aria-label="Smart Connections: read-only">
+                <circle cx="20" cy="20" r="14" fill="none" stroke="var(--cobalt)" stroke-width="2.25" />
+              </svg>
+            </div>
+            <div class="tool-caption">read-only</div>
+          </div>
+          <!-- NotebookLM: NO (read-only) -->
+          <div class="tool-cell">
+            <div class="tool-glyph">
+              <svg viewBox="0 0 40 40" width="40" height="40" aria-label="NotebookLM: read-only">
+                <circle cx="20" cy="20" r="14" fill="none" stroke="var(--tool-notebooklm)" stroke-width="2.25" />
+              </svg>
+            </div>
+            <div class="tool-caption">read-only</div>
+          </div>
+        </div>
+      </article>
+
+      <!-- Row 4: Free to run -->
+      <article class="row-card">
+        <div class="row-claim">Free to run — no separate API meter.</div>
+        <div class="tool-row">
+          <!-- Margins: YES -->
+          <div class="tool-cell is-us">
+            <div class="tool-glyph">
+              <svg viewBox="0 0 40 40" width="40" height="40" aria-label="Margins: yes">
+                <circle cx="20" cy="20" r="16" fill="none" stroke="var(--mustard)" stroke-width="2.75" />
+                <circle cx="20" cy="20" r="10" fill="var(--vermillion)" />
+              </svg>
+            </div>
+            <div class="tool-caption">your Claude subscription</div>
+          </div>
+          <!-- Filesystem: YES -->
+          <div class="tool-cell">
+            <div class="tool-glyph">
+              <svg viewBox="0 0 40 40" width="40" height="40" aria-label="Filesystem: yes">
+                <circle cx="20" cy="20" r="14" fill="var(--tool-filesystem)" />
+              </svg>
+            </div>
+            <div class="tool-caption">your Claude subscription</div>
+          </div>
+          <!-- Smart: NO (BYOK OpenAI) -->
+          <div class="tool-cell">
+            <div class="tool-glyph">
+              <svg viewBox="0 0 40 40" width="40" height="40" aria-label="Smart Connections: no, BYOK OpenAI">
+                <line x1="10" y1="20" x2="30" y2="20" stroke="var(--cobalt)" stroke-width="2.25" stroke-linecap="round" opacity="0.55" />
+              </svg>
+            </div>
+            <div class="tool-caption">BYOK OpenAI</div>
+          </div>
+          <!-- NotebookLM: YES -->
+          <div class="tool-cell">
+            <div class="tool-glyph">
+              <svg viewBox="0 0 40 40" width="40" height="40" aria-label="NotebookLM: yes">
+                <circle cx="20" cy="20" r="14" fill="var(--tool-notebooklm)" opacity="0.85" />
+              </svg>
+            </div>
+            <div class="tool-caption">Google account</div>
+          </div>
+        </div>
+      </article>
+
+      <!-- Row 5: Files stay on disk -->
+      <article class="row-card">
+        <div class="row-claim">Files stay on your disk — never uploaded.</div>
+        <div class="tool-row">
+          <!-- Margins: YES -->
+          <div class="tool-cell is-us">
+            <div class="tool-glyph">
+              <svg viewBox="0 0 40 40" width="40" height="40" aria-label="Margins: yes">
+                <circle cx="20" cy="20" r="16" fill="none" stroke="var(--mustard)" stroke-width="2.75" />
+                <circle cx="20" cy="20" r="10" fill="var(--vermillion)" />
+              </svg>
+            </div>
+            <div class="tool-caption">yes</div>
+          </div>
+          <!-- Filesystem: YES -->
+          <div class="tool-cell">
+            <div class="tool-glyph">
+              <svg viewBox="0 0 40 40" width="40" height="40" aria-label="Filesystem: yes">
+                <circle cx="20" cy="20" r="14" fill="var(--tool-filesystem)" />
+              </svg>
+            </div>
+            <div class="tool-caption">yes</div>
+          </div>
+          <!-- Smart: YES -->
+          <div class="tool-cell">
+            <div class="tool-glyph">
+              <svg viewBox="0 0 40 40" width="40" height="40" aria-label="Smart Connections: yes">
+                <circle cx="20" cy="20" r="14" fill="var(--cobalt)" opacity="0.9" />
+              </svg>
+            </div>
+            <div class="tool-caption">yes</div>
+          </div>
+          <!-- NotebookLM: NO -->
+          <div class="tool-cell">
+            <div class="tool-glyph">
+              <svg viewBox="0 0 40 40" width="40" height="40" aria-label="NotebookLM: no, uploaded to Google">
+                <line x1="10" y1="20" x2="30" y2="20" stroke="var(--tool-notebooklm)" stroke-width="2.25" stroke-linecap="round" opacity="0.55" />
+              </svg>
+            </div>
+            <div class="tool-caption">uploaded to Google</div>
+          </div>
+        </div>
+      </article>
+
+      <!-- Row 6: Works in Claude Desktop and Claude Code -->
+      <article class="row-card">
+        <div class="row-claim">Works in Claude Desktop and Claude Code.</div>
+        <div class="tool-row">
+          <!-- Margins: YES -->
+          <div class="tool-cell is-us">
+            <div class="tool-glyph">
+              <svg viewBox="0 0 40 40" width="40" height="40" aria-label="Margins: yes">
+                <circle cx="20" cy="20" r="16" fill="none" stroke="var(--mustard)" stroke-width="2.75" />
+                <circle cx="20" cy="20" r="10" fill="var(--vermillion)" />
+              </svg>
+            </div>
+            <div class="tool-caption">yes</div>
+          </div>
+          <!-- Filesystem: YES -->
+          <div class="tool-cell">
+            <div class="tool-glyph">
+              <svg viewBox="0 0 40 40" width="40" height="40" aria-label="Filesystem: yes">
+                <circle cx="20" cy="20" r="14" fill="var(--tool-filesystem)" />
+              </svg>
+            </div>
+            <div class="tool-caption">yes</div>
+          </div>
+          <!-- Smart: NO (in-Obsidian only) -->
+          <div class="tool-cell">
+            <div class="tool-glyph">
+              <svg viewBox="0 0 40 40" width="40" height="40" aria-label="Smart Connections: in-Obsidian only">
+                <line x1="10" y1="20" x2="30" y2="20" stroke="var(--cobalt)" stroke-width="2.25" stroke-linecap="round" opacity="0.55" />
+              </svg>
+            </div>
+            <div class="tool-caption">in-Obsidian only</div>
+          </div>
+          <!-- NotebookLM: NO -->
+          <div class="tool-cell">
+            <div class="tool-glyph">
+              <svg viewBox="0 0 40 40" width="40" height="40" aria-label="NotebookLM: no">
+                <line x1="10" y1="20" x2="30" y2="20" stroke="var(--tool-notebooklm)" stroke-width="2.25" stroke-linecap="round" opacity="0.55" />
+              </svg>
+            </div>
+            <div class="tool-caption">no</div>
+          </div>
+        </div>
+      </article>
+
+    </div>
+
+    <!-- Glyph key -->
+    <div class="footnote" aria-label="Glyph key">
+      <span class="swatch"><span class="dot full"></span> filled = yes</span>
+      <span class="swatch"><span class="dot partial"></span> ring + dot = partial</span>
+      <span class="swatch"><span class="dot none"></span> ring only / dash = no</span>
+    </div>
+  </div>
+</section>
+
+<script>
+  // Theme toggle
+  (function() {
+    var btn = document.getElementById('themeToggle');
+    if (!btn) return;
+    btn.addEventListener('click', function() {
+      var current = document.documentElement.getAttribute('data-theme') || 'light';
+      var next = current === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      try { localStorage.setItem('margins-theme', next); } catch (e) {}
+    });
+  })();
+</script>
+
+</body>
+</html>

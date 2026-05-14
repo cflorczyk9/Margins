@@ -436,23 +436,35 @@
     60%  { opacity: 1; filter: blur(2px); }
     100% { opacity: 1; transform: translate(0,0) scale(1); filter: blur(0); }
   }
+  /* Disc layers run filter-free during the cascade. A CSS `filter` on the
+     parallax-layer (even blur(0)) makes it its own stacking context,
+     which would isolate the .hero-disc multiply blend inside one disc
+     and prevent it from compositing against its sibling. When .cascading
+     was later removed at t=2.1s, the stacking context would collapse and
+     the multiply would suddenly "snap on," producing a visible darker
+     overlap at the very end of the entrance. Keeping the discs filter-free
+     means multiply applies consistently from frame 1, no color switch. */
+  .hero-art.cascading .p-disc-mustard,
+  .hero-art.cascading .p-disc-vermillion {
+    will-change: transform, opacity;
+  }
   .hero-art.cascading .p-disc-mustard {
     animation-name: cascade-mustard;
     animation-delay: calc(3 * var(--cascade-stagger));
   }
   @keyframes cascade-mustard {
-    0%   { opacity: 0; transform: translate(34px, -30px) scale(2.5); filter: blur(14px); }
-    60%  { opacity: 1; filter: blur(2px); }
-    100% { opacity: 1; transform: translate(0,0) scale(1); filter: blur(0); }
+    0%   { opacity: 0; transform: translate(34px, -30px) scale(2.5); }
+    60%  { opacity: 1; }
+    100% { opacity: 1; transform: translate(0,0) scale(1); }
   }
   .hero-art.cascading .p-disc-vermillion {
     animation-name: cascade-vermillion;
     animation-delay: calc(4 * var(--cascade-stagger));
   }
   @keyframes cascade-vermillion {
-    0%   { opacity: 0; transform: translate(36px, 0) scale(2.4); filter: blur(13px); }
-    60%  { opacity: 1; filter: blur(2px); }
-    100% { opacity: 1; transform: translate(0,0) scale(1); filter: blur(0); }
+    0%   { opacity: 0; transform: translate(36px, 0) scale(2.4); }
+    60%  { opacity: 1; }
+    100% { opacity: 1; transform: translate(0,0) scale(1); }
   }
   .hero-art.cascading .p-dot-center {
     animation-name: cascade-pin;
@@ -2188,6 +2200,7 @@
       <div class="nav-links">
         <a href="#how" class="nav-secondary">How it works</a>
         <a href="#demo">Demo</a>
+        <a href="/how-it-works.html" class="nav-tertiary">Detail</a>
         <a href="#compare" class="nav-tertiary">Compare</a>
         <a href="#faq" class="nav-secondary">FAQ</a>
         <a href="#get-started">Install</a>
@@ -2299,6 +2312,10 @@
         <p>Claude searches the sources you've built, cites where each fact came from, and surfaces connections you didn't make: a meeting that overlaps with another, a thread you forgot was open, a pattern across months of notes. New edits go in <code>proposed/</code> for your review.</p>
       </div>
     </div>
+
+    <p style="margin-top:2rem; font-size:0.95rem; color:var(--ink-2);">
+      Want the longer version? <a href="/how-it-works.html">See the full walkthrough</a> — folder layouts, the connection diagram, every tool Claude can call, and what the first month looks like.
+    </p>
   </div>
 </section>
 

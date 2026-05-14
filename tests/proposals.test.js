@@ -1,6 +1,6 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { cp, mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { fileURLToPath } from "node:url";
@@ -160,4 +160,116 @@ test("writes targeting 'proposed/<x>' rejected", async () => {
     () => proposals.proposePage("proposed/wiki/foo.md", "x"),
     /cannot start with proposed/
   );
+});
+
+test("resolve_proposal accept appends a tracker row when proposal is a source page", async () => {
+  const body = `---
+type: source
+bucket: sources
+summary: Test source
+raw_file: raw/topic.md
+---
+
+# Source: Topic
+`;
+  await proposals.proposePage("wiki/sources/source-topic.md", body);
+  const result = await proposals.resolveProposal("wiki/sources/source-topic.md", "accept");
+  assert.equal(result.action, "accepted");
+  assert.ok(result.trackerUpdated.changed, "tracker should be updated");
+  assert.equal(result.trackerUpdated.action, "created");
+  const tracker = await read("wiki/ingest-tracker.md");
+  assert.match(tracker, /\| raw\/topic\.md \| ingested \| \[\[source-topic\]\]/);
+});
+
+test("resolve_proposal accept appends to existing tracker", async () => {
+  const seed = `---
+type: tracker
+---
+
+# Ingest Tracker
+
+| Source file | Status | Source page | Connected pages | Words | Notes |
+|---|---|---|---|---:|---|
+| raw/old.md | ingested | [[source-old]] | - |  |  |
+`;
+  const trackerAbs = path.join(tmpRoot, "wiki/ingest-tracker.md");
+  await mkdir(path.dirname(trackerAbs), { recursive: true });
+  await writeFile(trackerAbs, seed, "utf8");
+  const body = `---
+type: source
+raw_file: raw/new.md
+---
+`;
+  await proposals.proposePage("wiki/sources/source-new.md", body);
+  await proposals.resolveProposal("wiki/sources/source-new.md", "accept");
+  const tracker = await read("wiki/ingest-tracker.md");
+  assert.match(tracker, /\| raw\/old\.md \|/);
+  assert.match(tracker, /\| raw\/new\.md \| ingested \| \[\[source-new\]\]/);
+});
+
+test("resolve_proposal accept is idempotent on tracker rows", async () => {
+  const body = `---
+type: source
+raw_file: raw/idem.md
+---
+`;
+  await proposals.proposePage("wiki/sources/source-idem.md", body);
+  const first = await proposals.resolveProposal("wiki/sources/source-idem.md", "accept");
+  assert.equal(first.trackerUpdated.changed, true);
+
+  await proposals.proposePage("wiki/sources/source-idem.md", body, { force: true });
+  const second = await proposals.resolveProposal("wiki/sources/source-idem.md", "accept");
+  assert.equal(second.trackerUpdated.changed, false);
+  assert.equal(second.trackerUpdated.reason, "already-tracked");
+
+  const tracker = await read("wiki/ingest-tracker.md");
+  const matches = tracker.match(/\| raw\/idem\.md \|/g) || [];
+  assert.equal(matches.length, 1);
+});
+
+test("resolve_proposal accept on non-source proposal does not touch tracker", async () => {
+  await proposals.proposePage("wiki/notes/random.md", "# Random\n\nNot a source.\n");
+  const result = await proposals.resolveProposal("wiki/notes/random.md", "accept");
+  assert.equal(result.trackerUpdated.changed, false);
+});
+
+test("tracker append works for source pages with non-raw raw_file paths", async () => {
+  const body = `---
+type: source
+raw_file: meetings/march-7.md
+---
+
+# Source: March 7
+`;
+  await proposals.proposePage("wiki/sources/source-march-7.md", body);
+  const result = await proposals.resolveProposal("wiki/sources/source-march-7.md", "accept");
+  assert.equal(result.action, "accepted");
+  assert.equal(result.trackerUpdated.changed, true);
+  const tracker = await read("wiki/ingest-tracker.md");
+  assert.match(tracker, /\| meetings\/march-7\.md \| ingested \| \[\[source-march-7\]\]/);
+});
+
+test("tracker is idempotent for non-raw paths too", async () => {
+  const body = `---
+type: source
+raw_file: clippings/foo.md
+---
+`;
+  await proposals.proposePage("wiki/sources/source-foo.md", body);
+  await proposals.resolveProposal("wiki/sources/source-foo.md", "accept");
+  await proposals.proposePage("wiki/sources/source-foo.md", body, { force: true });
+  await proposals.resolveProposal("wiki/sources/source-foo.md", "accept");
+  const tracker = await read("wiki/ingest-tracker.md");
+  const matches = tracker.match(/\| clippings\/foo\.md \|/g) || [];
+  assert.equal(matches.length, 1);
+});
+
+test("resetAllProposals removes every staged proposal", async () => {
+  await proposals.proposePage("wiki/a.md", "a");
+  await proposals.proposePage("wiki/b.md", "b");
+  await proposals.proposePage("wiki/c.md", "c");
+  const deleted = await proposals.resetAllProposals();
+  assert.equal(deleted.length, 3);
+  const remaining = await proposals.listProposals();
+  assert.equal(remaining.length, 0);
 });

@@ -167,7 +167,7 @@ test("detectInstallLocation flags npx-cache paths as fragile", () => {
   );
 });
 
-test("probeServer starts margins-mcp and lists 12 tools", async () => {
+test("probeServer starts margins-mcp and lists expected tools", async () => {
   const fixtureVault = path.join(__dirname, "fixtures");
   const result = await probeServer({ serverBin: SERVER_BIN, vaultPath: fixtureVault });
   assert.equal(result.initialized, true);
@@ -176,4 +176,7 @@ test("probeServer starts margins-mcp and lists 12 tools", async () => {
   assert.ok(names.includes("margins_start"));
   assert.ok(names.includes("propose_compile_from_raw"));
   assert.ok(names.includes("propose_page"));
+  assert.ok(names.includes("list_unprocessed"));
+  assert.ok(names.includes("margins_doctor"));
+  assert.ok(names.includes("margins_reset_proposals"));
 });
