@@ -335,6 +335,9 @@
     margin: 0 0 24px;
     color: var(--ink);
   }
+  h1.hero-title .hero-line {
+    display: block;
+  }
   h1.hero-title em {
     font-style: italic;
     color: var(--accent);
@@ -602,7 +605,9 @@
     border-radius: 20px;
     box-shadow: var(--shadow-md);
     padding: 8px;
-    overflow: hidden;
+    /* overflow stays visible so the .us-ring can extend flush with the card's
+       top and bottom edges. The cells inside don't reach the rounded corners
+       anyway (8px padding), so this won't leak content past the card border. */
   }
   .matrix {
     display: grid;
@@ -1787,7 +1792,7 @@
     <div class="hero-row">
       <div>
         <div class="kicker">Free · Open source · Margins MCP</div>
-        <h1 class="hero-title">Your Claude subscription,<br>on your <em>files</em>.</h1>
+        <h1 class="hero-title"><span class="hero-line">Your Claude subscription,</span><span class="hero-line">on your <em>files</em>.</span></h1>
         <p class="hero-sub">A small, free app. You give Margins access to a folder; Claude only sees what's inside it. Drop in your notes, writing, PDFs, transcripts — Claude reads each one and helps you turn it into a clean source page you can search later. Works with Obsidian, plain text, or any folder of files. No API key. Your files stay on your machine.</p>
         <div class="hero-cta">
           <a href="#get-started" class="btn btn-primary">Get started <span class="arrow">→</span></a>
@@ -2288,12 +2293,17 @@ function positionUsRing() {
   if (!matrixEl || !usRingEl) return;
   const usHead = matrixEl.querySelector(".h-us");
   if (!usHead) return;
-  const cardRect = matrixEl.getBoundingClientRect();
+  // Position the ring relative to the .matrix-card (its position:relative
+  // ancestor), not relative to the matrix itself — that way the top/bottom
+  // edges of the ring track the card's content box (just inside the border)
+  // and look flush with the card edges.
+  const cardEl = matrixEl.parentElement;
+  const cardRect = cardEl.getBoundingClientRect();
   const usRect = usHead.getBoundingClientRect();
   usRingEl.style.left = (usRect.left - cardRect.left - 6) + "px";
   usRingEl.style.width = (usRect.width + 12) + "px";
-  usRingEl.style.top = "-4px";
-  usRingEl.style.height = (matrixEl.offsetHeight + 8) + "px";
+  usRingEl.style.top = "4px";
+  usRingEl.style.height = (cardEl.clientHeight - 8) + "px";
   usRingEl.style.opacity = window.innerWidth <= 720 ? "0" : "1";
 }
 window.addEventListener("load", positionUsRing);
