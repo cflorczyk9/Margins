@@ -6,6 +6,7 @@ import { createProposals } from "./proposals.js";
 import { detectIndexRoots } from "./index-roots.js";
 import { createPrimer, formatSummary } from "./primer.js";
 import { createCompile } from "./compile.js";
+import { supportedExtensionsList } from "./document-text.js";
 import { loadTelemetry, writeConsent } from "./telemetry.js";
 import { createPreferences } from "./preferences.js";
 import { createWikilinks } from "./wikilinks.js";
@@ -48,7 +49,7 @@ with a one-line rule capturing the correction. Margins remembers it for
 next time. Don't record every minor disagreement; record durable rules
 about filing conventions, naming patterns, structural rules.
 
-INGESTING: raw transcripts and notes live in raw/<filename>. To file one
+INGESTING: raw transcripts, notes, PDFs, Word docs, spreadsheets, decks, emails, EPUBs, and other supported documents live in raw/<filename>. To file one
 into the vault, call propose_compile_from_raw with a summary you generate
 by reading the file.
 
@@ -99,8 +100,8 @@ export function buildServer(vault, options = {}) {
         "(1) mode='pile' for unstructured many-file vaults — returns a time-stratified sample of vault files, " +
         "filename patterns, and (importantly) a rawScan with a priorityQueue of raw/ files to compile FIRST via " +
         "propose_compile_from_raw. If priorityQueue is non-empty, your best opening move is to compile those " +
-        "files in parallel in a single turn (read_page each, then propose_compile_from_raw with a structured " +
-        "summary) — the user dropped source documents and wants wiki source pages within ~90 seconds. " +
+        "files in parallel in a single turn (read_page each to get readable text, then propose_compile_from_raw " +
+        "with a structured summary) — the user dropped source documents and wants wiki source pages within ~90 seconds. " +
         "(2) mode='empty' for near-empty vaults — ask what the user wants and offer to scaffold. " +
         "(3) mode='synthesis' for organized linked vaults — returns folder stats, pending proposals, " +
         "uningested files, recent user preferences, and the vault's CLAUDE.md. Ground answers in this structure " +
@@ -238,7 +239,7 @@ export function buildServer(vault, options = {}) {
   register(
     "read_page",
     {
-      description: "Read a single vault page by relative path (e.g. 'wiki/career/career.md').",
+      description: "Read a single vault file by relative path (e.g. 'wiki/career/career.md' or 'raw/report.pdf'). Extracts readable text from supported document formats before returning it.",
       inputSchema: {
         path: z.string().describe("Path relative to the vault root.")
       },
@@ -423,11 +424,13 @@ export function buildServer(vault, options = {}) {
     "propose_compile_from_raw",
     {
       description:
-        "Compile a text file under raw/ into a structured source page proposal. You (the model) provide the review metadata: a summary, optional bucket, optional takeaways. Margins runs its compiler and stages the result at proposed/<wiki path>. Use this when the user has dropped a raw transcript / notes file into raw/ and wants it filed into the wiki. v0.3: text only (.md, .markdown, .txt). PDF/DOCX support deferred to v0.4.",
+        "Compile a supported source file under raw/ into a structured source page proposal. Supports: " +
+        `${supportedExtensionsList()}. ` +
+        "You (the model) provide the review metadata: a summary, optional bucket, optional takeaways. Margins extracts readable text when needed, runs its compiler, and stages the result at proposed/<wiki path>. Use this when the user has dropped a raw transcript, note, PDF, Word doc, spreadsheet, deck, email, EPUB, article, or similar document into raw/ and wants it filed into the wiki.",
       inputSchema: {
         rawPath: z
           .string()
-          .describe("Path of the raw file. Either 'raw/foo.md' or just 'foo.md' (auto-prefixed)."),
+          .describe("Path of the raw file. Either 'raw/foo.pdf' or just 'foo.pdf' (auto-prefixed)."),
         summary: z.string().describe("1-3 sentence summary of what this source is about."),
         title: z.string().optional().describe("Title for the source page. Defaults to titlecased filename."),
         bucket: z.string().optional().describe("Wiki bucket. Default 'sources'. Try 'projects', 'career', 'ideas', etc."),

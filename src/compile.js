@@ -1,8 +1,7 @@
-import { readFile, readdir, stat } from "node:fs/promises";
+import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { compileVault } from "./compiler/compiler.js";
-
-const TEXT_EXTENSIONS = new Set([".md", ".markdown", ".txt"]);
+import { extractDocumentText, supportedExtensionsList } from "./document-text.js";
 
 export function createCompile(vault, proposals) {
   async function proposeCompileFromRaw(rawPath, review) {
@@ -23,15 +22,7 @@ export function createCompile(vault, proposals) {
       throw new Error(`not a file: ${fullRawPath}`);
     }
 
-    const ext = path.extname(absRaw).toLowerCase();
-    if (!TEXT_EXTENSIONS.has(ext)) {
-      throw new Error(
-        `unsupported file type ${ext}. Supported: .md, .markdown, .txt. ` +
-          `Convert PDFs/DOCX to text first; native binary support is planned for v0.4.`
-      );
-    }
-
-    const text = await readFile(absRaw, "utf8");
+    const text = await extractDocumentText(absRaw, fullRawPath);
     const fileName = path.basename(absRaw);
 
     const fullReview = buildReview(review || {}, fileName);
@@ -121,7 +112,7 @@ async function buildNotFoundError(vault, fullRawPath, requested) {
   try {
     entries = await readdir(vault.resolveInside("raw"), { withFileTypes: true });
   } catch {
-    return `raw/ directory not found in this vault. Drop a markdown or text file at <vault>/raw/<your-file> first, then try again.`;
+    return `raw/ directory not found in this vault. Drop a supported source file (${supportedExtensionsList()}) at <vault>/raw/<your-file> first, then try again.`;
   }
   const available = entries
     .filter((e) => e.isFile())

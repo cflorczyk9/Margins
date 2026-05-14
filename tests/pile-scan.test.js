@@ -41,6 +41,30 @@ test("scanRawForCompile returns priority queue capped at topN", async () => {
   assert.equal(result.priorityQueue.length, 5);
 });
 
+test("scanRawForCompile includes supported non-markdown raw files", async () => {
+  await touch("raw/report.pdf", "a".repeat(500));
+  await touch("raw/call.docx", "b".repeat(500));
+  await touch("raw/sheet.xlsx", "c".repeat(500));
+  await touch("raw/deck.pptx", "d".repeat(500));
+  await touch("raw/message.eml", "e".repeat(500));
+  await touch("raw/book.epub", "f".repeat(500));
+  await touch("raw/doc.odt", "g".repeat(500));
+  await touch("raw/table.ods", "h".repeat(500));
+  await touch("raw/image.png", "z".repeat(500));
+  const result = await scanRawForCompile(vault, { topN: 10 });
+  const queuePaths = result.priorityQueue.map((q) => q.path);
+  assert.equal(result.totalRawFiles, 8);
+  assert.ok(queuePaths.includes("raw/report.pdf"));
+  assert.ok(queuePaths.includes("raw/call.docx"));
+  assert.ok(queuePaths.includes("raw/sheet.xlsx"));
+  assert.ok(queuePaths.includes("raw/deck.pptx"));
+  assert.ok(queuePaths.includes("raw/message.eml"));
+  assert.ok(queuePaths.includes("raw/book.epub"));
+  assert.ok(queuePaths.includes("raw/doc.odt"));
+  assert.ok(queuePaths.includes("raw/table.ods"));
+  assert.ok(!queuePaths.includes("raw/image.png"));
+});
+
 test("priorityQueue prefers larger and more-recent files", async () => {
   const base = Math.floor(Date.now() / 1000) - 86400 * 10;
   // Small + old

@@ -6,7 +6,7 @@ const CLAUDE_MD = `# CLAUDE.md
 This vault was scaffolded by margins-mcp.
 
 ## How to use it
-- Drop raw transcripts, PDFs, articles into \`raw/\`. Ask Claude to compile them with \`propose_compile_from_raw\`.
+- Drop raw transcripts, PDFs, Word docs, spreadsheets, decks, emails, EPUBs, or articles into \`raw/\`. Ask Claude to compile them with \`propose_compile_from_raw\`.
 - Wiki pages live in \`wiki/\`. Sources, concepts, entities, syntheses, and your own structure are all welcome.
 - Proposals (Claude's suggested writes) stage at \`proposed/\` before landing. Review them with \`list_proposals\` and \`resolve_proposal\`.
 - Margins indexes everything under \`wiki/\` by default. Set \`MARGINS_INDEX_ROOTS\` to override.
