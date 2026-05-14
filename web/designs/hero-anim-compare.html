@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Hero animation variants — Margins</title>
+<style>
+  :root {
+    --bg: #faf7f2;
+    --paper: #ffffff;
+    --ink: #1a1612;
+    --ink-2: #4a423a;
+    --ink-3: #847a6b;
+    --line: #ece6d9;
+    --line-strong: #d8d0bf;
+    --accent: #d63a2f;
+    --accent-soft: rgba(214,58,47,0.06);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); font-family: 'Manrope', -apple-system, BlinkMacSystemFont, system-ui, sans-serif; }
+  h1 { font-family: 'Newsreader', Georgia, serif; font-weight: 500; font-size: 28px; margin: 0; letter-spacing: -0.015em; }
+  .head { padding: 24px 32px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
+  .lede { font-size: 14px; color: var(--ink-2); max-width: 60ch; line-height: 1.5; }
+  .replay-all {
+    background: var(--ink); color: var(--bg);
+    border: none; border-radius: 999px;
+    padding: 10px 18px; font: 600 13px/1 'Manrope', sans-serif;
+    cursor: pointer; transition: background 200ms ease;
+  }
+  .replay-all:hover { background: var(--accent); }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0;
+    padding: 0;
+  }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+  .cell {
+    position: relative;
+    border-right: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    background: var(--bg);
+    min-height: 540px;
+    display: flex;
+    flex-direction: column;
+  }
+  .cell:nth-child(2n) { border-right: none; }
+  @media (max-width: 900px) { .cell { border-right: none; } }
+  .cell .label {
+    padding: 14px 20px 10px;
+    border-bottom: 1px dashed var(--line);
+    display: flex; align-items: baseline; gap: 12px; justify-content: space-between;
+  }
+  .cell .label .name {
+    font-weight: 700; font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase;
+    color: var(--ink);
+  }
+  .cell .label .pill {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.10em; text-transform: uppercase;
+    color: var(--ink-3); background: var(--paper); border: 1px solid var(--line); padding: 3px 9px; border-radius: 999px;
+  }
+  .cell .label .summary {
+    font-size: 12.5px; color: var(--ink-3); margin-top: 4px; line-height: 1.4;
+  }
+  .cell .label .meta { display: block; width: 100%; }
+  .cell iframe {
+    border: 0;
+    flex: 1;
+    width: 100%;
+    background: var(--bg);
+  }
+</style>
+</head>
+<body>
+  <div class="head">
+    <div>
+      <h1>Hero animation — four variants</h1>
+      <p class="lede">Same final-state Kandinsky composition; four different entrance behaviors. Click <strong>Replay all</strong> to re-trigger them simultaneously. Inside each frame, the per-variant replay button re-triggers just that one.</p>
+    </div>
+    <button class="replay-all" id="replayAll">Replay all</button>
+  </div>
+
+  <div class="grid">
+    <div class="cell">
+      <div class="label">
+        <div class="meta">
+          <div class="name">A — Gentle drift</div>
+          <div class="summary">All pieces drift in simultaneously, 1.6s, smooth ease-out, no overshoot. Apple-launch calm.</div>
+        </div>
+        <span class="pill">Apple-calm</span>
+      </div>
+      <iframe data-variant="a-drift" src="hero-anim-a-drift.html"></iframe>
+    </div>
+
+    <div class="cell">
+      <div class="label">
+        <div class="meta">
+          <div class="name">B — Staggered cascade</div>
+          <div class="summary">Pieces land one-by-one on 170ms beats, slight back-out overshoot, 2.25s total. Composition being placed.</div>
+        </div>
+        <span class="pill">Rhythmic</span>
+      </div>
+      <iframe data-variant="b-cascade" src="hero-anim-b-cascade.html"></iframe>
+    </div>
+
+    <div class="cell">
+      <div class="label">
+        <div class="meta">
+          <div class="name">C — Magnetic snap</div>
+          <div class="summary">All pieces fly in from their own corner vectors, back-out overshoot + settle wobble, 1.2s. Kinetic.</div>
+        </div>
+        <span class="pill">Kinetic</span>
+      </div>
+      <iframe data-variant="c-snap" src="hero-anim-c-snap.html"></iframe>
+    </div>
+
+    <div class="cell">
+      <div class="label">
+        <div class="meta">
+          <div class="name">D — Particle resolve</div>
+          <div class="summary">Heavy blur, scattered far positions, slow coalesce, discs nest last in sequence. 2.4s. Cinematic.</div>
+        </div>
+        <span class="pill">Cinematic</span>
+      </div>
+      <iframe data-variant="d-particle" src="hero-anim-d-particle.html"></iframe>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById("replayAll").addEventListener("click", () => {
+      document.querySelectorAll("iframe[data-variant]").forEach((f) => {
+        // Reloading the iframe re-runs the page's onload animation. Same as
+        // hitting refresh inside the frame.
+        f.contentWindow.location.reload();
+      });
+    });
+  </script>
+</body>
+</html>

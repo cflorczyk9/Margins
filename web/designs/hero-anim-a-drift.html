@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Hero Anim A — Gentle Drift</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --paper: #faf7f2;
+    --ink: #1a1612;
+    --vermillion: #d63a2f;
+    --duration: 1600ms;
+    --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  .replay-btn {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: transparent;
+    border: 1px solid rgba(26, 22, 18, 0.18);
+    color: var(--ink);
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 8px 14px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: color 180ms ease, border-color 180ms ease;
+    font-family: inherit;
+  }
+  .replay-btn:hover {
+    color: var(--vermillion);
+    border-color: var(--vermillion);
+  }
+  .replay-btn:focus { outline: none; }
+  .replay-btn:focus-visible {
+    outline: 2px solid var(--vermillion);
+    outline-offset: 2px;
+  }
+
+  .hero-art {
+    width: 480px;
+    aspect-ratio: 1 / 1;
+    position: relative;
+  }
+  .hero-art svg { width: 100%; height: 100%; display: block; }
+
+  /* Final-state styling */
+  .ink-stroke { stroke: var(--ink); opacity: 0.30; }
+  .ink-fill   { fill: var(--ink); }
+  .ink-tri    { stroke: var(--ink); }
+  .hero-disc  { mix-blend-mode: multiply; }
+
+  /* Each parallax-layer transforms from its from-state to identity. */
+  .parallax-layer {
+    transform-box: fill-box;
+    transform-origin: center;
+    transform: translate(0, 0) scale(1);
+    filter: blur(0);
+    opacity: 1;
+    transition:
+      transform var(--duration) var(--ease),
+      filter var(--duration) var(--ease),
+      opacity var(--duration) var(--ease);
+    will-change: transform, filter, opacity;
+  }
+
+  /* From-state: simultaneous, scaled up, blurred, partially transparent,
+     offset in mixed directions so they don't all drift identically. */
+  .is-animating .parallax-layer {
+    opacity: 0.25;
+    filter: blur(9px);
+  }
+
+  /* Piece-specific offsets + scales. Mixed x/y across pieces. */
+  .is-animating .layer-ink-line   { transform: translate(-22px,  18px) scale(1.85); }
+  .is-animating .layer-cobalt     { transform: translate( 24px, -16px) scale(1.90); }
+  .is-animating .layer-disc-1     { transform: translate( 18px,  22px) scale(2.00); }
+  .is-animating .layer-disc-2     { transform: translate( 18px,  22px) scale(2.00); }
+  .is-animating .layer-disc-3     { transform: translate( 18px,  22px) scale(2.00); }
+  .is-animating .layer-triangle   { transform: translate(-20px, -20px) scale(1.85); }
+  .is-animating .layer-dot-1      { transform: translate(-26px, -14px) scale(1.95); }
+  .is-animating .layer-dot-2      { transform: translate( 22px,  16px) scale(1.90); }
+  .is-animating .layer-dot-3      { transform: translate(-18px,  20px) scale(1.80); }
+  .is-animating .layer-dot-4      { transform: translate( 16px,  24px) scale(1.85); }
+  .is-animating .layer-dot-5      { transform: translate( 20px, -22px) scale(1.85); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .parallax-layer {
+      transition: none !important;
+    }
+    .is-animating .parallax-layer {
+      transform: translate(0, 0) scale(1) !important;
+      filter: blur(0) !important;
+      opacity: 1 !important;
+    }
+  }
+</style>
+</head>
+<body>
+
+<button class="replay-btn" id="replay" type="button" aria-label="Replay animation">Replay</button>
+
+<div class="hero-art" id="art">
+  <svg viewBox="0 0 320 320" aria-hidden="true">
+    <g class="parallax-layer layer-ink-line" data-depth="0.08">
+      <line x1="20" y1="280" x2="300" y2="40" class="ink-stroke" stroke-width="0.6"/>
+    </g>
+    <g class="parallax-layer layer-cobalt" data-depth="0.30">
+      <path d="M 30 90 Q 160 200 290 60" fill="none" stroke="#2c5aa0" stroke-width="1.8" stroke-linecap="round" opacity="0.75"/>
+    </g>
+    <g class="parallax-layer layer-disc-1" data-depth="0.10">
+      <g class="breathing-disc">
+        <circle class="hero-disc" cx="225" cy="115" r="56" fill="#f0c14b"/>
+      </g>
+    </g>
+    <g class="parallax-layer layer-disc-2" data-depth="0.10">
+      <g class="breathing-disc delay-1">
+        <circle class="hero-disc" cx="225" cy="115" r="32" fill="#d63a2f"/>
+      </g>
+    </g>
+    <g class="parallax-layer layer-disc-3" data-depth="0.12">
+      <g class="breathing-disc delay-2">
+        <circle cx="225" cy="115" r="10" class="ink-fill"/>
+      </g>
+    </g>
+    <g class="parallax-layer layer-triangle" data-depth="0.22">
+      <polygon points="60,180 200,205 110,300" fill="none" class="ink-tri" stroke-width="1.3" stroke-linejoin="round"/>
+    </g>
+    <g class="parallax-layer layer-dot-1" data-depth="0.55"><circle cx="80" cy="80" r="7" fill="#6a4f8c"/></g>
+    <g class="parallax-layer layer-dot-2" data-depth="0.60"><circle cx="250" cy="240" r="5" fill="#6fa863"/></g>
+    <g class="parallax-layer layer-dot-3" data-depth="0.70"><circle cx="40" cy="240" r="3.5" fill="#d63a2f"/></g>
+    <g class="parallax-layer layer-dot-4" data-depth="0.80"><circle cx="285" cy="270" r="2.5" class="ink-fill"/></g>
+    <g class="parallax-layer layer-dot-5" data-depth="0.80"><circle cx="180" cy="60" r="2" class="ink-fill"/></g>
+  </svg>
+</div>
+
+<script>
+  (function () {
+    var art = document.getElementById('art');
+    var btn = document.getElementById('replay');
+
+    function play() {
+      // Snap to from-state, then release on next frame so the transition runs.
+      art.classList.add('is-animating');
+      // Force reflow so the class actually takes effect before we remove it.
+      // Using two RAFs is the most reliable way across browsers.
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          art.classList.remove('is-animating');
+        });
+      });
+    }
+
+    btn.addEventListener('click', play);
+
+    // Initial load
+    play();
+  })();
+</script>
+
+</body>
+</html>

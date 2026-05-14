@@ -1,0 +1,677 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Get Started — Margins (Felt-First)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#faf7f2; --paper:#ffffff; --paper-soft:#f5f1ea;
+    --ink:#1a1612; --ink-2:#4a423a; --ink-3:#847a6b; --ink-4:#b0a99b;
+    --line:#ece6d9; --line-strong:#d8d0bf;
+    --accent:#d63a2f; --accent-soft:rgba(214,58,47,0.10); --accent-line:rgba(214,58,47,0.22);
+    --vermillion:#d63a2f; --cobalt:#2c5aa0; --mustard:#f0c14b; --good:#5b7d57;
+    --shadow-sm:0 1px 1px rgba(26,22,18,0.04), 0 2px 6px rgba(26,22,18,0.04);
+    --shadow-md:0 2px 4px rgba(26,22,18,0.05), 0 12px 28px rgba(26,22,18,0.06);
+    --shadow-lg:0 4px 8px rgba(26,22,18,0.06), 0 30px 60px rgba(26,22,18,0.10);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'Manrope', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    font-size:16px;
+    line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+  }
+  .wrap{
+    max-width:1180px;
+    margin:0 auto;
+    padding:96px 32px 120px;
+  }
+  .eyebrow{
+    font-family:'Manrope';
+    font-size:11.5px;
+    font-weight:600;
+    letter-spacing:0.18em;
+    text-transform:uppercase;
+    color:var(--accent);
+    margin:0 0 18px;
+  }
+  h2.section-title{
+    font-family:'Newsreader', Georgia, serif;
+    font-weight:500;
+    font-size:clamp(34px, 4.4vw, 46px);
+    line-height:1.08;
+    letter-spacing:-0.02em;
+    margin:0 0 48px;
+    color:var(--ink);
+    max-width:720px;
+  }
+  h2.section-title em{
+    font-style:italic;
+    color:var(--ink-2);
+  }
+
+  /* ========= Demo window ========= */
+  .demo{
+    background:var(--paper);
+    border:1px solid var(--line-strong);
+    border-radius:14px;
+    box-shadow:var(--shadow-lg);
+    overflow:hidden;
+    max-width:880px;
+    margin:0 auto 56px;
+  }
+  .demo-titlebar{
+    height:38px;
+    background:linear-gradient(180deg, #f7f3ec 0%, #f1ebe0 100%);
+    border-bottom:1px solid var(--line);
+    display:flex;
+    align-items:center;
+    padding:0 14px;
+    position:relative;
+    user-select:none;
+  }
+  .dots{display:flex;gap:8px;align-items:center}
+  .dot{width:12px;height:12px;border-radius:50%;display:block;box-shadow:inset 0 0 0 0.5px rgba(0,0,0,0.12)}
+  .dot.r{background:#ff5f56}
+  .dot.y{background:#ffbd2e}
+  .dot.g{background:#27c93f}
+  .titlebar-title{
+    position:absolute;
+    left:0;right:0;
+    text-align:center;
+    font-size:12px;
+    color:var(--ink-3);
+    font-weight:500;
+    letter-spacing:0.01em;
+    pointer-events:none;
+  }
+
+  .demo-body{
+    background:var(--paper);
+    padding:28px 32px 16px;
+    min-height:420px;
+    display:flex;
+    flex-direction:column;
+    position:relative;
+  }
+  .messages{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    gap:18px;
+    min-height:320px;
+  }
+
+  /* user bubble */
+  .msg-user{
+    align-self:flex-end;
+    max-width:78%;
+    background:var(--paper-soft);
+    border:1px solid var(--line);
+    border-radius:14px 14px 4px 14px;
+    padding:12px 16px;
+    font-size:15px;
+    color:var(--ink);
+    line-height:1.5;
+    opacity:0;
+    transform:translateY(4px);
+    transition:opacity 220ms ease, transform 220ms ease;
+    box-shadow:var(--shadow-sm);
+  }
+  .msg-user.visible{opacity:1;transform:translateY(0)}
+  .msg-user .typing-caret{
+    display:inline-block;
+    width:1px;
+    height:1.05em;
+    background:var(--ink-2);
+    margin-left:1px;
+    vertical-align:-2px;
+    animation:caret 1s steps(1) infinite;
+  }
+  .msg-user.done .typing-caret{display:none}
+
+  /* tool call collapsible */
+  .toolcall{
+    align-self:flex-start;
+    max-width:88%;
+    background:var(--paper-soft);
+    border:1px solid var(--line);
+    border-left:3px solid var(--vermillion);
+    border-radius:8px;
+    padding:10px 14px;
+    font-size:13px;
+    color:var(--ink-2);
+    opacity:0;
+    transform:translateY(4px);
+    transition:opacity 240ms ease, transform 240ms ease;
+  }
+  .toolcall.visible{opacity:1;transform:translateY(0)}
+  .toolcall-header{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-weight:500;
+    color:var(--ink);
+  }
+  .chevron{
+    display:inline-block;
+    width:10px;height:10px;
+    border-right:1.5px solid var(--ink-2);
+    border-bottom:1.5px solid var(--ink-2);
+    transform:rotate(45deg);
+    margin-right:2px;
+    transition:transform 200ms ease;
+    position:relative;
+    top:-2px;
+  }
+  .toolcall-meta{
+    color:var(--ink-3);
+    font-size:12px;
+    margin-left:auto;
+  }
+  .toolcall-tools{
+    margin-top:8px;
+    display:flex;
+    flex-direction:column;
+    gap:4px;
+    font-family:ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+    font-size:12.5px;
+    color:var(--ink-2);
+  }
+  .toolcall-tools .t{
+    opacity:0;
+    transform:translateX(-4px);
+    transition:opacity 200ms ease, transform 200ms ease;
+  }
+  .toolcall-tools .t.visible{opacity:1;transform:translateX(0)}
+  .toolcall-tools .t::before{
+    content:'·';
+    color:var(--vermillion);
+    margin-right:8px;
+    font-weight:700;
+  }
+
+  /* assistant bubble */
+  .msg-claude{
+    align-self:flex-start;
+    max-width:88%;
+    font-size:15px;
+    color:var(--ink);
+    line-height:1.6;
+    opacity:0;
+    transform:translateY(4px);
+    transition:opacity 220ms ease, transform 220ms ease;
+  }
+  .msg-claude.visible{opacity:1;transform:translateY(0)}
+  .msg-claude .label{
+    font-size:11.5px;
+    font-weight:600;
+    color:var(--ink-3);
+    letter-spacing:0.04em;
+    text-transform:none;
+    margin-bottom:4px;
+    display:block;
+  }
+  .citation{
+    position:relative;
+    font-family:ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+    font-size:13.5px;
+    color:var(--ink);
+    padding:0 1px;
+  }
+  .citation::after{
+    content:'';
+    position:absolute;
+    left:0; right:0; bottom:-2px;
+    height:2px;
+    background:var(--vermillion);
+    transform:scaleX(0);
+    transform-origin:left center;
+    transition:transform 600ms cubic-bezier(.2,.7,.2,1);
+  }
+  .citation.lit::after{transform:scaleX(1)}
+  .citation.lit{
+    text-shadow:0 0 12px rgba(214,58,47,0.20);
+  }
+  .stream-caret{
+    display:inline-block;
+    width:7px;
+    height:1.05em;
+    background:var(--ink-2);
+    vertical-align:-3px;
+    margin-left:2px;
+    animation:caret 0.9s steps(1) infinite;
+  }
+  .msg-claude.done .stream-caret{display:none}
+
+  /* composer */
+  .composer{
+    margin-top:16px;
+    border-top:1px solid var(--line);
+    padding-top:14px;
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  .composer-input{
+    flex:1;
+    height:38px;
+    background:var(--paper-soft);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:0 14px;
+    display:flex;
+    align-items:center;
+    font-size:14px;
+    color:var(--ink-4);
+    position:relative;
+  }
+  .composer-input .ph{
+    transition:opacity 240ms ease;
+  }
+  .composer-input.typing .ph{opacity:0}
+  .composer-input .typed{
+    position:absolute;
+    left:14px; top:0; bottom:0;
+    display:flex; align-items:center;
+    color:var(--ink);
+    font-size:14px;
+  }
+  .composer-input .caret{
+    display:inline-block;
+    width:1px;
+    height:16px;
+    background:var(--ink);
+    margin-left:1px;
+    animation:caret 1s steps(1) infinite;
+  }
+  .composer-btn{
+    width:34px;height:34px;
+    border-radius:8px;
+    background:var(--paper-soft);
+    border:1px solid var(--line);
+    display:flex;align-items:center;justify-content:center;
+    color:var(--ink-3);
+    font-size:13px;
+  }
+
+  /* replay */
+  .replay-bar{
+    height:42px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    border-top:1px solid var(--line);
+    background:var(--paper-soft);
+  }
+  .replay-btn{
+    background:transparent;
+    border:0;
+    font-family:'Manrope';
+    font-size:13px;
+    font-weight:500;
+    letter-spacing:0.02em;
+    color:var(--ink-3);
+    cursor:pointer;
+    padding:6px 14px;
+    border-radius:6px;
+    opacity:0;
+    transition:opacity 300ms ease, color 160ms ease, background 160ms ease;
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+  }
+  .replay-btn.visible{opacity:1}
+  .replay-btn:hover{
+    color:var(--vermillion);
+    background:var(--accent-soft);
+  }
+  .replay-btn .icon{
+    width:12px;height:12px;
+    display:inline-block;
+    border:1.5px solid currentColor;
+    border-right-color:transparent;
+    border-radius:50%;
+    position:relative;
+    top:-0.5px;
+  }
+
+  @keyframes caret{50%{opacity:0}}
+
+  /* ========= Install CTA ========= */
+  .install{
+    text-align:center;
+    margin:0 auto;
+    max-width:640px;
+  }
+  .install-lede{
+    font-family:'Newsreader', Georgia, serif;
+    font-weight:500;
+    font-size:24px;
+    line-height:1.3;
+    color:var(--ink);
+    margin:0 0 20px;
+    letter-spacing:-0.01em;
+  }
+  .cta-btn{
+    display:inline-flex;
+    align-items:center;
+    gap:10px;
+    background:var(--vermillion);
+    color:#fff;
+    text-decoration:none;
+    font-family:'Manrope';
+    font-weight:600;
+    font-size:16px;
+    letter-spacing:0.005em;
+    padding:16px 28px;
+    border-radius:10px;
+    box-shadow:0 1px 0 rgba(0,0,0,0.06), 0 8px 24px rgba(214,58,47,0.22);
+    transition:transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
+  }
+  .cta-btn:hover{
+    transform:translateY(-1px);
+    box-shadow:0 1px 0 rgba(0,0,0,0.06), 0 12px 30px rgba(214,58,47,0.30);
+    background:#c3342a;
+  }
+  .cta-btn svg{display:block}
+  .cta-meta{
+    margin-top:12px;
+    font-size:13px;
+    color:var(--ink-3);
+    letter-spacing:0.01em;
+  }
+  .cta-meta .sep{
+    display:inline-block;
+    width:3px;height:3px;
+    border-radius:50%;
+    background:var(--ink-4);
+    vertical-align:2px;
+    margin:0 8px;
+  }
+  .steps-line{
+    margin-top:20px;
+    font-family:'Newsreader', Georgia, serif;
+    font-style:italic;
+    font-weight:400;
+    font-size:17px;
+    color:var(--ink-2);
+    letter-spacing:0.005em;
+  }
+  .cli-link{
+    margin-top:36px;
+    font-size:14px;
+    color:var(--ink-3);
+  }
+  .cli-link a{
+    color:var(--ink-2);
+    text-decoration:underline;
+    text-underline-offset:3px;
+    text-decoration-color:var(--line-strong);
+    text-decoration-thickness:1px;
+    transition:color 160ms ease, text-decoration-color 160ms ease;
+  }
+  .cli-link a:hover{
+    color:var(--vermillion);
+    text-decoration-color:var(--accent-line);
+  }
+
+  @media (max-width:720px){
+    .wrap{padding:64px 20px 80px}
+    .demo-body{padding:22px 18px 12px}
+    .msg-user, .toolcall, .msg-claude{max-width:96%}
+    .titlebar-title{font-size:11px}
+  }
+</style>
+</head>
+<body>
+  <main class="wrap">
+    <p class="eyebrow">Get started</p>
+    <h2 class="section-title">See it work, <em>then</em> install it.</h2>
+
+    <!-- DEMO -->
+    <section class="demo" id="demo" aria-label="Margins in Claude Desktop, demo">
+      <div class="demo-titlebar">
+        <div class="dots">
+          <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+        </div>
+        <div class="titlebar-title">margins · margins</div>
+      </div>
+
+      <div class="demo-body">
+        <div class="messages" id="messages">
+          <!-- user msg -->
+          <div class="msg-user" id="msgUser" aria-live="polite">
+            <span id="userText"></span><span class="typing-caret"></span>
+          </div>
+
+          <!-- tool call -->
+          <div class="toolcall" id="toolcall">
+            <div class="toolcall-header">
+              <span class="chevron"></span>
+              <span>Margins · 3 tools called</span>
+              <span class="toolcall-meta">0.8s</span>
+            </div>
+            <div class="toolcall-tools" id="toolList">
+              <div class="t" data-tool>margins_start</div>
+              <div class="t" data-tool>search_vault</div>
+              <div class="t" data-tool>read_page</div>
+            </div>
+          </div>
+
+          <!-- claude msg -->
+          <div class="msg-claude" id="msgClaude">
+            <span class="label">Claude</span>
+            <span id="claudeText"></span><span class="stream-caret"></span>
+          </div>
+        </div>
+
+        <div class="composer" aria-hidden="true">
+          <div class="composer-input" id="composer">
+            <span class="ph">Write a message…</span>
+          </div>
+          <div class="composer-btn">↵</div>
+        </div>
+      </div>
+
+      <div class="replay-bar">
+        <button class="replay-btn" id="replayBtn" type="button" aria-label="Replay demo">
+          <span class="icon"></span>
+          Replay
+        </button>
+      </div>
+    </section>
+
+    <!-- INSTALL -->
+    <section class="install">
+      <p class="install-lede">Want this in your Claude Desktop?</p>
+
+      <a class="cta-btn" id="downloadBtn"
+         href="https://github.com/cflorczyk9/Margins/releases/latest/download/margins-mcp.mcpb">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+          <path d="M9 2v9m0 0l-3.2-3.2M9 11l3.2-3.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M3 13.5V15a1 1 0 001 1h10a1 1 0 001-1v-1.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+        Download Margins for Claude Desktop
+      </a>
+
+      <div class="cta-meta">
+        ~2 MB <span class="sep"></span> macOS <span class="sep"></span> Windows
+      </div>
+
+      <p class="steps-line">Double-click. Pick a folder. Ask Claude.</p>
+
+      <div class="cli-link">
+        Or <a href="#cli" id="cliLink">install via CLI →</a>
+      </div>
+    </section>
+  </main>
+
+<script>
+(function(){
+  const USER_TEXT = "What did I write about Sarah this month?";
+  const CLAUDE_HTML =
+    'You met with Sarah twice this month — March 7 and March 21. ' +
+    'Both meetings reference the Apex project. The March 21 notes in ' +
+    '<span class="citation" id="cite">wiki/sarah-2026-03-21.md</span> ' +
+    'include a pricing discussion you should follow up on.';
+
+  const msgUser   = document.getElementById('msgUser');
+  const userText  = document.getElementById('userText');
+  const composer  = document.getElementById('composer');
+  const toolcall  = document.getElementById('toolcall');
+  const toolNodes = Array.from(document.querySelectorAll('#toolList .t'));
+  const msgClaude = document.getElementById('msgClaude');
+  const claudeEl  = document.getElementById('claudeText');
+  const replayBtn = document.getElementById('replayBtn');
+  const demo      = document.getElementById('demo');
+
+  let timers = [];
+  let fired  = false;
+
+  function addT(fn, ms){
+    const id = setTimeout(fn, ms);
+    timers.push(id);
+    return id;
+  }
+  function clearAll(){
+    timers.forEach(clearTimeout);
+    timers = [];
+  }
+
+  function reset(){
+    clearAll();
+    userText.textContent = '';
+    claudeEl.innerHTML = '';
+    msgUser.classList.remove('visible','done');
+    composer.classList.remove('typing');
+    composer.querySelector('.ph') && (composer.querySelector('.ph').style.opacity = '');
+    toolcall.classList.remove('visible');
+    toolNodes.forEach(n => n.classList.remove('visible'));
+    msgClaude.classList.remove('visible','done');
+    replayBtn.classList.remove('visible');
+  }
+
+  function typeInto(el, text, perChar, doneCb){
+    let i = 0;
+    function step(){
+      el.textContent = text.slice(0, i);
+      i++;
+      if (i <= text.length){
+        addT(step, perChar);
+      } else if (doneCb){
+        doneCb();
+      }
+    }
+    step();
+  }
+
+  function streamHTML(el, html, perChar, doneCb){
+    // Stream as plain text character-by-character, then swap in HTML at the end
+    // so the citation span is intact for the underline animation.
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    const plain = tmp.textContent || '';
+    let i = 0;
+    function step(){
+      el.textContent = plain.slice(0, i);
+      i++;
+      if (i <= plain.length){
+        addT(step, perChar);
+      } else {
+        el.innerHTML = html;
+        if (doneCb) doneCb();
+      }
+    }
+    step();
+  }
+
+  function play(){
+    reset();
+
+    // 0.0s: caret blinking already (via CSS on .typing-caret); user bubble hidden until typing starts
+    // 0.4s: start user typing
+    addT(() => {
+      msgUser.classList.add('visible');
+      composer.classList.add('typing');
+      // also visually type in composer (mirrored)
+      const perChar = 45;
+      typeInto(userText, USER_TEXT, perChar);
+    }, 400);
+
+    // 1.6s: user message settles (caret stops)
+    addT(() => {
+      msgUser.classList.add('done');
+    }, 1600);
+
+    // 1.9s: tool call expands
+    addT(() => {
+      toolcall.classList.add('visible');
+    }, 1900);
+
+    // tools appear sequentially 200ms apart starting at 2.0s
+    [0,1,2].forEach((idx) => {
+      addT(() => {
+        toolNodes[idx].classList.add('visible');
+      }, 2000 + idx * 200);
+    });
+
+    // 2.8s: claude response begins streaming
+    addT(() => {
+      msgClaude.classList.add('visible');
+      streamHTML(claudeEl, CLAUDE_HTML, 18, () => {
+        // ~4.8s when streaming done
+        msgClaude.classList.add('done');
+        // light the citation
+        const cite = document.getElementById('cite');
+        if (cite) {
+          // small beat before underline draws
+          addT(() => cite.classList.add('lit'), 100);
+        }
+        // replay button fades in after underline + hold
+        addT(() => replayBtn.classList.add('visible'), 700);
+      });
+    }, 2800);
+  }
+
+  // IntersectionObserver — fire once on scroll into view
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting && !fired){
+        fired = true;
+        play();
+      }
+    });
+  }, { threshold: 0.35 });
+  io.observe(demo);
+
+  replayBtn.addEventListener('click', () => {
+    play();
+  });
+
+  // CLI link: copy npm install command to clipboard for nicety
+  const cliLink = document.getElementById('cliLink');
+  if (cliLink){
+    cliLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      const cmd = 'npm install -g margins-mcp';
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(cmd).catch(()=>{});
+      }
+      const orig = cliLink.textContent;
+      cliLink.textContent = 'copied: ' + cmd;
+      setTimeout(() => { cliLink.textContent = orig; }, 1800);
+    });
+  }
+})();
+</script>
+</body>
+</html>
