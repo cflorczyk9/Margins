@@ -1,0 +1,1166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Margins — Claude on your Obsidian vault</title>
+<meta name="description" content="A small MCP connector that lets Claude Pro/Max read and propose writes to your Obsidian vault. No API key. Files stay local.">
+<meta name="theme-color" content="#faf7f2">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #faf7f2;
+    --paper: #ffffff;
+    --paper-soft: #f5f1ea;
+    --ink: #1a1612;
+    --ink-2: #4a423a;
+    --ink-3: #847a6b;
+    --ink-4: #b0a692;
+    --line: #e8e2d6;
+    --line-strong: #d8d0bf;
+    --accent: #d63a2f;
+    --accent-dark: #b22618;
+    --accent-soft: rgba(214, 58, 47, 0.10);
+    --accent-line: rgba(214, 58, 47, 0.22);
+    --on-accent: #ffffff;
+    --vermillion: #d63a2f;
+    --cobalt: #2c5aa0;
+    --mustard: #f0c14b;
+    --violet: #6a4f8c;
+    --good: #5b7d57;
+    --good-soft: rgba(91, 125, 87, 0.10);
+    --link: #2c5aa0;
+    --link-soft: rgba(44, 90, 160, 0.10);
+    --diff-add: rgba(91, 125, 87, 0.14);
+    --diff-add-line: rgba(91, 125, 87, 0.40);
+    --diff-del: rgba(214, 58, 47, 0.08);
+    --diff-del-line: rgba(214, 58, 47, 0.30);
+    --shadow-sm: 0 1px 0 rgba(26,22,18,0.04), 0 6px 18px rgba(26,22,18,0.04);
+    --shadow-md: 0 1px 0 rgba(26,22,18,0.06), 0 12px 36px rgba(26,22,18,0.10);
+    --shadow-lg: 0 1px 0 rgba(26,22,18,0.06), 0 24px 60px rgba(26,22,18,0.12);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Manrope', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+    letter-spacing: -0.005em;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  a { color: var(--ink); text-decoration: none; border-bottom: 1px solid var(--accent-line); }
+  a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+  button, input, select, textarea { font: inherit; }
+  h1, h2, h3, p { margin: 0; }
+
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 32px; }
+  .wrap-narrow { max-width: 820px; margin: 0 auto; padding: 0 32px; }
+
+  /* === Top nav === */
+  .nav { padding: 24px 0 0; position: relative; z-index: 5; }
+  .nav-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+  .brand { display: inline-flex; align-items: center; gap: 12px; font-weight: 700; font-size: 17px; letter-spacing: -0.01em; color: var(--ink); border: none; }
+  .brand-mark { width: 32px; height: 26px; flex: 0 0 auto; display: block; }
+  .nav-links { display: inline-flex; align-items: center; gap: 18px; font-size: 13px; font-weight: 500; color: var(--ink-2); }
+  .nav-links a { border: none; color: var(--ink-2); }
+  .nav-links a:hover { color: var(--accent); }
+  .nav-links .meta { color: var(--ink-3); font-size: 12px; }
+
+  /* === Hero / demo stage === */
+  .stage {
+    position: relative;
+    padding: 56px 0 32px;
+    overflow: hidden;
+  }
+  .stage-inner { position: relative; z-index: 2; }
+
+  /* Faint vault file tree behind the conversation */
+  .vault-bg {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    opacity: 0.55;
+    pointer-events: none;
+    filter: blur(0.6px);
+    mask-image: radial-gradient(ellipse 80% 70% at 50% 45%, rgba(0,0,0,0.25), rgba(0,0,0,0.85) 70%, rgba(0,0,0,1));
+    -webkit-mask-image: radial-gradient(ellipse 80% 70% at 50% 45%, rgba(0,0,0,0.25), rgba(0,0,0,0.85) 70%, rgba(0,0,0,1));
+  }
+  .vault-bg pre {
+    margin: 0;
+    padding: 88px 0 0 8%;
+    font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+    font-size: 11.5px;
+    line-height: 1.7;
+    color: var(--ink-4);
+    white-space: pre;
+    user-select: none;
+  }
+  .vault-bg .dir { color: var(--ink-3); }
+  .vault-bg .file { color: var(--ink-4); }
+  .vault-bg .hot { color: rgba(214,58,47,0.55); }
+
+  .lede {
+    text-align: left;
+    max-width: 680px;
+    margin: 0 0 28px;
+  }
+  .kicker {
+    display: inline-flex; align-items: center; gap: 10px;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.10em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 16px;
+  }
+  .kicker .pulse {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 0 rgba(214,58,47,0.6);
+    animation: pulse 2s ease-out infinite;
+  }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(214,58,47,0.55); }
+    70% { box-shadow: 0 0 0 10px rgba(214,58,47,0); }
+    100% { box-shadow: 0 0 0 0 rgba(214,58,47,0); }
+  }
+  h1.hero-title {
+    font-size: clamp(28px, 3.6vw, 40px);
+    font-weight: 600;
+    line-height: 1.08;
+    letter-spacing: -0.02em;
+    margin: 0 0 14px;
+    color: var(--ink);
+  }
+  h1.hero-title em {
+    font-style: normal; color: var(--accent);
+  }
+  .hero-sub {
+    font-size: 16px;
+    color: var(--ink-2);
+    margin: 0;
+    max-width: 56ch;
+  }
+
+  /* === Chat surface === */
+  .chat {
+    background: var(--paper);
+    border: 1px solid var(--line-strong);
+    border-radius: 14px;
+    box-shadow: var(--shadow-lg);
+    overflow: hidden;
+    position: relative;
+  }
+  .chat-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--line);
+    background: var(--paper-soft);
+  }
+  .chat-head .dots {
+    display: inline-flex; gap: 6px;
+  }
+  .chat-head .dots i {
+    width: 11px; height: 11px; border-radius: 50%; display: block;
+    background: var(--line-strong);
+  }
+  .chat-head .dots i:nth-child(1) { background: #e06b5d; }
+  .chat-head .dots i:nth-child(2) { background: #e6c065; }
+  .chat-head .dots i:nth-child(3) { background: #88b078; }
+  .chat-head .title {
+    font-size: 12.5px; font-weight: 600; color: var(--ink-3);
+    margin-left: 6px; letter-spacing: -0.005em;
+  }
+  .chat-head .spacer { flex: 1; }
+  .chat-head .restart-btn {
+    background: transparent;
+    border: 1px solid var(--line-strong);
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--ink-2);
+    cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .chat-head .restart-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .chat-head .restart-btn svg { width: 12px; height: 12px; }
+
+  .chat-body {
+    padding: 22px 22px 18px;
+    min-height: 440px;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+
+  .turn {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity 360ms ease, transform 360ms ease;
+  }
+  .turn.is-in { opacity: 1; transform: translateY(0); }
+  .avatar {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    flex: 0 0 auto;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700;
+    color: white;
+    margin-top: 2px;
+  }
+  .avatar.user { background: var(--ink); }
+  .avatar.claude {
+    background: var(--paper);
+    color: var(--accent);
+    border: 1px solid var(--line-strong);
+    overflow: hidden;
+  }
+  .avatar.claude svg { width: 16px; height: 16px; display: block; }
+  .turn .body { flex: 1 1 auto; min-width: 0; }
+  .turn .sender {
+    font-size: 12px; font-weight: 700;
+    color: var(--ink-3);
+    letter-spacing: 0.02em;
+    margin-bottom: 4px;
+  }
+  .turn .text {
+    font-size: 15px;
+    color: var(--ink);
+    line-height: 1.6;
+  }
+  .turn .text p { margin: 0 0 10px; }
+  .turn .text p:last-child { margin-bottom: 0; }
+  .turn .text strong { font-weight: 700; }
+  .turn .text em { font-style: italic; }
+  .turn .text code {
+    font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+    font-size: 0.88em;
+    background: var(--paper-soft);
+    border: 1px solid var(--line);
+    padding: 1px 6px;
+    border-radius: 4px;
+    color: var(--ink);
+    white-space: nowrap;
+  }
+  .turn .text .wikilink {
+    color: var(--link);
+    background: var(--link-soft);
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-weight: 500;
+    border-bottom: 0;
+  }
+  .turn .text ul {
+    margin: 6px 0 10px;
+    padding-left: 22px;
+  }
+  .turn .text li { margin: 4px 0; }
+
+  /* Tool-use chip */
+  .tool-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--paper-soft);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+    font-size: 11.5px;
+    color: var(--ink-3);
+    margin: 4px 8px 4px 0;
+  }
+  .tool-chip .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--good);
+  }
+  .tool-chip .name { color: var(--ink-2); font-weight: 500; }
+
+  /* Streaming cursor */
+  .cursor {
+    display: inline-block;
+    width: 7px; height: 1.05em;
+    background: var(--ink);
+    vertical-align: text-bottom;
+    margin-left: 1px;
+    animation: blink 1s steps(2) infinite;
+  }
+  @keyframes blink {
+    0%, 50% { opacity: 1; }
+    50.01%, 100% { opacity: 0; }
+  }
+
+  /* Diff preview block */
+  .diff {
+    margin: 10px 0 4px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--paper);
+    font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+    font-size: 12.5px;
+    line-height: 1.55;
+  }
+  .diff-head {
+    background: var(--paper-soft);
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--line);
+    color: var(--ink-3);
+    font-size: 11.5px;
+    letter-spacing: 0.02em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .diff-head .badge {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 4px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    border: 1px solid var(--accent-line);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .diff-head .path { color: var(--ink-2); }
+  .diff pre { margin: 0; padding: 10px 12px; background: transparent; border: none; }
+  .diff .line { display: block; padding: 1px 0; white-space: pre-wrap; }
+  .diff .add { background: var(--diff-add); border-left: 2px solid var(--diff-add-line); padding-left: 8px; }
+  .diff .del { background: var(--diff-del); border-left: 2px solid var(--diff-del-line); padding-left: 8px; color: var(--ink-2); }
+  .diff .ctx { color: var(--ink-3); padding-left: 8px; }
+  .diff .add::before { content: "+ "; color: var(--good); }
+  .diff .del::before { content: "− "; color: var(--accent); }
+  .diff .ctx::before { content: "  "; }
+  .diff-actions {
+    border-top: 1px solid var(--line);
+    background: var(--paper-soft);
+    padding: 8px 12px;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    font-size: 12px;
+    color: var(--ink-3);
+  }
+  .diff-actions .pill {
+    border: 1px solid var(--line-strong);
+    background: var(--paper);
+    border-radius: 5px;
+    padding: 3px 9px;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--ink-2);
+  }
+  .diff-actions .pill.primary {
+    border-color: var(--good);
+    background: var(--good-soft);
+    color: var(--good);
+  }
+
+  /* Disclaimer below chat */
+  .demo-note {
+    font-size: 12.5px;
+    color: var(--ink-3);
+    text-align: center;
+    margin: 14px 0 0;
+  }
+  .demo-note code { font-size: 12px; }
+
+  /* === Install section === */
+  .install-section { padding: 64px 0 32px; }
+  .install-head { margin-bottom: 28px; }
+  .install-head h2 {
+    font-size: 26px;
+    font-weight: 600;
+    letter-spacing: -0.018em;
+    margin: 0 0 8px;
+  }
+  .install-head p { color: var(--ink-2); font-size: 15px; max-width: 60ch; }
+
+  .fork { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 26px; }
+  @media (max-width: 720px) { .fork { grid-template-columns: 1fr; } }
+  .fork-option {
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px 18px;
+    cursor: pointer;
+    box-shadow: var(--shadow-sm);
+    transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+    position: relative;
+    text-align: left;
+    font-family: inherit;
+    color: inherit;
+    width: 100%;
+  }
+  .fork-option:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .fork-option.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), var(--shadow-md); }
+  .fork-option h3 {
+    font-size: 15px; font-weight: 700; margin: 0 0 4px; letter-spacing: -0.005em;
+  }
+  .fork-option p {
+    color: var(--ink-2); font-size: 13.5px; margin: 0;
+  }
+  .fork-option::before {
+    content: ""; position: absolute; top: 18px; right: 18px;
+    width: 12px; height: 12px; border-radius: 50%;
+    background: var(--line); transition: background 0.15s ease;
+  }
+  .fork-option.selected::before { background: var(--accent); }
+
+  .panel {
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 26px 26px 22px;
+    box-shadow: var(--shadow-sm);
+  }
+  .panel h3 {
+    font-size: 15px; font-weight: 700; letter-spacing: -0.005em;
+    margin: 0 0 10px; color: var(--ink);
+  }
+  .panel h3:not(:first-child) { margin-top: 22px; }
+  .panel p { color: var(--ink-2); font-size: 14.5px; margin: 0 0 10px; }
+
+  /* CLI disclosure */
+  .disclosure {
+    margin-top: 16px;
+    border-top: 1px dashed var(--line);
+    padding-top: 16px;
+  }
+  .disclosure summary {
+    cursor: pointer;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--ink-2);
+    list-style: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .disclosure summary::-webkit-details-marker { display: none; }
+  .disclosure summary::before {
+    content: "+";
+    display: inline-block;
+    width: 14px; height: 14px;
+    text-align: center;
+    line-height: 13px;
+    border: 1px solid var(--line-strong);
+    border-radius: 3px;
+    font-weight: 700;
+    color: var(--ink-2);
+    font-size: 12px;
+  }
+  .disclosure[open] summary::before { content: "−"; }
+  .disclosure summary:hover { color: var(--accent); }
+
+  /* Code blocks (install commands) */
+  code, pre { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; }
+  .install-section pre {
+    background: var(--paper-soft);
+    padding: 12px 14px;
+    border-radius: 7px;
+    border: 1px solid var(--line);
+    overflow-x: auto;
+    position: relative;
+    margin: 8px 0 14px;
+    font-size: 13px;
+  }
+  .install-section pre code { background: transparent; padding: 0; border: 0; }
+  .copy-btn {
+    position: absolute; top: 7px; right: 7px;
+    background: var(--paper); border: 1px solid var(--line-strong);
+    border-radius: 5px; padding: 3px 9px; font-size: 11px; font-weight: 600;
+    cursor: pointer; color: var(--ink-2);
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .copy-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  .install-section p code, .install-section li code {
+    background: var(--paper-soft); padding: 1px 6px; border-radius: 4px;
+    font-size: 12.5px; color: var(--ink); border: 1px solid var(--line);
+  }
+  kbd {
+    background: var(--paper); border: 1px solid var(--line-strong);
+    border-bottom-width: 2px; border-radius: 4px; padding: 1px 6px;
+    font-size: 0.85em; font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    border-radius: 8px; font-family: inherit; font-size: 14px; font-weight: 700; line-height: 1;
+    padding: 11px 16px; border: 1px solid transparent; cursor: pointer;
+    transition: background 140ms ease, border-color 140ms ease, color 140ms ease, transform 140ms ease, box-shadow 140ms ease;
+    text-decoration: none;
+  }
+  a.btn { border-bottom: 1px solid transparent; }
+  .btn-primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); box-shadow: var(--shadow-sm); }
+  .btn-primary:hover { background: var(--accent-dark); border-color: var(--accent-dark); transform: translateY(-1px); color: var(--on-accent); }
+  .btn-ghost { background: var(--paper); color: var(--ink); border-color: var(--line-strong); box-shadow: var(--shadow-sm); }
+  .btn-ghost:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+
+  /* Status banners */
+  .status { margin-top: 12px; padding: 11px 13px; border-radius: 7px; font-size: 13.5px; }
+  .status.ok { background: var(--good-soft); border: 1px solid color-mix(in srgb, var(--good) 25%, transparent); color: var(--good); }
+  .status.err { background: rgba(214,58,47,0.06); border: 1px solid var(--accent-line); color: var(--accent-dark); }
+  .status.warn { background: rgba(240,193,75,0.10); border: 1px solid rgba(240,193,75,0.45); color: #8d5f00; }
+
+  /* Footer */
+  footer {
+    color: var(--ink-3); font-size: 13px;
+    padding: 32px 0 56px; border-top: 1px solid var(--line);
+    margin-top: 40px;
+  }
+  footer .accent-line {
+    display: inline-block; height: 2px; width: 28px;
+    background: var(--accent); vertical-align: 4px; margin-right: 12px;
+  }
+  footer a { color: var(--ink-2); }
+
+  .hidden { display: none; }
+
+  @media (max-width: 720px) {
+    .chat-body { padding: 16px 14px; min-height: 380px; }
+    .turn .text { font-size: 14.5px; }
+    .stage { padding: 36px 0 24px; }
+    .vault-bg pre { padding-top: 56px; font-size: 10px; }
+    .panel { padding: 20px; }
+    h1.hero-title { font-size: 26px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .cursor { animation: none; opacity: 0; display: none; }
+    .turn { opacity: 1; transform: none; transition: none; }
+    .kicker .pulse { animation: none; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="wrap">
+    <div class="nav-row">
+      <a href="#" class="brand">
+        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+          <rect x="4" y="4" width="3" height="24" fill="#1a1612"/>
+          <circle cx="20" cy="16" r="11" fill="#f0c14b"/>
+          <circle cx="20" cy="16" r="7" fill="#d63a2f"/>
+          <circle cx="20" cy="16" r="2.5" fill="#1a1612"/>
+        </svg>
+        <span>Margins</span>
+      </a>
+      <div class="nav-links">
+        <span class="meta">Open source · v0.5 · MIT</span>
+        <a href="https://github.com/cflorczyk9/Margins">GitHub</a>
+        <a href="https://www.npmjs.com/package/margins-mcp">npm</a>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<section class="stage">
+  <div class="vault-bg" aria-hidden="true">
+<pre><span class="dir">vault/</span>
+├── <span class="dir">daily/</span>
+│   ├── <span class="file">2026-05-13.md</span>
+│   ├── <span class="file">2026-05-12.md</span>
+│   └── <span class="file">2026-05-11.md</span>
+├── <span class="dir">wiki/</span>
+│   ├── <span class="dir">entities/</span>
+│   │   ├── <span class="file">acme-corp.md</span>
+│   │   └── <span class="file">jane-park.md</span>
+│   ├── <span class="dir">concepts/</span>
+│   │   ├── <span class="file">fundraising-q2.md</span>
+│   │   └── <span class="file">roadmap.md</span>
+│   ├── <span class="dir">sources/</span>
+│   │   └── <span class="file">acme-pitch-deck.md</span>
+│   └── <span class="file">index.md</span>
+├── <span class="dir">raw/</span>
+│   ├── <span class="hot">2026-05-11-meeting-with-acme.md</span>
+│   ├── <span class="hot">2026-05-09-research-call.md</span>
+│   └── <span class="hot">2026-05-07-roadmap.md</span>
+├── <span class="dir">proposed/</span>
+├── <span class="dir">.margins/</span>
+│   └── <span class="file">preferences.md</span>
+├── <span class="file">CLAUDE.md</span>
+└── <span class="file">operator-manual.md</span>
+</pre>
+  </div>
+  <div class="wrap stage-inner">
+    <div class="lede">
+      <div class="kicker"><span class="pulse"></span>Margins · live demo</div>
+      <h1 class="hero-title">Claude works on your <em>Obsidian vault</em>, with your existing subscription.</h1>
+      <p class="hero-sub">Reads your notes, writes back to disk, asks before editing. No API key, no embedding pipeline, no copy of your files in the cloud.</p>
+    </div>
+
+    <div class="chat" id="chat">
+      <div class="chat-head">
+        <span class="dots"><i></i><i></i><i></i></span>
+        <span class="title">Claude · vault/</span>
+        <span class="spacer"></span>
+        <button class="restart-btn" id="restart" type="button" aria-label="Replay demo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="1 4 1 10 7 10"/>
+            <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+          </svg>
+          Replay
+        </button>
+      </div>
+      <div class="chat-body" id="chat-body"></div>
+    </div>
+
+    <p class="demo-note">This is a scripted demo. The real install is below — it talks to your local files, not this page.</p>
+  </div>
+</section>
+
+<section class="install-section" id="install">
+  <div class="wrap-narrow">
+    <div class="install-head">
+      <h2>Install Margins</h2>
+      <p>Pick the row that fits. You can switch later.</p>
+    </div>
+
+    <div class="fork" role="tablist">
+      <button class="fork-option selected" id="opt-has-vault" role="tab" aria-selected="true">
+        <h3>I have a vault</h3>
+        <p>Obsidian, or any folder of Markdown.</p>
+      </button>
+      <button class="fork-option" id="opt-no-vault" role="tab" aria-selected="false">
+        <h3>I'm starting fresh</h3>
+        <p>No vault yet. Margins scaffolds one in your browser.</p>
+      </button>
+    </div>
+
+    <!-- EXISTING VAULT PANEL -->
+    <div class="panel" id="path-existing">
+      <h3>1. Download for Claude Desktop</h3>
+      <p>Double-click to install. Pre-bundled, no terminal needed. Claude Desktop shows Margins in its Connectors list.</p>
+      <p>
+        <a class="btn btn-primary" href="https://github.com/cflorczyk9/Margins/releases/latest/download/margins-mcp.mcpb" rel="noopener" download>Download margins-mcp.mcpb</a>
+      </p>
+      <p>Open the file with Claude Desktop, point it at your vault when prompted, then restart Claude (<kbd>Cmd-Q</kbd>, reopen).</p>
+
+      <h3>2. Try it</h3>
+      <p>In a fresh Claude conversation:</p>
+      <pre><button class="copy-btn" data-copy="try-cmd">copy</button><code id="try-cmd">Use margins to give me a summary of my recent notes.</code></pre>
+
+      <details class="disclosure">
+        <summary>CLI install (Claude Code, terminal preferred)</summary>
+        <p style="margin-top: 12px;">Install globally:</p>
+        <pre><button class="copy-btn" data-copy="install-cmd">copy</button><code id="install-cmd">npm install -g margins-mcp</code></pre>
+        <p>Find your vault path in Obsidian (right-click vault → <strong>Reveal in Finder</strong>), then run:</p>
+        <pre><button class="copy-btn" data-copy="run-cmd">copy</button><code id="run-cmd">margins-mcp install --vault /absolute/path/to/your/vault</code></pre>
+        <p>The installer writes the configs for Claude Desktop and Claude Code, scaffolds <code>raw/</code>, <code>proposed/</code>, and <code>.margins/</code> inside your vault, and runs a verification probe.</p>
+        <p style="color: var(--ink-3); font-size: 13px;">Updates: <code>margins-mcp install --update</code> for CLI; re-download the .mcpb for Desktop.</p>
+      </details>
+    </div>
+
+    <!-- NO VAULT PANEL -->
+    <div class="panel hidden" id="path-fresh">
+      <div id="fs-support-check"></div>
+
+      <h3>1. Scaffold a vault</h3>
+      <p>Margins creates a <code>Margins/</code> folder with <code>wiki/</code>, <code>raw/</code>, <code>proposed/</code>, <code>.margins/</code>, plus <code>CLAUDE.md</code> and <code>operator-manual.md</code> inside.</p>
+      <button class="btn btn-primary" id="scaffold-btn" type="button">Pick parent folder and scaffold</button>
+      <div id="scaffold-status"></div>
+
+      <div id="step-2-wrap" class="hidden">
+        <h3>2. Install and connect</h3>
+        <p>In a terminal:</p>
+        <pre><button class="copy-btn" data-copy="fresh-install">copy</button><code id="fresh-install">npm install -g margins-mcp
+margins-mcp install</code></pre>
+        <p>The installer auto-detects <code>~/Margins/</code> and connects it to Claude Desktop and Claude Code. Restart Claude Desktop when it finishes.</p>
+
+        <h3>3. Try it</h3>
+        <p>In a fresh Claude conversation:</p>
+        <pre><code>Use margins to help me start writing in my new vault.</code></pre>
+      </div>
+    </div>
+
+    <p style="color: var(--ink-3); font-size: 13px; margin-top: 22px;">
+      Works with Claude Desktop and Claude Code on macOS, Windows, Linux. Needs Claude Pro ($20/mo) or Max. Uses your existing subscription — no API key, no per-token costs. Browser (claude.ai web) isn't supported yet.
+    </p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap-narrow">
+    <span class="accent-line"></span>
+    Margins runs locally. No vault content leaves your machine.
+    &nbsp;·&nbsp;
+    <a href="https://github.com/cflorczyk9/Margins#privacy">Privacy</a>
+    &nbsp;·&nbsp;
+    <a href="https://github.com/cflorczyk9/Margins">Source</a>
+    &nbsp;·&nbsp;
+    <a href="https://www.npmjs.com/package/margins-mcp">npm</a>
+    &nbsp;·&nbsp;MIT
+  </div>
+</footer>
+
+<script>
+const prefersReduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// ============================================================
+// DEMO CONVERSATION
+// Each turn is a sequence of segments. Segments can be:
+//   { type: "text", html: "..." }            — plain HTML, printed instantly
+//   { type: "stream", html: "...", wpm: N }  — streams character-by-character
+//   { type: "tool", name, args }             — tool-use chip, slides in
+//   { type: "diff", file, lines }            — diff preview block
+//   { type: "pause", ms }                    — micro-pause
+// ============================================================
+
+const SCRIPT = [
+  {
+    who: "user",
+    label: "you",
+    segments: [
+      { type: "text", html: "Use margins to summarize my notes from this week." }
+    ],
+    pauseAfter: 700
+  },
+  {
+    who: "claude",
+    label: "Claude",
+    segments: [
+      { type: "tool", name: "margins_start", args: "" },
+      { type: "pause", ms: 250 },
+      { type: "tool", name: "search_vault", args: 'query: "this week", limit: 8' },
+      { type: "pause", ms: 350 },
+      { type: "stream", html: "<p>Here's what landed in your vault between May 7 and today. Three threads are worth pulling together.</p>", wpm: 720 },
+      { type: "pause", ms: 180 },
+      { type: "tool", name: "read_page", args: "raw/2026-05-11-meeting-with-acme.md" },
+      { type: "pause", ms: 250 },
+      { type: "tool", name: "read_page", args: "raw/2026-05-09-research-call.md" },
+      { type: "pause", ms: 200 },
+      { type: "tool", name: "read_page", args: "raw/2026-05-07-roadmap.md" },
+      { type: "pause", ms: 400 },
+      { type: "stream", html: "<p><strong>Acme.</strong> Your <code>2026-05-11-meeting-with-acme.md</code> notes show Jane wants a redlined term sheet by Friday and a reference from another portfolio CEO. You haven't filed her as an entity yet — she shows up by first name in two other places.</p>", wpm: 760 },
+      { type: "pause", ms: 220 },
+      { type: "stream", html: "<p><strong>Research.</strong> <code>2026-05-09-research-call.md</code> has the conversation with Priya about retention cohorts. The 90-day number she gave you (41%) conflicts with what <span class=\"wikilink\">[[roadmap]]</span> claims (52%). Worth resolving before the board update.</p>", wpm: 760 },
+      { type: "pause", ms: 220 },
+      { type: "stream", html: "<p><strong>Roadmap.</strong> <code>2026-05-07-roadmap.md</code> is the longest of the three. Two new items moved into Q3 that aren't reflected on <span class=\"wikilink\">[[fundraising-q2]]</span> yet, which will matter when Acme reads the deck.</p>", wpm: 760 },
+      { type: "pause", ms: 240 },
+      { type: "stream", html: "<p>The three raw notes don't have wikilinks back to <span class=\"wikilink\">[[acme-corp]]</span>, <span class=\"wikilink\">[[fundraising-q2]]</span>, or <span class=\"wikilink\">[[roadmap]]</span>. Want me to propose the edits?</p>", wpm: 740 }
+    ],
+    pauseAfter: 900
+  },
+  {
+    who: "user",
+    label: "you",
+    segments: [
+      { type: "stream", html: "ok, propose edits to add these as wikilinks", wpm: 520 }
+    ],
+    pauseAfter: 600
+  },
+  {
+    who: "claude",
+    label: "Claude",
+    segments: [
+      { type: "tool", name: "propose_edit", args: "raw/2026-05-11-meeting-with-acme.md" },
+      { type: "pause", ms: 350 },
+      {
+        type: "diff",
+        file: "raw/2026-05-11-meeting-with-acme.md",
+        badge: "Proposed",
+        lines: [
+          { kind: "ctx", text: "# Meeting with Acme — 2026-05-11" },
+          { kind: "ctx", text: "" },
+          { kind: "del",  text: "Jane walked through the Q2 plan and the redlined term sheet." },
+          { kind: "add",  text: "[[jane-park|Jane]] walked through the [[fundraising-q2|Q2 plan]] and the redlined term sheet." },
+          { kind: "ctx", text: "" },
+          { kind: "del",  text: "Acme wants a reference from a portfolio CEO before Friday." },
+          { kind: "add",  text: "[[acme-corp|Acme]] wants a reference from a portfolio CEO before Friday." },
+          { kind: "ctx", text: "" },
+          { kind: "add",  text: "Related: [[roadmap]], [[fundraising-q2]]" }
+        ]
+      },
+      { type: "pause", ms: 280 },
+      { type: "stream", html: "<p>Staged at <code>proposed/2026-05-11-meeting-with-acme.md</code>. The original is untouched until you accept. Two more files queued behind this one — say <em>accept</em> to apply, <em>show next</em> to review the second.</p>", wpm: 720 }
+    ],
+    pauseAfter: 0
+  }
+];
+
+// ============================================================
+// PLAYBACK ENGINE
+// ============================================================
+
+const chatBody = document.getElementById("chat-body");
+const restartBtn = document.getElementById("restart");
+let playToken = 0; // increments on restart to cancel in-flight timers
+
+function sleep(ms, token) {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => {
+      if (token !== playToken) reject(new Error("cancelled"));
+      else resolve();
+    }, ms);
+  });
+}
+
+function makeTurn(turn) {
+  const wrap = document.createElement("div");
+  wrap.className = "turn";
+  const av = document.createElement("div");
+  av.className = "avatar " + (turn.who === "user" ? "user" : "claude");
+  if (turn.who === "user") {
+    av.textContent = "C";
+  } else {
+    av.innerHTML = `
+      <svg viewBox="0 0 32 32" aria-hidden="true">
+        <rect x="4" y="4" width="3" height="24" fill="#1a1612"/>
+        <circle cx="20" cy="16" r="11" fill="#f0c14b"/>
+        <circle cx="20" cy="16" r="7" fill="#d63a2f"/>
+        <circle cx="20" cy="16" r="2.5" fill="#1a1612"/>
+      </svg>`;
+  }
+  const body = document.createElement("div");
+  body.className = "body";
+  const sender = document.createElement("div");
+  sender.className = "sender";
+  sender.textContent = turn.label;
+  const text = document.createElement("div");
+  text.className = "text";
+  body.appendChild(sender);
+  body.appendChild(text);
+  wrap.appendChild(av);
+  wrap.appendChild(body);
+  return { wrap, text };
+}
+
+function scrollChat() {
+  // keep latest turn visible without yanking the whole page
+  chatBody.scrollTop = chatBody.scrollHeight;
+}
+
+async function streamHtml(container, html, wpm, token) {
+  // Build the target HTML in a hidden parser, then walk text nodes and stream them.
+  const target = document.createElement("div");
+  target.innerHTML = html;
+
+  // Walk the target tree, append clone, stream the text content of leaf text nodes.
+  async function walk(srcNode, destParent) {
+    for (const child of Array.from(srcNode.childNodes)) {
+      if (token !== playToken) throw new Error("cancelled");
+      if (child.nodeType === Node.TEXT_NODE) {
+        const text = child.textContent;
+        const textNode = document.createTextNode("");
+        destParent.appendChild(textNode);
+        // streaming speed; characters-per-millisecond
+        const cps = (wpm * 5) / 60 / 1000;
+        const baseDelay = 1 / cps;
+        for (let i = 0; i < text.length; i++) {
+          if (token !== playToken) throw new Error("cancelled");
+          textNode.textContent += text[i];
+          // jitter + micro-pauses after punctuation
+          let d = baseDelay * (0.6 + Math.random() * 0.9);
+          const c = text[i];
+          if (c === "." || c === "!" || c === "?") d += 80;
+          else if (c === "," || c === ";" || c === ":") d += 28;
+          if (i % 14 === 7) scrollChat();
+          await sleep(d, token);
+        }
+        scrollChat();
+      } else if (child.nodeType === Node.ELEMENT_NODE) {
+        const clone = child.cloneNode(false);
+        destParent.appendChild(clone);
+        await walk(child, clone);
+      }
+    }
+  }
+
+  await walk(target, container);
+}
+
+function makeToolChip(name, args) {
+  const chip = document.createElement("span");
+  chip.className = "tool-chip";
+  chip.innerHTML = `<span class="dot"></span><span class="name">${name}</span>${args ? `<span style="color:var(--ink-3)">(${args})</span>` : ""}`;
+  return chip;
+}
+
+function makeDiffBlock(spec) {
+  const wrap = document.createElement("div");
+  wrap.className = "diff";
+  const head = document.createElement("div");
+  head.className = "diff-head";
+  head.innerHTML = `<span class="badge">${spec.badge || "Proposed"}</span><span class="path">${spec.file}</span>`;
+  const pre = document.createElement("pre");
+  for (const ln of spec.lines) {
+    const span = document.createElement("span");
+    span.className = "line " + (ln.kind || "ctx");
+    span.textContent = ln.text;
+    pre.appendChild(span);
+  }
+  const actions = document.createElement("div");
+  actions.className = "diff-actions";
+  actions.innerHTML = `<span class="pill primary">accept</span><span class="pill">show next</span><span class="pill">discard</span><span style="margin-left:auto">file staged at <code style="background:transparent;border:0;padding:0;font-size:11.5px;">proposed/</code></span>`;
+  wrap.appendChild(head);
+  wrap.appendChild(pre);
+  wrap.appendChild(actions);
+  return wrap;
+}
+
+async function playTurn(turn, token, isFinalTurn) {
+  const { wrap, text } = makeTurn(turn);
+  chatBody.appendChild(wrap);
+  requestAnimationFrame(() => wrap.classList.add("is-in"));
+  scrollChat();
+
+  // Add a live cursor at the end while streaming
+  const cursor = document.createElement("span");
+  cursor.className = "cursor";
+
+  for (const seg of turn.segments) {
+    if (token !== playToken) return;
+    if (seg.type === "text") {
+      const div = document.createElement("div");
+      div.innerHTML = seg.html;
+      text.appendChild(div);
+      scrollChat();
+    } else if (seg.type === "stream") {
+      // place cursor while streaming
+      text.appendChild(cursor);
+      const target = document.createElement("span");
+      text.insertBefore(target, cursor);
+      try {
+        await streamHtml(target, seg.html, seg.wpm || 700, token);
+      } catch (e) { return; }
+      if (cursor.parentNode === text) text.removeChild(cursor);
+    } else if (seg.type === "tool") {
+      const chip = makeToolChip(seg.name, seg.args);
+      // chips group together on one line; wrap in a container
+      let host = text.querySelector(".tool-row:last-child");
+      if (!host || host.dataset.closed) {
+        host = document.createElement("div");
+        host.className = "tool-row";
+        host.style.margin = "0 0 6px";
+        text.appendChild(host);
+      }
+      host.appendChild(chip);
+      scrollChat();
+      try { await sleep(180, token); } catch (e) { return; }
+    } else if (seg.type === "diff") {
+      const block = makeDiffBlock(seg);
+      text.appendChild(block);
+      scrollChat();
+    } else if (seg.type === "pause") {
+      try { await sleep(seg.ms, token); } catch (e) { return; }
+    }
+  }
+
+  if (isFinalTurn) {
+    // leave a trailing blink so the conversation feels alive
+    text.appendChild(cursor);
+  }
+
+  if (turn.pauseAfter) {
+    try { await sleep(turn.pauseAfter, token); } catch (e) { return; }
+  }
+}
+
+async function playDemo() {
+  const token = ++playToken;
+  chatBody.innerHTML = "";
+
+  if (prefersReduce) {
+    // Render everything immediately, no streaming.
+    for (let i = 0; i < SCRIPT.length; i++) {
+      const turn = SCRIPT[i];
+      const { wrap, text } = makeTurn(turn);
+      chatBody.appendChild(wrap);
+      wrap.classList.add("is-in");
+      for (const seg of turn.segments) {
+        if (seg.type === "text" || seg.type === "stream") {
+          const div = document.createElement("div");
+          div.innerHTML = seg.html;
+          text.appendChild(div);
+        } else if (seg.type === "tool") {
+          let host = text.querySelector(".tool-row:last-child");
+          if (!host) {
+            host = document.createElement("div");
+            host.className = "tool-row";
+            host.style.margin = "0 0 6px";
+            text.appendChild(host);
+          }
+          host.appendChild(makeToolChip(seg.name, seg.args));
+        } else if (seg.type === "diff") {
+          text.appendChild(makeDiffBlock(seg));
+        }
+      }
+    }
+    return;
+  }
+
+  for (let i = 0; i < SCRIPT.length; i++) {
+    if (token !== playToken) return;
+    await playTurn(SCRIPT[i], token, i === SCRIPT.length - 1);
+  }
+}
+
+restartBtn.addEventListener("click", () => playDemo());
+
+// Kick off after a beat so the page settles
+setTimeout(() => playDemo(), prefersReduce ? 0 : 600);
+
+// ============================================================
+// PERSONA FORK + INSTALL PANEL SWITCH
+// ============================================================
+const existingBtn = document.getElementById("opt-has-vault");
+const freshBtn = document.getElementById("opt-no-vault");
+const existingPanel = document.getElementById("path-existing");
+const freshPanel = document.getElementById("path-fresh");
+
+function selectPath(which) {
+  existingBtn.classList.toggle("selected", which === "existing");
+  freshBtn.classList.toggle("selected", which === "fresh");
+  existingBtn.setAttribute("aria-selected", which === "existing");
+  freshBtn.setAttribute("aria-selected", which === "fresh");
+  existingPanel.classList.toggle("hidden", which !== "existing");
+  freshPanel.classList.toggle("hidden", which !== "fresh");
+}
+existingBtn.addEventListener("click", () => selectPath("existing"));
+freshBtn.addEventListener("click", () => selectPath("fresh"));
+
+// ============================================================
+// COPY BUTTONS
+// ============================================================
+for (const btn of document.querySelectorAll(".copy-btn")) {
+  btn.addEventListener("click", async () => {
+    const target = document.getElementById(btn.dataset.copy);
+    if (!target) return;
+    try {
+      await navigator.clipboard.writeText(target.textContent);
+      const originalText = btn.textContent;
+      btn.textContent = "copied";
+      setTimeout(() => { btn.textContent = originalText; }, 1200);
+    } catch {
+      btn.textContent = "(copy failed)";
+    }
+  });
+}
+
+// ============================================================
+// FILE SYSTEM ACCESS SCAFFOLDER (carried over from index.html)
+// ============================================================
+const fsSupportCheck = document.getElementById("fs-support-check");
+const scaffoldBtn = document.getElementById("scaffold-btn");
+const scaffoldStatus = document.getElementById("scaffold-status");
+const step2Wrap = document.getElementById("step-2-wrap");
+
+const SUPPORTS_FSA = typeof window.showDirectoryPicker === "function";
+
+if (!SUPPORTS_FSA) {
+  fsSupportCheck.innerHTML = `
+    <div class="status warn">
+      Your browser doesn't support the File System Access API (Chrome and Edge do; Firefox and Safari don't yet).
+      Use the CLI fallback: <code>npm install -g margins-mcp &amp;&amp; margins-mcp install --starter-vault ~/Margins</code>
+    </div>`;
+  if (scaffoldBtn) scaffoldBtn.disabled = true;
+}
+
+const STARTER_FILES = {
+  "CLAUDE.md": `# CLAUDE.md
+
+This vault was scaffolded by Margins. Drop your operating rules here.
+
+## How to use it
+- Raw transcripts and notes go in \`raw/\`. Ask Claude to compile them with \`propose_compile_from_raw\`.
+- Wiki pages live in \`wiki/\`. Sources, concepts, entities, syntheses.
+- Proposed writes stage at \`proposed/\` until you accept them.
+- Vault-specific rules and conventions live in this file.
+`,
+  "operator-manual.md": `# Operator manual
+
+1. Raw files in \`raw/\` are evidence. They don't get edited.
+2. Wiki pages in \`wiki/\` are navigable. Link them, tag them.
+3. Proposed writes stay in \`proposed/\` until you accept.
+4. Claude is a drafter, not an autonomous editor. Review before accepting.
+`,
+  "wiki/index.md": `# Index
+
+Your vault map. Add links to durable pages as they appear.
+
+1. Drop a markdown note into \`wiki/daily/\` to start today.
+2. Or drop a transcript into \`raw/\` and ask Claude to compile it.
+3. Or just ask Claude to summarize what's here once the vault grows.
+`,
+  ".margins/preferences.md": `# Vault preferences
+
+Margins-learned conventions. Claude appends here when you correct a
+proposal in a durable way. Plain Markdown - you can audit it, hand-edit
+it, or delete sections that no longer apply.
+`
+};
+const STARTER_DIRS = ["wiki/daily", "wiki/sources", "wiki/entities", "wiki/concepts", "raw", "proposed", ".margins"];
+
+async function ensureDir(parent, name) {
+  return parent.getDirectoryHandle(name, { create: true });
+}
+async function ensureDirPath(root, relPath) {
+  let cur = root;
+  for (const part of relPath.split("/")) {
+    if (!part) continue;
+    cur = await ensureDir(cur, part);
+  }
+  return cur;
+}
+async function writeFile(parent, name, content) {
+  const fh = await parent.getFileHandle(name, { create: true });
+  const w = await fh.createWritable();
+  await w.write(content);
+  await w.close();
+}
+
+scaffoldBtn?.addEventListener("click", async () => {
+  scaffoldStatus.innerHTML = "";
+  let parentHandle;
+  try {
+    parentHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+  } catch (err) {
+    if (err && err.name === "AbortError") return;
+    scaffoldStatus.innerHTML = `<div class="status err">Folder pick canceled or denied: ${err.message}</div>`;
+    return;
+  }
+
+  try {
+    const marginsDir = await parentHandle.getDirectoryHandle("Margins", { create: true });
+    for (const rel of STARTER_DIRS) await ensureDirPath(marginsDir, rel);
+    for (const [rel, content] of Object.entries(STARTER_FILES)) {
+      const dirPath = rel.split("/").slice(0, -1).join("/");
+      const name = rel.split("/").pop();
+      const parent = dirPath ? await ensureDirPath(marginsDir, dirPath) : marginsDir;
+      await writeFile(parent, name, content);
+    }
+
+    scaffoldStatus.innerHTML = `
+      <div class="status ok">
+        Scaffolded a Margins vault inside the folder you picked. It contains wiki/, raw/, proposed/, .margins/, plus CLAUDE.md and operator-manual.md.
+        <br><br>
+        Move it to <code>~/Margins/</code> if it isn't there already - the CLI installer auto-detects that path.
+      </div>`;
+
+    step2Wrap.classList.remove("hidden");
+    setTimeout(() => step2Wrap.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
+  } catch (err) {
+    scaffoldStatus.innerHTML = `<div class="status err">Scaffold failed: ${err.message}</div>`;
+  }
+});
+</script>
+</body>
+</html>

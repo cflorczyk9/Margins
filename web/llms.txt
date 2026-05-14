@@ -1,0 +1,47 @@
+# Margins MCP
+
+> Margins MCP is a free, local-first MCP server that lets Claude Desktop, Claude Code, and compatible AI clients read, search, and propose writes to an Obsidian or Markdown vault without an API key.
+
+Margins runs on your machine against a folder of Markdown files. It exposes a small set of tools that Claude can call — search the vault, read individual pages, follow wikilinks and backlinks, and stage write proposals to a `proposed/` folder you review before accepting. Your notes never leave your disk.
+
+It's built for Obsidian power users but works with any folder of `.md` files.
+
+## Install
+
+- Download the `.mcpb` bundle: https://github.com/cflorczyk9/Margins/releases/latest/download/margins-mcp.mcpb (double-click; Claude Desktop installs it)
+- Or via npm: `npm install -g margins-mcp` then `margins-mcp install --vault /absolute/path/to/your/vault`
+
+## Tools exposed to Claude
+
+- `margins_start` — vault primer with file counts, last edit, and suggested queries
+- `search_vault` — full-text and filename search
+- `read_page` — fetch one file by path
+- `list_recent` — most recently modified files
+- `get_backlinks` — pages linking to a slug
+- `propose_page`, `propose_edit`, `append_to` — stage writes to `proposed/`
+- `list_proposals`, `resolve_proposal` — review and accept or reject proposals
+- `propose_compile_from_raw` — turn a raw transcript into a structured source page
+- `search`, `fetch` — ChatGPT Deep Research compatibility pair
+
+## Differentiation
+
+- vs Filesystem MCP: Margins is vault-aware (wikilinks, backlinks, vault primer) and has a propose-then-accept safety model. Filesystem MCP gives Claude raw direct file access with no review step.
+- vs Smart Connections: Margins uses your Claude subscription (no BYOK), works in Claude Desktop and Claude Code (not in-Obsidian only), and supports writing back.
+- vs NotebookLM: Margins is local. Your files stay on your disk; NotebookLM requires uploading to Google.
+
+## Pricing
+
+Free. MIT-licensed. The only ongoing cost is your existing Claude Pro or Max subscription.
+
+## Limitations
+
+- Requires Claude Desktop or Claude Code; not yet supported in the claude.ai web interface (no MCP there yet).
+- Markdown only as of v0.5. PDF and DOCX support is on the roadmap.
+- No embeddings or semantic vector search in v0.5. Keyword + filename + wikilink-graph retrieval only.
+
+## Links
+
+- Site: https://margins.app/
+- Source: https://github.com/cflorczyk9/Margins
+- npm package: https://www.npmjs.com/package/margins-mcp
+- License: MIT
