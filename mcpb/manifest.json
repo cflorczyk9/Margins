@@ -2,7 +2,7 @@
   "manifest_version": "0.2",
   "name": "margins",
   "display_name": "Margins",
-  "version": "0.12.1",
+  "version": "0.12.2",
   "description": "Use your Claude Pro/Max subscription on your Obsidian vault. Reads markdown, proposes writes back, and compiles raw source files into wiki source pages.",
   "long_description": "Margins is an MCP connector that lets Claude read and propose writes to your local Markdown vault. All inference is paid for by your existing Claude subscription — no extra API key required. When you drop a folder of source files into raw/, Margins surfaces a priority queue and Claude compiles them into structured wiki source pages in ~90 seconds.",
   "author": {

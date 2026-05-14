@@ -273,3 +273,32 @@ test("resetAllProposals removes every staged proposal", async () => {
   const remaining = await proposals.listProposals();
   assert.equal(remaining.length, 0);
 });
+
+test("tracker append replaces a stale pending row instead of adding a duplicate", async () => {
+  const seed = `---\ntype: tracker\n---\n\n# Ingest Tracker\n\n| Source file | Status | Source page | Connected pages | Words | Notes |\n|---|---|---|---|---:|---|\n| raw/Stale Pending File.docx | pending | - | - |  |\n`;
+  const trackerAbs = path.join(tmpRoot, "wiki/ingest-tracker.md");
+  await mkdir(path.dirname(trackerAbs), { recursive: true });
+  await writeFile(trackerAbs, seed, "utf8");
+
+  const body = `---\ntype: source\nraw_file: raw/Stale Pending File.docx\n---\n# Stale\n`;
+  await proposals.proposePage("wiki/sources/source-stale.md", body);
+  const result = await proposals.resolveProposal("wiki/sources/source-stale.md", "accept");
+  assert.equal(result.action, "accepted");
+  assert.equal(result.trackerUpdated.action, "replaced");
+
+  const tracker = await read("wiki/ingest-tracker.md");
+  // exactly one row for this raw file, and it's the ingested form
+  const matches = tracker.match(/\| raw\/Stale Pending File\.docx \|/g) || [];
+  assert.equal(matches.length, 1);
+  assert.match(tracker, /\| raw\/Stale Pending File\.docx \| ingested \| \[\[source-stale\]\]/);
+  assert.doesNotMatch(tracker, /\| raw\/Stale Pending File\.docx \| pending/);
+});
+
+test("tracker row matching tolerates spaces in raw filename (doctor regex)", async () => {
+  const body = `---\ntype: source\nraw_file: raw/Booth Original Resume.docx\n---\n`;
+  await proposals.proposePage("wiki/sources/source-booth-resume.md", body);
+  const result = await proposals.resolveProposal("wiki/sources/source-booth-resume.md", "accept");
+  assert.equal(result.trackerUpdated.changed, true);
+  const tracker = await read("wiki/ingest-tracker.md");
+  assert.match(tracker, /\| raw\/Booth Original Resume\.docx \| ingested \| \[\[source-booth-resume\]\]/);
+});

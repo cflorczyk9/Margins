@@ -236,7 +236,6 @@ async function maybeAppendTrackerRow(vault, destPath, body) {
   }
 
   const slug = destPath.split("/").pop().replace(/\.md$/i, "");
-  const rowKey = `| ${rawFile} |`;
   const row = `| ${rawFile} | ingested | [[${slug}]] | - |  |  |`;
 
   if (current === null) {
@@ -246,14 +245,27 @@ async function maybeAppendTrackerRow(vault, destPath, body) {
     return { changed: true, action: "created", rawFile };
   }
 
-  if (current.includes(rowKey)) {
-    return { changed: false, reason: "already-tracked", rawFile };
+  // Find any existing row for this raw file (matches by leading `| <rawFile> |`).
+  // The previous implementation used substring-includes which would falsely
+  // match a "pending" placeholder row left by a prior reconciliation. We now
+  // detect and either skip (if the row already says the right thing) or
+  // replace (if it's a stale pending/placeholder row).
+  const escapedRaw = rawFile.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const rowRe = new RegExp(`^\\|\\s+${escapedRaw}\\s+\\|.*$`, "m");
+  const existing = current.match(rowRe);
+  if (existing) {
+    if (existing[0] === row) {
+      return { changed: false, reason: "already-tracked", rawFile };
+    }
+    const replaced = current.replace(rowRe, row);
+    await atomicWrite(trackerAbs, replaced);
+    return { changed: true, action: "replaced", rawFile };
   }
 
   const lines = current.split("\n");
   let insertAt = -1;
   for (let i = lines.length - 1; i >= 0; i--) {
-    if (/^\|\s+\S+\/\S+\s+\|/.test(lines[i]) || lines[i].startsWith("|---")) {
+    if (/^\|\s+[^|\n]+?\/[^|\n]+?\s+\|/.test(lines[i]) || lines[i].startsWith("|---")) {
       insertAt = i + 1;
       break;
     }
