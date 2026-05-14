@@ -7,7 +7,7 @@ import { detectIndexRoots } from "./index-roots.js";
 import { createPrimer, formatSummary } from "./primer.js";
 import { createCompile } from "./compile.js";
 import { supportedExtensionsList } from "./document-text.js";
-import { buildRawIndex } from "./raw-index.js";
+import { buildVaultIndex } from "./raw-index.js";
 import { loadTelemetry, writeConsent } from "./telemetry.js";
 import { createPreferences } from "./preferences.js";
 import { createWikilinks } from "./wikilinks.js";
@@ -50,13 +50,11 @@ with a one-line rule capturing the correction. Margins remembers it for
 next time. Don't record every minor disagreement; record durable rules
 about filing conventions, naming patterns, structural rules.
 
-INGESTING: raw transcripts, notes, PDFs, Word docs, spreadsheets, decks, emails, EPUBs, and other supported documents live in raw/<filename>. To file one
-into the vault, call propose_compile_from_raw with a summary you generate
-by reading the file.
+INGESTING: source documents (transcripts, notes, PDFs, Word docs, spreadsheets, decks, emails, EPUBs, etc.) can live anywhere in the vault. raw/<filename> is conventional but not required — files at the vault root or in custom subfolders work too. To file one into the wiki, call propose_compile_from_raw with the file's vault-relative path and a summary you generate by reading the file. Use list_unprocessed to see which files haven't been compiled yet.
 
 TOOLS:
 - Context: margins_start, recall_preferences
-- Read: search_vault, read_page, list_recent, get_backlinks, list_pending_raw
+- Read: search_vault, read_page, list_recent, get_backlinks, list_unprocessed
 - Propose writes: propose_page, propose_edit, append_to, propose_compile_from_raw
 - Suggest: propose_wikilinks (for A3/B3 vaults with few links)
 - Manage proposals: list_proposals, resolve_proposal
@@ -425,13 +423,13 @@ export function buildServer(vault, options = {}) {
     "propose_compile_from_raw",
     {
       description:
-        "Compile a supported source file under raw/ into a structured source page proposal. Supports: " +
+        "Compile a supported source file from anywhere in the vault into a structured wiki source page proposal. Supports: " +
         `${supportedExtensionsList()}. ` +
-        "You (the model) provide the review metadata: a summary, optional bucket, optional takeaways. Margins extracts readable text when needed, runs its compiler, and stages the result at proposed/<wiki path>. Use this when the user has dropped a raw transcript, note, PDF, Word doc, spreadsheet, deck, email, EPUB, article, or similar document into raw/ and wants it filed into the wiki.",
+        "The file can live at the vault root, in raw/, or in any custom subfolder — pass its vault-relative path. You (the model) provide the review metadata: a summary, optional bucket, optional takeaways. Margins extracts readable text, runs its compiler, and stages the result at proposed/<wiki path>. Use this whenever the user wants a document filed into the wiki where it can link to other notes.",
       inputSchema: {
         rawPath: z
           .string()
-          .describe("Path of the raw file. Either 'raw/foo.pdf' or just 'foo.pdf' (auto-prefixed)."),
+          .describe("Vault-relative path of the source file. Examples: 'raw/foo.pdf', 'meetings/march-7.md', 'lawyer/contract.pdf'. A bare filename (e.g. 'foo.pdf') is auto-prefixed with 'raw/' for back-compat."),
         summary: z.string().describe("1-3 sentence summary of what this source is about."),
         title: z.string().optional().describe("Title for the source page. Defaults to titlecased filename."),
         bucket: z.string().optional().describe("Wiki bucket. Default 'sources'. Try 'projects', 'career', 'ideas', etc."),
@@ -500,10 +498,10 @@ export function buildServer(vault, options = {}) {
   );
 
   register(
-    "list_pending_raw",
+    "list_unprocessed",
     {
       description:
-        "List raw/ files that have not yet been compiled into a wiki source page. Detection is based on raw_file: frontmatter on existing wiki pages, not filename heuristics. Use this when the user asks 'what haven't I filed yet?' or before suggesting a bulk-compile pass.",
+        "List vault files that have not yet been compiled into a wiki source page. Files can live anywhere in the vault (raw/ is conventional but not required) — detection works on raw_file: frontmatter, not folder placement. Use this when the user asks 'what haven't I filed yet?' or before a compile pass. Each item is a vault-relative path you can pass directly to propose_compile_from_raw.",
       inputSchema: {
         limit: z
           .number()
@@ -516,24 +514,24 @@ export function buildServer(vault, options = {}) {
       annotations: { readOnlyHint: true }
     },
     async ({ limit }) => {
-      const index = await buildRawIndex(vault);
+      const index = await buildVaultIndex(vault);
       const cap = limit ?? 50;
       const shown = index.pending.slice(0, cap);
-      const filed = index.rawFiles.length - index.pending.length;
+      const filed = index.candidates.length - index.pending.length;
       const header =
-        `raw/: ${index.rawFiles.length} supported files. ` +
-        `${filed} filed, ${index.pending.length} pending.`;
+        `Vault: ${index.candidates.length} compilation candidates. ` +
+        `${filed} already filed, ${index.pending.length} unprocessed.`;
       const body =
         shown.length === 0
           ? "(nothing pending)"
-          : shown.map((n) => `  raw/${n}`).join("\n") +
+          : shown.map((n) => `  ${n}`).join("\n") +
             (index.pending.length > shown.length
               ? `\n  ... and ${index.pending.length - shown.length} more`
               : "");
       return {
         content: [{ type: "text", text: `${header}\n${body}` }],
         structuredContent: {
-          total_raw: index.rawFiles.length,
+          total_candidates: index.candidates.length,
           filed,
           pending_count: index.pending.length,
           pending: shown

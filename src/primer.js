@@ -4,7 +4,7 @@ import { samplePileBySnippets, detectFilenamePatterns } from "./pile-sampler.js"
 import { scanRawForCompile } from "./pile-scan.js";
 import { checkForUpdate } from "./version-check.js";
 import { readConsent } from "./telemetry.js";
-import { buildRawIndex } from "./raw-index.js";
+import { buildVaultIndex } from "./raw-index.js";
 
 // Mode dispatch. Each persona maps to a response shape tuned for what that
 // user actually needs from Claude at the start of a conversation.
@@ -138,7 +138,7 @@ function foldersByCount(files, vault) {
 }
 
 async function detectUningestedRaw(vault) {
-  const index = await buildRawIndex(vault);
+  const index = await buildVaultIndex(vault);
   return { count: index.pending.length, files: index.pending.slice(0, 10) };
 }
 
@@ -271,9 +271,9 @@ function formatSynthesisSummary(summary) {
 function appendCommonSections(lines, summary) {
   if (summary.uningestedRaw.count > 0) {
     lines.push("");
-    lines.push(`Uningested raw files: ${summary.uningestedRaw.count}`);
-    for (const f of summary.uningestedRaw.files) lines.push(`  raw/${f}`);
-    lines.push("  -> Ingest by calling propose_compile_from_raw on each one.");
+    lines.push(`Unprocessed files: ${summary.uningestedRaw.count}`);
+    for (const f of summary.uningestedRaw.files) lines.push(`  ${f}`);
+    lines.push("  -> Compile them into wiki source pages so they can link with the rest of the vault. Call propose_compile_from_raw on each.");
   }
   if (summary.pendingProposals.count > 0) {
     lines.push("");

@@ -1,51 +1,82 @@
 import { readFile, readdir } from "node:fs/promises";
+import path from "node:path";
 import { isSupportedDocumentPath } from "./document-text.js";
 
-const RAW_FILE_RE = /^raw_file:\s*"?raw\/([^"\n]+?)"?\s*$/m;
+const RAW_FILE_RE = /^raw_file:\s*"?([^"\n]+?)"?\s*$/m;
 const RAW_FILES_BLOCK_RE = /^raw_files:\s*\n((?:[ \t]*-\s+.+(?:\n|$))+)/m;
-const RAW_FILES_ITEM_RE = /^\s*-\s+"?raw\/([^"\n]+?)"?\s*$/gm;
+const RAW_FILES_ITEM_RE = /^\s*-\s+"?([^"\n]+?)"?\s*$/gm;
+const TYPE_RE = /^type:\s*"?([^"\n]+?)"?\s*$/m;
 
-export async function buildRawIndex(vault) {
-  const rawFiles = await listRawFiles(vault);
-  const referenced = new Map();
-  if (!rawFiles.length) return { rawFiles, referenced, pending: [] };
+const META_PATHS = new Set([
+  "wiki/ingest-tracker.md",
+  "wiki/wiki-stats.md",
+  "wiki/log.md",
+  "wiki/index.md"
+]);
 
-  const rawSet = new Set(rawFiles);
-  const files = await vault.listFiles();
-  for (const abs of files) {
+export async function buildVaultIndex(vault) {
+  const allFiles = await vault.listFiles();
+
+  const candidates = [];
+  const sourcePages = [];
+
+  for (const abs of allFiles) {
     const rel = vault.toRel(abs);
-    if (!rel.endsWith(".md") || rel.startsWith("raw/")) continue;
-    let body;
-    try {
-      body = await readFile(abs, "utf8");
-    } catch {
+    if (META_PATHS.has(rel)) continue;
+    if (!isSupportedDocumentPath(rel)) continue;
+
+    const fm = await readFrontmatter(abs);
+    const fmType = fm?.match(TYPE_RE)?.[1]?.trim();
+
+    if (fmType) {
+      if (fmType === "source" || fmType === "synthesis") sourcePages.push({ abs, rel, fm });
       continue;
     }
-    if (!body.startsWith("---\n")) continue;
-    const fmEnd = body.indexOf("\n---", 4);
-    if (fmEnd < 0) continue;
-    const fm = body.slice(4, fmEnd + 1);
 
-    const single = fm.match(RAW_FILE_RE);
+    candidates.push(rel);
+  }
+
+  const referenced = new Map();
+  for (const page of sourcePages) {
+    const single = page.fm.match(RAW_FILE_RE);
     if (single) {
-      const name = single[1].trim();
-      if (rawSet.has(name) && !referenced.has(name)) referenced.set(name, rel);
+      const target = normalizeRef(single[1].trim());
+      if (target && !referenced.has(target)) referenced.set(target, page.rel);
     }
-
-    const list = fm.match(RAW_FILES_BLOCK_RE);
+    const list = page.fm.match(RAW_FILES_BLOCK_RE);
     if (list) {
       for (const item of list[1].matchAll(RAW_FILES_ITEM_RE)) {
-        const name = item[1].trim();
-        if (rawSet.has(name) && !referenced.has(name)) referenced.set(name, rel);
+        const target = normalizeRef(item[1].trim());
+        if (target && !referenced.has(target)) referenced.set(target, page.rel);
       }
     }
   }
 
-  const pending = rawFiles.filter((n) => !referenced.has(n));
-  return { rawFiles, referenced, pending };
+  const pending = candidates.filter((c) => !referenced.has(c));
+  return { candidates, referenced, pending, sourcePagesCount: sourcePages.length };
 }
 
-async function listRawFiles(vault) {
+export const buildRawIndex = buildVaultIndex;
+
+function normalizeRef(value) {
+  if (!value) return null;
+  return value.replace(/^\.\//, "");
+}
+
+async function readFrontmatter(abs) {
+  let body;
+  try {
+    body = await readFile(abs, "utf8");
+  } catch {
+    return null;
+  }
+  if (!body.startsWith("---\n")) return null;
+  const end = body.indexOf("\n---", 4);
+  if (end < 0) return null;
+  return body.slice(4, end + 1);
+}
+
+export async function listRawFolderFiles(vault) {
   let entries;
   try {
     entries = await readdir(vault.resolveInside("raw"), { withFileTypes: true });

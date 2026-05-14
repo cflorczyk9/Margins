@@ -18,7 +18,7 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { isSupportedDocumentPath, isTextDocumentPath } from "./document-text.js";
-import { buildRawIndex } from "./raw-index.js";
+import { buildVaultIndex } from "./raw-index.js";
 
 const MAX_SCAN_BYTES = 50_000;
 const MIN_CONTENT_BYTES = 100;
@@ -244,10 +244,10 @@ function emptyScan(rawDir) {
 async function collectCompiledSlugs(vault) {
   const compiled = new Set();
   try {
-    const { referenced } = await buildRawIndex(vault);
-    for (const rawName of referenced.keys()) {
-      compiled.add(rawName);
-      compiled.add(path.basename(rawName, path.extname(rawName)));
+    const { referenced } = await buildVaultIndex(vault);
+    for (const refPath of referenced.keys()) {
+      compiled.add(refPath);
+      compiled.add(path.basename(refPath, path.extname(refPath)));
     }
     const allFiles = await vault.listFiles();
     for (const abs of allFiles) {

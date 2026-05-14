@@ -240,3 +240,41 @@ test("force=true bypasses idempotency check and stages replacement proposal", as
   assert.equal(replace.status, "proposal-staged");
   assert.ok(replace.proposalPath, "force=true should stage a proposal");
 });
+
+test("compiles a file located outside raw/ (vault-root path)", async () => {
+  await touch(
+    "meetings/2026-05-14-call.md",
+    "# Call\n\nDiscussed Project X with Alex and Sam."
+  );
+  const result = await compile.proposeCompileFromRaw(
+    "meetings/2026-05-14-call.md",
+    { summary: "Call about Project X." }
+  );
+  assert.equal(result.status, "proposal-staged");
+  assert.equal(result.rawFile, "meetings/2026-05-14-call.md");
+  const body = await read(result.proposalPath);
+  assert.match(body, /raw_file: meetings\/2026-05-14-call\.md/);
+  assert.match(body, /Original file: `meetings\/2026-05-14-call\.md`/);
+});
+
+test("idempotency check works for files outside raw/", async () => {
+  await touch("clippings/article.md", "# Article\n\nBody.");
+  const first = await compile.proposeCompileFromRaw("clippings/article.md", {
+    summary: "An article."
+  });
+  await proposals.resolveProposal(first.destinationPath, "accept");
+
+  const second = await compile.proposeCompileFromRaw("clippings/article.md", {
+    summary: "Trying again."
+  });
+  assert.equal(second.status, "already-filed");
+  assert.equal(second.rawFile, "clippings/article.md");
+});
+
+test("bare filename still defaults to raw/ for back-compat", async () => {
+  await touch("raw/legacy.md", "# Legacy\n\nOld habit.");
+  const result = await compile.proposeCompileFromRaw("legacy.md", {
+    summary: "Legacy file."
+  });
+  assert.equal(result.rawFile, "raw/legacy.md");
+});

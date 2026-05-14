@@ -2,44 +2,44 @@ import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { compileVault } from "./compiler/compiler.js";
 import { extractDocumentText, supportedExtensionsList } from "./document-text.js";
-import { buildRawIndex } from "./raw-index.js";
+import { buildVaultIndex } from "./raw-index.js";
 
 export function createCompile(vault, proposals) {
   async function proposeCompileFromRaw(rawPath, review) {
     if (!rawPath || typeof rawPath !== "string") {
       throw new Error("rawPath is required");
     }
-    const normalized = rawPath.replace(/^raw\//, "");
-    const fullRawPath = `raw/${normalized}`;
-    const absRaw = vault.resolveInside(fullRawPath);
+
+    const rel = resolveSourceRel(rawPath);
+    const absRaw = vault.resolveInside(rel);
 
     let info;
     try {
       info = await stat(absRaw);
     } catch {
-      throw new Error(await buildNotFoundError(vault, fullRawPath, normalized));
+      throw new Error(await buildNotFoundError(vault, rel));
     }
     if (!info.isFile()) {
-      throw new Error(`not a file: ${fullRawPath}`);
+      throw new Error(`not a file: ${rel}`);
     }
 
     const fileName = path.basename(absRaw);
     const force = Boolean(review && review.force);
 
     if (!force) {
-      const index = await buildRawIndex(vault);
-      const existingPath = index.referenced.get(fileName);
+      const index = await buildVaultIndex(vault);
+      const existingPath = index.referenced.get(rel);
       if (existingPath) {
         return {
           status: "already-filed",
-          rawFile: fullRawPath,
+          rawFile: rel,
           existingPath,
           message: `Source already exists at ${existingPath}. Pass force=true to replace.`
         };
       }
     }
 
-    const text = await extractDocumentText(absRaw, fullRawPath);
+    const text = await extractDocumentText(absRaw, rel);
 
     const fullReview = buildReview(review || {}, fileName);
 
@@ -59,12 +59,14 @@ export function createCompile(vault, proposals) {
       );
     }
 
+    const markdown = rewriteRawFileRefs(sourceNode.markdown, fileName, rel);
+
     const destPath = sourceNode.path;
-    const proposalResult = await proposals.proposePage(destPath, sourceNode.markdown, { force });
+    const proposalResult = await proposals.proposePage(destPath, markdown, { force });
     return {
       ...proposalResult,
       status: "proposal-staged",
-      rawFile: fullRawPath,
+      rawFile: rel,
       title: sourceNode.title,
       bucket: sourceNode.path.split("/")[1] || "sources",
       summary: sourceNode.summary,
@@ -74,6 +76,20 @@ export function createCompile(vault, proposals) {
   }
 
   return { proposeCompileFromRaw };
+}
+
+function resolveSourceRel(rawPath) {
+  const trimmed = rawPath.replace(/^\.\//, "");
+  if (trimmed.includes("/")) return trimmed;
+  return `raw/${trimmed}`;
+}
+
+function rewriteRawFileRefs(markdown, fileName, rel) {
+  const compilerDefault = `raw/${fileName}`;
+  if (rel === compilerDefault) return markdown;
+  return markdown
+    .replace(/^raw_file:\s*"?[^"\n]+"?\s*$/m, `raw_file: ${rel}`)
+    .replace(/Original file:\s*`raw\/[^`]+`/, `Original file: \`${rel}\``);
 }
 
 function buildReview(input, fileName) {
@@ -123,28 +139,32 @@ function titleize(slug) {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-async function buildNotFoundError(vault, fullRawPath, requested) {
-  // If raw/ itself is missing, that's the actionable hint.
-  let entries;
-  try {
-    entries = await readdir(vault.resolveInside("raw"), { withFileTypes: true });
-  } catch {
-    return `raw/ directory not found in this vault. Drop a supported source file (${supportedExtensionsList()}) at <vault>/raw/<your-file> first, then try again.`;
+async function buildNotFoundError(vault, rel) {
+  const wantedInRaw = rel.startsWith("raw/");
+  if (wantedInRaw) {
+    const requested = rel.slice(4);
+    let entries;
+    try {
+      entries = await readdir(vault.resolveInside("raw"), { withFileTypes: true });
+    } catch {
+      return `raw/ directory not found in this vault. Drop a supported source file (${supportedExtensionsList()}) anywhere in the vault, then try again. (Files can live anywhere — raw/ is the conventional inbox.)`;
+    }
+    const available = entries
+      .filter((e) => e.isFile())
+      .map((e) => e.name)
+      .filter((n) => !n.startsWith("."));
+    if (available.length === 0) {
+      return `file not found: ${rel}. The raw/ folder is empty — drop your source file in the vault (anywhere; raw/ is just a convention).`;
+    }
+    const closest = findClosest(requested, available);
+    if (closest && closest !== requested) {
+      return `file not found: ${rel}. Did you mean: raw/${closest}?`;
+    }
+    const preview = available.slice(0, 5).join(", ");
+    const more = available.length > 5 ? `, +${available.length - 5} more` : "";
+    return `file not found: ${rel}. Available in raw/: ${preview}${more}.`;
   }
-  const available = entries
-    .filter((e) => e.isFile())
-    .map((e) => e.name)
-    .filter((n) => !n.startsWith("."));
-  if (available.length === 0) {
-    return `raw file not found: ${fullRawPath}. The raw/ folder is empty — drop your source file there first.`;
-  }
-  const closest = findClosest(requested, available);
-  if (closest && closest !== requested) {
-    return `raw file not found: ${fullRawPath}. Did you mean: raw/${closest}?`;
-  }
-  const preview = available.slice(0, 5).join(", ");
-  const more = available.length > 5 ? `, +${available.length - 5} more` : "";
-  return `raw file not found: ${fullRawPath}. Available in raw/: ${preview}${more}.`;
+  return `file not found: ${rel}. Confirm the path is relative to the vault root.`;
 }
 
 function findClosest(target, candidates) {
@@ -159,7 +179,6 @@ function findClosest(target, candidates) {
       best = c;
     }
   }
-  // Only suggest if reasonably close — half the longer string's length, min 2.
   const threshold = Math.max(2, Math.floor(Math.max(target.length, best.length) / 2));
   if (bestDistance > threshold) return null;
   return best;
