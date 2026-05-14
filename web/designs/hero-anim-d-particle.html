@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>hero-anim-d-particle — Margins</title>
+<style>
+  :root {
+    --bg: #faf7f2;
+    --ink: #1a1612;
+    --vermillion: #d63a2f;
+    --ease: cubic-bezier(0.16, 1, 0.3, 1);
+    --duration: 2.4s;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    display: grid;
+    place-items: center;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  .replay-btn {
+    position: fixed;
+    top: 18px;
+    right: 18px;
+    font: 500 12px/1 -apple-system, system-ui, sans-serif;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink);
+    background: transparent;
+    border: 1px solid rgba(26, 22, 18, 0.25);
+    padding: 8px 14px;
+    border-radius: 999px;
+    cursor: pointer;
+    opacity: 0.65;
+    transition: color 180ms ease, border-color 180ms ease, opacity 180ms ease;
+  }
+  .replay-btn:hover {
+    color: var(--vermillion);
+    border-color: var(--vermillion);
+    opacity: 1;
+  }
+
+  .hero-art {
+    width: 480px;
+    aspect-ratio: 1 / 1;
+    position: relative;
+  }
+  .hero-art svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+    overflow: visible;
+  }
+
+  /* SVG color tokens */
+  .ink-stroke { stroke: var(--ink); opacity: 0.30; }
+  .ink-fill   { fill: var(--ink); }
+  .ink-tri    { stroke: var(--ink); }
+  .hero-disc  { mix-blend-mode: multiply; }
+
+  /* ─── PARTICLE RESOLVE ───
+     Each piece has its own keyframe with a unique starting offset,
+     scale, rotation, and blur curve. Pieces drift in from scattered
+     far positions and resolve into focus.
+  */
+
+  .hero-art .piece {
+    transform-box: fill-box;
+    transform-origin: center;
+    will-change: transform, filter, opacity;
+  }
+
+  /* Common animation envelope; per-piece keyframes override starting state */
+  .hero-art.playing .piece {
+    animation-duration: var(--duration);
+    animation-timing-function: var(--ease);
+    animation-fill-mode: both;
+  }
+
+  /* ── Line (diagonal ink stroke) — drifts in from upper-right ── */
+  .hero-art.playing .p-line {
+    animation-name: resolve-line;
+    animation-delay: 0.05s;
+    animation-duration: 1.6s;
+  }
+  @keyframes resolve-line {
+    0%   { transform: translate(72px, -58px) scale(3.2) rotate(-8deg); filter: blur(20px); opacity: 0; }
+    35%  { filter: blur(14px); opacity: 0.4; }
+    70%  { filter: blur(5px);  opacity: 0.8; }
+    100% { transform: translate(0,0) scale(1) rotate(0); filter: blur(0); opacity: 1; }
+  }
+
+  /* ── Cobalt arc — drifts in from below-left ── */
+  .hero-art.playing .p-arc {
+    animation-name: resolve-arc;
+    animation-delay: 0.15s;
+    animation-duration: 1.7s;
+  }
+  @keyframes resolve-arc {
+    0%   { transform: translate(-65px, 78px) scale(3.0) rotate(6deg); filter: blur(22px); opacity: 0; }
+    40%  { filter: blur(15px); opacity: 0.45; }
+    72%  { filter: blur(6px);  opacity: 0.85; }
+    100% { transform: translate(0,0) scale(1) rotate(0); filter: blur(0); opacity: 1; }
+  }
+
+  /* ── Triangle (ink outline) — drifts in from lower-right, slight rotate ── */
+  .hero-art.playing .p-tri {
+    animation-name: resolve-tri;
+    animation-delay: 0.30s;
+    animation-duration: 1.55s;
+  }
+  @keyframes resolve-tri {
+    0%   { transform: translate(58px, 70px) scale(3.3) rotate(-9deg); filter: blur(19px); opacity: 0; }
+    38%  { filter: blur(13px); opacity: 0.4; }
+    72%  { filter: blur(5px);  opacity: 0.85; }
+    100% { transform: translate(0,0) scale(1) rotate(0); filter: blur(0); opacity: 1; }
+  }
+
+  /* ── Accent dots — each from its own scattered angle ── */
+  .hero-art.playing .p-dot-1 { animation-name: resolve-dot-1; animation-delay: 0.45s; animation-duration: 1.3s; }
+  .hero-art.playing .p-dot-2 { animation-name: resolve-dot-2; animation-delay: 0.55s; animation-duration: 1.3s; }
+  .hero-art.playing .p-dot-3 { animation-name: resolve-dot-3; animation-delay: 0.50s; animation-duration: 1.25s; }
+  .hero-art.playing .p-dot-4 { animation-name: resolve-dot-4; animation-delay: 0.60s; animation-duration: 1.2s; }
+  .hero-art.playing .p-dot-5 { animation-name: resolve-dot-5; animation-delay: 0.65s; animation-duration: 1.2s; }
+
+  @keyframes resolve-dot-1 {
+    0%   { transform: translate(-78px, -52px) scale(3.4); filter: blur(20px); opacity: 0; }
+    50%  { filter: blur(11px); opacity: 0.55; }
+    75%  { filter: blur(4px);  opacity: 0.9; }
+    100% { transform: translate(0,0) scale(1); filter: blur(0); opacity: 1; }
+  }
+  @keyframes resolve-dot-2 {
+    0%   { transform: translate(82px, 60px) scale(3.2); filter: blur(20px); opacity: 0; }
+    50%  { filter: blur(10px); opacity: 0.5; }
+    75%  { filter: blur(4px);  opacity: 0.9; }
+    100% { transform: translate(0,0) scale(1); filter: blur(0); opacity: 1; }
+  }
+  @keyframes resolve-dot-3 {
+    0%   { transform: translate(-68px, 75px) scale(3.5); filter: blur(21px); opacity: 0; }
+    50%  { filter: blur(11px); opacity: 0.55; }
+    75%  { filter: blur(4px);  opacity: 0.9; }
+    100% { transform: translate(0,0) scale(1); filter: blur(0); opacity: 1; }
+  }
+  @keyframes resolve-dot-4 {
+    0%   { transform: translate(88px, 84px) scale(3.3); filter: blur(20px); opacity: 0; }
+    52%  { filter: blur(10px); opacity: 0.5; }
+    78%  { filter: blur(3px);  opacity: 0.9; }
+    100% { transform: translate(0,0) scale(1); filter: blur(0); opacity: 1; }
+  }
+  @keyframes resolve-dot-5 {
+    0%   { transform: translate(46px, -70px) scale(3.2); filter: blur(19px); opacity: 0; }
+    52%  { filter: blur(10px); opacity: 0.5; }
+    78%  { filter: blur(3px);  opacity: 0.9; }
+    100% { transform: translate(0,0) scale(1); filter: blur(0); opacity: 1; }
+  }
+
+  /* ── Three concentric discs resolve LAST, nesting sequentially ── */
+  /* Mustard arrives first, then vermillion, then ink dot.
+     Each lasts ~600ms inside the last portion of the total ~2.4s. */
+  .hero-art.playing .p-disc-mustard {
+    animation-name: resolve-disc-mustard;
+    animation-delay: 1.30s;
+    animation-duration: 0.85s;
+  }
+  .hero-art.playing .p-disc-vermillion {
+    animation-name: resolve-disc-vermillion;
+    animation-delay: 1.50s;
+    animation-duration: 0.80s;
+  }
+  .hero-art.playing .p-disc-ink {
+    animation-name: resolve-disc-ink;
+    animation-delay: 1.70s;
+    animation-duration: 0.75s;
+  }
+
+  @keyframes resolve-disc-mustard {
+    0%   { transform: translate(-42px, -48px) scale(3.0); filter: blur(22px); opacity: 0; }
+    40%  { filter: blur(14px); opacity: 0.55; }
+    72%  { filter: blur(5px);  opacity: 0.92; }
+    100% { transform: translate(0,0) scale(1); filter: blur(0); opacity: 1; }
+  }
+  @keyframes resolve-disc-vermillion {
+    0%   { transform: translate(38px, -36px) scale(2.8); filter: blur(20px); opacity: 0; }
+    42%  { filter: blur(12px); opacity: 0.55; }
+    74%  { filter: blur(4px);  opacity: 0.93; }
+    100% { transform: translate(0,0) scale(1); filter: blur(0); opacity: 1; }
+  }
+  @keyframes resolve-disc-ink {
+    0%   { transform: translate(-22px, 30px) scale(3.5); filter: blur(18px); opacity: 0; }
+    44%  { filter: blur(10px); opacity: 0.6; }
+    76%  { filter: blur(3px);  opacity: 0.95; }
+    100% { transform: translate(0,0) scale(1); filter: blur(0); opacity: 1; }
+  }
+
+  /* Pre-play state: pieces hidden so we don't flash final composition */
+  .hero-art:not(.playing) .piece { opacity: 0; }
+
+  /* Reduced motion: instant final state, no animation */
+  @media (prefers-reduced-motion: reduce) {
+    .hero-art .piece,
+    .hero-art.playing .piece {
+      animation: none !important;
+      transform: none !important;
+      filter: none !important;
+      opacity: 1 !important;
+    }
+  }
+</style>
+</head>
+<body>
+
+<button class="replay-btn" id="replay" type="button">Replay</button>
+
+<div class="hero-art" id="hero">
+  <svg viewBox="0 0 320 320" aria-hidden="true">
+    <g class="parallax-layer piece p-line" data-depth="0.08">
+      <line x1="20" y1="280" x2="300" y2="40" class="ink-stroke" stroke-width="0.6"/>
+    </g>
+    <g class="parallax-layer piece p-arc" data-depth="0.30">
+      <path d="M 30 90 Q 160 200 290 60" fill="none" stroke="#2c5aa0" stroke-width="1.8" stroke-linecap="round" opacity="0.75"/>
+    </g>
+    <g class="parallax-layer piece p-disc-mustard" data-depth="0.10">
+      <g class="breathing-disc">
+        <circle class="hero-disc" cx="225" cy="115" r="56" fill="#f0c14b"/>
+      </g>
+    </g>
+    <g class="parallax-layer piece p-disc-vermillion" data-depth="0.10">
+      <g class="breathing-disc delay-1">
+        <circle class="hero-disc" cx="225" cy="115" r="32" fill="#d63a2f"/>
+      </g>
+    </g>
+    <g class="parallax-layer piece p-disc-ink" data-depth="0.12">
+      <g class="breathing-disc delay-2">
+        <circle cx="225" cy="115" r="10" class="ink-fill"/>
+      </g>
+    </g>
+    <g class="parallax-layer piece p-tri" data-depth="0.22">
+      <polygon points="60,180 200,205 110,300" fill="none" class="ink-tri" stroke-width="1.3" stroke-linejoin="round"/>
+    </g>
+    <g class="parallax-layer piece p-dot-1" data-depth="0.55"><circle cx="80" cy="80" r="7" fill="#6a4f8c"/></g>
+    <g class="parallax-layer piece p-dot-2" data-depth="0.60"><circle cx="250" cy="240" r="5" fill="#6fa863"/></g>
+    <g class="parallax-layer piece p-dot-3" data-depth="0.70"><circle cx="40" cy="240" r="3.5" fill="#d63a2f"/></g>
+    <g class="parallax-layer piece p-dot-4" data-depth="0.80"><circle cx="285" cy="270" r="2.5" class="ink-fill"/></g>
+    <g class="parallax-layer piece p-dot-5" data-depth="0.80"><circle cx="180" cy="60" r="2" class="ink-fill"/></g>
+  </svg>
+</div>
+
+<script>
+  const hero = document.getElementById('hero');
+  const replay = document.getElementById('replay');
+
+  function play() {
+    hero.classList.remove('playing');
+    // Force reflow so removing+adding the class re-triggers animations
+    void hero.offsetWidth;
+    hero.classList.add('playing');
+  }
+
+  // Initial play on load
+  window.addEventListener('load', () => {
+    // Small delay so the browser has a frame to settle before kicking off blur work
+    requestAnimationFrame(() => requestAnimationFrame(play));
+  });
+
+  replay.addEventListener('click', play);
+</script>
+
+</body>
+</html>

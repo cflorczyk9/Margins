@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Hero Animation — Magnetic Snap (Variant C)</title>
+<style>
+  :root {
+    --bg: #faf7f2;
+    --ink: #1a1612;
+    --vermillion: #d63a2f;
+    --ease-snap: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --dur: 1.2s;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    min-height: 100vh;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .replay-btn {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: transparent;
+    border: 1px solid rgba(26, 22, 18, 0.25);
+    color: var(--ink);
+    padding: 8px 16px;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    cursor: pointer;
+    border-radius: 2px;
+    transition: color 180ms ease, border-color 180ms ease;
+    font-family: inherit;
+  }
+  .replay-btn:hover {
+    color: var(--vermillion);
+    border-color: var(--vermillion);
+  }
+
+  .hero-art {
+    width: 480px;
+    aspect-ratio: 1 / 1;
+  }
+
+  .hero-art svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+    overflow: visible;
+  }
+
+  .ink-stroke { stroke: var(--ink); opacity: 0.30; }
+  .ink-fill   { fill: var(--ink); }
+  .ink-tri    { stroke: var(--ink); }
+  .hero-disc  { mix-blend-mode: multiply; }
+
+  /* ---- Magnetic snap animation ---- */
+  /* Each piece animates from its own translation + scale + blur + opacity
+     to identity. Final state is the identity transform / zero blur.
+     The back.out easing creates the magnetic-overshoot feel. */
+
+  .anim-piece {
+    /* CSS transform-origin needs SVG-friendly handling.
+       We use transform-box so percentages compute in the element's own box. */
+    transform-box: fill-box;
+    transform-origin: center;
+    will-change: transform, opacity, filter;
+    animation: snap-in var(--dur) var(--ease-snap) both;
+  }
+
+  /* Per-piece keyframes: each one starts from a different vector. */
+  @keyframes snap-disc-big {
+    0%   { transform: translate(38px, -52px) scale(2.8); filter: blur(15px); opacity: 0.1; }
+    100% { transform: translate(0, 0)        scale(1);   filter: blur(0);    opacity: 1; }
+  }
+  @keyframes snap-disc-mid {
+    0%   { transform: translate(46px, -40px) scale(2.6); filter: blur(13px); opacity: 0.1; }
+    100% { transform: translate(0, 0)        scale(1);   filter: blur(0);    opacity: 1; }
+  }
+  @keyframes snap-disc-dot {
+    0%   { transform: translate(30px, -34px) scale(2.5); filter: blur(12px); opacity: 0.1; }
+    100% { transform: translate(0, 0)        scale(1);   filter: blur(0);    opacity: 1; }
+  }
+  @keyframes snap-line-diag {
+    0%   { transform: translate(-44px, 50px) scale(2.7); filter: blur(14px); opacity: 0.1; }
+    100% { transform: translate(0, 0)        scale(1);   filter: blur(0);    opacity: 1; }
+  }
+  @keyframes snap-arc {
+    0%   { transform: translate(0, -56px)    scale(2.6); filter: blur(14px); opacity: 0.1; }
+    100% { transform: translate(0, 0)        scale(1);   filter: blur(0);    opacity: 1; }
+  }
+  @keyframes snap-triangle {
+    0%   { transform: translate(-32px, 58px) scale(2.9); filter: blur(15px); opacity: 0.1; }
+    100% { transform: translate(0, 0)        scale(1);   filter: blur(0);    opacity: 1; }
+  }
+  /* Accent dots: radial-from-corner directions */
+  @keyframes snap-dot-tl { /* top-left dot: comes from top-left */
+    0%   { transform: translate(-44px, -44px) scale(2.8); filter: blur(13px); opacity: 0.1; }
+    100% { transform: translate(0, 0)         scale(1);   filter: blur(0);    opacity: 1; }
+  }
+  @keyframes snap-dot-br { /* bottom-right dot: comes from bottom-right */
+    0%   { transform: translate(48px, 48px)  scale(2.9); filter: blur(14px); opacity: 0.1; }
+    100% { transform: translate(0, 0)        scale(1);   filter: blur(0);    opacity: 1; }
+  }
+  @keyframes snap-dot-bl {
+    0%   { transform: translate(-50px, 42px) scale(2.7); filter: blur(13px); opacity: 0.1; }
+    100% { transform: translate(0, 0)        scale(1);   filter: blur(0);    opacity: 1; }
+  }
+  @keyframes snap-dot-brsm {
+    0%   { transform: translate(40px, 56px)  scale(2.6); filter: blur(12px); opacity: 0.1; }
+    100% { transform: translate(0, 0)        scale(1);   filter: blur(0);    opacity: 1; }
+  }
+  @keyframes snap-dot-tm {
+    0%   { transform: translate(8px, -56px)  scale(2.5); filter: blur(12px); opacity: 0.1; }
+    100% { transform: translate(0, 0)        scale(1);   filter: blur(0);    opacity: 1; }
+  }
+
+  /* Settle wobble for disc cluster — fires after snap. */
+  @keyframes disc-settle {
+    0%   { transform: scale(1); }
+    40%  { transform: scale(1.03); }
+    100% { transform: scale(1); }
+  }
+
+  /* Apply per-piece animations + tiny varied delays (0-50ms range). */
+  .p-line     { animation-name: snap-line-diag; animation-delay: 30ms; }
+  .p-arc      { animation-name: snap-arc;       animation-delay: 10ms; }
+  .p-disc-big { animation-name: snap-disc-big;  animation-delay: 0ms; }
+  .p-disc-mid { animation-name: snap-disc-mid;  animation-delay: 15ms; }
+  .p-disc-dot { animation-name: snap-disc-dot;  animation-delay: 25ms; }
+  .p-tri      { animation-name: snap-triangle;  animation-delay: 35ms; }
+  .p-dot-tl   { animation-name: snap-dot-tl;    animation-delay: 20ms; }
+  .p-dot-br   { animation-name: snap-dot-br;    animation-delay: 40ms; }
+  .p-dot-bl   { animation-name: snap-dot-bl;    animation-delay: 45ms; }
+  .p-dot-brsm { animation-name: snap-dot-brsm;  animation-delay: 50ms; }
+  .p-dot-tm   { animation-name: snap-dot-tm;    animation-delay: 35ms; }
+
+  /* Settle wobble after the main snap finishes (~1.2s + 25ms delay). */
+  .settle-wobble {
+    transform-box: fill-box;
+    transform-origin: 225px 115px;
+    animation: disc-settle 220ms ease-out both;
+    animation-delay: calc(var(--dur) + 30ms);
+  }
+
+  /* Replay: toggle a class to restart animations. */
+  .hero-art.replay .anim-piece,
+  .hero-art.replay .settle-wobble {
+    animation: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .anim-piece,
+    .settle-wobble {
+      animation: none !important;
+    }
+  }
+</style>
+</head>
+<body>
+
+<button class="replay-btn" id="replay" aria-label="Replay animation">Replay</button>
+
+<div class="hero-art" id="art">
+  <svg viewBox="0 0 320 320" xmlns="http://www.w3.org/2000/svg">
+    <!-- diagonal ink line -->
+    <g class="parallax-layer anim-piece p-line" data-depth="0.08">
+      <line x1="20" y1="280" x2="300" y2="40" class="ink-stroke" stroke-width="0.6"/>
+    </g>
+
+    <!-- cobalt curved arc -->
+    <g class="parallax-layer anim-piece p-arc" data-depth="0.30">
+      <path d="M 30 90 Q 160 200 290 60" fill="none" stroke="#2c5aa0" stroke-width="1.8" stroke-linecap="round" opacity="0.75"/>
+    </g>
+
+    <!-- disc cluster: big mustard -->
+    <g class="parallax-layer anim-piece p-disc-big" data-depth="0.10">
+      <g class="breathing-disc settle-wobble">
+        <circle class="hero-disc" cx="225" cy="115" r="56" fill="#f0c14b"/>
+      </g>
+    </g>
+
+    <!-- disc cluster: vermillion -->
+    <g class="parallax-layer anim-piece p-disc-mid" data-depth="0.10">
+      <g class="breathing-disc delay-1 settle-wobble">
+        <circle class="hero-disc" cx="225" cy="115" r="32" fill="#d63a2f"/>
+      </g>
+    </g>
+
+    <!-- disc cluster: ink center -->
+    <g class="parallax-layer anim-piece p-disc-dot" data-depth="0.12">
+      <g class="breathing-disc delay-2 settle-wobble">
+        <circle cx="225" cy="115" r="10" class="ink-fill"/>
+      </g>
+    </g>
+
+    <!-- ink triangle -->
+    <g class="parallax-layer anim-piece p-tri" data-depth="0.22">
+      <polygon points="60,180 200,205 110,300" fill="none" class="ink-tri" stroke-width="1.3" stroke-linejoin="round"/>
+    </g>
+
+    <!-- accent dots -->
+    <g class="parallax-layer anim-piece p-dot-tl"   data-depth="0.55"><circle cx="80" cy="80" r="7" fill="#6a4f8c"/></g>
+    <g class="parallax-layer anim-piece p-dot-br"   data-depth="0.60"><circle cx="250" cy="240" r="5" fill="#6fa863"/></g>
+    <g class="parallax-layer anim-piece p-dot-bl"   data-depth="0.70"><circle cx="40" cy="240" r="3.5" fill="#d63a2f"/></g>
+    <g class="parallax-layer anim-piece p-dot-brsm" data-depth="0.80"><circle cx="285" cy="270" r="2.5" class="ink-fill"/></g>
+    <g class="parallax-layer anim-piece p-dot-tm"   data-depth="0.80"><circle cx="180" cy="60" r="2" class="ink-fill"/></g>
+  </svg>
+</div>
+
+<script>
+  // Replay button: removes + re-adds animation by toggling a class and
+  // forcing reflow, so all keyframes restart cleanly.
+  const art = document.getElementById('art');
+  const btn = document.getElementById('replay');
+  btn.addEventListener('click', () => {
+    art.classList.add('replay');
+    // Force reflow so the browser sees the animation removal.
+    void art.offsetWidth;
+    art.classList.remove('replay');
+  });
+</script>
+
+</body>
+</html>

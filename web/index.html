@@ -377,29 +377,146 @@
   .hero-art svg .ink-stroke { stroke: var(--svg-ink); opacity: var(--svg-ink-opacity); }
   .hero-art svg .ink-fill { fill: var(--svg-ink); }
   .hero-art svg .ink-tri { stroke: var(--svg-ink); }
+
+  /* =====================================================================
+     Hero entrance cascade — variant B from /designs/hero-anim-b-cascade
+     Pieces arrive one-by-one on a 170ms beat with a slight overshoot,
+     each from its own offset vector. Total ~2.05s. The .cascading class
+     is removed at end-of-cascade by JS so the gravity tracker (which
+     writes SVG transform attributes on mouse) can take over without
+     fighting CSS animations.
+     ===================================================================== */
+  :root {
+    --cascade-stagger: 170ms;
+    --cascade-piece-dur: 800ms;
+    --cascade-ease: cubic-bezier(0.34, 1.20, 0.64, 1);
+  }
+  .hero-art.cascading .parallax-layer {
+    opacity: 0;
+    will-change: transform, opacity, filter;
+    transform-box: fill-box;
+    transform-origin: center;
+    animation-duration: var(--cascade-piece-dur);
+    animation-timing-function: var(--cascade-ease);
+    animation-fill-mode: both;
+  }
+  .hero-art.cascading .p-line {
+    animation-name: cascade-line;
+    animation-delay: calc(0 * var(--cascade-stagger));
+  }
+  @keyframes cascade-line {
+    0%   { opacity: 0; transform: translate(-32px, -28px) scale(2.3); filter: blur(13px); }
+    60%  { opacity: 1; filter: blur(2px); }
+    100% { opacity: 1; transform: translate(0,0) scale(1); filter: blur(0); }
+  }
+  .hero-art.cascading .p-curve {
+    animation-name: cascade-curve;
+    animation-delay: calc(1 * var(--cascade-stagger));
+  }
+  @keyframes cascade-curve {
+    0%   { opacity: 0; transform: translate(0, -36px) scale(2.4); filter: blur(14px); }
+    60%  { opacity: 1; filter: blur(2px); }
+    100% { opacity: 1; transform: translate(0,0) scale(1); filter: blur(0); }
+  }
+  .hero-art.cascading .p-tri {
+    animation-name: cascade-tri;
+    animation-delay: calc(2 * var(--cascade-stagger));
+  }
+  @keyframes cascade-tri {
+    0%   { opacity: 0; transform: translate(-28px, 30px) scale(2.3); filter: blur(13px); }
+    60%  { opacity: 1; filter: blur(2px); }
+    100% { opacity: 1; transform: translate(0,0) scale(1); filter: blur(0); }
+  }
+  .hero-art.cascading .p-disc-mustard {
+    animation-name: cascade-mustard;
+    animation-delay: calc(3 * var(--cascade-stagger));
+  }
+  @keyframes cascade-mustard {
+    0%   { opacity: 0; transform: translate(34px, -30px) scale(2.5); filter: blur(14px); }
+    60%  { opacity: 1; filter: blur(2px); }
+    100% { opacity: 1; transform: translate(0,0) scale(1); filter: blur(0); }
+  }
+  .hero-art.cascading .p-disc-vermillion {
+    animation-name: cascade-vermillion;
+    animation-delay: calc(4 * var(--cascade-stagger));
+  }
+  @keyframes cascade-vermillion {
+    0%   { opacity: 0; transform: translate(36px, 0) scale(2.4); filter: blur(13px); }
+    60%  { opacity: 1; filter: blur(2px); }
+    100% { opacity: 1; transform: translate(0,0) scale(1); filter: blur(0); }
+  }
+  .hero-art.cascading .p-dot-center {
+    animation-name: cascade-pin;
+    animation-delay: calc(5 * var(--cascade-stagger));
+  }
+  @keyframes cascade-pin {
+    0%   { opacity: 0; transform: translate(0, -26px) scale(2.4); filter: blur(12px); }
+    60%  { opacity: 1; filter: blur(1.5px); }
+    100% { opacity: 1; transform: translate(0,0) scale(1); filter: blur(0); }
+  }
+  .hero-art.cascading .p-acc-1 { animation-name: cascade-acc-ul; animation-delay: calc(6 * var(--cascade-stagger)); }
+  .hero-art.cascading .p-acc-2 { animation-name: cascade-acc-br; animation-delay: calc(6 * var(--cascade-stagger) + 50ms); }
+  .hero-art.cascading .p-acc-3 { animation-name: cascade-acc-bl; animation-delay: calc(6 * var(--cascade-stagger) + 100ms); }
+  .hero-art.cascading .p-acc-4 { animation-name: cascade-acc-br; animation-delay: calc(6 * var(--cascade-stagger) + 150ms); }
+  .hero-art.cascading .p-acc-5 { animation-name: cascade-acc-ur; animation-delay: calc(6 * var(--cascade-stagger) + 200ms); }
+  @keyframes cascade-acc-ul {
+    0%   { opacity: 0; transform: translate(-22px, -20px) scale(2.4); filter: blur(12px); }
+    60%  { opacity: 1; filter: blur(1.5px); }
+    100% { opacity: 1; transform: translate(0,0) scale(1); filter: blur(0); }
+  }
+  @keyframes cascade-acc-ur {
+    0%   { opacity: 0; transform: translate(24px, -18px) scale(2.4); filter: blur(12px); }
+    60%  { opacity: 1; filter: blur(1.5px); }
+    100% { opacity: 1; transform: translate(0,0) scale(1); filter: blur(0); }
+  }
+  @keyframes cascade-acc-bl {
+    0%   { opacity: 0; transform: translate(-20px, 22px) scale(2.4); filter: blur(12px); }
+    60%  { opacity: 1; filter: blur(1.5px); }
+    100% { opacity: 1; transform: translate(0,0) scale(1); filter: blur(0); }
+  }
+  @keyframes cascade-acc-br {
+    0%   { opacity: 0; transform: translate(22px, 24px) scale(2.4); filter: blur(12px); }
+    60%  { opacity: 1; filter: blur(1.5px); }
+    100% { opacity: 1; transform: translate(0,0) scale(1); filter: blur(0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .hero-art.cascading .parallax-layer {
+      animation: none !important;
+      opacity: 1 !important;
+      transform: none !important;
+      filter: none !important;
+    }
+  }
   @keyframes breathe {
     0%, 100% { transform: scale(1); }
     50%      { transform: scale(1.035); }
   }
-  .breathing-disc { transform-origin: center; animation: breathe 6.5s ease-in-out infinite; }
+  /* Breathing waits for the entrance cascade to finish (~2.05s) so the
+     two animations don't fight on the disc nest. Positive delays >0 mean
+     the breathing starts AFTER the cascade lands. */
+  .breathing-disc { transform-origin: center; animation: breathe 6.5s ease-in-out 2.1s infinite; }
   /* Discs blend into warm paper in light mode; render straight in dark mode to keep their color visible. */
   .hero-disc { mix-blend-mode: multiply; }
   [data-theme="dark"] .hero-disc { mix-blend-mode: normal; }
-  .breathing-disc.delay-1 { animation-delay: -1.8s; }
-  .breathing-disc.delay-2 { animation-delay: -3.2s; }
+  /* Phase-offset the three discs after the cascade ends, so they breathe
+     out of sync without starting before the cascade lands. */
+  .breathing-disc.delay-1 { animation-delay: 4.2s; }
+  .breathing-disc.delay-2 { animation-delay: 6.4s; }
 
   @keyframes hero-rise {
     from { opacity: 0; transform: translateY(14px); }
     to   { opacity: 1; transform: translateY(0); }
   }
-  .hero .kicker, .hero h1.hero-title, .hero .hero-sub, .hero .hero-cta, .hero .hero-art {
+  .hero .kicker, .hero h1.hero-title, .hero .hero-sub, .hero .hero-cta {
     animation: hero-rise 0.85s cubic-bezier(0.18, 0.72, 0.22, 1) backwards;
   }
   .hero .kicker     { animation-delay: 0.05s; }
-  .hero .hero-art   { animation-delay: 0.10s; }
   .hero h1.hero-title { animation-delay: 0.18s; }
   .hero .hero-sub   { animation-delay: 0.32s; }
   .hero .hero-cta   { animation-delay: 0.50s; }
+  /* .hero .hero-art is animated by the cascade (see .hero-art.cascading), not
+     by hero-rise — they would otherwise compound (container fade-up + piece
+     cascade) and the cascade would be invisible until the container faded in. */
 
   /* ============================================================ */
   /* === Buttons (Stripe-press, restrained)                   === */
@@ -1798,37 +1915,37 @@
           <a href="#demo" class="btn btn-ghost">See it work</a>
         </div>
       </div>
-      <div class="hero-art" aria-hidden="true">
+      <div class="hero-art cascading" aria-hidden="true">
         <svg viewBox="0 0 320 320">
-          <g class="parallax-layer" data-depth="0.08">
+          <g class="parallax-layer p-line" data-depth="0.08">
             <line x1="20" y1="280" x2="300" y2="40" class="ink-stroke" stroke-width="0.6"/>
           </g>
-          <g class="parallax-layer" data-depth="0.30">
+          <g class="parallax-layer p-curve" data-depth="0.30">
             <path d="M 30 90 Q 160 200 290 60" fill="none" stroke="#2c5aa0" stroke-width="1.8" stroke-linecap="round" opacity="0.75"/>
           </g>
-          <g class="parallax-layer" data-depth="0.10">
+          <g class="parallax-layer p-disc-mustard" data-depth="0.10">
             <g class="breathing-disc">
               <circle class="hero-disc" cx="225" cy="115" r="56" fill="#f0c14b"/>
             </g>
           </g>
-          <g class="parallax-layer" data-depth="0.10">
+          <g class="parallax-layer p-disc-vermillion" data-depth="0.10">
             <g class="breathing-disc delay-1">
               <circle class="hero-disc" cx="225" cy="115" r="32" fill="#d63a2f"/>
             </g>
           </g>
-          <g class="parallax-layer" data-depth="0.12">
+          <g class="parallax-layer p-dot-center" data-depth="0.12">
             <g class="breathing-disc delay-2">
               <circle cx="225" cy="115" r="10" class="ink-fill"/>
             </g>
           </g>
-          <g class="parallax-layer" data-depth="0.22">
+          <g class="parallax-layer p-tri" data-depth="0.22">
             <polygon points="60,180 200,205 110,300" fill="none" class="ink-tri" stroke-width="1.3" stroke-linejoin="round"/>
           </g>
-          <g class="parallax-layer" data-depth="0.55"><circle cx="80" cy="80" r="7" fill="#6a4f8c"/></g>
-          <g class="parallax-layer" data-depth="0.60"><circle cx="250" cy="240" r="5" fill="#6fa863"/></g>
-          <g class="parallax-layer" data-depth="0.70"><circle cx="40" cy="240" r="3.5" fill="#d63a2f"/></g>
-          <g class="parallax-layer" data-depth="0.80"><circle cx="285" cy="270" r="2.5" class="ink-fill"/></g>
-          <g class="parallax-layer" data-depth="0.80"><circle cx="180" cy="60" r="2" class="ink-fill"/></g>
+          <g class="parallax-layer p-acc-1" data-depth="0.55"><circle cx="80" cy="80" r="7" fill="#6a4f8c"/></g>
+          <g class="parallax-layer p-acc-2" data-depth="0.60"><circle cx="250" cy="240" r="5" fill="#6fa863"/></g>
+          <g class="parallax-layer p-acc-3" data-depth="0.70"><circle cx="40" cy="240" r="3.5" fill="#d63a2f"/></g>
+          <g class="parallax-layer p-acc-4" data-depth="0.80"><circle cx="285" cy="270" r="2.5" class="ink-fill"/></g>
+          <g class="parallax-layer p-acc-5" data-depth="0.80"><circle cx="180" cy="60" r="2" class="ink-fill"/></g>
         </svg>
       </div>
     </div>
@@ -2321,8 +2438,22 @@ function updateScrollProgress() {
 document.addEventListener("scroll", updateScrollProgress, { passive: true });
 updateScrollProgress();
 
-/* ============ Hero gravity ============ */
+/* ============ Hero entrance cascade cleanup ============ */
+// The cascade animation is CSS-driven via the .cascading class on .hero-art.
+// Removing the class once all 11 pieces have landed lets the gravity tracker
+// below take over transforms cleanly. Last piece finishes around t = 6*170 +
+// 200ms (last accent stagger) + 800ms (piece duration) = ~2030ms.
+const CASCADE_END_MS = 2100;
 const heroArt = document.querySelector(".hero-art");
+if (heroArt && !prefersReduce) {
+  setTimeout(() => heroArt.classList.remove("cascading"), CASCADE_END_MS);
+} else if (heroArt) {
+  // No animation in reduced-motion mode; remove the class immediately so
+  // gravity tracking works the moment the user mouses over.
+  heroArt.classList.remove("cascading");
+}
+
+/* ============ Hero gravity ============ */
 const heroSvg = heroArt?.querySelector("svg");
 if (heroArt && heroSvg && !prefersReduce) {
   const layers = Array.from(heroArt.querySelectorAll(".parallax-layer"));
@@ -2365,12 +2496,15 @@ if (heroArt && heroSvg && !prefersReduce) {
     }
     kick();
   }
+  const cascadeUntil = performance.now() + CASCADE_END_MS;
   heroArt.addEventListener("mousemove", (e) => {
+    if (performance.now() < cascadeUntil) return;  // let the cascade finish
     const p = cursorToSvg(e.clientX, e.clientY);
     if (!p) return;
     lastCursor = p; applyGravity(p.x, p.y);
   }, { passive: true });
   heroArt.addEventListener("mouseleave", () => {
+    if (performance.now() < cascadeUntil) return;
     lastCursor = null;
     for (const s of state) { s.dx = 0; s.dy = 0; }
     kick();

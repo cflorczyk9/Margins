@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Hero Anim B — Staggered Cascade</title>
+<style>
+  :root {
+    --paper: #faf7f2;
+    --ink: #1a1612;
+    --vermillion: #d63a2f;
+    --stagger: 170ms;     /* per-piece beat */
+    --piece-dur: 800ms;   /* per-piece duration */
+    --ease: cubic-bezier(0.34, 1.20, 0.64, 1);
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--paper);
+    min-height: 100vh;
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", system-ui, sans-serif;
+    color: var(--ink);
+  }
+
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  .replay {
+    position: fixed;
+    top: 20px;
+    right: 24px;
+    z-index: 10;
+    appearance: none;
+    background: transparent;
+    border: 1px solid rgba(26, 22, 18, 0.25);
+    color: var(--ink);
+    font-family: inherit;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 8px 14px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: color 160ms ease, border-color 160ms ease;
+  }
+  .replay:hover {
+    color: var(--vermillion);
+    border-color: var(--vermillion);
+  }
+  .replay:focus-visible {
+    outline: 2px solid var(--vermillion);
+    outline-offset: 2px;
+  }
+
+  .hero-art {
+    width: 480px;
+    aspect-ratio: 1 / 1;
+    position: relative;
+  }
+
+  .hero-art svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+    overflow: visible;
+  }
+
+  .hero-disc { mix-blend-mode: multiply; }
+  .ink-stroke { stroke: var(--ink); opacity: 0.30; }
+  .ink-fill   { fill: var(--ink); }
+  .ink-tri    { stroke: var(--ink); }
+
+  /* ---------- Cascade entrance ----------
+     Every piece starts large, blurred, displaced. Each gets its own
+     keyframe (different offset direction) and its own delay. */
+
+  .hero-art.cascading .parallax-layer {
+    opacity: 0;
+    will-change: transform, opacity, filter;
+    transform-box: fill-box;
+    transform-origin: center;
+    animation-duration: var(--piece-dur);
+    animation-timing-function: var(--ease);
+    animation-fill-mode: both;
+  }
+
+  /* 1. diagonal ink line — slides in from upper-left */
+  .hero-art.cascading .p-line {
+    animation-name: arrive-line;
+    animation-delay: calc(0 * var(--stagger));
+  }
+  @keyframes arrive-line {
+    0%   { opacity: 0; transform: translate(-32px, -28px) scale(2.3); filter: blur(13px); }
+    60%  { opacity: 1; filter: blur(2px); }
+    100% { opacity: 1; transform: translate(0,0) scale(1); filter: blur(0); }
+  }
+
+  /* 2. cobalt curved path — drops down from above */
+  .hero-art.cascading .p-curve {
+    animation-name: arrive-curve;
+    animation-delay: calc(1 * var(--stagger));
+  }
+  @keyframes arrive-curve {
+    0%   { opacity: 0; transform: translate(0, -36px) scale(2.4); filter: blur(14px); }
+    60%  { opacity: 1; filter: blur(2px); }
+    100% { opacity: 1; transform: translate(0,0) scale(1); filter: blur(0); }
+  }
+
+  /* 3. ink triangle — slides up from below-left */
+  .hero-art.cascading .p-tri {
+    animation-name: arrive-tri;
+    animation-delay: calc(2 * var(--stagger));
+  }
+  @keyframes arrive-tri {
+    0%   { opacity: 0; transform: translate(-28px, 30px) scale(2.3); filter: blur(13px); }
+    60%  { opacity: 1; filter: blur(2px); }
+    100% { opacity: 1; transform: translate(0,0) scale(1); filter: blur(0); }
+  }
+
+  /* 4. mustard big disc — drops from upper-right */
+  .hero-art.cascading .p-disc-mustard {
+    animation-name: arrive-mustard;
+    animation-delay: calc(3 * var(--stagger));
+  }
+  @keyframes arrive-mustard {
+    0%   { opacity: 0; transform: translate(34px, -30px) scale(2.5); filter: blur(14px); }
+    60%  { opacity: 1; filter: blur(2px); }
+    100% { opacity: 1; transform: translate(0,0) scale(1); filter: blur(0); }
+  }
+
+  /* 5. vermillion middle disc — snaps in from right */
+  .hero-art.cascading .p-disc-vermillion {
+    animation-name: arrive-vermillion;
+    animation-delay: calc(4 * var(--stagger));
+  }
+  @keyframes arrive-vermillion {
+    0%   { opacity: 0; transform: translate(36px, 0) scale(2.4); filter: blur(13px); }
+    60%  { opacity: 1; filter: blur(2px); }
+    100% { opacity: 1; transform: translate(0,0) scale(1); filter: blur(0); }
+  }
+
+  /* 6. ink center dot — the final pin, drops straight down */
+  .hero-art.cascading .p-dot-center {
+    animation-name: arrive-pin;
+    animation-delay: calc(5 * var(--stagger));
+  }
+  @keyframes arrive-pin {
+    0%   { opacity: 0; transform: translate(0, -26px) scale(2.4); filter: blur(12px); }
+    60%  { opacity: 1; filter: blur(1.5px); }
+    100% { opacity: 1; transform: translate(0,0) scale(1); filter: blur(0); }
+  }
+
+  /* 7-11. accent dots — quick succession, 50ms apart, each from a different vector */
+  .hero-art.cascading .p-acc-1 {
+    animation-name: arrive-acc-ul;
+    animation-delay: calc(6 * var(--stagger));
+  }
+  .hero-art.cascading .p-acc-2 {
+    animation-name: arrive-acc-br;
+    animation-delay: calc(6 * var(--stagger) + 50ms);
+  }
+  .hero-art.cascading .p-acc-3 {
+    animation-name: arrive-acc-bl;
+    animation-delay: calc(6 * var(--stagger) + 100ms);
+  }
+  .hero-art.cascading .p-acc-4 {
+    animation-name: arrive-acc-br;
+    animation-delay: calc(6 * var(--stagger) + 150ms);
+  }
+  .hero-art.cascading .p-acc-5 {
+    animation-name: arrive-acc-ur;
+    animation-delay: calc(6 * var(--stagger) + 200ms);
+  }
+  @keyframes arrive-acc-ul {
+    0%   { opacity: 0; transform: translate(-22px, -20px) scale(2.4); filter: blur(12px); }
+    60%  { opacity: 1; filter: blur(1.5px); }
+    100% { opacity: 1; transform: translate(0,0) scale(1); filter: blur(0); }
+  }
+  @keyframes arrive-acc-ur {
+    0%   { opacity: 0; transform: translate(24px, -18px) scale(2.4); filter: blur(12px); }
+    60%  { opacity: 1; filter: blur(1.5px); }
+    100% { opacity: 1; transform: translate(0,0) scale(1); filter: blur(0); }
+  }
+  @keyframes arrive-acc-bl {
+    0%   { opacity: 0; transform: translate(-20px, 22px) scale(2.4); filter: blur(12px); }
+    60%  { opacity: 1; filter: blur(1.5px); }
+    100% { opacity: 1; transform: translate(0,0) scale(1); filter: blur(0); }
+  }
+  @keyframes arrive-acc-br {
+    0%   { opacity: 0; transform: translate(22px, 24px) scale(2.4); filter: blur(12px); }
+    60%  { opacity: 1; filter: blur(1.5px); }
+    100% { opacity: 1; transform: translate(0,0) scale(1); filter: blur(0); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hero-art.cascading .parallax-layer {
+      animation: none !important;
+      opacity: 1 !important;
+      transform: none !important;
+      filter: none !important;
+    }
+  }
+</style>
+</head>
+<body>
+  <button class="replay" type="button" id="replay" aria-label="Replay animation">Replay</button>
+
+  <div class="hero-art cascading" id="hero">
+    <svg viewBox="0 0 320 320" xmlns="http://www.w3.org/2000/svg">
+      <g class="parallax-layer p-line" data-depth="0.08">
+        <line x1="20" y1="280" x2="300" y2="40" class="ink-stroke" stroke-width="0.6"/>
+      </g>
+      <g class="parallax-layer p-curve" data-depth="0.30">
+        <path d="M 30 90 Q 160 200 290 60" fill="none" stroke="#2c5aa0" stroke-width="1.8" stroke-linecap="round" opacity="0.75"/>
+      </g>
+      <g class="parallax-layer p-disc-mustard" data-depth="0.10">
+        <g class="breathing-disc">
+          <circle class="hero-disc" cx="225" cy="115" r="56" fill="#f0c14b"/>
+        </g>
+      </g>
+      <g class="parallax-layer p-disc-vermillion" data-depth="0.10">
+        <g class="breathing-disc delay-1">
+          <circle class="hero-disc" cx="225" cy="115" r="32" fill="#d63a2f"/>
+        </g>
+      </g>
+      <g class="parallax-layer p-dot-center" data-depth="0.12">
+        <g class="breathing-disc delay-2">
+          <circle cx="225" cy="115" r="10" class="ink-fill"/>
+        </g>
+      </g>
+      <g class="parallax-layer p-tri" data-depth="0.22">
+        <polygon points="60,180 200,205 110,300" fill="none" class="ink-tri" stroke-width="1.3" stroke-linejoin="round"/>
+      </g>
+      <g class="parallax-layer p-acc-1" data-depth="0.55"><circle cx="80" cy="80" r="7" fill="#6a4f8c"/></g>
+      <g class="parallax-layer p-acc-2" data-depth="0.60"><circle cx="250" cy="240" r="5" fill="#6fa863"/></g>
+      <g class="parallax-layer p-acc-3" data-depth="0.70"><circle cx="40" cy="240" r="3.5" fill="#d63a2f"/></g>
+      <g class="parallax-layer p-acc-4" data-depth="0.80"><circle cx="285" cy="270" r="2.5" class="ink-fill"/></g>
+      <g class="parallax-layer p-acc-5" data-depth="0.80"><circle cx="180" cy="60" r="2" class="ink-fill"/></g>
+    </svg>
+  </div>
+
+  <script>
+    (function () {
+      const hero = document.getElementById('hero');
+      const replay = document.getElementById('replay');
+      replay.addEventListener('click', function () {
+        // Force a full restart of every animation. Remove the class, flush
+        // layout, then re-add — CSS animation triggers fire again for all
+        // .parallax-layer children, restoring the full cascade from piece 1.
+        hero.classList.remove('cascading');
+        // Force reflow so the removal takes effect before re-adding.
+        void hero.offsetWidth;
+        hero.classList.add('cascading');
+      });
+    })();
+  </script>
+</body>
+</html>
