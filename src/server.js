@@ -50,7 +50,7 @@ with a one-line rule capturing the correction. Margins remembers it for
 next time. Don't record every minor disagreement; record durable rules
 about filing conventions, naming patterns, structural rules.
 
-INGESTING: source documents (transcripts, notes, PDFs, Word docs, spreadsheets, decks, emails, EPUBs, etc.) can live anywhere in the vault. raw/<filename> is conventional but not required — files at the vault root or in custom subfolders work too. To file one into the wiki, call propose_compile_from_raw with the file's vault-relative path and a summary you generate by reading the file. Use list_unprocessed to see which files haven't been compiled yet.
+INGESTING: source documents (transcripts, notes, PDFs, Word docs, spreadsheets, decks, emails, EPUBs, etc.) live in folders Margins watches for compilation. By default that's raw/, but the user can set MARGINS_INGEST_ROOTS (comma-separated paths) to point Margins at additional folders. Call list_unprocessed to see files that haven't been compiled. To file one into the wiki, call propose_compile_from_raw with the file's vault-relative path and a summary you generate by reading the file. Files outside the watched roots are still compilable if you pass an explicit path — they just won't appear in list_unprocessed.
 
 TOOLS:
 - Context: margins_start, recall_preferences

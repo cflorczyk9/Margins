@@ -1,4 +1,4 @@
-import { readFile, readdir } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { isSupportedDocumentPath } from "./document-text.js";
 
@@ -14,7 +14,17 @@ const META_PATHS = new Set([
   "wiki/index.md"
 ]);
 
-export async function buildVaultIndex(vault) {
+const SKIP_PATH_SEGMENTS = new Set([
+  "wiki",
+  "proposed",
+  ".margins",
+  ".obsidian",
+  ".git",
+  "node_modules"
+]);
+
+export async function buildVaultIndex(vault, options = {}) {
+  const ingestRoots = await resolveIngestRoots(vault, options);
   const allFiles = await vault.listFiles();
 
   const candidates = [];
@@ -28,13 +38,23 @@ export async function buildVaultIndex(vault) {
     const fm = await readFrontmatter(abs);
     const fmType = fm?.match(TYPE_RE)?.[1]?.trim();
 
-    if (fmType) {
-      if (fmType === "source" || fmType === "synthesis") sourcePages.push({ abs, rel, fm });
+    if (fmType === "source" || fmType === "synthesis") {
+      sourcePages.push({ abs, rel, fm });
       continue;
     }
 
+    if (fmType) continue;
+
+    if (!isInIngestRoot(rel, ingestRoots)) continue;
+    if (isInSkipDir(rel)) continue;
+
     candidates.push(rel);
   }
+
+  // proposed/ is excluded from vault.listFiles() by DEFAULT_SKIP_DIRS, but
+  // staged source-page proposals must count as "tentatively referenced" so
+  // duplicate compiles of the same raw file return already-filed.
+  await collectProposedSourcePages(vault, sourcePages);
 
   const referenced = new Map();
   for (const page of sourcePages) {
@@ -53,10 +73,57 @@ export async function buildVaultIndex(vault) {
   }
 
   const pending = candidates.filter((c) => !referenced.has(c));
-  return { candidates, referenced, pending, sourcePagesCount: sourcePages.length };
+  return {
+    candidates,
+    referenced,
+    pending,
+    sourcePagesCount: sourcePages.length,
+    ingestRoots
+  };
 }
 
 export const buildRawIndex = buildVaultIndex;
+
+async function resolveIngestRoots(vault, options) {
+  if (Array.isArray(options.ingestRoots) && options.ingestRoots.length) {
+    return normalizeRoots(options.ingestRoots);
+  }
+  const env = process.env.MARGINS_INGEST_ROOTS;
+  if (env && env.trim()) {
+    return normalizeRoots(env.split(","));
+  }
+  try {
+    const info = await stat(vault.resolveInside("raw"));
+    if (info.isDirectory()) return ["raw"];
+  } catch {
+    // raw/ missing — fall through
+  }
+  return ["."];
+}
+
+function normalizeRoots(roots) {
+  return roots
+    .map((r) => String(r).trim().replace(/^\.\//, "").replace(/\/$/, ""))
+    .filter((r) => r.length > 0 || r === ".")
+    .map((r) => (r === "" ? "." : r));
+}
+
+function isInIngestRoot(rel, roots) {
+  for (const root of roots) {
+    if (root === "." || root === "") return true;
+    if (rel === root) return true;
+    if (rel.startsWith(root + "/")) return true;
+  }
+  return false;
+}
+
+function isInSkipDir(rel) {
+  const parts = rel.split("/");
+  for (const part of parts.slice(0, -1)) {
+    if (SKIP_PATH_SEGMENTS.has(part)) return true;
+  }
+  return false;
+}
 
 function normalizeRef(value) {
   if (!value) return null;
@@ -74,6 +141,33 @@ async function readFrontmatter(abs) {
   const end = body.indexOf("\n---", 4);
   if (end < 0) return null;
   return body.slice(4, end + 1);
+}
+
+async function collectProposedSourcePages(vault, out) {
+  const proposedRoot = vault.resolveInside("proposed");
+  await walkForSourcePages(vault, proposedRoot, out);
+}
+
+async function walkForSourcePages(vault, dir, out) {
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    const abs = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      await walkForSourcePages(vault, abs, out);
+      continue;
+    }
+    if (!entry.isFile()) continue;
+    if (!isSupportedDocumentPath(entry.name)) continue;
+    const fm = await readFrontmatter(abs);
+    const fmType = fm?.match(TYPE_RE)?.[1]?.trim();
+    if (fmType !== "source" && fmType !== "synthesis") continue;
+    out.push({ abs, rel: vault.toRel(abs), fm });
+  }
 }
 
 export async function listRawFolderFiles(vault) {

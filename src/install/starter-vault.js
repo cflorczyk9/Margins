@@ -6,11 +6,11 @@ const CLAUDE_MD = `# CLAUDE.md
 This vault was scaffolded by margins-mcp.
 
 ## How to use it
-- Drop any supported file (PDFs, Word, transcripts, spreadsheets, decks, emails, EPUBs, articles) anywhere in this folder. \`raw/\` is the conventional inbox but files work from any location.
+- Drop any supported file (PDFs, Word, transcripts, spreadsheets, decks, emails, EPUBs, articles) into \`raw/\`. Files anywhere else in the vault are also compilable, but Margins only auto-discovers files in folders listed in \`MARGINS_INGEST_ROOTS\` (default: \`raw\`). To watch additional folders, set the env var like \`MARGINS_INGEST_ROOTS=raw,meetings,clippings\`.
 - Ask Claude to compile them with \`propose_compile_from_raw\` — each becomes a source page in \`wiki/sources/\` that links to people, concepts, and other notes. The linking is where the magic compounds.
 - Wiki pages live in \`wiki/\`. Sources, concepts, entities, syntheses, and your own structure are all welcome.
 - Proposals (Claude's suggested writes) stage at \`proposed/\` before landing. Review them with \`list_proposals\` and \`resolve_proposal\`.
-- \`list_unprocessed\` shows files that haven't been compiled yet, regardless of where they live.
+- \`list_unprocessed\` shows files in your ingest roots that haven't been compiled yet.
 
 ## Closed-set vocabulary for the log
 ingest | query | compile | lint | update

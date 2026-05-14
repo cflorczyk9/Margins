@@ -113,3 +113,49 @@ test("wiki pages with type: frontmatter are NOT candidates", async () => {
   const idx = await buildVaultIndex(vault);
   assert.deepEqual(idx.candidates, ["a-real-source.md"]);
 });
+
+test("default ingestRoots=['raw'] when raw/ exists", async () => {
+  await touch("raw/a.md", "alpha");
+  await touch("root-note.md", "should NOT be a candidate");
+  const idx = await buildVaultIndex(vault);
+  assert.deepEqual(idx.ingestRoots, ["raw"]);
+  assert.deepEqual(idx.candidates, ["raw/a.md"]);
+  assert.ok(!idx.candidates.includes("root-note.md"));
+});
+
+test("default ingestRoots=['.'] when raw/ is missing", async () => {
+  await touch("notes/a.md", "alpha");
+  await touch("root.md", "stuff");
+  const idx = await buildVaultIndex(vault);
+  assert.deepEqual(idx.ingestRoots, ["."]);
+  assert.deepEqual(idx.candidates.sort(), ["notes/a.md", "root.md"]);
+});
+
+test("explicit options.ingestRoots overrides default", async () => {
+  await touch("raw/a.md", "in raw");
+  await touch("meetings/b.md", "in meetings");
+  await touch("clippings/c.md", "in clippings");
+  const idx = await buildVaultIndex(vault, { ingestRoots: ["meetings"] });
+  assert.deepEqual(idx.candidates, ["meetings/b.md"]);
+});
+
+test("wiki/, proposed/, .margins/ files never become candidates", async () => {
+  await touch("wiki/notes/a.md", "wiki content without frontmatter");
+  await touch("proposed/wiki/sources/source-x.md", "staged proposal");
+  await touch(".margins/state.json", "state");
+  await touch(".obsidian/config.json", "obsidian");
+  await touch("notes-keep.md", "real candidate");
+  const idx = await buildVaultIndex(vault, { ingestRoots: ["."] });
+  assert.deepEqual(idx.candidates, ["notes-keep.md"]);
+});
+
+test("staged proposal (type:source under proposed/) counts as referenced", async () => {
+  await touch("raw/pending.md", "content");
+  await touch(
+    "proposed/wiki/sources/source-pending.md",
+    `---\ntype: source\nraw_file: raw/pending.md\n---\n# pending\n`
+  );
+  const idx = await buildVaultIndex(vault, { ingestRoots: ["raw"] });
+  assert.deepEqual(idx.pending, []);
+  assert.equal(idx.referenced.get("raw/pending.md"), "proposed/wiki/sources/source-pending.md");
+});

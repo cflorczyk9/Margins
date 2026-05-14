@@ -232,3 +232,34 @@ test("resolve_proposal accept on non-source proposal does not touch tracker", as
   const result = await proposals.resolveProposal("wiki/notes/random.md", "accept");
   assert.equal(result.trackerUpdated.changed, false);
 });
+
+test("tracker append works for source pages with non-raw raw_file paths", async () => {
+  const body = `---
+type: source
+raw_file: meetings/march-7.md
+---
+
+# Source: March 7
+`;
+  await proposals.proposePage("wiki/sources/source-march-7.md", body);
+  const result = await proposals.resolveProposal("wiki/sources/source-march-7.md", "accept");
+  assert.equal(result.action, "accepted");
+  assert.equal(result.trackerUpdated.changed, true);
+  const tracker = await read("wiki/ingest-tracker.md");
+  assert.match(tracker, /\| meetings\/march-7\.md \| ingested \| \[\[source-march-7\]\]/);
+});
+
+test("tracker is idempotent for non-raw paths too", async () => {
+  const body = `---
+type: source
+raw_file: clippings/foo.md
+---
+`;
+  await proposals.proposePage("wiki/sources/source-foo.md", body);
+  await proposals.resolveProposal("wiki/sources/source-foo.md", "accept");
+  await proposals.proposePage("wiki/sources/source-foo.md", body, { force: true });
+  await proposals.resolveProposal("wiki/sources/source-foo.md", "accept");
+  const tracker = await read("wiki/ingest-tracker.md");
+  const matches = tracker.match(/\| clippings\/foo\.md \|/g) || [];
+  assert.equal(matches.length, 1);
+});

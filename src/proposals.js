@@ -203,8 +203,8 @@ async function maybeAppendTrackerRow(vault, destPath, body) {
   }
 
   const slug = destPath.split("/").pop().replace(/\.md$/i, "");
-  const rowKey = `| raw/${parsed.rawFile} |`;
-  const row = `| raw/${parsed.rawFile} | ingested | [[${slug}]] | - |  |  |`;
+  const rowKey = `| ${parsed.rawFile} |`;
+  const row = `| ${parsed.rawFile} | ingested | [[${slug}]] | - |  |  |`;
 
   if (current === null) {
     const text = TRACKER_HEADER + row + "\n" + TRACKER_FOOTER;
@@ -220,7 +220,7 @@ async function maybeAppendTrackerRow(vault, destPath, body) {
   const lines = current.split("\n");
   let insertAt = -1;
   for (let i = lines.length - 1; i >= 0; i--) {
-    if (lines[i].startsWith("| raw/") || lines[i].startsWith("|---")) {
+    if (/^\|\s+\S+\/\S+\s+\|/.test(lines[i]) || lines[i].startsWith("|---")) {
       insertAt = i + 1;
       break;
     }
@@ -242,7 +242,7 @@ function parseSourceFrontmatter(body) {
   const fm = body.slice(4, end);
   const typeMatch = fm.match(/^type:\s*"?source"?\s*$/m);
   if (!typeMatch) return null;
-  const rawMatch = fm.match(/^raw_file:\s*"?raw\/([^"\n]+?)"?\s*$/m);
+  const rawMatch = fm.match(/^raw_file:\s*"?([^"\n]+?)"?\s*$/m);
   if (!rawMatch) return null;
   return { rawFile: rawMatch[1].trim() };
 }
