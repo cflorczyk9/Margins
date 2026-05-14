@@ -328,7 +328,7 @@
   }
   h1.hero-title {
     font-family: 'Newsreader', Georgia, "Times New Roman", serif;
-    font-size: clamp(38px, 5.4vw, 60px);
+    font-size: clamp(36px, 4.2vw, 50px);
     font-weight: 500;
     line-height: 1.04;
     letter-spacing: -0.022em;
@@ -337,6 +337,15 @@
   }
   h1.hero-title .hero-line {
     display: block;
+    /* Keep each phrase on its own line — "Your Claude subscription," doesn't
+       wrap mid-phrase even when the font hits its clamp ceiling. */
+    white-space: nowrap;
+  }
+  @media (max-width: 880px) {
+    /* Below the breakpoint the hero-row collapses to one column, giving the
+       title the full wrap width. Allow each phrase to wrap internally there,
+       since "Your Claude subscription," may otherwise overflow narrow phones. */
+    h1.hero-title .hero-line { white-space: normal; }
   }
   h1.hero-title em {
     font-style: italic;
@@ -640,14 +649,9 @@
     align-items: center;
     gap: 10px;
   }
-  .m-head .h-us::before {
-    content: "";
-    position: absolute;
-    top: 0; left: 14px; right: 14px;
-    height: 2px;
-    background: var(--vermillion);
-    border-radius: 2px;
-  }
+  /* The vermillion top bar over the Margins header column was duplicate
+     signal — the .us-ring already wraps the column. Header text color
+     stays in --accent so the column reads as ours. */
   .kandinsky {
     display: inline-flex;
     align-items: center;
@@ -773,14 +777,7 @@
       background: var(--paper);
       position: relative;
     }
-    .tool-card.is-us::before {
-      content: "";
-      position: absolute;
-      top: 0; left: 18px; right: 18px;
-      height: 2px;
-      background: var(--vermillion);
-      border-radius: 2px;
-    }
+    /* No duplicate top bar — the 1.75px vermillion border is the signal. */
     .tool-card h3 {
       font: 700 13px/1 'Manrope', sans-serif;
       letter-spacing: 0.06em;
