@@ -214,3 +214,29 @@ function xmlEscape(text) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 }
+
+test("idempotent: second compile of same raw file returns already-filed", async () => {
+  await touch("raw/note.md", "# Note\n\nFirst content.");
+  const first = await compile.proposeCompileFromRaw("note.md", { summary: "First take." });
+  assert.equal(first.status, "proposal-staged");
+  await proposals.resolveProposal(first.destinationPath, "accept");
+
+  const second = await compile.proposeCompileFromRaw("note.md", { summary: "Second take." });
+  assert.equal(second.status, "already-filed");
+  assert.equal(second.rawFile, "raw/note.md");
+  assert.equal(second.existingPath, first.destinationPath);
+  assert.ok(!second.proposalPath, "no proposal should be staged on duplicate");
+});
+
+test("force=true bypasses idempotency check and stages replacement proposal", async () => {
+  await touch("raw/note2.md", "# Note 2\n\nOriginal.");
+  const first = await compile.proposeCompileFromRaw("note2.md", { summary: "Original." });
+  await proposals.resolveProposal(first.destinationPath, "accept");
+
+  const replace = await compile.proposeCompileFromRaw("note2.md", {
+    summary: "Replacement.",
+    force: true
+  });
+  assert.equal(replace.status, "proposal-staged");
+  assert.ok(replace.proposalPath, "force=true should stage a proposal");
+});

@@ -7,6 +7,7 @@ import { detectIndexRoots } from "./index-roots.js";
 import { createPrimer, formatSummary } from "./primer.js";
 import { createCompile } from "./compile.js";
 import { supportedExtensionsList } from "./document-text.js";
+import { buildRawIndex } from "./raw-index.js";
 import { loadTelemetry, writeConsent } from "./telemetry.js";
 import { createPreferences } from "./preferences.js";
 import { createWikilinks } from "./wikilinks.js";
@@ -55,7 +56,7 @@ by reading the file.
 
 TOOLS:
 - Context: margins_start, recall_preferences
-- Read: search_vault, read_page, list_recent, get_backlinks
+- Read: search_vault, read_page, list_recent, get_backlinks, list_pending_raw
 - Propose writes: propose_page, propose_edit, append_to, propose_compile_from_raw
 - Suggest: propose_wikilinks (for A3/B3 vaults with few links)
 - Manage proposals: list_proposals, resolve_proposal
@@ -447,19 +448,39 @@ export function buildServer(vault, options = {}) {
           )
           .optional()
           .describe("Key takeaways. Either strings or {point, evidence} objects."),
-        summaryBullets: z.array(z.string()).optional().describe("Short summary bullets.")
+        summaryBullets: z.array(z.string()).optional().describe("Short summary bullets."),
+        force: z
+          .boolean()
+          .optional()
+          .describe(
+            "Replace an existing source page for this raw file. Default false — by default, a second compile call returns the existing source page rather than overwriting it."
+          )
       },
       annotations: { readOnlyHint: false, destructiveHint: false }
     },
-    async ({ rawPath, summary, title, bucket, destination_path, takeaways, summaryBullets }) => {
+    async ({ rawPath, summary, title, bucket, destination_path, takeaways, summaryBullets, force }) => {
       const result = await compile.proposeCompileFromRaw(rawPath, {
         summary,
         title,
         bucket,
         destination_path,
         takeaways,
-        summaryBullets
+        summaryBullets,
+        force
       });
+      if (result.status === "already-filed") {
+        return {
+          content: [
+            {
+              type: "text",
+              text:
+                `${result.rawFile} is already filed at ${result.existingPath}. ` +
+                "No proposal staged. Pass force=true to compile again and replace."
+            }
+          ],
+          structuredContent: result
+        };
+      }
       const lines = [
         `Compiled ${result.rawFile} → staged at ${result.proposalPath}`,
         `Title: ${result.title}`,
@@ -474,6 +495,49 @@ export function buildServer(vault, options = {}) {
       return {
         content: [{ type: "text", text: lines.join("\n") }],
         structuredContent: result
+      };
+    }
+  );
+
+  register(
+    "list_pending_raw",
+    {
+      description:
+        "List raw/ files that have not yet been compiled into a wiki source page. Detection is based on raw_file: frontmatter on existing wiki pages, not filename heuristics. Use this when the user asks 'what haven't I filed yet?' or before suggesting a bulk-compile pass.",
+      inputSchema: {
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(500)
+          .optional()
+          .describe("Maximum pending files to return. Default 50.")
+      },
+      annotations: { readOnlyHint: true }
+    },
+    async ({ limit }) => {
+      const index = await buildRawIndex(vault);
+      const cap = limit ?? 50;
+      const shown = index.pending.slice(0, cap);
+      const filed = index.rawFiles.length - index.pending.length;
+      const header =
+        `raw/: ${index.rawFiles.length} supported files. ` +
+        `${filed} filed, ${index.pending.length} pending.`;
+      const body =
+        shown.length === 0
+          ? "(nothing pending)"
+          : shown.map((n) => `  raw/${n}`).join("\n") +
+            (index.pending.length > shown.length
+              ? `\n  ... and ${index.pending.length - shown.length} more`
+              : "");
+      return {
+        content: [{ type: "text", text: `${header}\n${body}` }],
+        structuredContent: {
+          total_raw: index.rawFiles.length,
+          filed,
+          pending_count: index.pending.length,
+          pending: shown
+        }
       };
     }
   );

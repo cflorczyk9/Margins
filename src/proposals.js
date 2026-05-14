@@ -42,7 +42,7 @@ export function createProposals(vault) {
     return { proposalPath: relProposal(rel), destinationPath: rel };
   }
 
-  async function proposePage(rel, body) {
+  async function proposePage(rel, body, options = {}) {
     if (!rel || typeof rel !== "string") {
       throw new Error("path is required");
     }
@@ -50,14 +50,15 @@ export function createProposals(vault) {
       throw new Error(`destination path cannot start with ${PROPOSED_DIR}/`);
     }
     const vaultAbs = vault.resolveInside(rel);
-    if (await exists(vaultAbs)) {
+    const replacesVaultFile = await exists(vaultAbs);
+    if (replacesVaultFile && !options.force) {
       throw new Error(
         `${rel} already exists in vault. Use propose_edit or append_to instead.`
       );
     }
     const replaced = await exists(resolveProposed(rel));
     const result = await writeProposal(rel, body);
-    return { ...result, replacedExisting: replaced };
+    return { ...result, replacedExisting: replaced, replacesVaultFile };
   }
 
   async function proposeEdit(rel, before, after) {
@@ -145,9 +146,12 @@ export function createProposals(vault) {
     }
     if (action === "accept") {
       const destAbs = vault.resolveInside(rel);
+      const proposalBody = await readFile(proposalAbs, "utf8");
       await mkdir(path.dirname(destAbs), { recursive: true });
+      await rm(destAbs, { force: true });
       await rename(proposalAbs, destAbs);
-      return { destinationPath: rel, action: "accepted" };
+      const trackerUpdate = await maybeAppendTrackerRow(vault, rel, proposalBody);
+      return { destinationPath: rel, action: "accepted", trackerUpdated: trackerUpdate };
     }
     throw new Error(`unknown action '${action}'; use 'accept' or 'reject'`);
   }
@@ -159,6 +163,88 @@ export function createProposals(vault) {
     listProposals,
     resolveProposal
   };
+}
+
+const TRACKER_PATH = "wiki/ingest-tracker.md";
+const TRACKER_HEADER = `---
+type: tracker
+bucket: system
+summary: Source-file processing tracker for this Margins vault.
+tags: [tracker, ingest, system]
+voice: claude-draft
+---
+
+# Ingest Tracker
+
+This is the single source of truth for which source files in raw/ have been converted into wiki pages. Update it whenever ingest creates, rewrites, or skips a source.
+
+| Source file | Status | Source page | Connected pages | Words | Notes |
+|---|---|---|---|---:|---|
+`;
+const TRACKER_FOOTER = `
+## Status Vocabulary
+
+- ingested: source text was available and a wiki source page exists.
+- needs-extraction: the original file is preserved in raw/, but readable text was not available to the compiler.
+- skipped: the user intentionally chose not to file this source.
+- superseded: a newer source replaced this one as the preferred reference.
+`;
+
+async function maybeAppendTrackerRow(vault, destPath, body) {
+  const parsed = parseSourceFrontmatter(body);
+  if (!parsed || !parsed.rawFile) return { changed: false, reason: "no-raw-file" };
+
+  const trackerAbs = vault.resolveInside(TRACKER_PATH);
+  let current;
+  try {
+    current = await readFile(trackerAbs, "utf8");
+  } catch {
+    current = null;
+  }
+
+  const slug = destPath.split("/").pop().replace(/\.md$/i, "");
+  const rowKey = `| raw/${parsed.rawFile} |`;
+  const row = `| raw/${parsed.rawFile} | ingested | [[${slug}]] | - |  |  |`;
+
+  if (current === null) {
+    const text = TRACKER_HEADER + row + "\n" + TRACKER_FOOTER;
+    await mkdir(path.dirname(trackerAbs), { recursive: true });
+    await writeFile(trackerAbs, text, "utf8");
+    return { changed: true, action: "created", rawFile: parsed.rawFile };
+  }
+
+  if (current.includes(rowKey)) {
+    return { changed: false, reason: "already-tracked", rawFile: parsed.rawFile };
+  }
+
+  const lines = current.split("\n");
+  let insertAt = -1;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (lines[i].startsWith("| raw/") || lines[i].startsWith("|---")) {
+      insertAt = i + 1;
+      break;
+    }
+  }
+  if (insertAt < 0) {
+    const next = current.endsWith("\n") ? current + row + "\n" : current + "\n" + row + "\n";
+    await writeFile(trackerAbs, next, "utf8");
+    return { changed: true, action: "appended-end", rawFile: parsed.rawFile };
+  }
+  lines.splice(insertAt, 0, row);
+  await writeFile(trackerAbs, lines.join("\n"), "utf8");
+  return { changed: true, action: "appended", rawFile: parsed.rawFile };
+}
+
+function parseSourceFrontmatter(body) {
+  if (!body || !body.startsWith("---\n")) return null;
+  const end = body.indexOf("\n---", 4);
+  if (end < 0) return null;
+  const fm = body.slice(4, end);
+  const typeMatch = fm.match(/^type:\s*"?source"?\s*$/m);
+  if (!typeMatch) return null;
+  const rawMatch = fm.match(/^raw_file:\s*"?raw\/([^"\n]+?)"?\s*$/m);
+  if (!rawMatch) return null;
+  return { rawFile: rawMatch[1].trim() };
 }
 
 function countOccurrences(haystack, needle) {

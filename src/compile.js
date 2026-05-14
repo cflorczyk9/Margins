@@ -2,6 +2,7 @@ import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { compileVault } from "./compiler/compiler.js";
 import { extractDocumentText, supportedExtensionsList } from "./document-text.js";
+import { buildRawIndex } from "./raw-index.js";
 
 export function createCompile(vault, proposals) {
   async function proposeCompileFromRaw(rawPath, review) {
@@ -22,8 +23,23 @@ export function createCompile(vault, proposals) {
       throw new Error(`not a file: ${fullRawPath}`);
     }
 
-    const text = await extractDocumentText(absRaw, fullRawPath);
     const fileName = path.basename(absRaw);
+    const force = Boolean(review && review.force);
+
+    if (!force) {
+      const index = await buildRawIndex(vault);
+      const existingPath = index.referenced.get(fileName);
+      if (existingPath) {
+        return {
+          status: "already-filed",
+          rawFile: fullRawPath,
+          existingPath,
+          message: `Source already exists at ${existingPath}. Pass force=true to replace.`
+        };
+      }
+    }
+
+    const text = await extractDocumentText(absRaw, fullRawPath);
 
     const fullReview = buildReview(review || {}, fileName);
 
@@ -44,9 +60,10 @@ export function createCompile(vault, proposals) {
     }
 
     const destPath = sourceNode.path;
-    const proposalResult = await proposals.proposePage(destPath, sourceNode.markdown);
+    const proposalResult = await proposals.proposePage(destPath, sourceNode.markdown, { force });
     return {
       ...proposalResult,
+      status: "proposal-staged",
       rawFile: fullRawPath,
       title: sourceNode.title,
       bucket: sourceNode.path.split("/")[1] || "sources",

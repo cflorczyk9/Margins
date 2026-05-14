@@ -1,11 +1,10 @@
-import { readdir } from "node:fs/promises";
-import path from "node:path";
 import { readVaultManual } from "./vault-manual.js";
 import { classifyVault, suggestionsForPersona } from "./persona.js";
 import { samplePileBySnippets, detectFilenamePatterns } from "./pile-sampler.js";
 import { scanRawForCompile } from "./pile-scan.js";
 import { checkForUpdate } from "./version-check.js";
 import { readConsent } from "./telemetry.js";
+import { buildRawIndex } from "./raw-index.js";
 
 // Mode dispatch. Each persona maps to a response shape tuned for what that
 // user actually needs from Claude at the start of a conversation.
@@ -139,35 +138,8 @@ function foldersByCount(files, vault) {
 }
 
 async function detectUningestedRaw(vault) {
-  const rawDir = vault.resolveInside("raw");
-  let rawFiles;
-  try {
-    rawFiles = await readdir(rawDir, { withFileTypes: true });
-  } catch {
-    return { count: 0, files: [] };
-  }
-  const rawNames = rawFiles
-    .filter((d) => d.isFile())
-    .map((d) => d.name)
-    .filter((name) => !name.startsWith("."));
-
-  if (!rawNames.length) return { count: 0, files: [] };
-
-  const allFiles = await vault.listFiles();
-  const ingestedSlugs = new Set();
-  for (const abs of allFiles) {
-    const base = path.basename(abs, path.extname(abs));
-    if (base.startsWith("source-")) {
-      ingestedSlugs.add(base.slice("source-".length));
-    }
-  }
-
-  const uningested = rawNames.filter((name) => {
-    const slug = path.basename(name, path.extname(name));
-    return !ingestedSlugs.has(slug);
-  });
-
-  return { count: uningested.length, files: uningested.slice(0, 10) };
+  const index = await buildRawIndex(vault);
+  return { count: index.pending.length, files: index.pending.slice(0, 10) };
 }
 
 export function formatSummary(summary) {
