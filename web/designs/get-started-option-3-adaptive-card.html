@@ -1,0 +1,734 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Get started — Margins (Adaptive Card)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #faf7f2;
+    --paper: #ffffff;
+    --paper-soft: #f5f1ea;
+    --ink: #1a1612;
+    --ink-2: #4a423a;
+    --ink-3: #847a6b;
+    --ink-4: #b0a99b;
+    --line: #ece6d9;
+    --line-strong: #d8d0bf;
+    --accent: #d63a2f;
+    --accent-soft: rgba(214, 58, 47, 0.10);
+    --accent-line: rgba(214, 58, 47, 0.22);
+    --vermillion: #d63a2f;
+    --cobalt: #2c5aa0;
+    --mustard: #f0c14b;
+    --good: #5b7d57;
+    --shadow-sm: 0 1px 1px rgba(26, 22, 18, 0.04), 0 2px 6px rgba(26, 22, 18, 0.04);
+    --shadow-md: 0 2px 4px rgba(26, 22, 18, 0.05), 0 12px 28px rgba(26, 22, 18, 0.06);
+    --shadow-lg: 0 4px 8px rgba(26, 22, 18, 0.06), 0 30px 60px rgba(26, 22, 18, 0.10);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Manrope', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 96px 32px 120px;
+  }
+
+  .eyebrow {
+    font-family: 'Manrope', sans-serif;
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 22px 0;
+  }
+
+  h2.section-title {
+    font-family: 'Newsreader', Georgia, serif;
+    font-weight: 500;
+    font-size: clamp(34px, 4.4vw, 46px);
+    line-height: 1.08;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    margin: 0 0 40px 0;
+  }
+
+  /* ============ CARD ============ */
+  .card {
+    position: relative;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    box-shadow: var(--shadow-md);
+    padding: 36px;
+    overflow: hidden;
+    max-width: 760px;
+  }
+
+  /* polychrome gradient top edge */
+  .card::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 4px;
+    background: linear-gradient(
+      90deg,
+      var(--mustard) 0%,
+      var(--vermillion) 50%,
+      var(--cobalt) 100%
+    );
+    opacity: 0.85;
+    pointer-events: none;
+  }
+
+  /* ============ TAB STRIP ============ */
+  .tabs {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 0;
+    margin-bottom: 28px;
+  }
+
+  .tab {
+    position: relative;
+    appearance: none;
+    background: transparent;
+    border: 0;
+    padding: 10px 14px 14px;
+    font-family: 'Manrope', sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--ink-3);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    transition: color 200ms ease;
+    letter-spacing: -0.005em;
+  }
+
+  .tab:hover { color: var(--ink-2); }
+  .tab[aria-selected="true"] { color: var(--ink); }
+
+  .tab .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    border: 1.5px solid var(--ink-4);
+    background: transparent;
+    flex-shrink: 0;
+    transition: all 220ms ease;
+  }
+  .tab[aria-selected="true"] .dot {
+    background: var(--vermillion);
+    border-color: var(--vermillion);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+
+  .tab-underline {
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    height: 2px;
+    background: var(--vermillion);
+    border-radius: 2px;
+    transition: transform 300ms cubic-bezier(0.4, 0, 0.2, 1),
+                width 300ms cubic-bezier(0.4, 0, 0.2, 1);
+    will-change: transform, width;
+  }
+
+  .help-btn {
+    margin-left: auto;
+    appearance: none;
+    background: transparent;
+    border: 1px solid var(--accent-line);
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    color: var(--vermillion);
+    font-family: 'Newsreader', Georgia, serif;
+    font-size: 13px;
+    font-weight: 500;
+    font-style: italic;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    transition: all 180ms ease;
+    margin-bottom: 8px;
+  }
+  .help-btn:hover {
+    background: var(--accent-soft);
+    border-color: var(--vermillion);
+  }
+  .help-btn[aria-expanded="true"] {
+    background: var(--vermillion);
+    color: var(--paper);
+    border-color: var(--vermillion);
+  }
+
+  .help-tooltip {
+    overflow: hidden;
+    max-height: 0;
+    transition: max-height 280ms cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 200ms ease,
+                margin 280ms cubic-bezier(0.4, 0, 0.2, 1);
+    opacity: 0;
+    margin-bottom: 0;
+    border-radius: 10px;
+    background: var(--paper-soft);
+    border: 1px solid var(--line);
+    color: var(--ink-2);
+    font-size: 13.5px;
+    line-height: 1.55;
+  }
+  .help-tooltip.open {
+    max-height: 200px;
+    opacity: 1;
+    margin-bottom: 24px;
+  }
+  .help-tooltip-inner {
+    padding: 14px 16px;
+  }
+  .help-tooltip strong {
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .help-tooltip .row + .row { margin-top: 6px; }
+
+  /* ============ MORPHING BODY ============ */
+  .card-body-frame {
+    position: relative;
+    transition: height 320ms cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+  }
+
+  .card-body {
+    transition: opacity 280ms ease;
+    will-change: opacity;
+  }
+  .card-body.fade-out { opacity: 0; }
+
+  .install-heading {
+    font-family: 'Newsreader', Georgia, serif;
+    font-size: 26px;
+    font-weight: 500;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+    margin: 4px 0 22px 0;
+    line-height: 1.15;
+  }
+
+  /* desktop cta */
+  .download-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--ink);
+    color: var(--paper);
+    border: 1px solid var(--ink);
+    border-radius: 10px;
+    padding: 14px 22px;
+    font-family: 'Manrope', sans-serif;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    text-decoration: none;
+    cursor: pointer;
+    transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
+    box-shadow: 0 1px 2px rgba(26, 22, 18, 0.18);
+  }
+  .download-btn:hover {
+    transform: translateY(-1px);
+    background: #2a2520;
+    box-shadow: 0 4px 12px rgba(26, 22, 18, 0.22);
+  }
+  .download-btn:active { transform: translateY(0); }
+  .download-btn .arrow {
+    display: inline-block;
+    transition: transform 200ms ease;
+  }
+  .download-btn:hover .arrow { transform: translateY(2px); }
+
+  .meta {
+    margin: 12px 0 0 0;
+    font-size: 12.5px;
+    color: var(--ink-3);
+    font-feature-settings: "tnum" 1;
+    letter-spacing: 0.005em;
+  }
+  .meta .sep {
+    display: inline-block;
+    margin: 0 8px;
+    color: var(--ink-4);
+  }
+
+  .body-copy {
+    margin: 24px 0 0 0;
+    color: var(--ink-2);
+    font-size: 15px;
+    line-height: 1.6;
+    max-width: 56ch;
+  }
+  .body-copy .accent {
+    color: var(--ink);
+    font-weight: 500;
+  }
+
+  /* cli */
+  .cmd-list {
+    margin: 4px 0 0 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .cmd {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 12px;
+    background: var(--paper-soft);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 12px 14px;
+    transition: border-color 180ms ease, background 180ms ease;
+  }
+  .cmd:hover {
+    border-color: var(--line-strong);
+  }
+
+  .cmd code {
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 13.5px;
+    color: var(--ink);
+    background: transparent;
+    overflow-x: auto;
+    white-space: nowrap;
+    padding-right: 4px;
+  }
+  .cmd code .prompt {
+    color: var(--ink-4);
+    user-select: none;
+    margin-right: 8px;
+  }
+
+  .copy-btn {
+    appearance: none;
+    border: 1px solid var(--line-strong);
+    background: var(--paper);
+    color: var(--ink-2);
+    font-family: 'Manrope', sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    padding: 6px 12px;
+    border-radius: 7px;
+    cursor: pointer;
+    transition: all 180ms ease;
+    min-width: 72px;
+    text-align: center;
+    text-transform: lowercase;
+  }
+  .copy-btn:hover {
+    border-color: var(--ink-3);
+    color: var(--ink);
+  }
+  .copy-btn.copied {
+    background: var(--vermillion);
+    border-color: var(--vermillion);
+    color: var(--paper);
+  }
+
+  /* ============ FOOTER LINK ============ */
+  .scaffold-line {
+    margin: 22px 0 0 0;
+    font-size: 14px;
+    color: var(--ink-3);
+    max-width: 760px;
+  }
+  .scaffold-line a {
+    color: var(--ink-2);
+    text-decoration: underline;
+    text-decoration-color: var(--line-strong);
+    text-underline-offset: 4px;
+    transition: color 180ms ease, text-decoration-color 180ms ease;
+  }
+  .scaffold-line a:hover {
+    color: var(--vermillion);
+    text-decoration-color: var(--vermillion);
+  }
+  .scaffold-line .arrow {
+    display: inline-block;
+    transition: transform 180ms ease;
+  }
+  .scaffold-line a:hover .arrow { transform: translateX(2px); }
+
+  /* ============ RESPONSIVE ============ */
+  @media (max-width: 640px) {
+    .wrap { padding: 64px 20px 80px; }
+    .card { padding: 28px 22px; }
+    .install-heading { font-size: 22px; }
+    .cmd code { font-size: 12.5px; }
+    .download-btn { width: 100%; justify-content: center; }
+  }
+
+  /* accessibility — reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      transition-duration: 0.01ms !important;
+      animation-duration: 0.01ms !important;
+    }
+  }
+</style>
+</head>
+<body>
+  <main class="wrap">
+    <p class="eyebrow">Get started</p>
+    <h2 class="section-title">Install Margins.</h2>
+
+    <section class="card" aria-labelledby="install-title">
+      <!-- Tab strip -->
+      <div class="tabs" role="tablist" aria-label="Install path">
+        <button
+          class="tab"
+          role="tab"
+          id="tab-desktop"
+          aria-controls="panel-desktop"
+          aria-selected="true"
+          data-tab="desktop"
+        >
+          <span class="dot" aria-hidden="true"></span>
+          <span>Claude Desktop</span>
+        </button>
+        <button
+          class="tab"
+          role="tab"
+          id="tab-cli"
+          aria-controls="panel-cli"
+          aria-selected="false"
+          data-tab="cli"
+          tabindex="-1"
+        >
+          <span class="dot" aria-hidden="true"></span>
+          <span>Claude Code / CLI</span>
+        </button>
+
+        <button
+          class="help-btn"
+          id="helpBtn"
+          aria-expanded="false"
+          aria-controls="helpTooltip"
+          aria-label="What's the difference?"
+          title="What's the difference?"
+        >?</button>
+
+        <span class="tab-underline" id="tabUnderline" aria-hidden="true"></span>
+      </div>
+
+      <!-- Help tooltip -->
+      <div class="help-tooltip" id="helpTooltip" role="region" aria-label="Difference between install paths">
+        <div class="help-tooltip-inner">
+          <div class="row"><strong>Desktop</strong> — double-click install with the .mcpb bundle.</div>
+          <div class="row"><strong>CLI</strong> — npm package, works with Claude Code or anywhere you have Node.</div>
+        </div>
+      </div>
+
+      <!-- Morphing body -->
+      <div class="card-body-frame" id="bodyFrame">
+        <!-- Desktop panel -->
+        <div
+          class="card-body"
+          id="panel-desktop"
+          role="tabpanel"
+          aria-labelledby="tab-desktop"
+          data-panel="desktop"
+        >
+          <h3 class="install-heading" id="install-title">Install for Claude Desktop.</h3>
+
+          <a
+            class="download-btn"
+            href="https://github.com/cflorczyk9/Margins/releases/latest/download/margins-mcp.mcpb"
+            download
+          >
+            Download for Claude Desktop
+            <span class="arrow" aria-hidden="true">↓</span>
+          </a>
+          <p class="meta">~2 MB<span class="sep">·</span>macOS &amp; Windows<span class="sep">·</span>MIT</p>
+
+          <p class="body-copy">
+            <span class="accent">Double-click. Pick a folder. Ask Claude.</span>
+            Margins shows up in your Connector list with its logo.
+          </p>
+        </div>
+
+        <!-- CLI panel (hidden initially) -->
+        <div
+          class="card-body"
+          id="panel-cli"
+          role="tabpanel"
+          aria-labelledby="tab-cli"
+          data-panel="cli"
+          hidden
+        >
+          <h3 class="install-heading">Install via npm.</h3>
+
+          <ul class="cmd-list">
+            <li class="cmd">
+              <code><span class="prompt">$</span>npm install -g margins-mcp</code>
+              <button class="copy-btn" data-copy="npm install -g margins-mcp" type="button">copy</button>
+            </li>
+            <li class="cmd">
+              <code><span class="prompt">$</span>margins-mcp install --vault /absolute/path/to/your/vault</code>
+              <button class="copy-btn" data-copy="margins-mcp install --vault /absolute/path/to/your/vault" type="button">copy</button>
+            </li>
+          </ul>
+
+          <p class="body-copy">
+            The installer writes configs for Claude Desktop and Claude Code,
+            scaffolds <code style="font-family:'JetBrains Mono',monospace;font-size:0.9em;color:var(--ink);">raw/</code>,
+            <code style="font-family:'JetBrains Mono',monospace;font-size:0.9em;color:var(--ink);">proposed/</code>, and
+            <code style="font-family:'JetBrains Mono',monospace;font-size:0.9em;color:var(--ink);">.margins</code>
+            in your vault, and verifies.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <p class="scaffold-line">
+      No vault yet?
+      <a href="#scaffold">Margins can scaffold one <span class="arrow" aria-hidden="true">→</span></a>
+    </p>
+  </main>
+
+<script>
+(function () {
+  'use strict';
+
+  var STORAGE_KEY = 'margins.install.tab';
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('.tab'));
+  var underline = document.getElementById('tabUnderline');
+  var frame = document.getElementById('bodyFrame');
+  var panels = {
+    desktop: document.getElementById('panel-desktop'),
+    cli: document.getElementById('panel-cli')
+  };
+  var helpBtn = document.getElementById('helpBtn');
+  var helpTooltip = document.getElementById('helpTooltip');
+
+  // ---------- underline placement ----------
+  function placeUnderline(activeTab) {
+    var rect = activeTab.getBoundingClientRect();
+    var parentRect = activeTab.parentElement.getBoundingClientRect();
+    var left = rect.left - parentRect.left;
+    underline.style.width = rect.width + 'px';
+    underline.style.transform = 'translateX(' + left + 'px)';
+  }
+
+  // ---------- height sync ----------
+  function syncFrameHeight(targetPanel) {
+    // Measure the natural height of the target panel.
+    // Temporarily make it visible-but-invisible to measure.
+    var prevHidden = targetPanel.hasAttribute('hidden');
+    var prevDisplay = targetPanel.style.display;
+    var prevVisibility = targetPanel.style.visibility;
+    var prevPosition = targetPanel.style.position;
+
+    if (prevHidden) {
+      targetPanel.style.visibility = 'hidden';
+      targetPanel.style.position = 'absolute';
+      targetPanel.style.display = 'block';
+      targetPanel.removeAttribute('hidden');
+    }
+
+    var h = targetPanel.offsetHeight;
+
+    if (prevHidden) {
+      targetPanel.setAttribute('hidden', '');
+      targetPanel.style.visibility = prevVisibility;
+      targetPanel.style.position = prevPosition;
+      targetPanel.style.display = prevDisplay;
+    }
+
+    frame.style.height = h + 'px';
+  }
+
+  // ---------- tab switch ----------
+  function selectTab(name, opts) {
+    opts = opts || {};
+    var newTab = tabs.find(function (t) { return t.dataset.tab === name; });
+    var oldTab = tabs.find(function (t) { return t.getAttribute('aria-selected') === 'true'; });
+    if (!newTab) return;
+    if (oldTab === newTab && !opts.force) {
+      placeUnderline(newTab);
+      return;
+    }
+
+    // aria + tabindex
+    tabs.forEach(function (t) {
+      var sel = t === newTab;
+      t.setAttribute('aria-selected', sel ? 'true' : 'false');
+      t.setAttribute('tabindex', sel ? '0' : '-1');
+    });
+
+    // underline slide
+    placeUnderline(newTab);
+
+    var oldPanel = panels[oldTab ? oldTab.dataset.tab : 'desktop'];
+    var newPanel = panels[name];
+
+    // Sync target height first so the frame animates smoothly to the new content size
+    syncFrameHeight(newPanel);
+
+    if (opts.skipAnim) {
+      // instant swap (initial load)
+      if (oldPanel && oldPanel !== newPanel) oldPanel.setAttribute('hidden', '');
+      newPanel.removeAttribute('hidden');
+      newPanel.classList.remove('fade-out');
+      return;
+    }
+
+    // fade out old
+    if (oldPanel) oldPanel.classList.add('fade-out');
+
+    setTimeout(function () {
+      if (oldPanel && oldPanel !== newPanel) {
+        oldPanel.setAttribute('hidden', '');
+        oldPanel.classList.remove('fade-out');
+      }
+      newPanel.removeAttribute('hidden');
+      newPanel.classList.add('fade-out');
+      // force reflow so transition kicks in
+      void newPanel.offsetWidth;
+      newPanel.classList.remove('fade-out');
+      // re-measure once content is live (in case of fonts shifting)
+      syncFrameHeight(newPanel);
+    }, 220);
+
+    // persist
+    try { localStorage.setItem(STORAGE_KEY, name); } catch (_) {}
+    if (history.replaceState) {
+      history.replaceState(null, '', '#install=' + name);
+    } else {
+      location.hash = 'install=' + name;
+    }
+  }
+
+  // ---------- tab bindings ----------
+  tabs.forEach(function (t) {
+    t.addEventListener('click', function () { selectTab(t.dataset.tab); });
+    t.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+        e.preventDefault();
+        var idx = tabs.indexOf(t);
+        var next = e.key === 'ArrowRight'
+          ? tabs[(idx + 1) % tabs.length]
+          : tabs[(idx - 1 + tabs.length) % tabs.length];
+        next.focus();
+        selectTab(next.dataset.tab);
+      }
+    });
+  });
+
+  // ---------- help tooltip ----------
+  helpBtn.addEventListener('click', function () {
+    var open = helpTooltip.classList.toggle('open');
+    helpBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    // re-measure frame since tooltip changes layout above it (it's outside the frame, so fine)
+  });
+
+  // ---------- copy buttons ----------
+  document.querySelectorAll('.copy-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var text = btn.getAttribute('data-copy') || '';
+      var done = function () {
+        var orig = 'copy';
+        btn.textContent = '✓ copied';
+        btn.classList.add('copied');
+        setTimeout(function () {
+          btn.classList.remove('copied');
+          btn.textContent = orig;
+        }, 1200);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, fallback);
+      } else {
+        fallback();
+      }
+      function fallback() {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); } catch (_) {}
+        document.body.removeChild(ta);
+        done();
+      }
+    });
+  });
+
+  // ---------- initial selection: URL hash > localStorage > default ----------
+  function initialTab() {
+    var m = (location.hash || '').match(/install=(desktop|cli)/i);
+    if (m) return m[1].toLowerCase();
+    try {
+      var stored = localStorage.getItem(STORAGE_KEY);
+      if (stored === 'desktop' || stored === 'cli') return stored;
+    } catch (_) {}
+    return 'desktop';
+  }
+
+  // wait one frame so fonts/layout settle, then set underline + height
+  function init() {
+    var initial = initialTab();
+    selectTab(initial, { skipAnim: true, force: true });
+    placeUnderline(tabs.find(function (t) { return t.dataset.tab === initial; }));
+    syncFrameHeight(panels[initial]);
+  }
+
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(init);
+  } else {
+    init();
+  }
+  // also re-place on resize
+  window.addEventListener('resize', function () {
+    var active = tabs.find(function (t) { return t.getAttribute('aria-selected') === 'true'; });
+    if (active) {
+      placeUnderline(active);
+      syncFrameHeight(panels[active.dataset.tab]);
+    }
+  });
+
+  // listen for hash changes (back/forward nav)
+  window.addEventListener('hashchange', function () {
+    var m = (location.hash || '').match(/install=(desktop|cli)/i);
+    if (m) selectTab(m[1].toLowerCase());
+  });
+})();
+</script>
+</body>
+</html>

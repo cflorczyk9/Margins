@@ -1,0 +1,643 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Get Started — Margins</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #faf7f2; --paper: #ffffff; --paper-soft: #f5f1ea;
+    --ink: #1a1612; --ink-2: #4a423a; --ink-3: #847a6b; --ink-4: #b0a99b;
+    --line: #ece6d9; --line-strong: #d8d0bf;
+    --accent: #d63a2f; --accent-soft: rgba(214,58,47,0.10); --accent-line: rgba(214,58,47,0.22);
+    --vermillion: #d63a2f; --cobalt: #2c5aa0; --mustard: #f0c14b; --good: #5b7d57;
+    --shadow-sm: 0 1px 1px rgba(26,22,18,0.04), 0 2px 6px rgba(26,22,18,0.04);
+    --shadow-md: 0 2px 4px rgba(26,22,18,0.05), 0 12px 28px rgba(26,22,18,0.06);
+    --shadow-lg: 0 4px 8px rgba(26,22,18,0.06), 0 30px 60px rgba(26,22,18,0.10);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Manrope', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  a { color: inherit; }
+  button { font-family: inherit; }
+
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 96px 32px 120px;
+  }
+
+  /* Eyebrow + H2 */
+  .eyebrow {
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 16px;
+  }
+  h2.display {
+    font-family: 'Newsreader', Georgia, serif;
+    font-weight: 500;
+    font-size: clamp(34px, 4.4vw, 46px);
+    line-height: 1.08;
+    letter-spacing: -0.02em;
+    margin: 0 0 12px;
+    color: var(--ink);
+  }
+  .deck {
+    font-family: 'Newsreader', Georgia, serif;
+    font-weight: 400;
+    font-size: 19px;
+    line-height: 1.5;
+    color: var(--ink-2);
+    max-width: 620px;
+    margin: 0 0 56px;
+  }
+
+  /* Grid */
+  .grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 1.15fr);
+    gap: 36px;
+    align-items: start;
+  }
+  @media (max-width: 900px) {
+    .grid { grid-template-columns: 1fr; gap: 24px; }
+    .wrap { padding: 64px 24px 96px; }
+  }
+
+  /* Cards */
+  .card {
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    box-shadow: var(--shadow-md);
+  }
+
+  /* Install card */
+  .install {
+    padding: 36px 36px 32px;
+    opacity: 0;
+    transform: translateY(16px);
+    animation: fadeUp 600ms cubic-bezier(.2,.7,.2,1) 200ms forwards;
+  }
+  @keyframes fadeUp {
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .install h3 {
+    font-family: 'Newsreader', Georgia, serif;
+    font-weight: 500;
+    font-size: 30px;
+    line-height: 1.1;
+    letter-spacing: -0.015em;
+    margin: 0 0 18px;
+    color: var(--ink);
+  }
+
+  /* Update pill */
+  .update-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 11px 6px 10px;
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-line);
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--ink-2);
+    margin: 0 0 18px;
+    letter-spacing: 0.005em;
+  }
+  .update-pill .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--vermillion);
+    box-shadow: 0 0 0 0 rgba(214,58,47,0.5);
+    animation: dotPulse 2.4s ease-out infinite;
+  }
+  @keyframes dotPulse {
+    0%   { box-shadow: 0 0 0 0 rgba(214,58,47,0.45); }
+    70%  { box-shadow: 0 0 0 6px rgba(214,58,47,0); }
+    100% { box-shadow: 0 0 0 0 rgba(214,58,47,0); }
+  }
+  .update-pill code {
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 10.5px;
+    background: rgba(26,22,18,0.05);
+    padding: 1px 5px;
+    border-radius: 4px;
+    color: var(--ink);
+  }
+
+  /* Download button */
+  .download {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 22px;
+    background: var(--ink);
+    color: #fff;
+    border: 1px solid var(--ink);
+    border-radius: 10px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 15.5px;
+    letter-spacing: -0.005em;
+    box-shadow: 0 1px 2px rgba(26,22,18,0.18), 0 6px 14px rgba(26,22,18,0.18);
+    transition: transform 180ms cubic-bezier(.2,.7,.2,1), box-shadow 220ms ease, background 200ms ease;
+    will-change: transform;
+  }
+  .download:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 2px 4px rgba(26,22,18,0.22), 0 14px 28px rgba(26,22,18,0.24);
+    background: #0e0a07;
+  }
+  .download:active { transform: translateY(-1px); }
+  .download .arrow {
+    display: inline-block;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.12);
+    position: relative;
+  }
+  .download .arrow::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(#fff,#fff) center / 1.5px 8px no-repeat,
+      conic-gradient(from 135deg at 50% 56%, #fff 0 25%, transparent 0) center / 8px 8px no-repeat;
+    -webkit-mask: radial-gradient(circle at 50% 50%, #000 8.5px, transparent 9px);
+            mask: radial-gradient(circle at 50% 50%, #000 8.5px, transparent 9px);
+  }
+
+  .meta {
+    margin: 12px 0 24px;
+    font-size: 12.5px;
+    color: var(--ink-3);
+    letter-spacing: 0.01em;
+  }
+  .meta .sep { margin: 0 8px; color: var(--ink-4); }
+
+  .steps {
+    font-family: 'Newsreader', Georgia, serif;
+    font-size: 20px;
+    line-height: 1.4;
+    color: var(--ink);
+    margin: 4px 0 24px;
+    letter-spacing: -0.005em;
+  }
+  .steps .pause { color: var(--ink-3); }
+
+  /* CLI link + panel */
+  .cli-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+    color: var(--ink-2);
+    font-size: 14px;
+    font-weight: 500;
+    text-decoration: underline;
+    text-decoration-color: var(--line-strong);
+    text-underline-offset: 4px;
+    transition: color 150ms ease, text-decoration-color 150ms ease;
+  }
+  .cli-toggle:hover { color: var(--ink); text-decoration-color: var(--ink-3); }
+  .cli-toggle .chev {
+    display: inline-block;
+    transition: transform 280ms cubic-bezier(.2,.7,.2,1);
+    font-size: 13px;
+  }
+  .cli-toggle[aria-expanded="true"] .chev { transform: rotate(90deg); }
+
+  .cli-panel {
+    overflow: hidden;
+    max-height: 0;
+    opacity: 0;
+    transition: max-height 360ms cubic-bezier(.2,.7,.2,1), opacity 260ms ease, margin 260ms ease;
+    margin-top: 0;
+  }
+  .cli-panel.open {
+    max-height: 280px;
+    opacity: 1;
+    margin-top: 18px;
+  }
+  .cli-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px;
+    background: var(--paper-soft);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    margin-bottom: 8px;
+  }
+  .cli-row code {
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 12.5px;
+    color: var(--ink);
+    overflow-x: auto;
+    white-space: nowrap;
+    flex: 1;
+  }
+  .cli-copy {
+    flex-shrink: 0;
+    background: var(--paper);
+    border: 1px solid var(--line-strong);
+    color: var(--ink-2);
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 11.5px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
+  }
+  .cli-copy:hover { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .cli-copy.copied { background: var(--good); color: #fff; border-color: var(--good); }
+
+  /* Success preview card */
+  .preview {
+    padding: 0;
+    overflow: hidden;
+    background: var(--paper);
+    opacity: 0;
+    transform: translateX(40px);
+    animation: slideInRight 700ms cubic-bezier(.2,.7,.2,1) 400ms forwards;
+  }
+  @keyframes slideInRight {
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  .preview-caption {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    padding: 14px 20px;
+    border-top: 1px solid var(--line);
+    background: var(--paper-soft);
+  }
+
+  /* Mock Claude window */
+  .mock {
+    background: linear-gradient(180deg, #f7f4ed 0%, #ffffff 60%);
+    padding: 14px 18px 22px;
+  }
+  .mock-titlebar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 18px;
+  }
+  .mock-titlebar .tl {
+    width: 11px; height: 11px;
+    border-radius: 50%;
+    background: var(--line-strong);
+  }
+  .mock-titlebar .tl:nth-child(1) { background: #e07268; }
+  .mock-titlebar .tl:nth-child(2) { background: #e8c270; }
+  .mock-titlebar .tl:nth-child(3) { background: #8db485; }
+  .mock-titlebar .title {
+    margin-left: 10px;
+    font-size: 12px;
+    color: var(--ink-3);
+    letter-spacing: 0.02em;
+  }
+
+  .mock-panel-label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 4px 10px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 8px;
+  }
+  .mock-panel-label .h {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--ink);
+    letter-spacing: -0.005em;
+  }
+  .mock-panel-label .sub {
+    font-size: 11px;
+    color: var(--ink-3);
+  }
+
+  .connector-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 6px;
+    border-radius: 8px;
+    transition: background 150ms ease;
+  }
+  .connector-row + .connector-row { border-top: 1px solid var(--line); }
+  .connector-row.active { background: rgba(91,125,87,0.04); }
+
+  .connector-icon {
+    width: 32px; height: 32px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .connector-icon.disc {
+    position: relative;
+  }
+  .connector-icon.disc .disc-svg {
+    animation: discBreath 6.5s ease-in-out infinite;
+    transform-origin: center;
+    will-change: transform;
+  }
+  @keyframes discBreath {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.03); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .connector-icon.disc .disc-svg,
+    .update-pill .dot,
+    .install, .preview {
+      animation: none !important;
+    }
+    .install, .preview { opacity: 1 !important; transform: none !important; }
+  }
+  .connector-icon.outline {
+    border: 1.5px solid var(--line-strong);
+    border-radius: 50%;
+    background: transparent;
+  }
+
+  .connector-name {
+    flex: 1;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--ink);
+    letter-spacing: -0.005em;
+  }
+  .connector-name .desc {
+    display: block;
+    font-size: 11.5px;
+    font-weight: 400;
+    color: var(--ink-3);
+    margin-top: 1px;
+  }
+  .connector-status {
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  .connector-status.on {
+    color: var(--good);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .connector-status.on::before {
+    content: "";
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--good);
+  }
+  .connector-status.off {
+    color: var(--ink-4);
+  }
+
+  /* Collapsed rows below */
+  .extras {
+    margin-top: 36px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    border-top: 1px solid var(--line);
+  }
+  .extra {
+    border-bottom: 1px solid var(--line);
+  }
+  .extra summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 18px 4px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    color: var(--ink-2);
+    font-size: 14.5px;
+    font-weight: 500;
+    transition: color 150ms ease;
+  }
+  .extra summary::-webkit-details-marker { display: none; }
+  .extra summary:hover { color: var(--ink); }
+  .extra summary .arrow {
+    display: inline-block;
+    width: 10px;
+    color: var(--ink-3);
+    transition: transform 250ms cubic-bezier(.2,.7,.2,1);
+    font-size: 12px;
+  }
+  .extra[open] summary .arrow { transform: rotate(90deg); }
+  .extra .extra-body {
+    padding: 4px 4px 22px 28px;
+    font-size: 14px;
+    line-height: 1.55;
+    color: var(--ink-2);
+    max-width: 720px;
+  }
+  .extra .extra-body code {
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 12.5px;
+    background: var(--paper-soft);
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: var(--ink);
+    border: 1px solid var(--line);
+  }
+</style>
+</head>
+<body>
+  <main class="wrap">
+    <p class="eyebrow">Get started</p>
+    <h2 class="display">Install Margins. Ask Claude.</h2>
+    <p class="deck">One download. One folder. A working second brain that Claude can actually read and edit.</p>
+
+    <div class="grid">
+      <!-- LEFT: Install card -->
+      <section class="card install" aria-labelledby="install-title">
+        <div class="update-pill" role="status" aria-live="polite">
+          <span class="dot" aria-hidden="true"></span>
+          <span>v0.9.0 &rarr; v0.9.1 available &middot; Update via</span>
+          <code>margins-mcp install --update</code>
+        </div>
+
+        <h3 id="install-title">Install Margins.</h3>
+
+        <a class="download"
+           href="https://github.com/cflorczyk9/Margins/releases/latest/download/margins-mcp.mcpb"
+           download>
+          <span>Download for Claude Desktop</span>
+          <span class="arrow" aria-hidden="true"></span>
+        </a>
+        <div class="meta">~2 MB <span class="sep">&middot;</span> macOS <span class="sep">&middot;</span> Windows</div>
+
+        <p class="steps">
+          Double-click. Pick a folder. <span class="pause">Ask Claude.</span>
+        </p>
+
+        <button class="cli-toggle" type="button" aria-expanded="false" aria-controls="cli-panel">
+          Or install via CLI <span class="chev" aria-hidden="true">&rsaquo;</span>
+        </button>
+
+        <div class="cli-panel" id="cli-panel" hidden>
+          <div class="cli-row">
+            <code>npm install -g margins-mcp</code>
+            <button class="cli-copy" type="button" data-copy="npm install -g margins-mcp">Copy</button>
+          </div>
+          <div class="cli-row">
+            <code>margins-mcp install --vault /absolute/path/to/your/vault</code>
+            <button class="cli-copy" type="button" data-copy="margins-mcp install --vault /absolute/path/to/your/vault">Copy</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- RIGHT: Success preview -->
+      <section class="card preview" aria-label="Success preview">
+        <div class="mock">
+          <div class="mock-titlebar" aria-hidden="true">
+            <span class="tl"></span><span class="tl"></span><span class="tl"></span>
+            <span class="title">Claude Desktop &mdash; Settings</span>
+          </div>
+
+          <div class="mock-panel-label">
+            <span class="h">Connectors</span>
+            <span class="sub">3 configured</span>
+          </div>
+
+          <div class="connector-row active">
+            <div class="connector-icon disc" aria-hidden="true">
+              <!-- Kandinsky disc: mustard 11r outer, vermillion 7r mid, ink 2.5r core -->
+              <svg class="disc-svg" width="28" height="28" viewBox="-14 -14 28 28">
+                <circle cx="0" cy="0" r="11" fill="#f0c14b" />
+                <circle cx="0" cy="0" r="7"  fill="#d63a2f" />
+                <circle cx="0" cy="0" r="2.5" fill="#1a1612" />
+              </svg>
+            </div>
+            <div class="connector-name">
+              margins
+              <span class="desc">Wiki, raw, proposed &middot; local-first vault</span>
+            </div>
+            <span class="connector-status on">Active</span>
+          </div>
+
+          <div class="connector-row">
+            <div class="connector-icon outline" aria-hidden="true"></div>
+            <div class="connector-name">
+              Filesystem MCP
+              <span class="desc">Built-in &middot; not configured</span>
+            </div>
+            <span class="connector-status off">Off</span>
+          </div>
+
+          <div class="connector-row">
+            <div class="connector-icon outline" aria-hidden="true"></div>
+            <div class="connector-name">
+              Gmail
+              <span class="desc">Optional connector</span>
+            </div>
+            <span class="connector-status off">Off</span>
+          </div>
+        </div>
+        <div class="preview-caption">What you'll see after install</div>
+      </section>
+    </div>
+
+    <!-- Collapsed extras -->
+    <div class="extras">
+      <details class="extra">
+        <summary><span class="arrow">&rsaquo;</span> Already installed? Update with one command</summary>
+        <div class="extra-body">
+          Run <code>margins-mcp install --update</code> in your terminal. Your vault, configuration, and connector pairings are preserved. The MCP server restarts automatically; you don't need to touch Claude Desktop.
+        </div>
+      </details>
+      <details class="extra">
+        <summary><span class="arrow">&rsaquo;</span> No vault yet? Margins can scaffold one</summary>
+        <div class="extra-body">
+          Margins can create a starter vault for you in any folder &mdash; <code>wiki</code>, <code>raw</code>, <code>proposed</code>, plus a <code>CLAUDE.md</code> operator manual. Run <code>margins-mcp install</code> without <code>--vault</code> and follow the prompt to choose a location.
+        </div>
+      </details>
+    </div>
+  </main>
+
+  <script>
+    // CLI panel toggle
+    (function () {
+      var toggle = document.querySelector('.cli-toggle');
+      var panel  = document.getElementById('cli-panel');
+      if (!toggle || !panel) return;
+      toggle.addEventListener('click', function () {
+        var open = panel.classList.toggle('open');
+        toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+        if (open) {
+          panel.removeAttribute('hidden');
+        } else {
+          // wait for the transition to finish before re-hiding
+          setTimeout(function () {
+            if (!panel.classList.contains('open')) panel.setAttribute('hidden', '');
+          }, 360);
+        }
+      });
+    })();
+
+    // Copy buttons
+    (function () {
+      var buttons = document.querySelectorAll('.cli-copy');
+      buttons.forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var text = btn.getAttribute('data-copy') || '';
+          var done = function () {
+            var prev = btn.textContent;
+            btn.textContent = 'Copied';
+            btn.classList.add('copied');
+            setTimeout(function () {
+              btn.textContent = prev;
+              btn.classList.remove('copied');
+            }, 1400);
+          };
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(done, done);
+          } else {
+            // fallback
+            var ta = document.createElement('textarea');
+            ta.value = text;
+            document.body.appendChild(ta);
+            ta.select();
+            try { document.execCommand('copy'); } catch (e) {}
+            document.body.removeChild(ta);
+            done();
+          }
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

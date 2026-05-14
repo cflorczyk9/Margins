@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Get Started — three variants — Margins</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #faf7f2;
+    --paper: #ffffff;
+    --paper-soft: #f5f1ea;
+    --ink: #1a1612;
+    --ink-2: #4a423a;
+    --ink-3: #847a6b;
+    --line: #ece6d9;
+    --line-strong: #d8d0bf;
+    --accent: #d63a2f;
+    --accent-soft: rgba(214,58,47,0.10);
+    --vermillion: #d63a2f;
+    --mustard: #f0c14b;
+    --cobalt: #2c5aa0;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); font-family: 'Manrope', -apple-system, BlinkMacSystemFont, system-ui, sans-serif; }
+
+  .head {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(250, 247, 242, 0.92);
+    backdrop-filter: saturate(160%) blur(10px);
+    -webkit-backdrop-filter: saturate(160%) blur(10px);
+    border-bottom: 1px solid var(--line);
+    padding: 18px 32px;
+    display: flex; align-items: center; justify-content: space-between; gap: 24px; flex-wrap: wrap;
+  }
+  .head .titleblock h1 {
+    font-family: 'Newsreader', Georgia, serif;
+    font-weight: 500; font-size: 24px; margin: 0; letter-spacing: -0.015em;
+  }
+  .head .titleblock p {
+    margin: 4px 0 0;
+    font-size: 13.5px; color: var(--ink-3); max-width: 60ch; line-height: 1.5;
+  }
+  .head .actions { display: flex; gap: 10px; align-items: center; }
+  .head button.replay-all {
+    background: var(--ink); color: var(--bg);
+    border: none; border-radius: 999px;
+    padding: 10px 18px;
+    font: 600 12.5px/1 'Manrope', sans-serif;
+    letter-spacing: 0.04em; text-transform: uppercase;
+    cursor: pointer; transition: background 200ms ease, transform 200ms ease;
+  }
+  .head button.replay-all:hover { background: var(--accent); transform: translateY(-1px); }
+  .head .nav-jump {
+    display: inline-flex; gap: 6px; align-items: center;
+  }
+  .head .nav-jump a {
+    color: var(--ink-3); text-decoration: none;
+    font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 8px 12px; border-radius: 999px; border: 1px solid var(--line);
+    transition: color 160ms ease, border-color 160ms ease;
+  }
+  .head .nav-jump a:hover { color: var(--accent); border-color: var(--accent); }
+
+  .variant {
+    border-bottom: 1px solid var(--line);
+    background: var(--bg);
+  }
+  .variant > header {
+    padding: 28px 32px 12px;
+    display: flex; align-items: baseline; gap: 16px; justify-content: space-between; flex-wrap: wrap;
+  }
+  .variant > header .name {
+    font-family: 'Newsreader', Georgia, serif;
+    font-weight: 500; font-size: 28px; letter-spacing: -0.012em;
+    color: var(--ink);
+  }
+  .variant > header .pill {
+    font-size: 10.5px; font-weight: 700; letter-spacing: 0.10em; text-transform: uppercase;
+    color: var(--ink-3); background: var(--paper-soft);
+    border: 1px solid var(--line); padding: 4px 10px; border-radius: 999px;
+  }
+  .variant > header .pill.option-2 { color: var(--accent); border-color: var(--accent-soft); background: var(--accent-soft); }
+  .variant > header .summary {
+    font-size: 14px; color: var(--ink-3); margin: 0;
+    flex-basis: 100%; line-height: 1.5;
+  }
+
+  .frame-wrap {
+    position: relative;
+    margin: 0 32px 32px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    overflow: hidden;
+    background: var(--paper);
+    box-shadow: 0 1px 1px rgba(26,22,18,0.04), 0 2px 8px rgba(26,22,18,0.04);
+  }
+  .frame-wrap iframe {
+    display: block;
+    width: 100%;
+    border: 0;
+    background: var(--bg);
+  }
+  .frame-wrap iframe.tall   { height: 820px; }
+  .frame-wrap iframe.taller { height: 920px; }
+
+  .open-link {
+    position: absolute;
+    top: 10px; right: 10px;
+    background: rgba(255,255,255,0.92);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 6px 12px;
+    font-size: 11.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+    color: var(--ink-2); text-decoration: none;
+    transition: color 160ms ease, border-color 160ms ease;
+    backdrop-filter: blur(6px);
+  }
+  .open-link:hover { color: var(--accent); border-color: var(--accent); }
+</style>
+</head>
+<body>
+  <div class="head">
+    <div class="titleblock">
+      <h1>Get Started — three variants</h1>
+      <p>All three use the same content (download URL, npm command, scaffold link) and the same brand tokens. They differ in how they handle hierarchy, motion, and verification. Scroll through, then call the winner.</p>
+    </div>
+    <div class="actions">
+      <div class="nav-jump">
+        <a href="#v1">1</a>
+        <a href="#v2">2</a>
+        <a href="#v3">3</a>
+      </div>
+      <button class="replay-all" id="replayAll">Replay all</button>
+    </div>
+  </div>
+
+  <section class="variant" id="v1">
+    <header>
+      <span class="name">1 · Confident Hero</span>
+      <span class="pill">Static · ~3 hrs</span>
+      <p class="summary">Single CTA paired with a beautifully rendered "this is what success looks like" preview. Disc pulses gently, reveal-on-load choreography stages the eye-path from button → preview. Lowest cost, highest confidence per minute of engineering.</p>
+    </header>
+    <div class="frame-wrap">
+      <a class="open-link" href="get-started-option-1-confident-hero.html" target="_blank" rel="noopener">Open in new tab ↗</a>
+      <iframe class="tall" data-variant="1" src="get-started-option-1-confident-hero.html" loading="lazy" title="Variant 1 — Confident Hero"></iframe>
+    </div>
+  </section>
+
+  <section class="variant" id="v2">
+    <header>
+      <span class="name">2 · Felt-First</span>
+      <span class="pill option-2">Autoplay · ~4 hrs</span>
+      <p class="summary">A small auto-playing Claude Desktop mockup runs a 5-second scene above the install button: user types a question, Margins calls 3 tools, Claude streams an answer with a citation that flashes vermillion. Install reads as "I want what I just saw" not "I'll trust this download."</p>
+    </header>
+    <div class="frame-wrap">
+      <a class="open-link" href="get-started-option-2-felt-first.html" target="_blank" rel="noopener">Open in new tab ↗</a>
+      <iframe class="taller" data-variant="2" src="get-started-option-2-felt-first.html" loading="lazy" title="Variant 2 — Felt-First"></iframe>
+    </div>
+  </section>
+
+  <section class="variant" id="v3">
+    <header>
+      <span class="name">3 · Adaptive Card</span>
+      <span class="pill">Stateful · ~4 hrs</span>
+      <p class="summary">Single install card morphs between Desktop and CLI paths via a vermillion-underline tab switcher. Card height animates, copy buttons confirm in vermillion, URL hash + localStorage persist the choice across visits. Each path presented as equally first-class — no "easiest" pill.</p>
+    </header>
+    <div class="frame-wrap">
+      <a class="open-link" href="get-started-option-3-adaptive-card.html" target="_blank" rel="noopener">Open in new tab ↗</a>
+      <iframe class="tall" data-variant="3" src="get-started-option-3-adaptive-card.html" loading="lazy" title="Variant 3 — Adaptive Card"></iframe>
+    </div>
+  </section>
+
+  <script>
+    // Replay all: reload every iframe. For variant 2, this re-fires the autoplay
+    // scene since the IntersectionObserver re-engages on fresh DOM.
+    document.getElementById("replayAll").addEventListener("click", () => {
+      document.querySelectorAll("iframe[data-variant]").forEach((f) => {
+        try { f.contentWindow.location.reload(); } catch (e) { /* cross-origin guard */ }
+      });
+    });
+  </script>
+</body>
+</html>
