@@ -382,6 +382,10 @@
   .hero-art svg .ink-stroke { stroke: var(--svg-ink); opacity: var(--svg-ink-opacity); }
   .hero-art svg .ink-fill { fill: var(--svg-ink); }
   .hero-art svg .ink-tri { stroke: var(--svg-ink); }
+  /* Isolate the disc cluster so the .hero-disc multiply blend mode only
+     affects the discs themselves (mustard + vermillion overlap), never the
+     curve or line behind them. */
+  .hero-art svg .disc-cluster { isolation: isolate; }
 
   /* =====================================================================
      Hero entrance cascade — variant B from /designs/hero-anim-b-cascade
@@ -1928,19 +1932,28 @@
           <g class="parallax-layer p-curve" data-depth="0.30">
             <path d="M 30 90 Q 160 200 290 60" fill="none" stroke="#2c5aa0" stroke-width="1.8" stroke-linecap="round" opacity="0.75"/>
           </g>
-          <g class="parallax-layer p-disc-mustard" data-depth="0.10">
-            <g class="breathing-disc">
-              <circle class="hero-disc" cx="225" cy="115" r="56" fill="#f0c14b"/>
+          <!-- Disc cluster wrapped in an isolated stacking context. The
+               .hero-disc circles use mix-blend-mode: multiply for the
+               mustard+vermillion overlap; isolation keeps that multiply from
+               reaching the cobalt curve below (which was causing the curve to
+               "pop" through the discs the moment the .cascading class came
+               off and the per-layer filter/will-change stacking context
+               collapsed). -->
+          <g class="disc-cluster">
+            <g class="parallax-layer p-disc-mustard" data-depth="0.10">
+              <g class="breathing-disc">
+                <circle class="hero-disc" cx="225" cy="115" r="56" fill="#f0c14b"/>
+              </g>
             </g>
-          </g>
-          <g class="parallax-layer p-disc-vermillion" data-depth="0.10">
-            <g class="breathing-disc delay-1">
-              <circle class="hero-disc" cx="225" cy="115" r="32" fill="#d63a2f"/>
+            <g class="parallax-layer p-disc-vermillion" data-depth="0.10">
+              <g class="breathing-disc delay-1">
+                <circle class="hero-disc" cx="225" cy="115" r="32" fill="#d63a2f"/>
+              </g>
             </g>
-          </g>
-          <g class="parallax-layer p-dot-center" data-depth="0.12">
-            <g class="breathing-disc delay-2">
-              <circle cx="225" cy="115" r="10" class="ink-fill"/>
+            <g class="parallax-layer p-dot-center" data-depth="0.12">
+              <g class="breathing-disc delay-2">
+                <circle cx="225" cy="115" r="10" class="ink-fill"/>
+              </g>
             </g>
           </g>
           <g class="parallax-layer p-tri" data-depth="0.22">
