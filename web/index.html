@@ -962,13 +962,10 @@
       min-height: 380px;
     }
     .ts-card-content { max-width: 100%; padding: 24px 24px; }
-    .ts-numeral {
-      font-size: 200px;
-      bottom: -56px;
-      right: -10px;
-      opacity: 0.16 !important;
-      transform: none !important;
-    }
+    /* On mobile the card-content spans full width, so the SVG props
+       and giant numeral would overlap body text. Hide them — the
+       Bauhaus aesthetic is a desktop-only flourish. */
+    .ts-props, .ts-numeral { display: none !important; }
     .ts-stage-controls { display: none; }
     .ts-stage-wrap { box-shadow: none; }
     h2.ts-title { font-size: 30px; }
@@ -1411,6 +1408,8 @@
       min-height: 460px;
     }
     .inst-card-content { max-width: 100%; padding: 26px 22px; }
+    /* Mobile: hide decorative props so text is unobstructed. */
+    .inst-props { display: none !important; }
     .inst-stage-controls { display: none; }
     .inst-stage-wrap { box-shadow: none; }
     h2.inst-title { font-size: 30px; }
