@@ -1,0 +1,802 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Three steps — Margins</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,200..700;1,6..72,200..700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #faf7f2;
+    --paper: #ffffff;
+    --paper-soft: #f5f1ea;
+    --ink: #1a1612;
+    --ink-2: #4a423a;
+    --ink-3: #847a6b;
+    --line: #ece6d9;
+    --line-strong: #d8d0bf;
+    --vermillion: #d63a2f;
+    --cobalt: #2c5aa0;
+    --mustard: #f0c14b;
+    --violet: #6a4f8c;
+    --green-poly: #6fa863;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #15110d;
+      --paper: #1F1A14;
+      --paper-soft: #1a1610;
+      --ink: #E8E2D6;
+      --ink-2: #C8C2B5;
+      --ink-3: #8A857A;
+      --line: #2E281F;
+      --line-strong: #3D362B;
+      --vermillion: #E04B3F;
+      --cobalt: #5B86C9;
+      --mustard: #F0C14B;
+      --violet: #9A7FBE;
+      --green-poly: #8AC078;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); }
+  body {
+    font-family: "Manrope", system-ui, sans-serif;
+    font-weight: 400;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  a { color: var(--cobalt); text-decoration: underline; text-underline-offset: 2px; text-decoration-thickness: 1px; }
+  a:hover { color: var(--vermillion); }
+  code {
+    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.9em;
+    background: var(--paper-soft);
+    border: 1px solid var(--line);
+    padding: 1px 6px;
+    border-radius: 4px;
+    color: var(--ink-2);
+  }
+
+  /* page whitespace */
+  .top-pad, .bottom-pad { height: 80vh; }
+
+  section.three-steps {
+    width: min(1100px, calc(100% - 48px));
+    margin: 0 auto;
+    padding: 0;
+  }
+
+  /* ---------- header ---------- */
+  .ts-head {
+    text-align: left;
+    margin-bottom: 36px;
+  }
+  .eyebrow {
+    font-family: "Manrope", sans-serif;
+    font-weight: 500;
+    font-size: 12px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .eyebrow::before {
+    content: "";
+    width: 24px;
+    height: 1px;
+    background: var(--line-strong);
+  }
+  h2.ts-title {
+    font-family: "Newsreader", Georgia, serif;
+    font-weight: 500;
+    font-size: clamp(36px, 5.2vw, 56px);
+    line-height: 1.05;
+    letter-spacing: -0.01em;
+    margin: 18px 0 16px;
+    color: var(--ink);
+    max-width: 18ch;
+  }
+  h2.ts-title em {
+    font-style: italic;
+    font-weight: 500;
+    color: var(--ink);
+  }
+  p.ts-sub {
+    font-family: "Newsreader", Georgia, serif;
+    font-weight: 300;
+    font-size: clamp(17px, 1.7vw, 21px);
+    line-height: 1.45;
+    color: var(--ink-2);
+    margin: 0;
+    max-width: 60ch;
+  }
+
+  /* ---------- stage ---------- */
+  .stage-wrap {
+    position: relative;
+    margin-top: 48px;
+    border-radius: 16px;
+    background: var(--paper-soft);
+    border: 1px solid var(--line);
+    overflow: hidden;
+    box-shadow: inset 0 14px 28px -22px rgba(26, 22, 18, 0.35);
+  }
+  @media (prefers-color-scheme: dark) {
+    .stage-wrap { box-shadow: inset 0 14px 28px -22px rgba(0,0,0,0.7); }
+  }
+
+  .stage {
+    display: flex;
+    overflow-x: scroll;
+    overflow-y: hidden;
+    scroll-snap-type: x mandatory;
+    scroll-behavior: smooth;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .stage::-webkit-scrollbar { display: none; width: 0; height: 0; }
+
+  .panel {
+    flex: 0 0 100%;
+    width: 100%;
+    height: 540px;
+    scroll-snap-align: center;
+    scroll-snap-stop: always;
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+  }
+
+  /* big numeral — anchored bottom-right INSIDE the card */
+  .numeral {
+    position: absolute;
+    right: -28px;
+    bottom: -88px;
+    font-family: "Newsreader", Georgia, serif;
+    font-weight: 250;
+    font-size: 320px;
+    line-height: 1;
+    opacity: 0;
+    pointer-events: none;
+    user-select: none;
+    transform: translateY(20px);
+    transition: transform 900ms cubic-bezier(.2,.7,.2,1), opacity 900ms ease;
+    z-index: 1;
+  }
+  .panel.in .numeral { transform: translateY(0); opacity: 0.16; }
+
+  /* svg props — fill the card and get clipped by card overflow */
+  .props {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 1;
+  }
+  .prop {
+    transform-origin: center;
+    opacity: 0;
+    transform: translate(0,0) scale(0.92);
+    transition: opacity 900ms cubic-bezier(.2,.7,.2,1), transform 1100ms cubic-bezier(.2,.7,.2,1);
+  }
+  .panel.in .prop { opacity: 1; transform: translate(0,0) scale(1); }
+  .panel.in .prop[data-delay="1"] { transition-delay: 80ms; }
+  .panel.in .prop[data-delay="2"] { transition-delay: 160ms; }
+  .panel.in .prop[data-delay="3"] { transition-delay: 240ms; }
+  .panel.in .prop[data-delay="4"] { transition-delay: 320ms; }
+  .panel.in .prop[data-delay="5"] { transition-delay: 400ms; }
+
+  /* card — fills the panel with breathing room; clips everything inside */
+  .card {
+    position: absolute;
+    top: 28px;
+    left: 28px;
+    right: 28px;
+    bottom: 28px;
+    max-width: none;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 0;
+    box-shadow: 0 18px 40px -28px rgba(26, 22, 18, 0.30);
+    z-index: 2;
+    overflow: hidden;
+    isolation: isolate;
+    opacity: 0;
+    transform: translateX(-12px);
+    transition: opacity 700ms ease 160ms, transform 900ms cubic-bezier(.2,.7,.2,1) 160ms;
+  }
+  .panel.in .card { opacity: 1; transform: translateX(0); }
+
+  /* card content — sits over the props/numeral, left-anchored */
+  .card-content {
+    position: relative;
+    z-index: 3;
+    height: 100%;
+    padding: 36px 40px;
+    max-width: 56%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  @media (max-width: 980px) {
+    .card-content { max-width: 64%; padding: 28px 32px; }
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: "Manrope", sans-serif;
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    margin-bottom: 18px;
+  }
+  .badge .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+  }
+  .card h3 {
+    font-family: "Newsreader", Georgia, serif;
+    font-weight: 500;
+    font-size: 30px;
+    line-height: 1.15;
+    letter-spacing: -0.005em;
+    margin: 0 0 14px;
+    color: var(--ink);
+  }
+  .card p {
+    font-family: "Manrope", sans-serif;
+    font-weight: 400;
+    font-size: 15.5px;
+    line-height: 1.6;
+    color: var(--ink-2);
+    margin: 0;
+  }
+
+  /* per-step accents */
+  .panel-1 .badge, .panel-1 .badge .dot { color: var(--mustard); background-color: transparent; }
+  .panel-1 .badge .dot { background: var(--mustard); }
+  .panel-1 .numeral { color: var(--mustard); }
+
+  .panel-2 .badge, .panel-2 .badge .dot { color: var(--cobalt); }
+  .panel-2 .badge .dot { background: var(--cobalt); }
+  .panel-2 .numeral { color: var(--cobalt); }
+
+  .panel-3 .badge, .panel-3 .badge .dot { color: var(--vermillion); }
+  .panel-3 .badge .dot { background: var(--vermillion); }
+  .panel-3 .numeral { color: var(--vermillion); }
+
+  /* ---------- controls ---------- */
+  .stage-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-top: 20px;
+    padding: 0 4px;
+  }
+  .dots {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    --autoplay-dur: 8000ms;
+  }
+  .dot-btn {
+    position: relative;
+    width: 56px; height: 3px;
+    border: none;
+    border-radius: 2px;
+    background: var(--line-strong);
+    padding: 0;
+    cursor: pointer;
+    overflow: hidden;
+    transition: background 200ms ease, transform 200ms ease;
+  }
+  .dot-btn:hover { background: var(--ink-4, var(--ink-3)); }
+  .dot-btn::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: var(--ink);
+    transform: scaleX(0);
+    transform-origin: left center;
+    transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .dot-btn.is-past::before { transform: scaleX(1); }
+  .dot-btn[aria-current="true"]::before { transform: scaleX(0); }
+  .dot-btn[aria-current="true"].is-running::before {
+    transform: scaleX(0);
+    animation: segFill var(--autoplay-dur) linear forwards;
+    transition: none;
+  }
+  .dot-btn[aria-current="true"]:not(.is-running)::before {
+    transform: scaleX(0.06);
+    transition: none;
+  }
+  @keyframes segFill {
+    from { transform: scaleX(0); }
+    to { transform: scaleX(1); }
+  }
+  .arrows {
+    display: flex;
+    gap: 8px;
+  }
+  .arrow {
+    width: 38px; height: 38px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    border: 1px solid var(--line-strong);
+    background: var(--paper);
+    color: var(--ink-2);
+    cursor: pointer;
+    transition: transform 200ms ease, border-color 200ms ease, color 200ms ease, background 200ms ease;
+  }
+  .arrow:hover:not(:disabled) {
+    color: var(--ink);
+    border-color: var(--ink);
+    transform: translateY(-1px);
+  }
+  .arrow:disabled { opacity: 0.35; cursor: not-allowed; }
+  .arrow svg { width: 14px; height: 14px; }
+  .step-counter {
+    font-family: "Manrope", sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    min-width: 90px;
+    text-align: center;
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0,0,0,0);
+    white-space: nowrap; border: 0;
+  }
+
+  /* ---------- footer line ---------- */
+  .ts-foot {
+    margin-top: 48px;
+    text-align: center;
+    font-family: "Newsreader", Georgia, serif;
+    font-weight: 300;
+    font-size: 17px;
+    line-height: 1.55;
+    color: var(--ink-2);
+    max-width: 70ch;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  /* ---------- mobile: vertical stack ---------- */
+  @media (max-width: 720px) {
+    .stage {
+      flex-direction: column;
+      overflow-x: hidden;
+      overflow-y: visible;
+      scroll-snap-type: none;
+    }
+    .panel {
+      flex: 0 0 auto;
+      height: auto;
+      min-height: 480px;
+      padding: 32px 24px 60px;
+      border-bottom: 1px solid var(--line);
+    }
+    .panel:last-child { border-bottom: none; }
+    .card {
+      position: relative;
+      top: auto;
+      left: auto;
+      right: auto;
+      bottom: auto;
+      transform: none !important;
+      max-width: 100%;
+      opacity: 1 !important;
+      min-height: 380px;
+    }
+    .card-content {
+      max-width: 100%;
+      padding: 24px 24px;
+    }
+    .numeral {
+      font-size: 200px;
+      bottom: -56px;
+      right: -10px;
+      opacity: 0.16 !important;
+      transform: none !important;
+    }
+    .stage-controls { display: none; }
+    .stage-wrap { box-shadow: none; }
+    h2.ts-title { font-size: 32px; }
+  }
+
+  /* ---------- reduced motion: vertical stack, no animation ---------- */
+  @media (prefers-reduced-motion: reduce) {
+    .stage {
+      flex-direction: column;
+      overflow-x: hidden;
+      overflow-y: visible;
+      scroll-snap-type: none;
+    }
+    .panel {
+      flex: 0 0 auto;
+      height: auto;
+      min-height: 480px;
+      border-bottom: 1px solid var(--line);
+    }
+    .panel:last-child { border-bottom: none; }
+    .card,
+    .panel.in .card,
+    .prop,
+    .panel.in .prop,
+    .numeral,
+    .panel.in .numeral {
+      opacity: 1 !important;
+      transform: none !important;
+      transition: none !important;
+    }
+    .card { position: relative; top: auto; left: auto; max-width: calc(100% - 64px); margin: 32px auto; }
+    .stage-controls { display: none; }
+  }
+
+  ::view-transition-old(active-panel),
+  ::view-transition-new(active-panel) {
+    animation-duration: 360ms;
+  }
+</style>
+</head>
+<body>
+
+<div class="top-pad" aria-hidden="true"></div>
+
+<section class="three-steps" aria-labelledby="ts-heading">
+  <header class="ts-head">
+    <span class="eyebrow">How it works</span>
+    <h2 id="ts-heading" class="ts-title">Three steps. You stay in the <em>driver&rsquo;s seat.</em></h2>
+    <p class="ts-sub">You decide what Claude can see, you decide what Claude writes, you ask later.</p>
+  </header>
+
+  <div class="stage-wrap">
+    <div class="stage" id="stage" tabindex="0" role="region" aria-label="Three step stage. Use arrow keys to move.">
+
+      <!-- ===== Panel 1: Mustard ===== -->
+      <article class="panel panel-1" id="panel-1" aria-roledescription="slide" aria-label="Step 1 of 3">
+        <div class="card">
+          <svg class="props" viewBox="0 0 1100 540" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+            <!-- big mustard circle, top-right -->
+            <circle class="prop" data-delay="1" cx="820" cy="170" r="130" fill="var(--mustard)" opacity="0.22"/>
+            <!-- thin cobalt circle outline, mid -->
+            <circle class="prop" data-delay="2" cx="700" cy="360" r="72" fill="none" stroke="var(--cobalt)" stroke-width="1.4" opacity="0.65"/>
+            <!-- folder triangle hint -->
+            <polygon class="prop" data-delay="3" points="600,460 720,460 660,360" fill="none" stroke="var(--ink-2)" stroke-width="1" opacity="0.55"/>
+            <!-- horizontal floor line -->
+            <line class="prop" data-delay="4" x1="540" y1="460" x2="1060" y2="460" stroke="var(--line-strong)" stroke-width="1"/>
+            <!-- vermillion dot accent -->
+            <circle class="prop" data-delay="5" cx="980" cy="430" r="6" fill="var(--vermillion)"/>
+            <!-- small arc -->
+            <path class="prop" data-delay="4" d="M560 200 Q 660 140 760 200" fill="none" stroke="var(--violet)" stroke-width="1.2" opacity="0.7"/>
+          </svg>
+
+          <div class="numeral" aria-hidden="true">1</div>
+
+          <div class="card-content">
+            <div class="badge"><span class="dot"></span><span>Step 1</span></div>
+            <h3>Give it a folder.</h3>
+            <p>Point Margins at one folder on your computer. Your Obsidian vault, a project directory, anything. Claude only ever sees what&rsquo;s inside that folder. Nothing else on your machine.</p>
+          </div>
+        </div>
+      </article>
+
+      <!-- ===== Panel 2: Cobalt ===== -->
+      <article class="panel panel-2" id="panel-2" aria-roledescription="slide" aria-label="Step 2 of 3">
+        <div class="card">
+          <svg class="props" viewBox="0 0 1100 540" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+            <!-- cobalt circle moved up-right (continuity from panel 1) -->
+            <circle class="prop" data-delay="1" cx="880" cy="130" r="100" fill="var(--cobalt)" opacity="0.18"/>
+            <!-- mustard outline circle, slightly shifted -->
+            <circle class="prop" data-delay="2" cx="640" cy="280" r="58" fill="none" stroke="var(--mustard)" stroke-width="1.4" opacity="0.85"/>
+            <!-- stack of "drop" rectangles -->
+            <g class="prop" data-delay="3">
+              <rect x="700" y="260" width="220" height="36" rx="3" fill="none" stroke="var(--ink-2)" stroke-width="1" opacity="0.45"/>
+              <rect x="710" y="306" width="220" height="36" rx="3" fill="none" stroke="var(--ink-2)" stroke-width="1" opacity="0.6"/>
+              <rect x="720" y="352" width="220" height="36" rx="3" fill="var(--cobalt)" opacity="0.12" stroke="var(--cobalt)" stroke-width="1"/>
+            </g>
+            <!-- arrow drop into card area -->
+            <path class="prop" data-delay="4" d="M820 90 L 820 240" stroke="var(--cobalt)" stroke-width="1.2" stroke-dasharray="3 4"/>
+            <polygon class="prop" data-delay="4" points="815,232 825,232 820,250" fill="var(--cobalt)"/>
+            <!-- floor -->
+            <line class="prop" data-delay="5" x1="540" y1="460" x2="1060" y2="460" stroke="var(--line-strong)" stroke-width="1"/>
+            <!-- vermillion accent triangle -->
+            <polygon class="prop" data-delay="5" points="980,440 996,440 988,422" fill="var(--vermillion)" opacity="0.85"/>
+          </svg>
+
+          <div class="numeral" aria-hidden="true">2</div>
+
+          <div class="card-content">
+            <div class="badge"><span class="dot"></span><span>Step 2</span></div>
+            <h3>Drop your stuff in.</h3>
+            <p>Drag in notes, writing, PDFs, meeting transcripts, anything you want Claude to know about. Ask Claude to compile it. Margins stages a clean source page in <code>proposed/</code> for you to accept.</p>
+          </div>
+        </div>
+      </article>
+
+      <!-- ===== Panel 3: Vermillion ===== -->
+      <article class="panel panel-3" id="panel-3" aria-roledescription="slide" aria-label="Step 3 of 3">
+        <div class="card">
+          <svg class="props" viewBox="0 0 1100 540" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+            <!-- vermillion arc, top -->
+            <path class="prop" data-delay="1" d="M560 130 Q 760 50 960 130" fill="none" stroke="var(--vermillion)" stroke-width="1.6" opacity="0.85"/>
+            <!-- network: three nodes connected -->
+            <g class="prop" data-delay="2">
+              <line x1="640" y1="260" x2="820" y2="200" stroke="var(--ink-2)" stroke-width="0.9" opacity="0.6"/>
+              <line x1="820" y1="200" x2="900" y2="340" stroke="var(--ink-2)" stroke-width="0.9" opacity="0.6"/>
+              <line x1="900" y1="340" x2="700" y2="380" stroke="var(--ink-2)" stroke-width="0.9" opacity="0.6"/>
+              <line x1="700" y1="380" x2="640" y2="260" stroke="var(--ink-2)" stroke-width="0.9" opacity="0.6"/>
+              <line x1="820" y1="200" x2="700" y2="380" stroke="var(--ink-2)" stroke-width="0.9" opacity="0.4"/>
+            </g>
+            <g class="prop" data-delay="3">
+              <circle cx="640" cy="260" r="9" fill="var(--mustard)"/>
+              <circle cx="820" cy="200" r="11" fill="var(--cobalt)"/>
+              <circle cx="900" cy="340" r="9" fill="var(--vermillion)"/>
+              <circle cx="700" cy="380" r="7" fill="var(--green-poly)"/>
+            </g>
+            <!-- thin outline circle (continuity) -->
+            <circle class="prop" data-delay="4" cx="820" cy="290" r="160" fill="none" stroke="var(--vermillion)" stroke-width="1" opacity="0.3"/>
+            <!-- floor -->
+            <line class="prop" data-delay="5" x1="540" y1="460" x2="1060" y2="460" stroke="var(--line-strong)" stroke-width="1"/>
+            <!-- violet accent -->
+            <circle class="prop" data-delay="5" cx="978" cy="440" r="5" fill="var(--violet)"/>
+          </svg>
+
+          <div class="numeral" aria-hidden="true">3</div>
+
+          <div class="card-content">
+            <div class="badge"><span class="dot"></span><span>Step 3</span></div>
+            <h3>Ask anything. Connect everything.</h3>
+            <p>Claude searches the sources you&rsquo;ve built, cites where each fact came from, and surfaces connections you didn&rsquo;t make: a meeting that overlaps with another, a thread you forgot was open, a pattern across months of notes. New edits go in <code>proposed/</code> for your review.</p>
+          </div>
+      </article>
+
+    </div>
+  </div>
+
+  <div class="stage-controls" aria-hidden="false">
+    <div class="dots" role="tablist" aria-label="Step pagination">
+      <button class="dot-btn" type="button" role="tab" aria-current="true" aria-label="Go to step 1" data-target="0"></button>
+      <button class="dot-btn" type="button" role="tab" aria-current="false" aria-label="Go to step 2" data-target="1"></button>
+      <button class="dot-btn" type="button" role="tab" aria-current="false" aria-label="Go to step 3" data-target="2"></button>
+    </div>
+
+    <div class="step-counter" id="stepCounter" aria-hidden="true">Step 1 of 3</div>
+    <div class="sr-only" id="stepLive" aria-live="polite" aria-atomic="true">Step 1 of 3: Give it a folder.</div>
+
+    <div class="arrows">
+      <button class="arrow" id="prevBtn" type="button" aria-label="Previous step" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="15 18 9 12 15 6"></polyline>
+        </svg>
+      </button>
+      <button class="arrow" id="nextBtn" type="button" aria-label="Next step">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="9 18 15 12 9 6"></polyline>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <p class="ts-foot">Want the longer version? <a href="/how-it-works.html">See the full walkthrough</a> &mdash; folder layouts, the connection diagram, every tool Claude can call, and what the first month looks like.</p>
+</section>
+
+<div class="bottom-pad" aria-hidden="true"></div>
+
+<script>
+(function () {
+  var stage = document.getElementById('stage');
+  var panels = Array.prototype.slice.call(stage.querySelectorAll('.panel'));
+  var dots = Array.prototype.slice.call(document.querySelectorAll('.dot-btn'));
+  var prevBtn = document.getElementById('prevBtn');
+  var nextBtn = document.getElementById('nextBtn');
+  var counter = document.getElementById('stepCounter');
+  var live = document.getElementById('stepLive');
+
+  var titles = [
+    'Give it a folder.',
+    'Drop your stuff in.',
+    'Ask anything. Connect everything.'
+  ];
+
+  var current = 0;
+  var prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var isMobile = function () { return window.matchMedia('(max-width: 720px)').matches; };
+
+  // IntersectionObserver per panel: trigger entrance/exit by toggling .in
+  if ('IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.55) {
+          entry.target.classList.add('in');
+          var idx = panels.indexOf(entry.target);
+          if (idx !== -1 && idx !== current && !isMobile() && !prefersReduced
+              && !(typeof suspendScrollSync !== 'undefined' && suspendScrollSync && Date.now() < suspendUntil)) {
+            setActive(idx, /*scroll*/ false);
+          }
+        } else if (entry.intersectionRatio < 0.25) {
+          entry.target.classList.remove('in');
+        }
+      });
+    }, {
+      root: stage,
+      threshold: [0, 0.25, 0.55, 0.85]
+    });
+    panels.forEach(function (p) { io.observe(p); });
+  } else {
+    panels.forEach(function (p) { p.classList.add('in'); });
+  }
+
+  // First panel always animates in on load
+  requestAnimationFrame(function () { panels[0].classList.add('in'); });
+
+  // ---------- autoplay state ----------
+  var AUTOPLAY_MS = 8000;
+  var PAUSE_AFTER_INTERACT_MS = 12000;
+  var section = stage.closest('section') || stage.parentElement;
+  var dotsContainer = document.querySelector('.dots');
+  var autoplayTimer = null;
+  var resumeTimer = null;
+  var inView = false;
+  var hovered = false;
+  var focused = false;
+  var pausedByInteraction = false;
+  var suspendScrollSync = false;
+  var suspendUntil = 0;
+
+  function shouldAutoplay() {
+    return inView && !hovered && !focused && !pausedByInteraction
+      && !document.hidden && !prefersReduced && !isMobile();
+  }
+
+  function updateProgressIndicator() {
+    dots.forEach(function (d, i) {
+      d.classList.toggle('is-past', i < current);
+      d.classList.remove('is-running');
+    });
+    if (shouldAutoplay()) {
+      // restart the fill animation reliably
+      var active = dots[current];
+      // force reflow so re-adding the class restarts @keyframes
+      void active.offsetWidth;
+      active.classList.add('is-running');
+    }
+  }
+
+  function scheduleAutoplay() {
+    clearTimeout(autoplayTimer);
+    if (shouldAutoplay()) {
+      autoplayTimer = setTimeout(advance, AUTOPLAY_MS);
+    }
+    updateProgressIndicator();
+  }
+
+  function advance() {
+    var next = (current + 1) % panels.length;
+    setActive(next, true);
+  }
+
+  function pauseForInteraction() {
+    pausedByInteraction = true;
+    clearTimeout(autoplayTimer);
+    clearTimeout(resumeTimer);
+    updateProgressIndicator();
+    resumeTimer = setTimeout(function () {
+      pausedByInteraction = false;
+      scheduleAutoplay();
+    }, PAUSE_AFTER_INTERACT_MS);
+  }
+
+  // ---------- setActive (autoplay-aware, wrap-friendly) ----------
+  function setActive(idx, scrollTo) {
+    var n = panels.length;
+    idx = ((idx % n) + n) % n; // wrap
+    current = idx;
+    dots.forEach(function (d, i) { d.setAttribute('aria-current', i === idx ? 'true' : 'false'); });
+    counter.textContent = 'Step ' + (idx + 1) + ' of 3';
+    live.textContent = 'Step ' + (idx + 1) + ' of 3: ' + titles[idx];
+    prevBtn.disabled = false;
+    nextBtn.disabled = false;
+    if (scrollTo && !isMobile() && !prefersReduced) {
+      suspendScrollSync = true;
+      suspendUntil = Date.now() + 1100;
+      panels[idx].scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    }
+    scheduleAutoplay();
+  }
+
+  // ---------- manual nav (pauses autoplay temporarily) ----------
+  dots.forEach(function (d) {
+    d.addEventListener('click', function () {
+      pauseForInteraction();
+      var t = parseInt(d.getAttribute('data-target'), 10);
+      setActive(t, true);
+    });
+  });
+  prevBtn.addEventListener('click', function () { pauseForInteraction(); setActive(current - 1, true); });
+  nextBtn.addEventListener('click', function () { pauseForInteraction(); setActive(current + 1, true); });
+  stage.addEventListener('keydown', function (e) {
+    if (isMobile()) return;
+    if (e.key === 'ArrowRight') { e.preventDefault(); pauseForInteraction(); setActive(current + 1, true); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); pauseForInteraction(); setActive(current - 1, true); }
+    else if (e.key === 'Home') { e.preventDefault(); pauseForInteraction(); setActive(0, true); }
+    else if (e.key === 'End') { e.preventDefault(); pauseForInteraction(); setActive(panels.length - 1, true); }
+  });
+
+  // ---------- pause triggers ----------
+  [stage, dotsContainer, document.querySelector('.arrows')].forEach(function (el) {
+    if (!el) return;
+    el.addEventListener('mouseenter', function () { hovered = true; scheduleAutoplay(); });
+    el.addEventListener('mouseleave', function () { hovered = false; scheduleAutoplay(); });
+  });
+  section.addEventListener('focusin', function () { focused = true; scheduleAutoplay(); });
+  section.addEventListener('focusout', function (e) {
+    if (!section.contains(e.relatedTarget)) { focused = false; scheduleAutoplay(); }
+  });
+  document.addEventListener('visibilitychange', scheduleAutoplay);
+
+  // ---------- section-level IO: start/stop autoplay when in/out of viewport ----------
+  if ('IntersectionObserver' in window) {
+    var sectionIO = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        inView = e.isIntersecting;
+        scheduleAutoplay();
+      });
+    }, { threshold: 0, rootMargin: '0px 0px -10% 0px' });
+    sectionIO.observe(section);
+  } else {
+    inView = true;
+    scheduleAutoplay();
+  }
+
+  // ---------- track manual scroll-snap (debounced) ----------
+  var scrollT;
+  stage.addEventListener('scroll', function () {
+    if (isMobile() || prefersReduced) return;
+    if (suspendScrollSync && Date.now() < suspendUntil) return;
+    suspendScrollSync = false;
+    clearTimeout(scrollT);
+    scrollT = setTimeout(function () {
+      var stageRect = stage.getBoundingClientRect();
+      var stageCenter = stageRect.left + stageRect.width / 2;
+      var closest = 0;
+      var closestDist = Infinity;
+      panels.forEach(function (p, i) {
+        var r = p.getBoundingClientRect();
+        var c = r.left + r.width / 2;
+        var d = Math.abs(c - stageCenter);
+        if (d < closestDist) { closestDist = d; closest = i; }
+      });
+      if (closest !== current) {
+        pauseForInteraction();
+        setActive(closest, false);
+      }
+    }, 80);
+  }, { passive: true });
+
+  // initial paint — also clears the static `disabled` on prevBtn since we wrap
+  setActive(0, false);
+})();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,803 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Install Margins — Composition VIII</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300..700&family=Newsreader:ital,opsz,wght@0,6..72,400..600;1,6..72,400..600&display=swap" rel="stylesheet" />
+<style>
+  /* ---------- tokens ---------- */
+  :root {
+    --bg: #faf7f2;
+    --paper: #ffffff;
+    --paper-soft: #f5f1ea;
+    --ink: #1a1612;
+    --ink-2: #4a423a;
+    --ink-3: #847a6b;
+    --ink-4: #b0a99b;
+    --line: #ece6d9;
+    --line-strong: #d8d0bf;
+    --vermillion: #d63a2f;
+    --cobalt: #2c5aa0;
+    --mustard: #f0c14b;
+    --violet: #6a4f8c;
+    --green-poly: #6fa863;
+    --shadow-sm: 0 1px 2px rgba(26,22,18,.04), 0 2px 6px rgba(26,22,18,.04);
+    --shadow-md: 0 2px 6px rgba(26,22,18,.05), 0 16px 40px -12px rgba(26,22,18,.12);
+    --shadow-lg: 0 4px 10px rgba(26,22,18,.06), 0 30px 70px -20px rgba(26,22,18,.18);
+    --blend: multiply;
+    --radius: 14px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #15110d;
+      --paper: #1F1A14;
+      --paper-soft: #1A1612;
+      --ink: #E8E2D6;
+      --ink-2: #C8C2B5;
+      --ink-3: #8A857A;
+      --ink-4: #5C574F;
+      --line: #2E281F;
+      --line-strong: #3D362B;
+      --vermillion: #E04B3F;
+      --cobalt: #5B86C9;
+      --mustard: #F0C14B;
+      --violet: #9A7FBE;
+      --green-poly: #8AC078;
+      --shadow-sm: 0 1px 2px rgba(0,0,0,.4), 0 2px 6px rgba(0,0,0,.3);
+      --shadow-md: 0 2px 6px rgba(0,0,0,.4), 0 16px 40px -12px rgba(0,0,0,.55);
+      --shadow-lg: 0 4px 10px rgba(0,0,0,.5), 0 30px 70px -20px rgba(0,0,0,.7);
+      --blend: screen;
+    }
+  }
+
+  /* @property declarations for animatable custom props */
+  @property --tx { syntax: "<length>"; inherits: false; initial-value: 0px; }
+  @property --ty { syntax: "<length>"; inherits: false; initial-value: 0px; }
+  @property --rot { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+  @property --scl { syntax: "<number>"; inherits: false; initial-value: 1; }
+  @property --op { syntax: "<number>"; inherits: false; initial-value: 1; }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); }
+  body {
+    font-family: "Manrope", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    font-weight: 400;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* ---------- page scaffolding (gives the section room to choreograph) ---------- */
+  .top-spacer {
+    height: 140vh;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--bg);
+    color: var(--ink-3);
+    font-size: 13px; letter-spacing: .08em; text-transform: uppercase;
+  }
+  .bottom-spacer {
+    height: 80vh;
+    background: var(--bg);
+  }
+  .top-spacer .hint {
+    border: 1px solid var(--line);
+    padding: 10px 14px; border-radius: 999px;
+    background: var(--paper-soft);
+  }
+
+  /* ---------- the section ---------- */
+  .section {
+    position: relative;
+    background: var(--bg);
+    overflow: clip;
+    padding: clamp(64px, 10vh, 140px) 24px clamp(80px, 12vh, 160px);
+    view-timeline-name: --install-view;
+    view-timeline-axis: block;
+  }
+  .wrap {
+    position: relative;
+    max-width: 1100px;
+    margin: 0 auto;
+    z-index: 2;
+  }
+
+  /* ---------- composition layer (Kandinsky shapes) ---------- */
+  .composition {
+    position: absolute;
+    inset: -10% -8% -10% -8%;
+    pointer-events: none;
+    z-index: 1;
+  }
+  .shape {
+    position: absolute;
+    mix-blend-mode: var(--blend);
+    will-change: transform, opacity;
+    transform: translate3d(var(--tx, 0), var(--ty, 0), 0) rotate(var(--rot, 0deg)) scale(var(--scl, 1));
+    opacity: var(--op, 1);
+  }
+
+  /* shapes — primitive geometry, no images */
+  .s-disc {
+    width: 280px; height: 280px;
+    border-radius: 50%;
+    background: var(--vermillion);
+  }
+  .s-ring {
+    width: 380px; height: 380px;
+    border-radius: 50%;
+    border: 2.5px solid var(--cobalt);
+    background: transparent;
+  }
+  .s-arc {
+    width: 220px; height: 220px;
+    border-radius: 50%;
+    background: conic-gradient(from 180deg, var(--mustard) 0deg 90deg, transparent 90deg 360deg);
+  }
+  .s-tri {
+    width: 0; height: 0;
+    border-left: 110px solid transparent;
+    border-right: 110px solid transparent;
+    border-bottom: 190px solid var(--violet);
+  }
+  .s-dot {
+    width: 60px; height: 60px;
+    border-radius: 50%;
+    background: var(--green-poly);
+  }
+  .s-dot-sm {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: var(--mustard);
+  }
+  .s-line-h {
+    width: 360px; height: 2px;
+    background: var(--ink);
+  }
+  .s-line-v {
+    width: 2px; height: 240px;
+    background: var(--ink);
+  }
+  .s-bar {
+    width: 140px; height: 14px;
+    background: var(--cobalt);
+  }
+  .s-checker {
+    width: 90px; height: 90px;
+    background:
+      linear-gradient(45deg, var(--ink) 25%, transparent 25%, transparent 75%, var(--ink) 75%),
+      linear-gradient(45deg, var(--ink) 25%, transparent 25%, transparent 75%, var(--ink) 75%);
+    background-size: 30px 30px;
+    background-position: 0 0, 15px 15px;
+    background-color: var(--paper);
+    opacity: .8;
+  }
+  .s-square {
+    width: 80px; height: 80px;
+    background: var(--vermillion);
+  }
+
+  /* default static placement (also the fallback / @supports-not state) */
+  .p-disc       { top: 4%;   left: -4%;  --tx: 0px; --ty: 0px; --rot: 0deg;   --op: 1; }
+  .p-ring       { top: 22%;  right: -6%; --tx: 0px; --ty: 0px; --rot: 0deg;   --op: 1; }
+  .p-arc        { top: 58%;  left: 6%;   --tx: 0px; --ty: 0px; --rot: -30deg; --op: 1; }
+  .p-tri        { top: 60%;  right: 4%;  --tx: 0px; --ty: 0px; --rot: 25deg;  --op: 1; }
+  .p-dot        { top: 14%;  left: 38%;  --tx: 0px; --ty: 0px; --rot: 0deg;   --op: 1; }
+  .p-dot-sm     { top: 78%;  left: 30%;  --tx: 0px; --ty: 0px; --rot: 0deg;   --op: 1; }
+  .p-line-h     { top: 38%;  left: 12%;  --tx: 0px; --ty: 0px; --rot: -8deg;  --op: 1; }
+  .p-line-v     { top: 30%;  right: 22%; --tx: 0px; --ty: 0px; --rot: 12deg;  --op: 1; }
+  .p-bar        { top: 84%;  right: 14%; --tx: 0px; --ty: 0px; --rot: -18deg; --op: 1; }
+  .p-checker    { top: 8%;   right: 18%; --tx: 0px; --ty: 0px; --rot: 14deg;  --op: 1; }
+  .p-square     { top: 70%;  left: 46%;  --tx: 0px; --ty: 0px; --rot: 18deg;  --op: 1; }
+
+  /* ---------- scroll-driven choreography ---------- */
+  @supports (animation-timeline: view()) {
+    .shape {
+      animation-timeline: --install-view;
+      animation-fill-mode: both;
+      animation-range: entry 0% exit 100%;
+      animation-duration: 1ms; /* required value; timeline drives progress */
+      animation-iteration-count: 1;
+    }
+    /* each shape gets its own keyframes: drift in from off-canvas, settle, drift out */
+    .p-disc      { animation-name: drift-disc; }
+    .p-ring      { animation-name: drift-ring; }
+    .p-arc       { animation-name: drift-arc; }
+    .p-tri       { animation-name: drift-tri; }
+    .p-dot       { animation-name: drift-dot; }
+    .p-dot-sm    { animation-name: drift-dot-sm; }
+    .p-line-h    { animation-name: drift-line-h; }
+    .p-line-v    { animation-name: drift-line-v; }
+    .p-bar       { animation-name: drift-bar; }
+    .p-checker   { animation-name: drift-checker; }
+    .p-square    { animation-name: drift-square; }
+  }
+  @keyframes drift-disc {
+    0%   { --tx: -60vw; --ty: -20vh; --rot: -90deg; --op: 0; }
+    35%  { --op: 1; }
+    50%  { --tx: 0px;   --ty: 0px;   --rot: 0deg;   --op: 1; }
+    65%  { --op: 1; }
+    100% { --tx: -50vw; --ty: 30vh;  --rot: 60deg;  --op: 0; }
+  }
+  @keyframes drift-ring {
+    0%   { --tx: 70vw;  --ty: -25vh; --rot: 120deg; --op: 0; }
+    40%  { --op: 1; }
+    50%  { --tx: 0px;   --ty: 0px;   --rot: 0deg;   --op: 1; }
+    60%  { --op: 1; }
+    100% { --tx: 50vw;  --ty: 35vh;  --rot: -80deg; --op: 0; }
+  }
+  @keyframes drift-arc {
+    0%   { --tx: -40vw; --ty: 40vh;  --rot: 180deg; --op: 0; }
+    40%  { --op: 1; }
+    50%  { --tx: 0px;   --ty: 0px;   --rot: -30deg; --op: 1; }
+    60%  { --op: 1; }
+    100% { --tx: -30vw; --ty: 50vh;  --rot: -180deg; --op: 0; }
+  }
+  @keyframes drift-tri {
+    0%   { --tx: 50vw;  --ty: 50vh;  --rot: -120deg; --op: 0; }
+    40%  { --op: 1; }
+    50%  { --tx: 0px;   --ty: 0px;   --rot: 25deg;   --op: 1; }
+    60%  { --op: 1; }
+    100% { --tx: 40vw;  --ty: 60vh;  --rot: 180deg;  --op: 0; }
+  }
+  @keyframes drift-dot {
+    0%   { --tx: 0vw;   --ty: -40vh; --scl: .3; --op: 0; }
+    45%  { --op: 1; }
+    50%  { --tx: 0px;   --ty: 0px;   --scl: 1;  --op: 1; }
+    55%  { --op: 1; }
+    100% { --tx: 10vw;  --ty: -40vh; --scl: .3; --op: 0; }
+  }
+  @keyframes drift-dot-sm {
+    0%   { --tx: -20vw; --ty: 50vh;  --scl: .2; --op: 0; }
+    45%  { --op: 1; }
+    50%  { --tx: 0px;   --ty: 0px;   --scl: 1;  --op: 1; }
+    55%  { --op: 1; }
+    100% { --tx: 20vw;  --ty: 50vh;  --scl: .2; --op: 0; }
+  }
+  @keyframes drift-line-h {
+    0%   { --tx: -80vw; --ty: 10vh;  --rot: -45deg; --op: 0; }
+    40%  { --op: 1; }
+    50%  { --tx: 0px;   --ty: 0px;   --rot: -8deg;  --op: 1; }
+    60%  { --op: 1; }
+    100% { --tx: 80vw;  --ty: 10vh;  --rot: 30deg;  --op: 0; }
+  }
+  @keyframes drift-line-v {
+    0%   { --tx: 30vw;  --ty: -60vh; --rot: 90deg;  --op: 0; }
+    40%  { --op: 1; }
+    50%  { --tx: 0px;   --ty: 0px;   --rot: 12deg;  --op: 1; }
+    60%  { --op: 1; }
+    100% { --tx: -20vw; --ty: 60vh;  --rot: -45deg; --op: 0; }
+  }
+  @keyframes drift-bar {
+    0%   { --tx: 60vw;  --ty: 60vh;  --rot: 90deg;  --op: 0; }
+    45%  { --op: 1; }
+    50%  { --tx: 0px;   --ty: 0px;   --rot: -18deg; --op: 1; }
+    55%  { --op: 1; }
+    100% { --tx: 60vw;  --ty: 60vh;  --rot: 180deg; --op: 0; }
+  }
+  @keyframes drift-checker {
+    0%   { --tx: 30vw;  --ty: -50vh; --rot: -90deg; --scl: .4; --op: 0; }
+    45%  { --op: .8; }
+    50%  { --tx: 0px;   --ty: 0px;   --rot: 14deg;  --scl: 1;  --op: .8; }
+    55%  { --op: .8; }
+    100% { --tx: 30vw;  --ty: -50vh; --rot: 120deg; --scl: .4; --op: 0; }
+  }
+  @keyframes drift-square {
+    0%   { --tx: 0vw;   --ty: 60vh;  --rot: -45deg; --scl: .4; --op: 0; }
+    45%  { --op: 1; }
+    50%  { --tx: 0px;   --ty: 0px;   --rot: 18deg;  --scl: 1;  --op: 1; }
+    55%  { --op: 1; }
+    100% { --tx: 0vw;   --ty: 60vh;  --rot: 90deg;  --scl: .4; --op: 0; }
+  }
+
+  /* ---------- header copy ---------- */
+  .eyebrow {
+    font-size: 12px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    font-weight: 500;
+    margin: 0 0 18px;
+  }
+  h2.title {
+    font-family: "Newsreader", Georgia, serif;
+    font-weight: 500;
+    font-style: italic;
+    font-size: clamp(44px, 7vw, 84px);
+    line-height: 1.02;
+    letter-spacing: -0.02em;
+    margin: 0 0 14px;
+    color: var(--ink);
+  }
+  h2.title .dot { color: var(--vermillion); font-style: italic; }
+  .sub {
+    font-size: clamp(16px, 1.4vw, 19px);
+    color: var(--ink-2);
+    max-width: 56ch;
+    margin: 0 0 clamp(36px, 5vh, 56px);
+  }
+
+  /* ---------- card ---------- */
+  .card {
+    position: relative;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-md);
+    padding: clamp(24px, 3vw, 36px);
+    container-type: inline-size;
+  }
+
+  /* tabs */
+  .tabs-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    border-bottom: 1px solid var(--line);
+    margin: -8px 0 28px;
+    position: relative;
+  }
+  .tabs {
+    position: relative;
+    display: flex;
+    gap: 4px;
+  }
+  .tab {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    padding: 14px 4px;
+    margin: 0 14px 0 0;
+    font: inherit;
+    font-weight: 500;
+    font-size: 14.5px;
+    color: var(--ink-3);
+    cursor: pointer;
+    position: relative;
+    letter-spacing: -0.005em;
+    transition: color .18s ease;
+  }
+  .tab:hover { color: var(--ink-2); }
+  .tab[aria-selected="true"] { color: var(--ink); }
+  .tab:focus-visible {
+    outline: 2px solid var(--cobalt);
+    outline-offset: 4px;
+    border-radius: 4px;
+  }
+  .tab-underline {
+    position: absolute;
+    left: 0;
+    bottom: -1px;
+    height: 2px;
+    background: var(--cobalt);
+    border-radius: 2px;
+    width: 0;
+    transform: translateX(0);
+    transition: transform .35s cubic-bezier(.5,0,.2,1), width .35s cubic-bezier(.5,0,.2,1);
+    will-change: transform, width;
+  }
+
+  .tabs-meta {
+    display: flex; align-items: center; gap: 8px;
+    padding-bottom: 8px;
+  }
+  .help-btn {
+    appearance: none;
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    border: 1px solid var(--line-strong);
+    background: var(--paper-soft);
+    color: var(--ink-2);
+    font: 500 13px/1 "Manrope", sans-serif;
+    cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: background .15s ease, border-color .15s ease, color .15s ease;
+    position: relative;
+  }
+  .help-btn:hover { background: var(--paper); border-color: var(--ink-3); color: var(--ink); }
+  .help-btn:focus-visible { outline: 2px solid var(--cobalt); outline-offset: 2px; }
+
+  .tooltip {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    width: min(340px, 80vw);
+    background: var(--paper);
+    border: 1px solid var(--line-strong);
+    border-radius: 12px;
+    box-shadow: var(--shadow-lg);
+    padding: 14px 16px;
+    font-size: 13.5px;
+    color: var(--ink-2);
+    line-height: 1.5;
+    z-index: 5;
+    opacity: 0;
+    transform: translateY(-4px);
+    pointer-events: none;
+    transition: opacity .18s ease, transform .18s ease;
+  }
+  .tooltip[data-open="true"] {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+  .tooltip strong { color: var(--ink); font-weight: 600; }
+  .tooltip p { margin: 0 0 8px; }
+  .tooltip p:last-child { margin: 0; }
+
+  /* panels */
+  .panel { display: none; }
+  .panel[data-active="true"] { display: block; }
+
+  .panel h3 {
+    font-family: "Newsreader", Georgia, serif;
+    font-weight: 500;
+    font-style: italic;
+    font-size: clamp(24px, 2.6vw, 32px);
+    line-height: 1.15;
+    margin: 6px 0 22px;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+  }
+
+  /* download CTA */
+  .cta-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 18px 22px;
+    margin: 6px 0 24px;
+  }
+  .cta {
+    appearance: none;
+    text-decoration: none;
+    background: var(--vermillion);
+    color: #fff;
+    border: 0;
+    border-radius: 12px;
+    padding: 18px 28px;
+    font: 600 16px/1 "Manrope", sans-serif;
+    letter-spacing: -0.005em;
+    cursor: pointer;
+    box-shadow: 0 1px 0 rgba(255,255,255,.12) inset, 0 6px 18px -6px rgba(214,58,47,.55);
+    transition: transform .18s cubic-bezier(.4,0,.2,1), box-shadow .18s cubic-bezier(.4,0,.2,1), background .18s ease;
+    display: inline-flex; align-items: center; gap: 10px;
+  }
+  .cta:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 1px 0 rgba(255,255,255,.14) inset, 0 14px 30px -10px rgba(214,58,47,.65);
+  }
+  .cta:active { transform: translateY(0); }
+  .cta:focus-visible { outline: 2px solid var(--cobalt); outline-offset: 3px; }
+  .cta .arrow { font-weight: 400; opacity: .9; }
+  @media (prefers-color-scheme: dark) {
+    .cta { color: #f7efe5; box-shadow: 0 1px 0 rgba(255,255,255,.07) inset, 0 6px 18px -6px rgba(224,75,63,.55); }
+  }
+
+  .meta {
+    color: var(--ink-3);
+    font-size: 13.5px;
+    letter-spacing: .005em;
+  }
+  .meta .sep { display: inline-block; margin: 0 8px; opacity: .5; }
+
+  .body-copy {
+    color: var(--ink-2);
+    font-size: 16px;
+    line-height: 1.6;
+    max-width: 60ch;
+    margin: 12px 0 0;
+  }
+  .body-copy strong {
+    color: var(--ink);
+    font-weight: 600;
+  }
+
+  /* command pills */
+  .cmds {
+    display: flex; flex-direction: column;
+    gap: 10px;
+    margin: 4px 0 22px;
+  }
+  .cmd {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--paper-soft);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 10px 10px 10px 16px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 14px;
+    color: var(--ink);
+  }
+  .cmd .prompt { color: var(--ink-4); user-select: none; }
+  .cmd code {
+    flex: 1;
+    overflow-x: auto;
+    white-space: nowrap;
+    padding-right: 6px;
+    color: var(--ink);
+  }
+  .copy-btn {
+    appearance: none;
+    background: var(--paper);
+    border: 1px solid var(--line-strong);
+    color: var(--ink-2);
+    border-radius: 7px;
+    padding: 6px 10px;
+    font: 500 12px/1 "Manrope", sans-serif;
+    cursor: pointer;
+    letter-spacing: .02em;
+    text-transform: uppercase;
+    transition: background .15s ease, color .15s ease, border-color .15s ease;
+    flex-shrink: 0;
+  }
+  .copy-btn:hover { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .copy-btn:focus-visible { outline: 2px solid var(--cobalt); outline-offset: 2px; }
+  .copy-btn[data-state="copied"] {
+    background: var(--green-poly);
+    color: #fff;
+    border-color: var(--green-poly);
+  }
+
+  /* container query: stack on narrow card */
+  @container (max-width: 540px) {
+    .cta-row { flex-direction: column; align-items: flex-start; }
+  }
+
+  /* reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    .shape {
+      animation: none !important;
+      --tx: 0px !important; --ty: 0px !important; --op: 1 !important; --scl: 1 !important;
+    }
+    .cta { transition: none; }
+    .cta:hover { transform: none; }
+    .tab-underline { transition: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="top-spacer">
+  <div class="hint">scroll down — composition assembles</div>
+</div>
+
+<section class="section" aria-labelledby="install-title">
+  <!-- composition layer -->
+  <div class="composition" aria-hidden="true">
+    <div class="shape s-disc    p-disc"></div>
+    <div class="shape s-ring    p-ring"></div>
+    <div class="shape s-arc     p-arc"></div>
+    <div class="shape s-tri     p-tri"></div>
+    <div class="shape s-dot     p-dot"></div>
+    <div class="shape s-dot-sm  p-dot-sm"></div>
+    <div class="shape s-line-h  p-line-h"></div>
+    <div class="shape s-line-v  p-line-v"></div>
+    <div class="shape s-bar     p-bar"></div>
+    <div class="shape s-checker p-checker"></div>
+    <div class="shape s-square  p-square"></div>
+  </div>
+
+  <div class="wrap">
+    <p class="eyebrow">Get started</p>
+    <h2 id="install-title" class="title">Install Margins<span class="dot">.</span></h2>
+    <p class="sub">You saw it. Now run it on your files.</p>
+
+    <div class="card">
+      <div class="tabs-row">
+        <div class="tabs" role="tablist" aria-label="Install path">
+          <button class="tab"
+                  role="tab"
+                  id="tab-desktop"
+                  aria-selected="true"
+                  aria-controls="panel-desktop"
+                  tabindex="0"
+                  data-target="desktop">Claude Desktop</button>
+          <button class="tab"
+                  role="tab"
+                  id="tab-cli"
+                  aria-selected="false"
+                  aria-controls="panel-cli"
+                  tabindex="-1"
+                  data-target="cli">Claude Code / CLI</button>
+          <span class="tab-underline" aria-hidden="true"></span>
+        </div>
+        <div class="tabs-meta">
+          <button class="help-btn"
+                  type="button"
+                  aria-label="What's the difference?"
+                  aria-expanded="false"
+                  aria-controls="install-tooltip">?</button>
+          <div class="tooltip" id="install-tooltip" role="tooltip">
+            <p><strong>Desktop:</strong> double-click install with the .mcpb bundle. Works on macOS &amp; Windows.</p>
+            <p><strong>CLI:</strong> npm package, works with Claude Code or anywhere you have Node. Linux too.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- panel: desktop -->
+      <div class="panel"
+           id="panel-desktop"
+           role="tabpanel"
+           aria-labelledby="tab-desktop"
+           data-active="true">
+        <h3>Install for Claude Desktop.</h3>
+        <div class="cta-row">
+          <a class="cta"
+             href="https://github.com/cflorczyk9/Margins/releases/latest/download/margins-mcp.mcpb"
+             download>
+            Download for Claude Desktop <span class="arrow">&darr;</span>
+          </a>
+          <span class="meta">~28 MB <span class="sep">·</span> macOS &amp; Windows <span class="sep">·</span> MIT</span>
+        </div>
+        <p class="body-copy">
+          <strong>Double-click. Pick a folder. Ask Claude.</strong>
+          Margins shows up in your Connector list with its logo.
+        </p>
+      </div>
+
+      <!-- panel: cli -->
+      <div class="panel"
+           id="panel-cli"
+           role="tabpanel"
+           aria-labelledby="tab-cli"
+           data-active="false"
+           hidden>
+        <h3>Install via npm.</h3>
+        <div class="cmds">
+          <div class="cmd">
+            <span class="prompt">$</span>
+            <code id="cmd-1">npm install -g margins-mcp</code>
+            <button class="copy-btn" type="button" data-copy-target="cmd-1" aria-label="Copy command">Copy</button>
+          </div>
+          <div class="cmd">
+            <span class="prompt">$</span>
+            <code id="cmd-2">margins-mcp install --vault /absolute/path/to/your/files</code>
+            <button class="copy-btn" type="button" data-copy-target="cmd-2" aria-label="Copy command">Copy</button>
+          </div>
+        </div>
+        <p class="body-copy">
+          The installer writes configs for Claude Desktop and Claude Code, scaffolds
+          <code style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:.92em;">raw/</code>,
+          <code style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:.92em;">proposed/</code>, and
+          <code style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:.92em;">.margins</code>
+          in your folder, and verifies. To update later:
+          <code style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:.92em;">margins-mcp install --update</code>.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="bottom-spacer"></div>
+
+<script>
+(() => {
+  // ---------- tabs ----------
+  const tabs = Array.from(document.querySelectorAll('[role="tab"]'));
+  const panels = {
+    desktop: document.getElementById('panel-desktop'),
+    cli: document.getElementById('panel-cli'),
+  };
+  const underline = document.querySelector('.tab-underline');
+
+  function positionUnderline(tab) {
+    if (!tab || !underline) return;
+    const tabsRow = tab.parentElement;
+    const tabRect = tab.getBoundingClientRect();
+    const rowRect = tabsRow.getBoundingClientRect();
+    underline.style.width = tabRect.width + 'px';
+    underline.style.transform = `translateX(${tabRect.left - rowRect.left}px)`;
+  }
+
+  function selectTab(target, focus = true) {
+    tabs.forEach(t => {
+      const active = t.dataset.target === target;
+      t.setAttribute('aria-selected', active ? 'true' : 'false');
+      t.tabIndex = active ? 0 : -1;
+      if (active && focus) t.focus();
+      if (active) positionUnderline(t);
+    });
+    Object.entries(panels).forEach(([key, el]) => {
+      const active = key === target;
+      el.dataset.active = active ? 'true' : 'false';
+      if (active) el.removeAttribute('hidden');
+      else el.setAttribute('hidden', '');
+    });
+  }
+
+  tabs.forEach(t => {
+    t.addEventListener('click', () => selectTab(t.dataset.target, false));
+    t.addEventListener('keydown', (e) => {
+      const idx = tabs.indexOf(t);
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        const next = tabs[(idx + 1) % tabs.length];
+        selectTab(next.dataset.target, true);
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const prev = tabs[(idx - 1 + tabs.length) % tabs.length];
+        selectTab(prev.dataset.target, true);
+      } else if (e.key === 'Home') {
+        e.preventDefault();
+        selectTab(tabs[0].dataset.target, true);
+      } else if (e.key === 'End') {
+        e.preventDefault();
+        selectTab(tabs[tabs.length - 1].dataset.target, true);
+      }
+    });
+  });
+
+  // initial underline once fonts/layout settle
+  const initialTab = tabs.find(t => t.getAttribute('aria-selected') === 'true') || tabs[0];
+  requestAnimationFrame(() => positionUnderline(initialTab));
+  window.addEventListener('resize', () => {
+    const active = tabs.find(t => t.getAttribute('aria-selected') === 'true');
+    positionUnderline(active);
+  });
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(() => {
+      const active = tabs.find(t => t.getAttribute('aria-selected') === 'true');
+      positionUnderline(active);
+    });
+  }
+
+  // ---------- copy buttons ----------
+  document.querySelectorAll('.copy-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const targetId = btn.dataset.copyTarget;
+      const node = document.getElementById(targetId);
+      if (!node) return;
+      const text = node.textContent.trim();
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch {
+        // fallback: select + execCommand
+        const r = document.createRange();
+        r.selectNodeContents(node);
+        const sel = window.getSelection();
+        sel.removeAllRanges(); sel.addRange(r);
+        try { document.execCommand('copy'); } catch {}
+        sel.removeAllRanges();
+      }
+      const original = btn.textContent;
+      btn.dataset.state = 'copied';
+      btn.textContent = 'Copied';
+      setTimeout(() => {
+        btn.dataset.state = '';
+        btn.textContent = original;
+      }, 1200);
+    });
+  });
+
+  // ---------- help tooltip ----------
+  const helpBtn = document.querySelector('.help-btn');
+  const tooltip = document.getElementById('install-tooltip');
+
+  function setTooltip(open) {
+    tooltip.dataset.open = open ? 'true' : 'false';
+    helpBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  helpBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setTooltip(tooltip.dataset.open !== 'true');
+  });
+  helpBtn.addEventListener('mouseenter', () => setTooltip(true));
+  helpBtn.addEventListener('focus', () => setTooltip(true));
+  helpBtn.addEventListener('blur', () => setTooltip(false));
+  document.addEventListener('click', (e) => {
+    if (!tooltip.contains(e.target) && e.target !== helpBtn) setTooltip(false);
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') setTooltip(false);
+  });
+})();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,654 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Three steps — Live canvas (Bauhaus in motion)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #faf7f2;
+    --paper: #ffffff;
+    --paper-soft: #f5f1ea;
+    --ink: #1a1612;
+    --ink-2: #4a423a;
+    --ink-3: #847a6b;
+    --line: #ece6d9;
+    --line-strong: #d8d0bf;
+    --vermillion: #d63a2f;
+    --cobalt: #2c5aa0;
+    --mustard: #f0c14b;
+    --violet: #6a4f8c;
+    --green-poly: #6fa863;
+    --blend: multiply;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #15110d;
+      --paper: #1F1A14;
+      --paper-soft: #1a1610;
+      --ink: #E8E2D6;
+      --ink-2: #C8C2B5;
+      --ink-3: #8A857A;
+      --line: #2E281F;
+      --line-strong: #3D362B;
+      --vermillion: #E04B3F;
+      --cobalt: #5B86C9;
+      --mustard: #F0C14B;
+      --violet: #9A7FBE;
+      --green-poly: #8AC078;
+      --blend: screen;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Manrope', system-ui, -apple-system, sans-serif;
+    font-weight: 400;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  .spacer-top, .spacer-bottom { height: 80vh; }
+  .spacer-top { display: flex; align-items: flex-end; justify-content: center; padding-bottom: 4rem; }
+  .spacer-bottom { display: flex; align-items: flex-start; justify-content: center; padding-top: 4rem; }
+  .spacer-label {
+    font-family: 'Manrope', sans-serif;
+    font-size: 0.75rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+
+  .three-steps {
+    position: relative;
+    width: 100%;
+    padding: 7rem 1.5rem 8rem;
+    overflow: hidden;
+    isolation: isolate;
+  }
+
+  #bauhaus-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    pointer-events: none;
+    display: block;
+  }
+
+  .ts-inner {
+    position: relative;
+    z-index: 1;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+
+  .eyebrow {
+    font-family: 'Manrope', sans-serif;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin: 0 0 1.25rem;
+  }
+
+  h2.heading {
+    font-family: 'Newsreader', Georgia, serif;
+    font-weight: 500;
+    font-size: clamp(2.2rem, 4.6vw, 3.6rem);
+    line-height: 1.08;
+    letter-spacing: -0.012em;
+    color: var(--ink);
+    margin: 0 0 1.25rem;
+    max-width: 22ch;
+  }
+  h2.heading .italic {
+    font-style: italic;
+    font-weight: 500;
+  }
+
+  .sub {
+    font-family: 'Newsreader', Georgia, serif;
+    font-weight: 400;
+    font-size: clamp(1.05rem, 1.4vw, 1.25rem);
+    line-height: 1.5;
+    color: var(--ink-2);
+    margin: 0 0 3.25rem;
+    max-width: 60ch;
+  }
+
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.25rem;
+  }
+  @media (max-width: 880px) {
+    .cards { grid-template-columns: 1fr; }
+  }
+
+  .card {
+    position: relative;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 1.75rem 1.5rem 1.6rem;
+    box-shadow:
+      0 1px 0 rgba(20, 16, 10, 0.02),
+      0 14px 30px -22px rgba(20, 16, 10, 0.18),
+      0 4px 10px -6px rgba(20, 16, 10, 0.06);
+    transition: transform 220ms ease, box-shadow 220ms ease, border-color 220ms ease;
+  }
+  .card:hover {
+    transform: translateY(-2px);
+    box-shadow:
+      0 1px 0 rgba(20, 16, 10, 0.02),
+      0 22px 40px -22px rgba(20, 16, 10, 0.25),
+      0 6px 14px -6px rgba(20, 16, 10, 0.08);
+    border-color: var(--line-strong);
+  }
+
+  .bullet {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    color: var(--paper);
+    font-family: 'Manrope', sans-serif;
+    font-weight: 700;
+    font-size: 0.92rem;
+    margin-bottom: 1.1rem;
+    box-shadow: 0 2px 6px -2px rgba(20, 16, 10, 0.25);
+  }
+  .card[data-step="1"] .bullet { background: var(--mustard); color: #1a1612; }
+  .card[data-step="2"] .bullet { background: var(--cobalt); color: #fffaf0; }
+  .card[data-step="3"] .bullet { background: var(--vermillion); color: #fffaf0; }
+
+  .card h3 {
+    font-family: 'Newsreader', Georgia, serif;
+    font-weight: 600;
+    font-size: 1.4rem;
+    line-height: 1.2;
+    letter-spacing: -0.005em;
+    margin: 0 0 0.75rem;
+    color: var(--ink);
+  }
+  .card p {
+    font-family: 'Manrope', sans-serif;
+    font-size: 0.95rem;
+    line-height: 1.6;
+    color: var(--ink-2);
+    margin: 0;
+  }
+  .card code {
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.85em;
+    background: var(--paper-soft);
+    border: 1px solid var(--line);
+    padding: 0.05em 0.4em;
+    border-radius: 4px;
+    color: var(--ink);
+  }
+
+  .footer-line {
+    margin-top: 3rem;
+    font-family: 'Newsreader', Georgia, serif;
+    font-size: 1.05rem;
+    line-height: 1.55;
+    color: var(--ink-2);
+    max-width: 70ch;
+  }
+  .footer-line a {
+    color: var(--ink);
+    text-decoration: underline;
+    text-decoration-color: var(--line-strong);
+    text-underline-offset: 3px;
+    transition: text-decoration-color 180ms ease;
+  }
+  .footer-line a:hover {
+    text-decoration-color: var(--vermillion);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .card, .card:hover { transition: none; transform: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="spacer-top"><span class="spacer-label">scroll · whitespace above</span></div>
+
+<section class="three-steps" id="threeSteps" aria-labelledby="ts-heading">
+  <canvas id="bauhaus-canvas" aria-hidden="true"></canvas>
+
+  <div class="ts-inner">
+    <p class="eyebrow">How it works</p>
+    <h2 class="heading" id="ts-heading">Three steps. You stay in the <span class="italic">driver's seat.</span></h2>
+    <p class="sub">You decide what Claude can see, you decide what Claude writes, you ask later.</p>
+
+    <div class="cards">
+      <article class="card" data-step="1" data-accent="mustard">
+        <span class="bullet" aria-hidden="true">1</span>
+        <h3>Give it a folder.</h3>
+        <p>Point Margins at one folder on your computer. Your Obsidian vault, a project directory, anything. Claude only ever sees what's inside that folder. Nothing else on your machine.</p>
+      </article>
+
+      <article class="card" data-step="2" data-accent="cobalt">
+        <span class="bullet" aria-hidden="true">2</span>
+        <h3>Drop your stuff in.</h3>
+        <p>Drag in notes, writing, PDFs, meeting transcripts, anything you want Claude to know about. Ask Claude to compile it. Margins stages a clean source page in <code>proposed/</code> for you to accept.</p>
+      </article>
+
+      <article class="card" data-step="3" data-accent="vermillion">
+        <span class="bullet" aria-hidden="true">3</span>
+        <h3>Ask anything. Connect everything.</h3>
+        <p>Claude searches the sources you've built, cites where each fact came from, and surfaces connections you didn't make: a meeting that overlaps with another, a thread you forgot was open, a pattern across months of notes. New edits go in <code>proposed/</code> for your review.</p>
+      </article>
+    </div>
+
+    <p class="footer-line">Want the longer version? <a href="/how-it-works.html">See the full walkthrough</a> — folder layouts, the connection diagram, every tool Claude can call, and what the first month looks like.</p>
+  </div>
+</section>
+
+<div class="spacer-bottom"><span class="spacer-label">scroll · whitespace below</span></div>
+
+<script>
+(() => {
+  const section = document.getElementById('threeSteps');
+  const canvas = document.getElementById('bauhaus-canvas');
+  const ctx = canvas.getContext('2d');
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+  let dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
+  let width = 0, height = 0;
+  let shapes = [];
+  let rafId = null;
+  let running = false;
+  let isVisible = false;
+  let mouse = { x: -9999, y: -9999, active: false };
+  let cards = [];
+  let hoveredCard = null;
+  let palette = readPalette();
+
+  function readPalette() {
+    const cs = getComputedStyle(document.documentElement);
+    const get = (n) => cs.getPropertyValue(n).trim();
+    return {
+      ink:        get('--ink'),
+      ink2:       get('--ink-2'),
+      ink3:       get('--ink-3'),
+      vermillion: get('--vermillion'),
+      cobalt:     get('--cobalt'),
+      mustard:    get('--mustard'),
+      violet:     get('--violet'),
+      green:      get('--green-poly'),
+      blend:      get('--blend') || 'multiply',
+      bg:         get('--bg'),
+    };
+  }
+
+  function rand(min, max) { return Math.random() * (max - min) + min; }
+  function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+  function buildShapes() {
+    const colors = [palette.vermillion, palette.cobalt, palette.mustard, palette.violet, palette.green, palette.ink];
+    shapes = [];
+
+    // ~10 circles
+    for (let i = 0; i < 10; i++) {
+      const filled = i < 3;
+      const breathing = i < 2;
+      shapes.push({
+        type: 'circle',
+        x: rand(0, width),
+        y: rand(0, height),
+        r: filled ? rand(28, 70) : rand(40, 130),
+        baseR: 0,
+        vx: rand(-0.12, 0.12),
+        vy: rand(-0.08, 0.08),
+        rot: 0,
+        rotSpeed: 0,
+        color: filled ? pick([palette.vermillion, palette.mustard, palette.cobalt]) : pick(colors),
+        filled,
+        breathing,
+        breathPhase: rand(0, Math.PI * 2),
+        lineWidth: rand(1.1, 2.2),
+        accent: filled ? null : pick(['mustard','cobalt','vermillion']),
+      });
+    }
+
+    // ~5 triangles (thin stroked)
+    for (let i = 0; i < 5; i++) {
+      shapes.push({
+        type: 'triangle',
+        x: rand(0, width),
+        y: rand(0, height),
+        size: rand(40, 110),
+        vx: rand(-0.1, 0.1),
+        vy: rand(-0.06, 0.06),
+        rot: rand(0, Math.PI * 2),
+        rotSpeed: rand(-0.0025, 0.0025),
+        color: pick(colors),
+        lineWidth: rand(1.1, 1.8),
+      });
+    }
+
+    // ~5 short straight lines
+    for (let i = 0; i < 5; i++) {
+      shapes.push({
+        type: 'line',
+        x: rand(0, width),
+        y: rand(0, height),
+        len: rand(60, 180),
+        vx: rand(-0.18, 0.18),
+        vy: rand(-0.05, 0.05),
+        rot: rand(0, Math.PI),
+        rotSpeed: rand(-0.0015, 0.0015),
+        color: pick([palette.ink, palette.violet, palette.cobalt, palette.vermillion]),
+        lineWidth: rand(1, 2.4),
+      });
+    }
+
+    // ~4 tiny solid dots
+    for (let i = 0; i < 4; i++) {
+      shapes.push({
+        type: 'dot',
+        x: rand(0, width),
+        y: rand(0, height),
+        r: rand(3, 6),
+        vx: rand(-0.06, 0.06),
+        vy: rand(-0.06, 0.06),
+        color: pick([palette.ink, palette.vermillion, palette.cobalt]),
+      });
+    }
+
+    shapes.forEach(s => { if (s.r) s.baseR = s.r; if (s.size) s.baseSize = s.size; if (s.len) s.baseLen = s.len; });
+  }
+
+  function resize() {
+    const rect = section.getBoundingClientRect();
+    dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
+    width = rect.width;
+    height = rect.height;
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(height * dpr);
+    canvas.style.width = width + 'px';
+    canvas.style.height = height + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (shapes.length === 0) buildShapes();
+    cacheCards();
+  }
+
+  function cacheCards() {
+    const sectionRect = section.getBoundingClientRect();
+    cards = Array.from(section.querySelectorAll('.card')).map(el => {
+      const r = el.getBoundingClientRect();
+      return {
+        el,
+        accent: el.getAttribute('data-accent'),
+        cx: r.left - sectionRect.left + r.width / 2,
+        cy: r.top - sectionRect.top + r.height / 2,
+      };
+    });
+  }
+
+  function accentColor(name) {
+    if (name === 'mustard') return palette.mustard;
+    if (name === 'cobalt') return palette.cobalt;
+    if (name === 'vermillion') return palette.vermillion;
+    return palette.ink;
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, width, height);
+    ctx.globalCompositeOperation = palette.blend === 'screen' ? 'screen' : 'multiply';
+
+    for (const s of shapes) {
+      ctx.save();
+      ctx.translate(s.x, s.y);
+      if (s.rot) ctx.rotate(s.rot);
+      ctx.strokeStyle = s.color;
+      ctx.fillStyle = s.color;
+
+      if (s.type === 'circle') {
+        let r = s.r;
+        if (s.breathing) {
+          r = s.baseR * (1 + Math.sin(s.breathPhase) * 0.06);
+        }
+        ctx.lineWidth = s.lineWidth || 1.5;
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        if (s.filled) {
+          ctx.globalAlpha = 0.85;
+          ctx.fill();
+          ctx.globalAlpha = 1;
+        } else {
+          ctx.globalAlpha = 0.78;
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+        }
+      } else if (s.type === 'triangle') {
+        const sz = s.size;
+        ctx.lineWidth = s.lineWidth || 1.4;
+        ctx.globalAlpha = 0.78;
+        ctx.beginPath();
+        ctx.moveTo(0, -sz * 0.6);
+        ctx.lineTo(sz * 0.55, sz * 0.45);
+        ctx.lineTo(-sz * 0.55, sz * 0.45);
+        ctx.closePath();
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      } else if (s.type === 'line') {
+        ctx.lineWidth = s.lineWidth || 1.5;
+        ctx.lineCap = 'round';
+        ctx.globalAlpha = 0.82;
+        ctx.beginPath();
+        ctx.moveTo(-s.len / 2, 0);
+        ctx.lineTo(s.len / 2, 0);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      } else if (s.type === 'dot') {
+        ctx.globalAlpha = 0.95;
+        ctx.beginPath();
+        ctx.arc(0, 0, s.r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+      ctx.restore();
+    }
+
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  function step() {
+    // Identify nearest shape to hovered card center for amplification
+    let amplifyIdx = -1;
+    let amplifyTarget = null;
+    if (hoveredCard) {
+      let best = Infinity;
+      for (let i = 0; i < shapes.length; i++) {
+        const s = shapes[i];
+        const dx = s.x - hoveredCard.cx;
+        const dy = s.y - hoveredCard.cy;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < best) { best = d2; amplifyIdx = i; }
+      }
+      amplifyTarget = hoveredCard;
+    }
+
+    for (let i = 0; i < shapes.length; i++) {
+      const s = shapes[i];
+
+      // Drift
+      s.x += s.vx;
+      s.y += s.vy;
+
+      // Wrap edges with margin
+      const margin = 200;
+      if (s.x < -margin) s.x = width + margin;
+      if (s.x > width + margin) s.x = -margin;
+      if (s.y < -margin) s.y = height + margin;
+      if (s.y > height + margin) s.y = -margin;
+
+      // Rotation
+      if (s.rotSpeed) s.rot += s.rotSpeed;
+
+      // Breathing
+      if (s.breathing) s.breathPhase += 0.012;
+
+      // Cursor reactivity (gentle attraction)
+      if (mouse.active) {
+        const dx = mouse.x - s.x;
+        const dy = mouse.y - s.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < 180 && dist > 0.5) {
+          const force = (1 - dist / 180) * 0.22;
+          s.x += (dx / dist) * force;
+          s.y += (dy / dist) * force;
+        }
+      }
+
+      // Card-hover amplification: nearest shape grows + drifts toward card center
+      if (i === amplifyIdx && amplifyTarget) {
+        if (s.r) s.r += (s.baseR * 1.1 - s.r) * 0.06;
+        if (s.size) s.size += (s.baseSize * 1.1 - s.size) * 0.06;
+        if (s.len) s.len += (s.baseLen * 1.1 - s.len) * 0.06;
+        const dx = amplifyTarget.cx - s.x;
+        const dy = amplifyTarget.cy - s.y;
+        const dist = Math.hypot(dx, dy) || 1;
+        s.x += (dx / dist) * 0.35;
+        s.y += (dy / dist) * 0.35;
+        // recolor toward accent (lerp not trivial w/ hex; do at strokeStyle level via override)
+        s._accentBoost = accentColor(amplifyTarget.accent);
+      } else {
+        // settle back
+        if (s.r && s.baseR) s.r += (s.baseR - s.r) * 0.04;
+        if (s.size && s.baseSize) s.size += (s.baseSize - s.size) * 0.04;
+        if (s.len && s.baseLen) s.len += (s.baseLen - s.len) * 0.04;
+        s._accentBoost = null;
+      }
+
+      // Apply accent recolor for this frame
+      if (s._accentBoost) {
+        s._origColor = s._origColor || s.color;
+        s.color = s._accentBoost;
+      } else if (s._origColor) {
+        s.color = s._origColor;
+        s._origColor = null;
+      }
+    }
+
+    draw();
+    if (running) rafId = requestAnimationFrame(step);
+  }
+
+  function start() {
+    if (running) return;
+    if (!isVisible) return;
+    if (document.hidden) return;
+    if (reducedMotion.matches) {
+      // single frozen composition
+      draw();
+      return;
+    }
+    running = true;
+    rafId = requestAnimationFrame(step);
+  }
+
+  function stop() {
+    running = false;
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = null;
+  }
+
+  // Mouse tracking (section-relative)
+  section.addEventListener('mousemove', (e) => {
+    const r = section.getBoundingClientRect();
+    mouse.x = e.clientX - r.left;
+    mouse.y = e.clientY - r.top;
+    mouse.active = true;
+  });
+  section.addEventListener('mouseleave', () => {
+    mouse.active = false;
+    mouse.x = -9999; mouse.y = -9999;
+  });
+
+  // Card hover -> nearest shape amplification
+  section.querySelectorAll('.card').forEach(el => {
+    el.addEventListener('mouseenter', () => {
+      cacheCards();
+      hoveredCard = cards.find(c => c.el === el) || null;
+    });
+    el.addEventListener('mouseleave', () => {
+      hoveredCard = null;
+    });
+  });
+
+  // Resize
+  let resizeTO = null;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTO);
+    resizeTO = setTimeout(() => {
+      resize();
+      if (reducedMotion.matches) draw();
+    }, 80);
+  });
+
+  // Visibility (page hidden)
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) stop();
+    else start();
+  });
+
+  // IntersectionObserver — pause when offscreen
+  const io = new IntersectionObserver((entries) => {
+    for (const en of entries) {
+      isVisible = en.isIntersecting;
+      if (isVisible) start();
+      else stop();
+    }
+  }, { threshold: 0.05 });
+  io.observe(section);
+
+  // Reduced motion changes
+  reducedMotion.addEventListener?.('change', () => {
+    stop();
+    if (reducedMotion.matches) draw();
+    else start();
+  });
+
+  // Theme change (respond to color scheme toggling)
+  const themeMQ = window.matchMedia('(prefers-color-scheme: dark)');
+  themeMQ.addEventListener?.('change', () => {
+    palette = readPalette();
+    // re-color existing shapes proportionally by reseeding palette references
+    const colors = [palette.vermillion, palette.cobalt, palette.mustard, palette.violet, palette.green, palette.ink];
+    shapes.forEach((s, i) => {
+      s.color = colors[i % colors.length];
+      s._origColor = null;
+    });
+    if (reducedMotion.matches) draw();
+  });
+
+  // Initial
+  resize();
+  if (reducedMotion.matches) {
+    // Render one frozen composition
+    draw();
+  }
+})();
+</script>
+
+</body>
+</html>
