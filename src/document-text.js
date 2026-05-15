@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
 import path from "node:path";
 import JSZip from "jszip";
 
@@ -116,6 +117,7 @@ export async function extractDocumentText(absPath, displayPath = absPath, option
 
 async function extractPdfText(buffer, displayPath) {
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  configurePdfWorker(pdfjs);
   let pdfDocument;
   try {
     const loadingTask = pdfjs.getDocument({
@@ -136,6 +138,18 @@ async function extractPdfText(buffer, displayPath) {
     throw new Error(`could not extract text from ${displayPath}: ${error.message}`);
   } finally {
     if (pdfDocument) await pdfDocument.destroy();
+  }
+}
+
+function configurePdfWorker(pdfjs) {
+  // pdfjs-dist's default workerSrc changed across 4.x releases. In the
+  // Desktop Extension bundle, a fresh npm install could pull a version whose
+  // default is empty, which makes even `disableWorker: true` fail while setting
+  // up pdf.js's fake worker. Point it at the bundled worker explicitly so
+  // local npm installs and .mcpb installs behave the same.
+  if (pdfjs.GlobalWorkerOptions && !pdfjs.GlobalWorkerOptions.workerSrc) {
+    const workerPath = require.resolve("pdfjs-dist/legacy/build/pdf.worker.mjs");
+    pdfjs.GlobalWorkerOptions.workerSrc = pathToFileURL(workerPath).href;
   }
 }
 

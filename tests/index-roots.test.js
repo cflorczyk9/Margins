@@ -68,6 +68,7 @@ test("vault skips directories in skipDirs", async () => {
   await touch("wiki/a.md", "alpha");
   await touch("wiki/.obsidian/config.md", "should-skip");
   await touch("wiki/node_modules/junk.md", "should-skip");
+  await touch("wiki/.playwright-mcp/page.yml", "should-skip");
   const vault = createVault(tmpRoot, {
     indexRoots: ["wiki"],
     skipDirs: DEFAULT_SKIP_DIRS

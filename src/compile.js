@@ -17,7 +17,7 @@ export function createCompile(vault, proposals) {
       throw new Error("rawPath is required");
     }
 
-    const rel = canonicalize(resolveSourceRel(rawPath));
+    const rel = canonicalize(await resolveSourceRel(vault, rawPath));
     const absRaw = vault.resolveInside(rel);
 
     let info;
@@ -69,8 +69,7 @@ export function createCompile(vault, proposals) {
       text = await extractDocumentText(absRaw, rel);
     } catch (err) {
       throw new Error(
-        `Failed to extract text from '${rel}': ${err.message}. ` +
-        `If the file is a scanned/image-only PDF, run OCR on it first (e.g. ocrmypdf), then retry.`
+        `Failed to extract text from '${rel}': ${err.message}. ${extractionFailureHint(err)}`
       );
     }
 
@@ -171,10 +170,31 @@ async function disambiguateDestPath(vault, candidatePath, currentRawRel) {
   return candidatePath.replace(/\.md$/i, `-${suffix}.md`);
 }
 
-function resolveSourceRel(rawPath) {
-  const trimmed = rawPath.replace(/^\.\//, "");
-  if (trimmed.includes("/")) return trimmed;
+async function resolveSourceRel(vault, rawPath) {
+  const raw = String(rawPath).trim();
+  const explicitRoot = raw.startsWith("./") || raw.startsWith(".\\");
+  const trimmed = raw.replace(/^\.\//, "").replace(/^\.\\/, "");
+  if (explicitRoot || trimmed.includes("/") || trimmed.includes("\\")) {
+    return trimmed;
+  }
+
+  // Back-compat: a bare filename historically meant raw/<filename>. But
+  // list_unprocessed can return root-level files for new users who dropped a
+  // pile into the vault root. In that case, passing the listed path directly
+  // must compile the root file, not fail looking for raw/<filename>.
+  const rootExists = await fileExists(vault.resolveInside(trimmed));
+  const rawExists = await fileExists(vault.resolveInside(`raw/${trimmed}`));
+  if (rootExists && !rawExists) return trimmed;
   return `raw/${trimmed}`;
+}
+
+async function fileExists(abs) {
+  try {
+    await stat(abs);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function rewriteSourceMetadata(markdown, fileName, rel, rawSha, rawSize) {
@@ -220,6 +240,17 @@ function buildReview(input, fileName) {
     summaryBullets: input.summaryBullets || (input.summary ? [input.summary] : []),
     takeaways: normalizeTakeaways(input.takeaways)
   };
+}
+
+function extractionFailureHint(err) {
+  const message = String(err && err.message ? err.message : err || "");
+  if (/GlobalWorkerOptions\.workerSrc|fake worker|pdf\.worker|workerSrc/i.test(message)) {
+    return (
+      "This is a PDF.js worker configuration failure, not evidence that the PDF is scanned. " +
+      "Update/reinstall the Margins MCP bundle and retry."
+    );
+  }
+  return "If the file is a scanned/image-only PDF, run OCR on it first (e.g. ocrmypdf), then retry.";
 }
 
 function normalizeTakeaways(takeaways) {

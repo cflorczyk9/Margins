@@ -78,6 +78,18 @@ test("returns empty suggestions when no candidate phrases match vault slugs", as
   assert.equal(result.suggestions.length, 0);
 });
 
+test("skips tracker and system pages", async () => {
+  await touch("wiki/entities/anthropic.md", "# Anthropic");
+  await touch(
+    "wiki/ingest-tracker.md",
+    `---\ntype: tracker\nbucket: system\n---\n\n# Ingest Tracker\n\nAnthropic appears here as tracker data.`
+  );
+  const result = await wikilinks.proposeWikilinks("wiki/ingest-tracker.md");
+  assert.equal(result.skipped, true);
+  assert.equal(result.reason, "system-page");
+  assert.equal(result.suggestions.length, 0);
+});
+
 test("respects maxSuggestions cap", async () => {
   for (let i = 0; i < 20; i++) {
     await touch(`wiki/entities/person-${i}.md`, "x");

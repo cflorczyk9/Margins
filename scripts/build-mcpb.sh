@@ -43,13 +43,14 @@ cp "$REPO_ROOT/mcpb/icon.png" "$STAGE_DIR/icon.png"
 cp -R "$REPO_ROOT/bin" "$STAGE_DIR/server/"
 cp -R "$REPO_ROOT/src" "$STAGE_DIR/server/"
 cp "$REPO_ROOT/package.json" "$STAGE_DIR/server/package.json"
+cp "$REPO_ROOT/package-lock.json" "$STAGE_DIR/server/package-lock.json"
 cp "$REPO_ROOT/LICENSE" "$STAGE_DIR/server/LICENSE" 2>/dev/null || true
 cp "$REPO_ROOT/README.md" "$STAGE_DIR/server/README.md" 2>/dev/null || true
 
 # Install production-only deps into the staged server/ directory.
 echo "  Installing production dependencies into bundle..."
 cd "$STAGE_DIR/server"
-npm install --omit=dev --no-audit --no-fund --silent
+npm ci --omit=dev --no-audit --no-fund --silent
 cd "$REPO_ROOT"
 
 # Verify package.json version matches manifest.json version — keeps channels in lockstep.

@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import JSZip from "jszip";
+import PDFDocument from "pdfkit";
 import {
   extractDocumentText,
   isSupportedDocumentPath,
@@ -117,6 +118,16 @@ test("extracts ODT document text", async () => {
   assert.match(text, /Margins ODT Eta/);
 });
 
+test("extracts PDF text even when pdfjs workerSrc starts empty", async () => {
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  pdfjs.GlobalWorkerOptions.workerSrc = "";
+
+  const abs = await writeFixture("worker-reset.pdf", await makePdf("Margins PDF Worker Theta"));
+  const text = await extractDocumentText(abs, "worker-reset.pdf");
+  assert.match(text, /Margins PDF Worker Theta/);
+  assert.match(pdfjs.GlobalWorkerOptions.workerSrc, /pdf\.worker\.mjs$/);
+});
+
 async function makeXlsx(text) {
   const zip = new JSZip();
   zip.file(
@@ -202,6 +213,18 @@ async function makeOdf(kind, text) {
       `<office:body>${body}</office:body></office:document-content>`
   );
   return zip.generateAsync({ type: "nodebuffer" });
+}
+
+function makePdf(text) {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ margin: 72 });
+    const chunks = [];
+    doc.on("data", (chunk) => chunks.push(chunk));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+    doc.fontSize(16).text(text);
+    doc.end();
+  });
 }
 
 function xmlEscape(text) {

@@ -7,6 +7,7 @@ export const DEFAULT_SKIP_DIRS = new Set([
   ".trash",
   "node_modules",
   ".claude",
+  ".playwright-mcp",
   ".margins",
   "proposed"
 ]);

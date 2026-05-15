@@ -13,17 +13,18 @@ import { loadTelemetry, writeConsent, selfTagEnabled } from "./telemetry.js";
 import { createPreferences } from "./preferences.js";
 import { createWikilinks } from "./wikilinks.js";
 
-// Inline SVG of the Margins mark (Kandinsky-inspired disc + ink bar). Embedded
-// as a base64 data URI so the icon renders in MCP clients without requiring a
-// network fetch — works offline, no dependency on margins.app being deployed.
-// 421-byte SVG → ~600 bytes encoded; negligible against the handshake size.
-const MARGINS_ICON_SVG =
-  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">' +
-  '<rect x="4" y="4" width="3" height="24" fill="#1a1612"/>' +
-  '<circle cx="20" cy="16" r="11" fill="#f0c14b"/>' +
-  '<circle cx="20" cy="16" r="7" fill="#d63a2f"/>' +
-  '<circle cx="20" cy="16" r="2.5" fill="#1a1612"/>' +
-  "</svg>";
+// Inline SVG of the Margins dark-mode mark. Embedded as a base64 data URI so
+// the icon renders in MCP clients without requiring a network fetch.
+const MARGINS_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <g fill="none" fill-rule="evenodd" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="8" y="8" width="48" height="48" rx="11" fill="#15110d" stroke="#e8e2d6" stroke-width="4"/>
+    <path stroke="#e8e2d6" stroke-width="7" d="M19 15v34"/>
+    <path fill="#5b86c9" d="M30.8 18.4c7.4-4.6 17.5-.2 19.4 8.2 2.1 9.1-5.2 19.6-14.8 19.6-8.5 0-14.9-8.3-12.9-16.3 1.1-4.7 4.4-9.1 8.3-11.5Z"/>
+    <path fill="#f0c14b" d="M33.1 23.3c5.1-3.4 12.1-.8 13.9 4.9 1.8 6.2-3 13.7-9.5 13.8-5.8.1-10.4-5.4-9.4-11 .5-3.3 2.3-6 5-7.7Z"/>
+    <path fill="#e04b3f" d="M36.2 27.4c2.8-1.9 6.8-.5 7.8 2.7 1 3.4-1.8 7.5-5.4 7.5-3.1.1-5.8-2.8-5.3-5.9.3-1.8 1.3-3.3 2.9-4.3Z"/>
+    <circle cx="39" cy="33" r="2.4" fill="#15110d"/>
+  </g>
+</svg>`;
 const MARGINS_ICON_DATA_URI =
   "data:image/svg+xml;base64," + Buffer.from(MARGINS_ICON_SVG).toString("base64");
 
@@ -59,7 +60,7 @@ EFFICIENCY: when answering a question that spans multiple pages, fire read_page 
 
 TOOL INVENTORY: if you're unsure whether a Margins tool exists or what parameters it accepts, search/list available tools rather than asserting from prior turn state. Optional parameters like propose_compile_from_raw's force=true are easy to overlook; check the schema when a workflow calls for one.
 
-TESTING MODE: when the user explicitly frames an action as testing or pressure-testing (e.g., "fire both calls back-to-back", "this is a test", "validate the reject path"), the propose-then-review pattern can be batched without breaking trust — they have consented to the merged flow. Default-on for production interactions; off when the user names it as a test.
+TESTING MODE: when the user explicitly frames an action as testing or pressure-testing (e.g., "fire both calls back-to-back", "this is a test", "validate the reject path"), the propose-then-review pattern can be batched without breaking trust — they have consented to the merged flow. If they provide exact tool parameters and say not to accept a staged proposal, execute that tool call as specified after at most one clarification. Default production review remains on; test batching is allowed only when the user names it as a test.
 
 TOOLS:
 - Context: margins_start, recall_preferences
@@ -260,7 +261,9 @@ export function buildServer(vault, options = {}) {
         structuredContent: {
           path: page.path,
           mtimeMs: page.mtimeMs,
-          size: page.size
+          size: page.size,
+          textLength: page.textLength,
+          truncated: page.truncated
         }
       };
     }
@@ -410,7 +413,7 @@ export function buildServer(vault, options = {}) {
     "append_to",
     {
       description:
-        "Append content to the end of a page. If the page doesn't exist, it's created. If a pending proposal exists for the path, the append stacks on top of it. Result is staged at proposed/<path>.",
+        "Append content to the end of a page. If the page doesn't exist, it's created. If a pending proposal exists for the path, the append stacks on top of it. Result is staged at proposed/<path>. If the user asks for final proposed content, read proposed/<path> after appending instead of inferring.",
       inputSchema: {
         path: z.string().describe("Page path relative to vault root."),
         content: z.string().describe("Content to append. A newline separator is added if needed.")
@@ -438,7 +441,7 @@ export function buildServer(vault, options = {}) {
       inputSchema: {
         rawPath: z
           .string()
-          .describe("Vault-relative path of the source file. Examples: 'raw/foo.pdf', 'meetings/march-7.md', 'lawyer/contract.pdf'. A bare filename (e.g. 'foo.pdf') is auto-prefixed with 'raw/' for back-compat."),
+          .describe("Vault-relative path of the source file. Examples: 'raw/foo.pdf', 'meetings/march-7.md', 'lawyer/contract.pdf'. Pass list_unprocessed paths directly. For back-compat, a bare filename (e.g. 'foo.pdf') resolves to raw/foo.pdf unless an actual root-level foo.pdf exists and raw/foo.pdf does not."),
         summary: z.string().describe("1-3 sentence summary of what this source is about."),
         title: z.string().optional().describe("Title for the source page. Defaults to titlecased filename."),
         bucket: z.string().optional().describe("Wiki bucket. Default 'sources'. Try 'projects', 'career', 'ideas', etc."),
@@ -517,8 +520,9 @@ export function buildServer(vault, options = {}) {
     async () => {
       const report = await diagnoseVault(vault);
       const { summary, issues } = report;
+      const findingLabel = summary.issues_found === 1 ? "finding" : "findings";
       const lines = [
-        `Vault health: ${summary.issues_found} issue${summary.issues_found === 1 ? "" : "s"} (${summary.errors} error, ${summary.warnings} warning).`,
+        `Vault health: ${summary.issues_found} ${findingLabel} (${summary.errors} error, ${summary.warnings} warning, ${summary.infos} info).`,
         `Candidates: ${summary.candidates} | filed: ${summary.filed} | pending: ${summary.pending} | source pages: ${summary.source_pages}.`,
         `Ingest roots: ${summary.ingest_roots.join(", ")}.`
       ];
@@ -717,7 +721,12 @@ export function buildServer(vault, options = {}) {
         title: titleFromPath(page.path),
         text: page.body,
         url: `margins://${page.path}`,
-        metadata: { mtimeMs: page.mtimeMs, size: page.size }
+        metadata: {
+          mtimeMs: page.mtimeMs,
+          size: page.size,
+          textLength: page.textLength,
+          truncated: page.truncated
+        }
       };
       return {
         content: [{ type: "text", text: JSON.stringify(payload) }],

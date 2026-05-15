@@ -1,4 +1,5 @@
 import path from "node:path";
+import { getType, parseFrontmatter } from "./frontmatter.js";
 
 // Lightweight wikilink suggester for A3/B3 personas: vaults that have lots of
 // markdown but few [[wikilinks]]. The model passes a target page; this scans
@@ -21,6 +22,17 @@ export function createWikilinks(vault) {
 
     const page = await vault.readPage(pagePath);
     const body = page.body;
+    const skipReason = systemPageSkipReason(page.path, body);
+    if (skipReason) {
+      return {
+        page: page.path,
+        candidatesScanned: 0,
+        vaultSlugsAvailable: 0,
+        suggestions: [],
+        skipped: true,
+        reason: skipReason
+      };
+    }
 
     const allFiles = await vault.listFiles();
     const slugToFile = new Map();
@@ -67,6 +79,21 @@ export function createWikilinks(vault) {
   }
 
   return { proposeWikilinks };
+}
+
+function systemPageSkipReason(pagePath, body) {
+  if (pagePath === "wiki/ingest-tracker.md") return "system-page";
+  let parsed = null;
+  try {
+    parsed = parseFrontmatter(body);
+  } catch {
+    return null;
+  }
+  if (!parsed) return null;
+  const type = getType(parsed.data);
+  if (type === "tracker" || type === "system") return "system-page";
+  if (parsed.data && parsed.data.bucket === "system") return "system-page";
+  return null;
 }
 
 function collectExistingLinks(body) {

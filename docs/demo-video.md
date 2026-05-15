@@ -78,7 +78,7 @@ output feel like Claude actually knows the user.
    ![Margins demo — Claude reading and citing files from your vault](web/demo.webp)
    ```
 2. **margins.app**: drop a `<video autoplay muted loop playsinline>` into the
-   hero or just below it. The Kandinsky composition stays — the demo lives
+   hero or just below it. The dark logo mark stays in the hero; the demo lives
    under the hero, not replacing it.
 3. **r/ObsidianMD post**: upload the GIF/WebP directly. Reddit renders it
    inline.

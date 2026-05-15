@@ -269,9 +269,9 @@ function formatSynthesisSummary(summary) {
 }
 
 function appendCommonSections(lines, summary) {
+  lines.push("");
+  lines.push(`Unprocessed files: ${summary.uningestedRaw.count}`);
   if (summary.uningestedRaw.count > 0) {
-    lines.push("");
-    lines.push(`Unprocessed files: ${summary.uningestedRaw.count}`);
     for (const f of summary.uningestedRaw.files) lines.push(`  ${f}`);
     lines.push("  -> Compile them into wiki source pages so they can link with the rest of the vault. Call propose_compile_from_raw on each.");
   }

@@ -257,6 +257,20 @@ test("compiles a file located outside raw/ (vault-root path)", async () => {
   assert.match(body, /Original file: `meetings\/2026-05-14-call\.md`/);
 });
 
+test("bare filename compiles a root-level file when raw/ copy does not exist", async () => {
+  await touch(
+    "meeting-root.md",
+    "# Root Meeting\n\nDiscussed Project X with Alex and Sam in a root-level file."
+  );
+  const result = await compile.proposeCompileFromRaw("meeting-root.md", {
+    summary: "Root-level meeting notes."
+  });
+  assert.equal(result.rawFile, "meeting-root.md");
+  const body = await read(result.proposalPath);
+  assert.match(body, /raw_file: meeting-root\.md/);
+  assert.match(body, /Original file: `meeting-root\.md`/);
+});
+
 test("idempotency check works for files outside raw/", async () => {
   await touch("clippings/article.md", "# Article\n\nBody content for the clippings idempotency test, with enough text to clear the threshold.");
   const first = await compile.proposeCompileFromRaw("clippings/article.md", {
@@ -273,10 +287,23 @@ test("idempotency check works for files outside raw/", async () => {
 
 test("bare filename still defaults to raw/ for back-compat", async () => {
   await touch("raw/legacy.md", "# Legacy\n\nOld habit, with enough body content to clear the empty-extraction threshold.");
+  await touch("legacy.md", "# Root Legacy\n\nRoot file exists too, but raw/ wins for back-compat.");
   const result = await compile.proposeCompileFromRaw("legacy.md", {
     summary: "Legacy file."
   });
   assert.equal(result.rawFile, "raw/legacy.md");
+});
+
+test("explicit ./ filename compiles root-level file even when raw/ copy exists", async () => {
+  await touch("raw/explicit.md", "# Raw Explicit\n\nRaw copy exists.");
+  await touch(
+    "explicit.md",
+    "# Explicit Root\n\nRoot-level explicit path should win over raw fallback."
+  );
+  const result = await compile.proposeCompileFromRaw("./explicit.md", {
+    summary: "Explicit root file."
+  });
+  assert.equal(result.rawFile, "explicit.md");
 });
 
 test("near-empty extraction refuses without force", async () => {
