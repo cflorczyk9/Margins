@@ -433,3 +433,95 @@ test("force=true WITH explicit bucket override moves to new bucket", async () =>
   });
   assert.ok(second.destinationPath.startsWith("wiki/projects/"), `expected move to wiki/projects/, got ${second.destinationPath}`);
 });
+
+test("rich-fields path renders Brooks-shape source page", async () => {
+  await touch(
+    "raw/2026-05-15-mark-loh-call.md",
+    "Long enough body to clear the empty-extraction threshold for a meeting transcript."
+  );
+  const result = await compile.proposeCompileFromRaw("2026-05-15-mark-loh-call.md", {
+    summary: "Regular advisor check-in with Mark Loh on Briefly. Connor walked through pipeline (Bob Casey contract stalled, NYC RIA inbound, regional bank waiting on customer feedback) and recent product work (Salesforce, CIO portfolio compare, MCP). Mark coached on phone calls vs email, and named the build-vs-buy objection coming from larger firms.",
+    bucket: "meetings",
+    pageType: "source",
+    eventDate: "2026-05-15",
+    participants: ["Connor Florczyk", "Mark Loh"],
+    tags: ["briefly", "mark-loh", "pipeline", "advisor-call"],
+    keyLinks: ["mark-loh", "briefly", "bob-casey"],
+    headerNote: "Phone call, ~30 min, captured via Granola.",
+    sourceCaveat: "Granola summary, transcript not available.",
+    sections: [
+      { heading: "Pipeline status", body: "Bob Casey contract still stuck in compliance at the accounting parent. New $200B NYC RIA inbound from a family-friend referral. Regional bank waiting on customer feedback before pushing." },
+      { heading: "Mark's coaching", body: "**Pick up the phone.** Every unsigned day kills momentum. Push for two or three more users in the next three weeks to test whether the pipeline snowballs. Build-vs-buy objection from larger firms — refine the pitch around compliance, risk, and the real cost of custom dev." },
+      { heading: "Recent product work", body: "Salesforce connection shipped. CIO portfolio compare in progress. Margins MCP for vault organization. [[briefly]] core unchanged." }
+    ],
+    relevanceCallout: {
+      body: "Mark's two-or-three-users-in-three-weeks frame maps to the Centric pilot review window. If snowball doesn't fire, the [[briefly-booth-fork]] tilts toward Booth Sep 2026 with Briefly in maintenance.",
+      links: ["briefly-booth-fork", "centric-wm"]
+    },
+    applications: [
+      "Call (don't email) Bob Casey by Monday on the contract status",
+      "Set the two-or-three-users target as a rolling 3-week check"
+    ],
+    propagationNotes: "No new entity pages created. Mark Loh entity already exists. Family-friend referral name not surfaced — defer entity creation until first contact.",
+    related: [
+      "mark-loh",
+      { slug: "briefly-now", note: "open-thread tracking for Centric pilot review" }
+    ]
+  });
+
+  const body = await read(result.proposalPath);
+
+  // Frontmatter
+  assert.match(body, /type: source/);
+  assert.match(body, /bucket: meetings/);
+  assert.match(body, /event_date: 2026-05-15/);
+  assert.match(body, /key_links: \[".*\[\[mark-loh\]\]/);
+  assert.match(body, /participants: \[/);
+  assert.match(body, /tags: \[.*briefly.*mark-loh.*\]/);
+
+  // Header block
+  assert.match(body, /^# Source: /m);
+  assert.match(body, /Phone call, ~30 min, captured via Granola\./);
+  assert.match(body, /> \[!info\]\+ Source caveat/);
+  assert.match(body, /> Granola summary, transcript not available\./);
+
+  // Content-specific H2 sections (NOT the legacy Summary/Bullets/Takeaways)
+  assert.match(body, /## Pipeline status/);
+  assert.match(body, /## Mark's coaching/);
+  assert.match(body, /## Recent product work/);
+  assert.doesNotMatch(body, /^## Summary$/m);
+  assert.doesNotMatch(body, /^## Key Takeaways$/m);
+
+  // Inline content fidelity
+  assert.match(body, /Pick up the phone/);
+  assert.match(body, /\[\[briefly\]\]/);
+
+  // Relevance callout
+  assert.match(body, /> \[!claude-note\]\+ Connor-relevance/);
+  assert.match(body, /\[\[briefly-booth-fork\]\]/);
+
+  // Applications + Related
+  assert.match(body, /## Personal applications worth tracking/);
+  assert.match(body, /Call \(don't email\) Bob Casey/);
+  assert.match(body, /## Propagation Notes/);
+  assert.match(body, /## Related/);
+  assert.match(body, /- \[\[mark-loh\]\]/);
+  assert.match(body, /- \[\[briefly-now\]\] — open-thread tracking/);
+
+  // Compile result includes full markdown for the tool response
+  assert.equal(typeof result.markdown, "string");
+  assert.ok(result.markdown.includes("## Pipeline status"));
+});
+
+test("legacy fields still render simple template when sections omitted", async () => {
+  await touch("raw/legacy.md", "Long enough body to clear the empty-extraction threshold.");
+  const result = await compile.proposeCompileFromRaw("legacy.md", {
+    summary: "A short legacy-style summary.",
+    summaryBullets: ["Bullet one", "Bullet two"],
+    takeaways: [{ point: "Ship the thing", evidence: "Important takeaway" }]
+  });
+  const body = await read(result.proposalPath);
+  assert.match(body, /## Summary/);
+  assert.match(body, /## Key Takeaways/);
+  assert.match(body, /Ship the thing/);
+});

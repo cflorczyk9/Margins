@@ -141,7 +141,8 @@ export function createCompile(vault, proposals) {
       bucket: sourceNode.path.split("/")[1] || "sources",
       summary: sourceNode.summary,
       termsExtracted: sourceNode.terms,
-      entitiesExtracted: sourceNode.entities
+      entitiesExtracted: sourceNode.entities,
+      markdown
     };
   }
 
@@ -238,8 +239,76 @@ function buildReview(input, fileName) {
     summary: input.summary || "",
     missionFrame: input.missionFrame || (input.summary ? { oneLine: input.summary } : undefined),
     summaryBullets: input.summaryBullets || (input.summary ? [input.summary] : []),
-    takeaways: normalizeTakeaways(input.takeaways)
+    takeaways: normalizeTakeaways(input.takeaways),
+
+    // Rich source-page fields (Brooks-shape rendering)
+    pageType: normalizePageType(input.pageType),
+    tags: normalizeStringList(input.tags),
+    keyLinks: normalizeStringList(input.keyLinks),
+    eventDate: typeof input.eventDate === "string" ? input.eventDate.trim() : "",
+    sourceUrl: typeof input.sourceUrl === "string" ? input.sourceUrl.trim() : "",
+    participants: normalizeStringList(input.participants),
+    sources: normalizeStringList(input.sources),
+    headerNote: typeof input.headerNote === "string" ? input.headerNote.trim() : "",
+    sourceCaveat: typeof input.sourceCaveat === "string" ? input.sourceCaveat.trim() : "",
+    sections: normalizeSections(input.sections),
+    relevanceCallout: normalizeCallout(input.relevanceCallout),
+    applications: normalizeStringList(input.applications),
+    propagationNotes: typeof input.propagationNotes === "string" ? input.propagationNotes.trim() : "",
+    related: normalizeRelated(input.related)
   };
+}
+
+function normalizePageType(value) {
+  const allowed = new Set(["source", "concept", "synthesis"]);
+  const v = String(value || "").trim().toLowerCase();
+  return allowed.has(v) ? v : "source";
+}
+
+function normalizeStringList(value) {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => String(item || "").trim()).filter(Boolean);
+}
+
+function normalizeSections(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const heading = String(item.heading || "").trim();
+      const body = String(item.body || "").trim();
+      if (!heading || !body) return null;
+      return { heading, body };
+    })
+    .filter(Boolean);
+}
+
+function normalizeCallout(value) {
+  if (!value || typeof value !== "object") return null;
+  const body = String(value.body || "").trim();
+  if (!body) return null;
+  const links = normalizeStringList(value.links);
+  return { body, links };
+}
+
+function normalizeRelated(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      if (!item) return null;
+      if (typeof item === "string") {
+        const slug = item.trim();
+        return slug ? { slug, note: "" } : null;
+      }
+      if (typeof item === "object") {
+        const slug = String(item.slug || "").trim();
+        if (!slug) return null;
+        const note = String(item.note || "").trim();
+        return { slug, note };
+      }
+      return null;
+    })
+    .filter(Boolean);
 }
 
 function extractionFailureHint(err) {
