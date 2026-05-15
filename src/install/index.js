@@ -22,7 +22,15 @@ export function detectInstallLocation(serverBin = SERVER_BIN) {
 }
 
 function parseArgs(argv) {
-  const args = { yes: false, vault: null, starterVault: null, force: false, hosts: null, update: false };
+  const args = {
+    yes: false,
+    vault: null,
+    starterVault: null,
+    force: false,
+    hosts: null,
+    update: false,
+    telemetry: null // tri-state: null = ask, true = pre-opt-in, false = pre-opt-out
+  };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--yes" || arg === "-y") args.yes = true;
@@ -34,6 +42,8 @@ function parseArgs(argv) {
     else if (arg.startsWith("--starter-vault=")) args.starterVault = arg.slice("--starter-vault=".length);
     else if (arg === "--hosts") args.hosts = argv[++i].split(",");
     else if (arg.startsWith("--hosts=")) args.hosts = arg.slice("--hosts=".length).split(",");
+    else if (arg === "--enable-telemetry") args.telemetry = true;
+    else if (arg === "--no-telemetry") args.telemetry = false;
   }
   return args;
 }
@@ -236,32 +246,39 @@ export async function runInstaller(argv = [], { log = console.log, errlog = cons
     }
 
     const existingConsent = await readConsent();
-    if (!existingConsent) {
+    if (existingConsent) {
+      result.steps.push({ kind: "telemetry-consent-existing", enabled: existingConsent.enabled });
+    } else if (args.telemetry === true) {
+      await writeConsent({ enabled: true });
+      log("  Telemetry: on (pre-set via --enable-telemetry). Revoke: edit ~/.margins/consent.json.");
+      result.steps.push({ kind: "telemetry-consent-flag", enabled: true });
+    } else if (args.telemetry === false) {
+      await writeConsent({ enabled: false });
+      log("  Telemetry: off (pre-set via --no-telemetry).");
+      result.steps.push({ kind: "telemetry-consent-flag", enabled: false });
+    } else {
       log("");
-      log(
-        "Margins can send anonymous tool-use counts to help me decide what to build next."
-      );
-      log("No vault content, no file paths, no IPs that aren't already in HTTP logs.");
-      const agreed = await prompter.ask(
-        "Opt in to anonymous telemetry?",
-        { defaultYes: true }
-      );
+      log("Margins is open-source and free. Anonymous tool-use counts help us");
+      log("see which tools matter so we can prune the rest. Just event names —");
+      log("no vault content, no file paths, no PII. Stored in ~/.margins/consent.json,");
+      log("revoke anytime.");
+      const agreed = await prompter.ask("Opt in?", { defaultYes: true });
       await writeConsent({ enabled: agreed });
       log(
         agreed
           ? "  Telemetry: on. Run `MARGINS_TELEMETRY=off margins-mcp` to disable per-session."
-          : "  Telemetry: off. You can opt in later by editing ~/.margins/consent.json."
+          : "  Telemetry: off. You can opt in later via record_telemetry_consent or by editing ~/.margins/consent.json."
       );
       result.steps.push({ kind: "telemetry-consent", enabled: agreed });
-    } else {
-      result.steps.push({ kind: "telemetry-consent-existing", enabled: existingConsent.enabled });
     }
 
+    // /install/completed is a one-shot funnel signal — fires whether or not
+    // the user opted in to per-tool telemetry. Counts that an install
+    // happened, no usage data attached. Respects MARGINS_TELEMETRY=off as
+    // the master kill switch.
     const consent = (await readConsent()) || {};
     const telemetry = createTelemetry({ consent });
-    if (telemetry.enabled) {
-      telemetry.fireAndForget("/install/completed");
-    }
+    telemetry.forceFire("/install/completed");
 
     log("\nDone.");
     for (const host of toRegister) {
