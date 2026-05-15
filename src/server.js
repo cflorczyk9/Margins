@@ -185,6 +185,12 @@ export function buildServer(vault, options = {}) {
     },
     async ({ enabled }) => {
       const record = await writeConsent({ enabled });
+      // Force the in-memory telemetry object to re-read consent on the next
+      // fire-and-forget so the new state takes effect immediately rather than
+      // waiting for the 5s cache TTL or a server restart.
+      if (telemetry && typeof telemetry.invalidateConsentCache === "function") {
+        telemetry.invalidateConsentCache();
+      }
       return {
         content: [
           {

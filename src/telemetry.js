@@ -50,25 +50,66 @@ export function applySelfTag(eventPath) {
   return `/dev${eventPath.startsWith("/") ? "" : "/"}${eventPath}`;
 }
 
+const CONSENT_CACHE_TTL_MS = 5000;
+
 export function createTelemetry({ consent, fetch = globalThis.fetch } = {}) {
-  const envFlag = envOverride();
+  // Initial snapshot — used for the startup log message. The runtime
+  // enabled-check below re-reads consent so that in-chat opt-in via
+  // record_telemetry_consent takes effect on the currently running server
+  // without a restart.
+  const initialEnvFlag = envOverride();
   const enabled =
-    envFlag === false
+    initialEnvFlag === false
       ? false
-      : envFlag === true
+      : initialEnvFlag === true
         ? true
         : Boolean(consent && consent.enabled);
-  const endpoint = (consent && consent.endpoint) || DEFAULT_ENDPOINT;
+  const initialEndpoint = (consent && consent.endpoint) || DEFAULT_ENDPOINT;
+
+  // Short-TTL cache to avoid disk reads on every tool call.
+  let cachedConsent = consent || null;
+  let cachedAt = consent ? Date.now() : 0;
+
+  async function currentConsent() {
+    const now = Date.now();
+    if (cachedConsent !== null && now - cachedAt < CONSENT_CACHE_TTL_MS) {
+      return cachedConsent;
+    }
+    cachedConsent = await readConsent();
+    cachedAt = now;
+    return cachedConsent;
+  }
+
+  async function isEnabledNow() {
+    const envFlag = envOverride();
+    if (envFlag === false) return false;
+    if (envFlag === true) return true;
+    const c = await currentConsent();
+    return Boolean(c && c.enabled);
+  }
+
+  async function currentEndpoint() {
+    const c = await currentConsent();
+    return (c && c.endpoint) || DEFAULT_ENDPOINT;
+  }
 
   async function postEvent(eventPath) {
-    if (!enabled) return { sent: false, reason: "disabled" };
+    // Capture env-dependent state synchronously before any await so that
+    // tests using a try/finally env restore (which yields between sync
+    // micro-tasks) still see the intended env.
+    const tagged = applySelfTag(eventPath);
+    if (!(await isEnabledNow())) return { sent: false, reason: "disabled" };
+    const endpoint = await currentEndpoint();
     try {
-      const tagged = applySelfTag(eventPath);
       const url = `${endpoint.replace(/\/$/, "")}/count?p=${encodeURIComponent(tagged)}`;
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
       try {
-        await fetch(url, { method: "GET", signal: controller.signal });
+        await fetch(url, {
+          method: "GET",
+          signal: controller.signal,
+          headers: { "User-Agent": "margins-mcp" }
+        });
         return { sent: true, url };
       } finally {
         clearTimeout(timer);
@@ -79,11 +120,26 @@ export function createTelemetry({ consent, fetch = globalThis.fetch } = {}) {
   }
 
   function fireAndForget(eventPath) {
-    if (!enabled) return;
-    postEvent(eventPath).catch(() => {});
+    isEnabledNow()
+      .then((on) => {
+        if (!on) return;
+        postEvent(eventPath).catch(() => {});
+      })
+      .catch(() => {});
   }
 
-  return { enabled, endpoint, postEvent, fireAndForget };
+  function invalidateConsentCache() {
+    cachedConsent = null;
+    cachedAt = 0;
+  }
+
+  return {
+    enabled,
+    endpoint: initialEndpoint,
+    postEvent,
+    fireAndForget,
+    invalidateConsentCache
+  };
 }
 
 export async function loadTelemetry({ fetch } = {}) {
