@@ -274,33 +274,73 @@ function buildSourceNode(file, today, review) {
   const summary = modelReviewSummary(review);
   const terms = topTerms(file.text, 10);
   const entities = extractEntities(file.text).slice(0, 8);
-  const tags = hasFilingPlan(plan) ? sourceTagsFromFilingPlan(plan) : ["source"];
+  const pageType = ["source", "concept", "synthesis"].includes(review.pageType) ? review.pageType : "source";
+  const baseTags = hasFilingPlan(plan) ? sourceTagsFromFilingPlan(plan) : [pageType === "source" ? "source" : pageType];
+  const tags = mergeUniqueTags(baseTags, Array.isArray(review.tags) ? review.tags : []);
   const bucket = path.split("/")[1] || "sources";
-  const reviewedAt = review.reviewedAt ? `reviewed_at: ${yamlString(review.reviewedAt)}\n` : "";
-  const provider = review.provider ? `model_provider: ${yamlString(review.provider)}\n` : "";
+  const eventDate = typeof review.eventDate === "string" && review.eventDate.trim() ? review.eventDate.trim() : today;
+
+  const frontmatterLines = [
+    `type: ${pageType}`,
+    `bucket: ${bucket}`,
+    `summary: ${yamlString(summary)}`,
+    `tags: [${tags.map(yamlInlineValue).join(", ")}]`,
+    `created: ${today}`,
+    `updated: ${today}`,
+    `event_date: ${eventDate}`,
+    "voice: claude-draft",
+    `raw_file: raw/${file.name}`
+  ];
+
+  const keyLinks = Array.isArray(review.keyLinks) ? review.keyLinks.map(cleanWikilinkSlug).filter(Boolean) : [];
+  if (keyLinks.length) {
+    frontmatterLines.push(`key_links: [${keyLinks.map((slug) => yamlString(`[[${slug}]]`)).join(", ")}]`);
+  }
+
+  const participants = Array.isArray(review.participants) ? review.participants.map((p) => String(p || "").trim()).filter(Boolean) : [];
+  if (participants.length) {
+    frontmatterLines.push(`participants: [${participants.map(yamlInlineValue).join(", ")}]`);
+  }
+
+  const sourcesUrls = Array.isArray(review.sources) ? review.sources.map((u) => String(u || "").trim()).filter(Boolean) : [];
+  if (sourcesUrls.length) {
+    frontmatterLines.push("sources:");
+    for (const url of sourcesUrls) frontmatterLines.push(`  - ${url}`);
+  }
+
+  if (review.provider) frontmatterLines.push(`model_provider: ${yamlString(review.provider)}`);
+  if (review.reviewedAt) frontmatterLines.push(`reviewed_at: ${yamlString(review.reviewedAt)}`);
+
+  const headingPrefix = pageType === "source" ? "# Source: " : "# ";
+  const headerNote = typeof review.headerNote === "string" && review.headerNote.trim() ? review.headerNote.trim() : "";
+  const sourceUrl = typeof review.sourceUrl === "string" && review.sourceUrl.trim() ? review.sourceUrl.trim() : "";
+  const sourceCaveat = typeof review.sourceCaveat === "string" && review.sourceCaveat.trim() ? review.sourceCaveat.trim() : "";
+
+  const headerBlock = [
+    `${headingPrefix}${title}`,
+    "",
+    `Original file: \`raw/${file.name}\``
+  ];
+  if (sourceUrl) headerBlock.push("", sourceUrl);
+  if (headerNote) headerBlock.push("", headerNote);
+  if (sourceCaveat) {
+    headerBlock.push("", "> [!info]+ Source caveat", ...sourceCaveat.split("\n").map((line) => `> ${line}`));
+  }
+
+  const bodyMarkdown = sourcePageBody(review);
+
   const markdown = `---
-type: source
-bucket: ${bucket}
-summary: ${yamlString(summary)}
-tags: [${tags.map(yamlInlineValue).join(", ")}]
-created: ${today}
-updated: ${today}
-event_date: ${today}
-voice: claude-draft
-raw_file: raw/${file.name}
-${provider}${reviewedAt}
+${frontmatterLines.join("\n")}
 ---
 
-# Source: ${title}
+${headerBlock.join("\n")}
 
-Original file: \`raw/${file.name}\`
-
-${modelReviewMarkdown(review)}
+${bodyMarkdown}
 `;
 
   return {
     id: slug,
-    type: "source",
+    type: pageType,
     path,
     slug,
     title,
@@ -311,6 +351,122 @@ ${modelReviewMarkdown(review)}
     text: file.text,
     markdown
   };
+}
+
+function cleanWikilinkSlug(value) {
+  return String(value || "")
+    .trim()
+    .replace(/^\[\[/, "")
+    .replace(/\]\]$/, "")
+    .split("|")[0]
+    .replace(/\.md$/, "")
+    .trim();
+}
+
+function mergeUniqueTags(...lists) {
+  const seen = new Set();
+  const out = [];
+  for (const list of lists) {
+    for (const tag of list) {
+      const key = String(tag || "").trim().toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(key);
+    }
+  }
+  return out;
+}
+
+function sourcePageBody(review) {
+  const richSections = Array.isArray(review.sections) ? review.sections.filter((s) => s && s.heading && s.body) : [];
+  const useRich = richSections.length > 0;
+
+  const blocks = [];
+
+  if (useRich) {
+    for (const section of richSections) {
+      blocks.push(`## ${section.heading.trim()}\n\n${section.body.trim()}`);
+    }
+  } else {
+    // Legacy fallback: summary + bullets + takeaways
+    const summaryBlock = summarySection(review);
+    if (summaryBlock) blocks.push(summaryBlock);
+    const takeawaysBlock = takeawaysSection(review);
+    if (takeawaysBlock) blocks.push(takeawaysBlock);
+  }
+
+  // Optional callouts and standard sections — apply in either mode
+  const callout = relevanceCalloutBlock(review.relevanceCallout);
+  if (callout) blocks.push(callout);
+
+  const applications = applicationsBlock(review.applications);
+  if (applications) blocks.push(applications);
+
+  const propagation = propagationNotesBlock(review.propagationNotes);
+  if (propagation) blocks.push(propagation);
+
+  const related = relatedBlock(review.related);
+  if (related) blocks.push(related);
+
+  // Filing judgment + financial details + connections + light-touch + propagation array
+  // remain available for legacy callers that pass those fields.
+  if (hasFilingPlan(review?.filingPlan)) blocks.push(formatFilingJudgmentMarkdown(review.filingPlan));
+  if (hasFinancialDetails(review?.financialDetails)) {
+    blocks.push(`## Financial Details\n\n${formatFinancialDetailsMarkdown(review.financialDetails)}`);
+  }
+  const connections = connectionsSection(review);
+  if (connections) blocks.push(connections);
+  const lightTouch = lightTouchSection(review);
+  if (lightTouch) blocks.push(lightTouch);
+  const propagationLegacy = propagationSection(review);
+  if (propagationLegacy) blocks.push(propagationLegacy);
+  const discoveries = discoveriesSection(review);
+  if (discoveries) blocks.push(discoveries);
+  const questions = questionsSection(review);
+  if (questions) blocks.push(questions);
+
+  const filtered = blocks.map((b) => String(b || "").trim()).filter(Boolean);
+  return filtered.join("\n\n") || "## Summary\n\nModel review completed, but no source-page sections were returned.";
+}
+
+function relevanceCalloutBlock(callout) {
+  if (!callout || typeof callout !== "object") return "";
+  const body = String(callout.body || "").trim();
+  if (!body) return "";
+  const lines = body.split("\n").map((line) => `> ${line}`);
+  const links = Array.isArray(callout.links) ? callout.links.map(cleanWikilinkSlug).filter(Boolean) : [];
+  const linkSuffix = links.length
+    ? `\n>\n> Linked: ${links.map((slug) => `[[${slug}]]`).join(", ")}`
+    : "";
+  return `> [!claude-note]+ Connor-relevance — Claude synthesis\n${lines.join("\n")}${linkSuffix}`;
+}
+
+function applicationsBlock(applications) {
+  if (!Array.isArray(applications)) return "";
+  const items = applications.map((a) => String(a || "").trim()).filter(Boolean);
+  if (!items.length) return "";
+  return `## Personal applications worth tracking\n\n${items.map((item) => `- ${item}`).join("\n")}`;
+}
+
+function propagationNotesBlock(notes) {
+  const text = String(notes || "").trim();
+  if (!text) return "";
+  return `## Propagation Notes\n\n${text}`;
+}
+
+function relatedBlock(related) {
+  if (!Array.isArray(related)) return "";
+  const items = related
+    .map((item) => {
+      if (!item) return "";
+      const slug = cleanWikilinkSlug(item.slug || item);
+      if (!slug) return "";
+      const note = item && typeof item === "object" ? String(item.note || "").trim() : "";
+      return note ? `- [[${slug}]] — ${note}` : `- [[${slug}]]`;
+    })
+    .filter(Boolean);
+  if (!items.length) return "";
+  return `## Related\n\n${items.join("\n")}`;
 }
 
 function modelReviewSummary(review) {

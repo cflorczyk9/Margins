@@ -12,6 +12,7 @@ import { diagnoseVault } from "./doctor.js";
 import { loadTelemetry, writeConsent, selfTagEnabled } from "./telemetry.js";
 import { createPreferences } from "./preferences.js";
 import { createWikilinks } from "./wikilinks.js";
+import { createVaultContext } from "./vault-context.js";
 
 // Inline SVG of the Margins mark. Embedded as a base64 data URI so the icon
 // renders in MCP clients without requiring a network fetch.
@@ -59,6 +60,11 @@ WRITING (everything is a proposal — nothing lands until the user accepts):
 - Before any propose_*, call recall_preferences to follow the user's filing
   conventions and naming patterns. The user's CLAUDE.md and preferences are
   authoritative; your defaults are not.
+- Before propose_compile_from_raw, call get_vault_context to see the vault's
+  entity slugs, active project slugs, and tag taxonomy. Use those slugs for
+  [[wikilinks]] in body sections and key_links frontmatter, those tag names
+  for the tags frontmatter (do NOT invent region/X or vibrance/X — those are
+  auto-computed by scripts/wiki_regions.py and will be overwritten).
 
 LEARNING: when the user corrects a proposal (changes the path you picked,
 renames a slug, asks for shorter takeaways, etc.), call record_preference
@@ -77,7 +83,7 @@ TOOL INVENTORY: if you're unsure whether a Margins tool exists or what parameter
 TESTING MODE: when the user explicitly frames an action as testing or pressure-testing (e.g., "fire both calls back-to-back", "this is a test", "validate the reject path"), the propose-then-review pattern can be batched without breaking trust — they have consented to the merged flow. If they provide exact tool parameters and say not to accept a staged proposal, execute that tool call as specified after at most one clarification. Default production review remains on; test batching is allowed only when the user names it as a test.
 
 TOOLS:
-- Context: margins_start, recall_preferences
+- Context: margins_start, recall_preferences, get_vault_context
 - Read: search_vault, read_page, list_recent, get_backlinks, list_unprocessed, margins_doctor
 - Propose writes: propose_page, propose_edit, append_to, propose_compile_from_raw
 - Suggest: propose_wikilinks (for A3/B3 vaults with few links)
@@ -91,6 +97,7 @@ export function buildServer(vault, options = {}) {
   const primer = createPrimer(vault, { proposals, preferences });
   const compile = createCompile(vault, proposals);
   const wikilinks = createWikilinks(vault);
+  const vaultContext = createVaultContext(vault);
   const telemetry = options.telemetry || { fireAndForget: () => {}, enabled: false };
   const trackToolCall = (toolName) => telemetry.fireAndForget(`/tool/${toolName}`);
   const server = new McpServer(
@@ -167,6 +174,49 @@ export function buildServer(vault, options = {}) {
       return {
         content: [{ type: "text", text: body }],
         structuredContent: { body, path: preferences.relPath }
+      };
+    }
+  );
+
+  register(
+    "get_vault_context",
+    {
+      description:
+        "Read the vault's wikilinking context: entity slugs (people, organizations, places, tools, projects), active project/decision slugs (priority=active or recently updated), and the in-use semantic tag taxonomy. " +
+        "Call this BEFORE propose_compile_from_raw so the page you stage uses real entity slugs in [[wikilinks]] (not invented names) and existing tags (not new variants). " +
+        "Region/X and vibrance/X tags are excluded from the response — those are auto-computed by scripts/wiki_regions.py and must not be model-generated. " +
+        "Cached on a vault-mtime key; safe to call repeatedly.",
+      inputSchema: {
+        refresh: z
+          .boolean()
+          .optional()
+          .describe("Force a re-scan even if the vault hasn't changed since the last call. Default false (use cache).")
+      },
+      annotations: { readOnlyHint: true }
+    },
+    async ({ refresh }) => {
+      const ctx = await vaultContext.get({ refresh: Boolean(refresh) });
+      const lines = [
+        `Vault context: ${ctx.entities.length} entities, ${ctx.activeProjects.length} active projects, ${ctx.tags.length} tags (${ctx.vaultFiles} wiki files scanned).`,
+        "",
+        "ENTITIES (use these slugs in [[wikilinks]] and key_links frontmatter):"
+      ];
+      const slugToTitle = (slug) => String(slug || "").split(/[-_]+/).filter(Boolean).map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(" ");
+      for (const e of ctx.entities.slice(0, 60)) {
+        lines.push(`  ${e.slug}${e.title && e.title !== slugToTitle(e.slug) ? ` — ${e.title}` : ""}${e.oneLine ? ` — ${e.oneLine.slice(0, 120)}` : ""}`);
+      }
+      if (ctx.entities.length > 60) lines.push(`  ... and ${ctx.entities.length - 60} more (see structuredContent.entities for full list)`);
+      lines.push("", "ACTIVE PROJECTS (link these in relevanceCallout when relevant):");
+      for (const p of ctx.activeProjects.slice(0, 30)) {
+        lines.push(`  ${p.slug}${p.priority ? ` [${p.priority}]` : ""}${p.oneLine ? ` — ${p.oneLine.slice(0, 120)}` : ""}`);
+      }
+      if (ctx.activeProjects.length > 30) lines.push(`  ... and ${ctx.activeProjects.length - 30} more`);
+      lines.push("", "TAGS IN USE (use these for the tags frontmatter — do NOT invent region/X or vibrance/X):");
+      lines.push(`  ${ctx.tags.slice(0, 80).join(", ")}`);
+      if (ctx.tags.length > 80) lines.push(`  ... and ${ctx.tags.length - 80} more`);
+      return {
+        content: [{ type: "text", text: lines.join("\n") }],
+        structuredContent: ctx
       };
     }
   );
@@ -455,48 +505,69 @@ export function buildServer(vault, options = {}) {
     "propose_compile_from_raw",
     {
       description:
-        "Compile a supported source file from anywhere in the vault into a structured wiki source page proposal. Supports: " +
-        `${supportedExtensionsList()}. ` +
-        "The file can live at the vault root, in raw/, or in any custom subfolder — pass its vault-relative path. You (the model) provide the review metadata: a summary, optional bucket, optional takeaways. Margins extracts readable text, runs its compiler, and stages the result at proposed/<wiki path>. Use this whenever the user wants a document filed into the wiki where it can link to other notes.",
+        "Compile a supported source file (" + supportedExtensionsList() + ") into a wiki source page proposal staged at proposed/<wiki path>. " +
+        "\n\nIMPORTANT — produce a knowledge artifact, not a topic recap. The page you stage is the substrate the user (and future Claude sessions) will retrieve from. Thin pages = thin retrieval. " +
+        "\n\nBefore calling, call get_vault_context to know which entity slugs and active project slugs to wikilink, and which semantic tags are already in use. " +
+        "\n\nFor a meeting/call/transcript: pick content-specific H2 headings that reflect what was actually discussed (e.g. 'Practice Overview', 'Service Philosophy', 'Succession Status' — NOT 'Summary' / 'Bullets' / 'Takeaways'). Quote verbatim where the exact phrasing matters. Wikilink every entity using slugs from get_vault_context. Include a relevanceCallout naming the active projects/decisions this source bears on. Surface 2-4 concrete applications. " +
+        "\n\nFor a synthesis page (pageType='synthesis'): pass the source URLs as `sources`, structure body sections around the argument, include a relevanceCallout. " +
+        "\n\nFor a concept page (pageType='concept'): structure as snapshot + context + source log. " +
+        "\n\nLegacy callers can still pass `summary` + `summaryBullets` + `takeaways` and skip `sections` — Margins will fall back to the simple template. But the rich path is what produces a knowledge artifact.",
       inputSchema: {
         rawPath: z
           .string()
-          .describe("Vault-relative path of the source file. Examples: 'raw/foo.pdf', 'meetings/march-7.md', 'lawyer/contract.pdf'. Pass list_unprocessed paths directly. For back-compat, a bare filename (e.g. 'foo.pdf') resolves to raw/foo.pdf unless an actual root-level foo.pdf exists and raw/foo.pdf does not."),
-        summary: z.string().describe("1-3 sentence summary of what this source is about."),
-        title: z.string().optional().describe("Title for the source page. Defaults to titlecased filename."),
-        bucket: z.string().optional().describe("Wiki bucket. Default 'sources'. Try 'projects', 'career', 'ideas', etc."),
-        destination_path: z
-          .string()
+          .describe("Vault-relative path of the source file. Examples: 'raw/foo.pdf', 'meetings/march-7.md'. Pass list_unprocessed paths directly. Bare filename (e.g. 'foo.pdf') resolves to raw/foo.pdf unless an actual root-level foo.pdf exists and raw/foo.pdf does not."),
+        summary: z.string().describe("Rich multi-clause summary (NOT 1-3 sentences). Should describe WHO the page is about, WHAT happened/was discussed, and the SO-WHAT (decisions, takeaways, where it lands in active threads). This becomes the frontmatter summary used by retrieval."),
+        title: z.string().optional().describe("Title for the page. Defaults to titlecased filename."),
+        bucket: z.string().optional().describe("Wiki bucket folder. 'sources', 'projects', 'ideas', 'meetings', 'career'. Pick by topic, not page-type."),
+        destination_path: z.string().optional().describe("Override destination path, e.g. 'wiki/career/source-2026-05-13-something.md'."),
+        force: z.boolean().optional().describe("Replace an existing source page for this raw file. Without bucket/destination_path override, the existing source page is replaced IN PLACE (same path). With override, the source moves to the new location. Default false."),
+
+        pageType: z.enum(["source", "concept", "synthesis"]).optional().describe("Page shape. 'source' = faithful summary of one raw file (default). 'concept' = durable theme/idea. 'synthesis' = connection-point across multiple sources."),
+        tags: z.array(z.string()).optional().describe("Semantic tags (topical, people slugs, firm slugs). DO NOT include region/X or vibrance/X — those are auto-computed by scripts/wiki_regions.py and will be overwritten."),
+        keyLinks: z.array(z.string()).optional().describe("Wikilink slugs for the frontmatter key_links field, e.g. ['ellis-rutili', 'centric-wm', 'briefly']. Use slugs from get_vault_context."),
+        eventDate: z.string().optional().describe("Date the source event occurred (YYYY-MM-DD). Defaults to today."),
+        sourceUrl: z.string().optional().describe("External URL if the source has one (YouTube, blog post, public PDF). Renders as a markdown link in the header block."),
+        participants: z.array(z.string()).optional().describe("For meeting/call pages: participant names. Renders as a participants frontmatter list."),
+        sources: z.array(z.string()).optional().describe("For synthesis pages: list of evidence URLs. Renders as a sources frontmatter list."),
+        headerNote: z.string().optional().describe("Short paragraph under the H1 giving venue/runtime/context (e.g. 'Stanford GSB fireside chat, ~45 min, published 2026-05-04')."),
+        sourceCaveat: z.string().optional().describe("Source-quality warning — renders as a `> [!info]+ Source caveat` callout. Use when the source has limitations (e.g. 'Granola summary, no transcript available')."),
+
+        sections: z
+          .array(z.object({ heading: z.string(), body: z.string() }))
           .optional()
-          .describe("Override destination, e.g. 'wiki/career/source-2026-05-13-something.md'."),
+          .describe("Primary body — array of {heading, body} sections. Pick content-specific H2 headings that fit the source. Body is markdown; may include [[wikilinks]], tables, blockquotes, bold key terms. Quote verbatim where phrasing matters. If you provide sections, the legacy summary/bullets/takeaways template is skipped."),
+        relevanceCallout: z
+          .object({ body: z.string(), links: z.array(z.string()).optional() })
+          .optional()
+          .describe("Connor-relevance synthesis. Renders as `> [!claude-note]+ Connor-relevance — Claude synthesis`. Body is markdown. Links is an array of wikilink slugs to active projects/decisions this source bears on."),
+        applications: z.array(z.string()).optional().describe("Concrete questions or applications. Renders as `## Personal applications worth tracking`. 2-4 items typical."),
+        propagationNotes: z.string().optional().describe("Entity/concept creation decisions made or refused (per operator-manual rule #4). Renders as `## Propagation Notes`."),
+        related: z
+          .array(z.union([z.string(), z.object({ slug: z.string(), note: z.string().optional() })]))
+          .optional()
+          .describe("Related wiki pages. Either bare slug strings or {slug, note} objects. Renders as `## Related` with `[[wikilinks]]`."),
+
         takeaways: z
-          .array(
-            z.union([
-              z.string(),
-              z.object({ point: z.string(), evidence: z.string().optional() })
-            ])
-          )
+          .array(z.union([z.string(), z.object({ point: z.string(), evidence: z.string().optional() })]))
           .optional()
-          .describe("Key takeaways. Either strings or {point, evidence} objects."),
-        summaryBullets: z.array(z.string()).optional().describe("Short summary bullets."),
-        force: z
-          .boolean()
-          .optional()
-          .describe(
-            "Replace an existing source page for this raw file. Use when the user wants to refresh a source after the raw file changed, redo the summary, or reframe takeaways. Without bucket/destination_path override, the existing source page is replaced IN PLACE (same path). With override, the source moves to the new location. Default false."
-          )
+          .describe("LEGACY — for the simple template only. If you provide `sections`, this is unused. Either strings or {point, evidence} objects."),
+        summaryBullets: z.array(z.string()).optional().describe("LEGACY — for the simple template only. If you provide `sections`, this is unused.")
       },
       annotations: { readOnlyHint: false, destructiveHint: false }
     },
-    async ({ rawPath, summary, title, bucket, destination_path, takeaways, summaryBullets, force }) => {
+    async ({
+      rawPath, summary, title, bucket, destination_path, force,
+      pageType, tags, keyLinks, eventDate, sourceUrl, participants, sources,
+      headerNote, sourceCaveat, sections, relevanceCallout, applications,
+      propagationNotes, related,
+      takeaways, summaryBullets
+    }) => {
       const result = await compile.proposeCompileFromRaw(rawPath, {
-        summary,
-        title,
-        bucket,
-        destination_path,
-        takeaways,
-        summaryBullets,
-        force
+        summary, title, bucket, destination_path, force,
+        pageType, tags, keyLinks, eventDate, sourceUrl, participants, sources,
+        headerNote, sourceCaveat, sections, relevanceCallout, applications,
+        propagationNotes, related,
+        takeaways, summaryBullets
       });
       if (result.status === "already-filed") {
         return {
@@ -511,19 +582,19 @@ export function buildServer(vault, options = {}) {
           structuredContent: result
         };
       }
-      const lines = [
+      const headerLines = [
         `Compiled ${result.rawFile} → staged at ${result.proposalPath}`,
         `Title: ${result.title}`,
         `Bucket: ${result.bucket}`,
-        result.summary ? `Summary: ${result.summary}` : null,
-        result.entitiesExtracted && result.entitiesExtracted.length
-          ? `Entities extracted: ${result.entitiesExtracted.join(", ")}`
-          : null,
+        "",
+        "--- Staged page ---",
+        result.markdown || "(markdown not returned)",
+        "--- End staged page ---",
         "",
         "Run resolve_proposal to accept or reject."
-      ].filter(Boolean);
+      ];
       return {
-        content: [{ type: "text", text: lines.join("\n") }],
+        content: [{ type: "text", text: headerLines.join("\n") }],
         structuredContent: result
       };
     }
@@ -649,6 +720,7 @@ export function buildServer(vault, options = {}) {
     },
     async ({ path: rel, action }) => {
       const result = await proposals.resolveProposal(rel, action);
+      vaultContext.invalidate();
       return {
         content: [
           { type: "text", text: `${result.destinationPath}: ${result.action}.` }
