@@ -1,0 +1,744 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Install Margins — Typographic poster</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400..800&family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&display=swap" rel="stylesheet">
+<style>
+  /* ------------ Tokens ------------ */
+  :root {
+    --bg: #faf7f2;
+    --paper: #ffffff;
+    --paper-soft: #f5f1ea;
+    --ink: #1a1612;
+    --ink-2: #4a423a;
+    --ink-3: #847a6b;
+    --ink-4: #b0a99b;
+    --line: #ece6d9;
+    --line-strong: #d8d0bf;
+    --vermillion: #d63a2f;
+    --cobalt: #2c5aa0;
+    --mustard: #f0c14b;
+    --violet: #6a4f8c;
+    --green-poly: #6fa863;
+
+    --scaffold-alpha: 0.06;
+
+    --shadow-sm: 0 1px 2px rgba(26,22,18,0.04), 0 4px 14px -6px rgba(26,22,18,0.08);
+    --shadow-md: 0 2px 6px rgba(26,22,18,0.06), 0 18px 40px -22px rgba(26,22,18,0.18);
+    --shadow-lg: 0 6px 14px rgba(26,22,18,0.08), 0 32px 70px -28px rgba(26,22,18,0.22);
+
+    --serif: "Newsreader", Georgia, "Times New Roman", serif;
+    --sans:  "Manrope", -apple-system, BlinkMacSystemFont, "Inter", Helvetica, Arial, sans-serif;
+    --mono:  ui-monospace, "SF Mono", Menlo, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #15110d;
+      --paper: #1F1A14;
+      --paper-soft: #1A1612;
+      --ink: #E8E2D6;
+      --ink-2: #C8C2B5;
+      --ink-3: #8A857A;
+      --ink-4: #5C574F;
+      --line: #2E281F;
+      --line-strong: #3D362B;
+      --vermillion: #E04B3F;
+      --cobalt: #5B86C9;
+      --mustard: #F0C14B;
+      --violet: #9A7FBE;
+      --green-poly: #8AC078;
+      --scaffold-alpha: 0.08;
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.4), 0 4px 14px -6px rgba(0,0,0,0.55);
+      --shadow-md: 0 2px 6px rgba(0,0,0,0.45), 0 22px 50px -22px rgba(0,0,0,0.7);
+      --shadow-lg: 0 6px 14px rgba(0,0,0,0.5), 0 36px 80px -28px rgba(0,0,0,0.8);
+    }
+  }
+
+  /* Animatable variable-font weight for the giant scaffold word */
+  @property --wght {
+    syntax: "<number>";
+    inherits: true;
+    initial-value: 280;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); }
+  body {
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    line-height: 1.5;
+  }
+
+  /* ------------ Section frame ------------ */
+  .section {
+    position: relative;
+    width: 100%;
+    min-height: 80vh;
+    padding: 12vh 24px 12vh;
+    overflow: hidden; /* clip the bleeding scaffold word */
+    container-type: inline-size;
+    container-name: install;
+  }
+
+  .wrap {
+    position: relative;
+    max-width: 1100px;
+    margin: 0 auto;
+    z-index: 2;
+  }
+
+  /* ------------ Giant scaffold word ------------ */
+  .scaffold {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+    overflow: hidden;
+  }
+  .scaffold__word {
+    position: absolute;
+    left: -2vw;
+    bottom: -3vh;
+    margin: 0;
+    font-family: var(--serif);
+    font-size: clamp(160px, 22vw, 360px);
+    line-height: 0.85;
+    letter-spacing: -0.04em;
+    color: var(--ink);
+    opacity: var(--scaffold-alpha);
+    --wght: 280;
+    font-variation-settings: "wght" var(--wght), "opsz" 144;
+    transition: --wght 600ms cubic-bezier(.4,.1,.2,1);
+    white-space: nowrap;
+    user-select: none;
+  }
+  /* Mode change: CLI tab thickens the scaffold */
+  .section[data-tab="cli"] .scaffold__word { --wght: 380; }
+
+  /* ------------ Eyebrow + headings ------------ */
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin: 0 0 18px;
+  }
+  .eyebrow::before {
+    content: "";
+    display: inline-block;
+    width: 22px;
+    height: 1px;
+    background: var(--ink-3);
+  }
+
+  h2.headline {
+    font-family: var(--serif);
+    font-weight: 500;
+    font-variation-settings: "wght" 500, "opsz" 48;
+    font-size: clamp(40px, 6.4vw, 72px);
+    line-height: 1.02;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    margin: 0 0 14px;
+  }
+  h2.headline em {
+    font-style: italic;
+    font-variation-settings: "wght" 480, "opsz" 48;
+    color: var(--ink);
+  }
+
+  .sub {
+    font-family: var(--sans);
+    font-weight: 400;
+    font-size: clamp(16px, 1.6vw, 19px);
+    color: var(--ink-2);
+    margin: 0 0 56px;
+    max-width: 36ch;
+  }
+
+  /* ------------ Install card ------------ */
+  .card {
+    position: relative;
+    max-width: 720px;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: clamp(28px, 4vw, 48px);
+    box-shadow: var(--shadow-md);
+  }
+
+  /* Tiny Kandinsky shape per state */
+  .shape {
+    position: absolute;
+    top: -18px;
+    right: -18px;
+    width: 36px;
+    height: 36px;
+    transition: opacity 360ms ease, transform 600ms cubic-bezier(.4,.1,.2,1);
+  }
+  .shape svg { display: block; width: 100%; height: 100%; }
+  .shape--desktop { opacity: 1; }
+  .shape--cli { opacity: 0; transform: rotate(-12deg); }
+  .section[data-tab="cli"] .shape--desktop { opacity: 0; transform: scale(0.7); }
+  .section[data-tab="cli"] .shape--cli { opacity: 1; transform: rotate(0deg); }
+
+  /* ------------ Tabs ------------ */
+  .tabs {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    border-bottom: 1px solid var(--line);
+    margin: 0 0 28px;
+    padding: 0 0 0;
+  }
+  .tab {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    padding: 12px 16px 14px;
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 14px;
+    letter-spacing: 0.01em;
+    color: var(--ink-3);
+    cursor: pointer;
+    transition: color 200ms ease;
+    position: relative;
+    z-index: 1;
+  }
+  .tab:hover { color: var(--ink-2); }
+  .tab[aria-selected="true"] { color: var(--ink); }
+  .tab:focus-visible {
+    outline: 2px solid var(--cobalt);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  .tab__underline {
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    height: 2px;
+    width: 0;
+    background: var(--cobalt);
+    transition: transform 360ms cubic-bezier(.4,.1,.2,1),
+                width 360ms cubic-bezier(.4,.1,.2,1),
+                background-color 360ms ease;
+    transform: translateX(0);
+    border-radius: 2px;
+  }
+  .section[data-tab="cli"] .tab__underline { background: var(--mustard); }
+
+  .tabs__right {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding-right: 6px;
+    position: relative;
+  }
+  .help-btn {
+    appearance: none;
+    background: transparent;
+    border: 1px solid var(--line-strong);
+    color: var(--ink-3);
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 13px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 180ms, border-color 180ms, background 180ms;
+  }
+  .help-btn:hover, .help-btn[aria-expanded="true"] {
+    color: var(--ink);
+    border-color: var(--ink-3);
+    background: var(--paper-soft);
+  }
+  .help-btn:focus-visible {
+    outline: 2px solid var(--cobalt);
+    outline-offset: 2px;
+  }
+
+  .tooltip {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    width: min(340px, 84vw);
+    background: var(--paper);
+    border: 1px solid var(--line-strong);
+    border-radius: 10px;
+    padding: 16px 18px;
+    box-shadow: var(--shadow-lg);
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: var(--ink-2);
+    z-index: 5;
+    opacity: 0;
+    transform: translateY(-4px);
+    pointer-events: none;
+    transition: opacity 180ms ease, transform 180ms ease;
+  }
+  .tooltip[data-open="true"] {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+  .tooltip strong { color: var(--ink); font-weight: 700; }
+  .tooltip p { margin: 0 0 10px; }
+  .tooltip p:last-child { margin: 0; }
+
+  /* ------------ Panels ------------ */
+  .panel {
+    display: none;
+    animation: panel-in 320ms ease both;
+  }
+  .panel[data-active="true"] { display: block; }
+
+  @keyframes panel-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .panel__heading {
+    font-family: var(--sans);
+    font-weight: 700;
+    font-size: clamp(22px, 2.6vw, 28px);
+    letter-spacing: -0.01em;
+    color: var(--ink);
+    margin: 4px 0 22px;
+  }
+
+  /* ------------ Desktop panel ------------ */
+  .cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--vermillion);
+    color: #fff8f0;
+    border: 0;
+    border-radius: 10px;
+    padding: 14px 28px;
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 16px;
+    letter-spacing: 0.005em;
+    cursor: pointer;
+    text-decoration: none;
+    transition: transform 200ms ease, box-shadow 220ms ease, background-color 200ms ease;
+    box-shadow: 0 1px 2px rgba(26,22,18,0.1), 0 8px 18px -10px rgba(214,58,47,0.4);
+  }
+  .cta:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 2px 4px rgba(26,22,18,0.12), 0 18px 30px -12px rgba(214,58,47,0.5);
+  }
+  .cta:focus-visible {
+    outline: 2px solid var(--ink);
+    outline-offset: 3px;
+  }
+  .cta__arrow {
+    display: inline-block;
+    transition: transform 220ms ease;
+  }
+  .cta:hover .cta__arrow { transform: translateY(2px); }
+
+  .meta {
+    margin: 14px 0 24px;
+    font-family: var(--sans);
+    font-size: 13px;
+    color: var(--ink-3);
+    letter-spacing: 0.01em;
+  }
+  .meta span { color: var(--ink-3); }
+  .meta i { font-style: normal; color: var(--ink-4); margin: 0 8px; }
+
+  .body-copy {
+    font-family: var(--sans);
+    font-size: 15px;
+    color: var(--ink-2);
+    line-height: 1.6;
+    margin: 0;
+    max-width: 56ch;
+  }
+  .body-copy strong {
+    color: var(--ink);
+    font-weight: 700;
+  }
+
+  /* ------------ CLI panel ------------ */
+  .pills {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 0 0 20px;
+  }
+  .pill {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--paper-soft);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 12px 12px 12px 16px;
+  }
+  .pill__num {
+    flex: 0 0 auto;
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 11px;
+    color: var(--ink-3);
+    letter-spacing: 0.04em;
+    width: 18px;
+  }
+  .pill__cmd {
+    flex: 1 1 auto;
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--ink);
+    line-height: 1.5;
+    white-space: nowrap;
+    overflow-x: auto;
+    scrollbar-width: thin;
+    padding-right: 8px;
+  }
+  .pill__cmd::-webkit-scrollbar { height: 4px; }
+  .pill__cmd::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 4px; }
+  .pill__copy {
+    appearance: none;
+    background: transparent;
+    border: 1px solid var(--line-strong);
+    border-radius: 7px;
+    padding: 6px 10px;
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 11px;
+    color: var(--ink-3);
+    cursor: pointer;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    transition: color 180ms, border-color 180ms, background 180ms;
+    flex: 0 0 auto;
+  }
+  .pill__copy:hover {
+    color: var(--ink);
+    border-color: var(--mustard);
+    background: var(--paper);
+  }
+  .pill__copy:focus-visible {
+    outline: 2px solid var(--mustard);
+    outline-offset: 2px;
+  }
+  .pill__copy[data-copied="true"] {
+    color: var(--ink);
+    border-color: var(--mustard);
+    background: color-mix(in srgb, var(--mustard) 22%, var(--paper));
+  }
+
+  .body-copy code {
+    font-family: var(--mono);
+    font-size: 0.92em;
+    background: var(--paper-soft);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 1px 6px;
+    color: var(--ink);
+  }
+
+  /* ------------ Reduced motion ------------ */
+  @media (prefers-reduced-motion: reduce) {
+    .scaffold__word,
+    .tab__underline,
+    .panel,
+    .shape,
+    .cta,
+    .pill__copy,
+    .tooltip {
+      transition: none !important;
+      animation: none !important;
+    }
+  }
+
+  /* ------------ Mobile / container queries ------------ */
+  @container install (max-width: 720px) {
+    .card { padding: 26px 22px; }
+    .scaffold__word { font-size: clamp(140px, 36vw, 280px); }
+    .tabs { flex-wrap: wrap; }
+    .tabs__right { margin-left: auto; }
+  }
+
+  @media (max-width: 720px) {
+    .section { padding: 8vh 18px 8vh; min-height: 70vh; }
+    h2.headline { font-size: clamp(36px, 9vw, 52px); }
+    .sub { margin-bottom: 36px; }
+    .card { padding: 24px 20px; }
+    .scaffold__word {
+      font-size: clamp(140px, 50vw, 280px);
+      bottom: -2vh;
+      left: -4vw;
+    }
+    .pill__cmd { font-size: 12px; }
+    .cta { padding: 12px 22px; font-size: 15px; }
+    .tooltip { right: -4px; width: min(300px, 80vw); }
+  }
+</style>
+</head>
+<body>
+
+<section class="section" id="install" data-tab="desktop" aria-labelledby="install-heading">
+
+  <!-- Giant scaffold word, bleeds out of the bottom-left -->
+  <div class="scaffold" aria-hidden="true">
+    <div class="scaffold__word">Install</div>
+  </div>
+
+  <div class="wrap">
+
+    <p class="eyebrow">Get started</p>
+    <h2 class="headline" id="install-heading"><em>Install</em> Margins.</h2>
+    <p class="sub">You saw it. Now run it on your files.</p>
+
+    <div class="card" role="region" aria-label="Install Margins">
+
+      <!-- Kandinsky shapes — one per state -->
+      <div class="shape shape--desktop" aria-hidden="true">
+        <svg viewBox="0 0 36 36" fill="none">
+          <circle cx="18" cy="18" r="14" fill="var(--cobalt)" />
+        </svg>
+      </div>
+      <div class="shape shape--cli" aria-hidden="true">
+        <svg viewBox="0 0 36 36" fill="none">
+          <polygon points="18,4 33,30 3,30" fill="var(--mustard)" />
+        </svg>
+      </div>
+
+      <!-- Tabs -->
+      <div class="tabs" role="tablist" aria-label="Install method">
+        <button class="tab" role="tab"
+                id="tab-desktop"
+                aria-selected="true"
+                aria-controls="panel-desktop"
+                tabindex="0"
+                data-tab-key="desktop">Claude Desktop</button>
+        <button class="tab" role="tab"
+                id="tab-cli"
+                aria-selected="false"
+                aria-controls="panel-cli"
+                tabindex="-1"
+                data-tab-key="cli">Claude Code / CLI</button>
+
+        <span class="tab__underline" aria-hidden="true"></span>
+
+        <div class="tabs__right">
+          <button class="help-btn"
+                  type="button"
+                  aria-expanded="false"
+                  aria-controls="install-help"
+                  aria-label="What's the difference?">?</button>
+          <div class="tooltip" id="install-help" role="dialog" aria-label="What's the difference?">
+            <p><strong>Desktop:</strong> double-click install with the .mcpb bundle. Works on macOS &amp; Windows.</p>
+            <p><strong>CLI:</strong> npm package, works with Claude Code or anywhere you have Node. Linux too.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Desktop panel -->
+      <div class="panel"
+           id="panel-desktop"
+           role="tabpanel"
+           aria-labelledby="tab-desktop"
+           data-active="true">
+        <h3 class="panel__heading">Install for Claude Desktop.</h3>
+
+        <a class="cta"
+           href="https://github.com/cflorczyk9/Margins/releases/latest/download/margins-mcp.mcpb"
+           download>
+          Download for Claude Desktop
+          <span class="cta__arrow" aria-hidden="true">&darr;</span>
+        </a>
+
+        <p class="meta">
+          <span>~28 MB</span><i>·</i><span>macOS &amp; Windows</span><i>·</i><span>MIT</span>
+        </p>
+
+        <p class="body-copy">
+          <strong>Double-click. Pick a folder. Ask Claude.</strong>
+          Margins shows up in your Connector list with its logo.
+        </p>
+      </div>
+
+      <!-- CLI panel -->
+      <div class="panel"
+           id="panel-cli"
+           role="tabpanel"
+           aria-labelledby="tab-cli"
+           data-active="false"
+           hidden>
+        <h3 class="panel__heading">Install via npm.</h3>
+
+        <div class="pills">
+          <div class="pill">
+            <span class="pill__num" aria-hidden="true">01</span>
+            <code class="pill__cmd" id="cmd-1">npm install -g margins-mcp</code>
+            <button class="pill__copy" type="button" data-copy-target="cmd-1" aria-label="Copy npm install command">Copy</button>
+          </div>
+          <div class="pill">
+            <span class="pill__num" aria-hidden="true">02</span>
+            <code class="pill__cmd" id="cmd-2">margins-mcp install --vault /absolute/path/to/your/files</code>
+            <button class="pill__copy" type="button" data-copy-target="cmd-2" aria-label="Copy install command">Copy</button>
+          </div>
+        </div>
+
+        <p class="body-copy">
+          The installer writes configs for Claude Desktop and Claude Code, scaffolds
+          <code>raw/</code>, <code>proposed/</code>, and <code>.margins</code> in your folder, and verifies.
+          To update later: <code>margins-mcp install --update</code>.
+        </p>
+      </div>
+
+    </div><!-- /card -->
+  </div><!-- /wrap -->
+</section>
+
+<script>
+(function () {
+  const section = document.getElementById('install');
+  const tabs = Array.from(section.querySelectorAll('[role="tab"]'));
+  const panels = {
+    desktop: section.querySelector('#panel-desktop'),
+    cli: section.querySelector('#panel-cli'),
+  };
+  const underline = section.querySelector('.tab__underline');
+
+  function moveUnderline(activeTab) {
+    if (!activeTab || !underline) return;
+    const tabsRect = activeTab.parentElement.getBoundingClientRect();
+    const r = activeTab.getBoundingClientRect();
+    const x = r.left - tabsRect.left;
+    underline.style.width = r.width + 'px';
+    underline.style.transform = 'translateX(' + x + 'px)';
+  }
+
+  function activate(key, focusTab) {
+    tabs.forEach(t => {
+      const active = t.dataset.tabKey === key;
+      t.setAttribute('aria-selected', active ? 'true' : 'false');
+      t.setAttribute('tabindex', active ? '0' : '-1');
+      if (active && focusTab) t.focus();
+      if (active) moveUnderline(t);
+    });
+    Object.keys(panels).forEach(k => {
+      const isActive = k === key;
+      panels[k].dataset.active = isActive ? 'true' : 'false';
+      if (isActive) {
+        panels[k].removeAttribute('hidden');
+      } else {
+        panels[k].setAttribute('hidden', '');
+      }
+    });
+    section.dataset.tab = key;
+  }
+
+  tabs.forEach((tab, i) => {
+    tab.addEventListener('click', () => activate(tab.dataset.tabKey, false));
+    tab.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+        e.preventDefault();
+        const dir = e.key === 'ArrowRight' ? 1 : -1;
+        const next = tabs[(i + dir + tabs.length) % tabs.length];
+        activate(next.dataset.tabKey, true);
+      } else if (e.key === 'Home') {
+        e.preventDefault();
+        activate(tabs[0].dataset.tabKey, true);
+      } else if (e.key === 'End') {
+        e.preventDefault();
+        activate(tabs[tabs.length - 1].dataset.tabKey, true);
+      }
+    });
+  });
+
+  // Initial underline placement after fonts settle
+  requestAnimationFrame(() => {
+    const initial = tabs.find(t => t.getAttribute('aria-selected') === 'true') || tabs[0];
+    moveUnderline(initial);
+  });
+  window.addEventListener('resize', () => {
+    const active = tabs.find(t => t.getAttribute('aria-selected') === 'true');
+    moveUnderline(active);
+  });
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(() => {
+      const active = tabs.find(t => t.getAttribute('aria-selected') === 'true');
+      moveUnderline(active);
+    });
+  }
+
+  // Copy buttons
+  section.querySelectorAll('.pill__copy').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const targetId = btn.getAttribute('data-copy-target');
+      const codeEl = section.querySelector('#' + targetId);
+      if (!codeEl) return;
+      const text = codeEl.textContent.trim();
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch (err) {
+        // Fallback: select range
+        const range = document.createRange();
+        range.selectNodeContents(codeEl);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        try { document.execCommand('copy'); } catch (_) {}
+        sel.removeAllRanges();
+      }
+      const originalText = btn.textContent;
+      btn.dataset.copied = 'true';
+      btn.textContent = 'Copied';
+      setTimeout(() => {
+        btn.dataset.copied = 'false';
+        btn.textContent = originalText;
+      }, 1200);
+    });
+  });
+
+  // Tooltip
+  const helpBtn = section.querySelector('.help-btn');
+  const tooltip = section.querySelector('#install-help');
+  function setTooltip(open) {
+    helpBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    tooltip.dataset.open = open ? 'true' : 'false';
+  }
+  helpBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isOpen = tooltip.dataset.open === 'true';
+    setTooltip(!isOpen);
+  });
+  document.addEventListener('click', (e) => {
+    if (tooltip.dataset.open !== 'true') return;
+    if (e.target === helpBtn || tooltip.contains(e.target)) return;
+    setTooltip(false);
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && tooltip.dataset.open === 'true') setTooltip(false);
+  });
+})();
+</script>
+
+</body>
+</html>

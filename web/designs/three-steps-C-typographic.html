@@ -1,0 +1,558 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Three steps — Typographic poster — Margins</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400..800&family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&display=swap" rel="stylesheet">
+<style>
+  /* ------------ Tokens ------------ */
+  :root {
+    --bg: #faf7f2;
+    --paper: #ffffff;
+    --paper-soft: #f5f1ea;
+    --ink: #1a1612;
+    --ink-2: #4a423a;
+    --ink-3: #847a6b;
+    --line: #ece6d9;
+    --line-strong: #d8d0bf;
+    --vermillion: #d63a2f;
+    --cobalt: #2c5aa0;
+    --mustard: #f0c14b;
+    --violet: #6a4f8c;
+    --green-poly: #6fa863;
+
+    --shadow-sm: 0 1px 2px rgba(26,22,18,0.04), 0 4px 14px -6px rgba(26,22,18,0.08);
+    --shadow-md: 0 2px 6px rgba(26,22,18,0.06), 0 18px 40px -22px rgba(26,22,18,0.18);
+
+    --serif: "Newsreader", Georgia, "Times New Roman", serif;
+    --sans:  "Manrope", -apple-system, BlinkMacSystemFont, "Inter", Helvetica, Arial, sans-serif;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #15110d;
+      --paper: #1F1A14;
+      --paper-soft: #1a1610;
+      --ink: #E8E2D6;
+      --ink-2: #C8C2B5;
+      --ink-3: #8A857A;
+      --line: #2E281F;
+      --line-strong: #3D362B;
+      --vermillion: #E04B3F;
+      --cobalt: #5B86C9;
+      --mustard: #F0C14B;
+      --violet: #9A7FBE;
+      --green-poly: #8AC078;
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.4), 0 4px 14px -6px rgba(0,0,0,0.55);
+      --shadow-md: 0 2px 6px rgba(0,0,0,0.45), 0 22px 50px -22px rgba(0,0,0,0.7);
+    }
+  }
+
+  /* Variable-font weight as an animatable custom property */
+  @property --wght {
+    syntax: "<number>";
+    inherits: true;
+    initial-value: 280;
+  }
+
+  /* ------------ Base ------------ */
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  ::selection { background: var(--mustard); color: var(--ink); }
+
+  a { color: inherit; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.86em;
+    background: var(--paper-soft);
+    border: 1px solid var(--line);
+    padding: 1px 6px;
+    border-radius: 4px;
+    color: var(--ink);
+  }
+
+  /* ------------ Layout shell ------------ */
+  .page {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  .spacer-top, .spacer-bot {
+    min-height: 80vh;
+    flex: 0 0 auto;
+  }
+  .spacer-top {
+    display: flex;
+    align-items: flex-end;
+    padding: 0 6vw 6vh;
+  }
+  .spacer-top .placeholder,
+  .spacer-bot .placeholder {
+    color: var(--ink-3);
+    font-family: var(--sans);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+  .spacer-bot {
+    display: flex;
+    align-items: flex-start;
+    padding: 6vh 6vw 0;
+  }
+
+  /* ------------ Section ------------ */
+  .three-steps {
+    padding: clamp(48px, 8vw, 128px) clamp(20px, 6vw, 96px);
+    container-type: inline-size;
+    container-name: section;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .header {
+    max-width: 880px;
+    margin: 0 0 clamp(56px, 8vw, 112px) 0;
+  }
+
+  .eyebrow {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-family: var(--sans);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--ink-3);
+    font-weight: 500;
+    margin-bottom: 28px;
+  }
+  .eyebrow::before {
+    content: "";
+    display: inline-block;
+    width: 36px;
+    height: 1px;
+    background: var(--line-strong);
+  }
+
+  h2.headline {
+    font-family: var(--serif);
+    font-weight: 500;
+    font-size: clamp(34px, 5.4vw, 64px);
+    line-height: 1.04;
+    letter-spacing: -0.018em;
+    color: var(--ink);
+    margin: 0 0 22px 0;
+    font-variation-settings: "opsz" 48, "wght" 500;
+  }
+  h2.headline em {
+    font-style: italic;
+    font-weight: 500;
+    font-variation-settings: "opsz" 48, "wght" 500;
+  }
+
+  .sub {
+    font-family: var(--sans);
+    font-size: clamp(15px, 1.4vw, 18px);
+    color: var(--ink-2);
+    max-width: 56ch;
+    margin: 0;
+    line-height: 1.55;
+    font-weight: 400;
+  }
+
+  /* ------------ Steps grid ------------ */
+  .steps {
+    display: flex;
+    flex-direction: column;
+    gap: clamp(80px, 12vw, 180px);
+    margin-top: clamp(32px, 5vw, 72px);
+  }
+
+  .step {
+    position: relative;
+    --wght: 280;
+    --accent: var(--mustard);
+  }
+
+  /* Each step uses its own grid composition */
+  .step .grid {
+    position: relative;
+    display: grid;
+    align-items: center;
+    min-height: clamp(280px, 36vw, 460px);
+  }
+
+  /* Step 1: numeral left, card right */
+  .step--1 { --accent: var(--mustard); }
+  .step--1 .grid {
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+    gap: clamp(0px, 2vw, 24px);
+  }
+  .step--1 .numeral { justify-self: start; transform-origin: 30% 60%; }
+  .step--1 .card-wrap { justify-self: end; max-width: 560px; }
+  .step--1 .shape { right: 8%; top: 6%; }
+
+  /* Step 2: numeral behind card, centered */
+  .step--2 { --accent: var(--cobalt); }
+  .step--2 .grid {
+    grid-template-columns: 1fr;
+    place-items: center;
+    min-height: clamp(340px, 44vw, 540px);
+  }
+  .step--2 .numeral {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    transform-origin: 50% 50%;
+    z-index: 0;
+  }
+  .step--2 .card-wrap {
+    position: relative;
+    z-index: 1;
+    max-width: 580px;
+    width: 92%;
+    backdrop-filter: blur(0.4px);
+  }
+  .step--2 .card {
+    background: color-mix(in srgb, var(--paper) 86%, transparent);
+  }
+  @supports not (background: color-mix(in srgb, white 50%, transparent)) {
+    .step--2 .card { background: var(--paper); }
+  }
+  .step--2 .shape { left: 6%; bottom: 8%; }
+
+  /* Step 3: numeral right, card left */
+  .step--3 { --accent: var(--vermillion); }
+  .step--3 .grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+    gap: clamp(0px, 2vw, 24px);
+  }
+  .step--3 .numeral { grid-column: 2; justify-self: end; transform-origin: 70% 55%; }
+  .step--3 .card-wrap { grid-column: 1; grid-row: 1; justify-self: start; max-width: 560px; }
+  .step--3 .shape { left: 6%; top: 10%; }
+
+  /* ------------ The numerals ------------ */
+  .numeral {
+    font-family: var(--serif);
+    font-size: clamp(180px, 22vw, 380px);
+    line-height: 0.85;
+    letter-spacing: -0.04em;
+    color: var(--accent);
+    font-variation-settings: "opsz" 144, "wght" var(--wght);
+    font-weight: 280;
+    user-select: none;
+    display: block;
+    transition:
+      --wght 600ms cubic-bezier(.2,.7,.2,1),
+      transform 600ms cubic-bezier(.2,.7,.2,1);
+    transform: rotate(0deg);
+    will-change: transform, font-variation-settings;
+  }
+
+  .step:hover .numeral,
+  .step:focus-within .numeral {
+    --wght: 520;
+    transform: rotate(-1.5deg);
+  }
+
+  /* ------------ The cards ------------ */
+  .card {
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: clamp(28px, 3vw, 40px) clamp(28px, 3.4vw, 44px);
+    box-shadow: var(--shadow-sm);
+    transition: transform 320ms cubic-bezier(.2,.7,.2,1), box-shadow 320ms ease;
+    position: relative;
+  }
+  .step:hover .card,
+  .step:focus-within .card {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+  }
+
+  .step-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--sans);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--ink-3);
+    font-weight: 600;
+    margin-bottom: 18px;
+  }
+  .step-tag .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--accent);
+    display: inline-block;
+  }
+
+  .step-title {
+    font-family: var(--sans);
+    font-weight: 700;
+    font-size: clamp(20px, 2vw, 24px);
+    letter-spacing: -0.01em;
+    color: var(--ink);
+    margin: 0 0 12px 0;
+    line-height: 1.18;
+  }
+  .step-body {
+    font-family: var(--sans);
+    font-weight: 400;
+    font-size: clamp(15px, 1.05vw, 16px);
+    color: var(--ink-2);
+    margin: 0;
+    line-height: 1.6;
+    max-width: 38ch;
+  }
+  .step-body code { color: var(--ink); }
+
+  /* ------------ Kandinsky shapes ------------ */
+  .shape {
+    position: absolute;
+    pointer-events: none;
+    opacity: 0.92;
+  }
+  .shape svg { display: block; }
+
+  /* circle on Step 1 (violet) */
+  .shape--circle { width: clamp(40px, 4.4vw, 64px); height: clamp(40px, 4.4vw, 64px); }
+  .shape--circle .fill { fill: var(--violet); }
+
+  /* triangle on Step 2 (mustard) */
+  .shape--triangle { width: clamp(54px, 5vw, 78px); height: clamp(54px, 5vw, 78px); }
+  .shape--triangle .fill { fill: var(--mustard); }
+
+  /* arc/line on Step 3 (cobalt) */
+  .shape--arc { width: clamp(70px, 7vw, 110px); height: clamp(70px, 7vw, 110px); }
+  .shape--arc .stroke { stroke: var(--cobalt); fill: none; stroke-width: 2.4; stroke-linecap: round; }
+
+  /* ------------ Footer link ------------ */
+  .footer {
+    margin-top: clamp(80px, 10vw, 140px);
+    padding-top: clamp(28px, 3vw, 40px);
+    border-top: 1px solid var(--line);
+    max-width: 760px;
+  }
+  .footer p {
+    font-family: var(--sans);
+    font-size: clamp(14px, 1vw, 15px);
+    color: var(--ink-2);
+    margin: 0;
+    line-height: 1.6;
+  }
+  .footer a {
+    color: var(--ink);
+    text-decoration: underline;
+    text-decoration-color: var(--line-strong);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 4px;
+    transition: text-decoration-thickness 220ms ease, text-decoration-color 220ms ease;
+  }
+  .footer a:hover,
+  .footer a:focus-visible {
+    text-decoration-color: var(--ink);
+    text-decoration-thickness: 2px;
+  }
+
+  /* ------------ Container queries (mobile / narrow) ------------ */
+  @container section (max-width: 720px) {
+    .step .grid {
+      grid-template-columns: 1fr !important;
+      grid-template-rows: auto auto;
+      gap: 12px;
+      min-height: 0;
+    }
+    .step--1 .numeral,
+    .step--3 .numeral {
+      justify-self: start;
+      grid-column: 1;
+      grid-row: 1;
+      font-size: clamp(140px, 38vw, 200px);
+    }
+    .step--3 .card-wrap,
+    .step--1 .card-wrap {
+      justify-self: stretch;
+      max-width: none;
+      grid-column: 1;
+      grid-row: 2;
+    }
+    .step--2 .grid { min-height: 0; }
+    .step--2 .numeral {
+      position: relative;
+      inset: auto;
+      display: block;
+      justify-content: flex-start;
+      font-size: clamp(140px, 38vw, 200px);
+    }
+    .step--2 .card-wrap { width: 100%; max-width: none; }
+    .shape { display: none; }
+    .steps { gap: clamp(56px, 14vw, 96px); }
+  }
+
+  /* Fallback media query for browsers without container queries */
+  @media (max-width: 720px) {
+    .step .grid {
+      grid-template-columns: 1fr;
+      grid-template-rows: auto auto;
+      gap: 12px;
+      min-height: 0;
+    }
+    .step--1 .numeral,
+    .step--3 .numeral {
+      justify-self: start;
+      grid-column: 1;
+      grid-row: 1;
+      font-size: clamp(140px, 38vw, 200px);
+    }
+    .step--3 .card-wrap,
+    .step--1 .card-wrap {
+      justify-self: stretch;
+      max-width: none;
+      grid-column: 1;
+      grid-row: 2;
+    }
+    .step--2 .grid { min-height: 0; }
+    .step--2 .numeral {
+      position: relative;
+      inset: auto;
+      display: block;
+      font-size: clamp(140px, 38vw, 200px);
+      text-align: left;
+    }
+    .step--2 .card-wrap { width: 100%; max-width: none; }
+    .shape { display: none; }
+    .steps { gap: clamp(56px, 14vw, 96px); }
+  }
+
+  /* ------------ Reduced motion ------------ */
+  @media (prefers-reduced-motion: reduce) {
+    .numeral, .card, .footer a {
+      transition: none !important;
+    }
+    .step:hover .numeral,
+    .step:focus-within .numeral {
+      transform: none;
+    }
+  }
+
+  /* Focus visibility for keyboard users */
+  .step:focus-within { outline: none; }
+  .card:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <div class="spacer-top">
+    <span class="placeholder">— site content above —</span>
+  </div>
+
+  <section class="three-steps" aria-labelledby="three-steps-heading">
+
+    <header class="header">
+      <div class="eyebrow">How it works</div>
+      <h2 class="headline" id="three-steps-heading">
+        Three steps. You stay in the <em>driver&rsquo;s seat.</em>
+      </h2>
+      <p class="sub">You decide what Claude can see, you decide what Claude writes, you ask later.</p>
+    </header>
+
+    <ol class="steps" role="list">
+
+      <!-- Step 1 -->
+      <li class="step step--1" tabindex="0" role="group" aria-labelledby="step-1-title">
+        <div class="grid">
+          <span class="numeral" aria-hidden="true">1</span>
+
+          <span class="shape shape--circle" aria-hidden="true">
+            <svg viewBox="0 0 64 64"><circle class="fill" cx="32" cy="32" r="28" /></svg>
+          </span>
+
+          <div class="card-wrap">
+            <article class="card">
+              <div class="step-tag"><span class="dot"></span>Step 01</div>
+              <h3 class="step-title" id="step-1-title">Give it a folder.</h3>
+              <p class="step-body">Point Margins at one folder on your computer. Your Obsidian vault, a project directory, anything. Claude only ever sees what&rsquo;s inside that folder. Nothing else on your machine.</p>
+            </article>
+          </div>
+        </div>
+      </li>
+
+      <!-- Step 2 -->
+      <li class="step step--2" tabindex="0" role="group" aria-labelledby="step-2-title">
+        <div class="grid">
+          <span class="numeral" aria-hidden="true">2</span>
+
+          <span class="shape shape--triangle" aria-hidden="true">
+            <svg viewBox="0 0 78 78"><polygon class="fill" points="39,4 74,72 4,72" /></svg>
+          </span>
+
+          <div class="card-wrap">
+            <article class="card">
+              <div class="step-tag"><span class="dot"></span>Step 02</div>
+              <h3 class="step-title" id="step-2-title">Drop your stuff in.</h3>
+              <p class="step-body">Drag in notes, writing, PDFs, meeting transcripts, anything you want Claude to know about. Ask Claude to compile it. Margins stages a clean source page in <code>proposed/</code> for you to accept.</p>
+            </article>
+          </div>
+        </div>
+      </li>
+
+      <!-- Step 3 -->
+      <li class="step step--3" tabindex="0" role="group" aria-labelledby="step-3-title">
+        <div class="grid">
+          <span class="numeral" aria-hidden="true">3</span>
+
+          <span class="shape shape--arc" aria-hidden="true">
+            <svg viewBox="0 0 110 110">
+              <path class="stroke" d="M8,86 Q55,-6 102,86" />
+            </svg>
+          </span>
+
+          <div class="card-wrap">
+            <article class="card">
+              <div class="step-tag"><span class="dot"></span>Step 03</div>
+              <h3 class="step-title" id="step-3-title">Ask anything. Connect everything.</h3>
+              <p class="step-body">Claude searches the sources you&rsquo;ve built, cites where each fact came from, and surfaces connections you didn&rsquo;t make: a meeting that overlaps with another, a thread you forgot was open, a pattern across months of notes. New edits go in <code>proposed/</code> for your review.</p>
+            </article>
+          </div>
+        </div>
+      </li>
+
+    </ol>
+
+    <div class="footer">
+      <p>Want the longer version? <a href="/how-it-works.html">See the full walkthrough</a> &mdash; folder layouts, the connection diagram, every tool Claude can call, and what the first month looks like.</p>
+    </div>
+
+  </section>
+
+  <div class="spacer-bot">
+    <span class="placeholder">— site content below —</span>
+  </div>
+
+</div>
+
+</body>
+</html>

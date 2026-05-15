@@ -1,0 +1,526 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Three steps — Composition VIII</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400..700&family=Newsreader:ital,wght@0,400..700;1,400..700&display=swap" rel="stylesheet">
+<style>
+  /* ---------- @property registrations ---------- */
+  @property --shape-x { syntax: '<length>'; inherits: false; initial-value: 0px; }
+  @property --shape-y { syntax: '<length>'; inherits: false; initial-value: 0px; }
+  @property --shape-rot { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+  @property --shape-scale { syntax: '<number>'; inherits: false; initial-value: 1; }
+  @property --shape-opacity { syntax: '<number>'; inherits: false; initial-value: 0; }
+  @property --hue-shift { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+
+  /* ---------- design tokens ---------- */
+  :root {
+    --bg: #faf7f2;
+    --paper: #ffffff;
+    --paper-soft: #f5f1ea;
+    --ink: #1a1612;
+    --ink-2: #4a423a;
+    --ink-3: #847a6b;
+    --line: #ece6d9;
+    --line-strong: #d8d0bf;
+
+    --vermillion: #d63a2f;
+    --cobalt: #2c5aa0;
+    --mustard: #f0c14b;
+    --violet: #6a4f8c;
+    --green-poly: #6fa863;
+
+    --blend: multiply;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #15110d;
+      --paper: #1F1A14;
+      --paper-soft: #1A1612;
+      --ink: #E8E2D6;
+      --ink-2: #C8C2B5;
+      --ink-3: #8A857A;
+      --line: #2E281F;
+      --line-strong: #3D362B;
+
+      --vermillion: #E04B3F;
+      --cobalt: #5B86C9;
+      --mustard: #F0C14B;
+      --violet: #9A7FBE;
+      --green-poly: #8AC078;
+
+      --blend: screen;
+    }
+  }
+
+  /* ---------- base ---------- */
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Manrope', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    font-weight: 400;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  .pre-spacer { height: 140vh; display: grid; place-items: center; color: var(--ink-3); font-size: 14px; letter-spacing: .08em; text-transform: uppercase; }
+  .post-spacer { height: 80vh; display: grid; place-items: center; color: var(--ink-3); font-size: 14px; letter-spacing: .08em; text-transform: uppercase; }
+  .spacer-mark::before { content: '↓ scroll ↓'; opacity: .4; }
+  .spacer-mark.up::before { content: '↑ scroll back ↑'; }
+
+  /* ---------- the section ---------- */
+  .section {
+    position: relative;
+    padding: 120px 24px 140px;
+    overflow: hidden;
+    isolation: isolate;
+  }
+
+  .wrap {
+    max-width: 1100px;
+    margin: 0 auto;
+    position: relative;
+    z-index: 2;
+  }
+
+  /* ---------- header ---------- */
+  .eyebrow {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin: 0 0 18px 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .eyebrow::before {
+    content: '';
+    width: 22px; height: 1px; background: var(--line-strong);
+  }
+
+  h2.heading {
+    font-family: 'Newsreader', Georgia, serif;
+    font-weight: 500;
+    font-size: clamp(34px, 5.2vw, 56px);
+    line-height: 1.04;
+    letter-spacing: -0.018em;
+    color: var(--ink);
+    margin: 0 0 18px 0;
+    max-width: 22ch;
+  }
+  h2.heading .ital {
+    font-style: italic;
+    font-weight: 500;
+  }
+
+  .sub {
+    color: var(--ink-2);
+    font-size: clamp(15px, 1.4vw, 17px);
+    line-height: 1.55;
+    max-width: 60ch;
+    margin: 0 0 64px 0;
+  }
+
+  /* ---------- cards ---------- */
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 22px;
+  }
+
+  @media (max-width: 880px) {
+    .cards { grid-template-columns: 1fr; }
+  }
+
+  .card {
+    position: relative;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 28px 26px 30px;
+    transition: transform .35s cubic-bezier(.2,.7,.2,1), box-shadow .35s ease, border-color .35s ease;
+    overflow: hidden;
+  }
+
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 4px;
+    background: var(--accent);
+    border-radius: 14px 14px 0 0;
+    transform-origin: left center;
+  }
+
+  .card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 18px 40px -28px rgba(26,22,18,.35);
+    border-color: var(--line-strong);
+  }
+
+  .num {
+    font-family: 'Manrope', sans-serif;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    font-size: 64px;
+    line-height: .9;
+    letter-spacing: -0.04em;
+    color: var(--accent);
+    margin: 6px 0 18px 0;
+    display: block;
+  }
+
+  .card h3 {
+    font-family: 'Manrope', sans-serif;
+    font-weight: 700;
+    font-size: 19px;
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+    margin: 0 0 10px 0;
+  }
+
+  .card p {
+    color: var(--ink-2);
+    font-size: 14.5px;
+    line-height: 1.6;
+    margin: 0;
+  }
+
+  .card code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12.5px;
+    background: var(--paper-soft);
+    border: 1px solid var(--line);
+    color: var(--ink);
+    padding: 1px 6px;
+    border-radius: 5px;
+  }
+
+  .card[data-step="1"] { --accent: var(--mustard); }
+  .card[data-step="2"] { --accent: var(--cobalt); }
+  .card[data-step="3"] { --accent: var(--vermillion); }
+
+  /* ---------- footer link ---------- */
+  .foot {
+    margin-top: 56px;
+    color: var(--ink-2);
+    font-size: 15px;
+    line-height: 1.55;
+    max-width: 70ch;
+  }
+  .foot a {
+    color: var(--ink);
+    text-decoration: none;
+    border-bottom: 1px solid var(--line-strong);
+    transition: border-color .2s ease;
+  }
+  .foot a:hover { border-color: var(--ink); }
+
+  /* ---------- composition canvas ---------- */
+  .canvas {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    overflow: hidden;
+  }
+
+  .canvas svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* shapes use mix-blend-mode for Kandinsky color mixing */
+  .shape {
+    mix-blend-mode: var(--blend);
+    transform-box: fill-box;
+    transform-origin: center;
+    will-change: transform, opacity;
+  }
+
+  /* ---------- scroll-driven choreography ---------- */
+  /* The composition assembles as the section scrolls into view,
+     holds while it occupies the viewport, and dissolves on exit. */
+
+  @supports (animation-timeline: view()) {
+    .canvas {
+      animation: composition-fade linear both;
+      animation-timeline: view();
+      animation-range: entry 0% exit 100%;
+    }
+
+    @keyframes composition-fade {
+      0%   { opacity: 0; }
+      18%  { opacity: 1; }
+      82%  { opacity: 1; }
+      100% { opacity: 0; }
+    }
+
+    /* Each shape gets a custom keyframe and view-timeline range.
+       Start: dispersed, off-axis, rotated, low scale.
+       Mid:   composed, balanced around the cards.
+       End:   drift outward, dissolve. */
+
+    .s-bigCircle    { animation: bigCircleMove linear both; animation-timeline: view(); animation-range: entry 0% exit 100%; }
+    .s-cobaltCirc   { animation: cobaltCircleMove linear both; animation-timeline: view(); animation-range: entry 0% exit 100%; }
+    .s-vermTri      { animation: vermTriMove linear both; animation-timeline: view(); animation-range: entry 0% exit 100%; }
+    .s-mustardArc   { animation: mustardArcMove linear both; animation-timeline: view(); animation-range: entry 0% exit 100%; }
+    .s-violetTri    { animation: violetTriMove linear both; animation-timeline: view(); animation-range: entry 0% exit 100%; }
+    .s-greenChip    { animation: greenChipMove linear both; animation-timeline: view(); animation-range: entry 0% exit 100%; }
+    .s-line1        { animation: line1Move linear both; animation-timeline: view(); animation-range: entry 0% exit 100%; }
+    .s-line2        { animation: line2Move linear both; animation-timeline: view(); animation-range: entry 0% exit 100%; }
+    .s-line3        { animation: line3Move linear both; animation-timeline: view(); animation-range: entry 0% exit 100%; }
+    .s-grid         { animation: gridMove linear both; animation-timeline: view(); animation-range: entry 0% exit 100%; }
+    .s-checker      { animation: checkerMove linear both; animation-timeline: view(); animation-range: entry 0% exit 100%; }
+    .s-dot1         { animation: dot1Move linear both; animation-timeline: view(); animation-range: entry 0% exit 100%; }
+    .s-dot2         { animation: dot2Move linear both; animation-timeline: view(); animation-range: entry 0% exit 100%; }
+    .s-dot3         { animation: dot3Move linear both; animation-timeline: view(); animation-range: entry 0% exit 100%; }
+    .s-arcThin      { animation: arcThinMove linear both; animation-timeline: view(); animation-range: entry 0% exit 100%; }
+
+    @keyframes bigCircleMove {
+      0%   { transform: translate(-22vw, -40vh) rotate(-32deg) scale(.55); opacity: 0; }
+      35%  { transform: translate(-2vw, -8vh) rotate(-6deg) scale(1); opacity: .85; }
+      70%  { transform: translate(-2vw, -8vh) rotate(-6deg) scale(1); opacity: .85; }
+      100% { transform: translate(8vw, 12vh) rotate(18deg) scale(1.1); opacity: 0; }
+    }
+    @keyframes cobaltCircleMove {
+      0%   { transform: translate(40vw, -30vh) scale(.4); opacity: 0; }
+      40%  { transform: translate(0, 0) scale(1); opacity: .9; }
+      70%  { transform: translate(0, 0) scale(1); opacity: .9; }
+      100% { transform: translate(-12vw, 16vh) scale(.7); opacity: 0; }
+    }
+    @keyframes vermTriMove {
+      0%   { transform: translate(60vw, 40vh) rotate(140deg) scale(.5); opacity: 0; }
+      45%  { transform: translate(0, 0) rotate(0deg) scale(1); opacity: .95; }
+      72%  { transform: translate(0, 0) rotate(0deg) scale(1); opacity: .95; }
+      100% { transform: translate(18vw, -10vh) rotate(-40deg) scale(.7); opacity: 0; }
+    }
+    @keyframes mustardArcMove {
+      0%   { transform: translate(-40vw, 30vh) rotate(60deg) scale(.6); opacity: 0; }
+      40%  { transform: translate(0, 0) rotate(0deg) scale(1); opacity: 1; }
+      72%  { transform: translate(0, 0) rotate(0deg) scale(1); opacity: 1; }
+      100% { transform: translate(-15vw, -8vh) rotate(-28deg) scale(.8); opacity: 0; }
+    }
+    @keyframes violetTriMove {
+      0%   { transform: translate(-30vw, 50vh) rotate(-90deg) scale(.4); opacity: 0; }
+      45%  { transform: translate(0, 0) rotate(0deg) scale(1); opacity: .8; }
+      72%  { transform: translate(0, 0) rotate(0deg) scale(1); opacity: .8; }
+      100% { transform: translate(10vw, 18vh) rotate(45deg) scale(.6); opacity: 0; }
+    }
+    @keyframes greenChipMove {
+      0%   { transform: translate(50vw, -20vh) rotate(-45deg) scale(.6); opacity: 0; }
+      45%  { transform: translate(0, 0) rotate(0deg) scale(1); opacity: .85; }
+      72%  { transform: translate(0, 0) rotate(0deg) scale(1); opacity: .85; }
+      100% { transform: translate(-8vw, 14vh) rotate(35deg) scale(.7); opacity: 0; }
+    }
+    @keyframes line1Move {
+      0%   { transform: translate(0, -30vh) rotate(-15deg) scale(.6); opacity: 0; }
+      40%  { transform: translate(0, 0) rotate(0deg) scale(1); opacity: .9; }
+      72%  { transform: translate(0, 0) rotate(0deg) scale(1); opacity: .9; }
+      100% { transform: translate(-6vw, 8vh) rotate(8deg) scale(.9); opacity: 0; }
+    }
+    @keyframes line2Move {
+      0%   { transform: translate(0, 30vh) rotate(20deg) scale(.6); opacity: 0; }
+      45%  { transform: translate(0, 0) rotate(0deg) scale(1); opacity: .9; }
+      72%  { transform: translate(0, 0) rotate(0deg) scale(1); opacity: .9; }
+      100% { transform: translate(6vw, -8vh) rotate(-12deg) scale(.9); opacity: 0; }
+    }
+    @keyframes line3Move {
+      0%   { transform: translate(40vw, 0) rotate(45deg) scale(.5); opacity: 0; }
+      48%  { transform: translate(0, 0) rotate(0deg) scale(1); opacity: .85; }
+      72%  { transform: translate(0, 0) rotate(0deg) scale(1); opacity: .85; }
+      100% { transform: translate(-20vw, 6vh) rotate(-30deg) scale(.8); opacity: 0; }
+    }
+    @keyframes gridMove {
+      0%   { transform: translate(0, 20vh) scale(.6); opacity: 0; }
+      50%  { transform: translate(0, 0) scale(1); opacity: .55; }
+      72%  { transform: translate(0, 0) scale(1); opacity: .55; }
+      100% { transform: translate(0, -10vh) scale(.85); opacity: 0; }
+    }
+    @keyframes checkerMove {
+      0%   { transform: translate(-30vw, 30vh) rotate(-25deg) scale(.5); opacity: 0; }
+      50%  { transform: translate(0, 0) rotate(0deg) scale(1); opacity: .9; }
+      72%  { transform: translate(0, 0) rotate(0deg) scale(1); opacity: .9; }
+      100% { transform: translate(12vw, -8vh) rotate(20deg) scale(.7); opacity: 0; }
+    }
+    @keyframes dot1Move {
+      0%   { transform: translate(-20vw, -20vh) scale(.3); opacity: 0; }
+      45%  { transform: translate(0, 0) scale(1); opacity: .9; }
+      72%  { transform: translate(0, 0) scale(1); opacity: .9; }
+      100% { transform: translate(8vw, 12vh) scale(.8); opacity: 0; }
+    }
+    @keyframes dot2Move {
+      0%   { transform: translate(20vw, 20vh) scale(.3); opacity: 0; }
+      48%  { transform: translate(0, 0) scale(1); opacity: .9; }
+      72%  { transform: translate(0, 0) scale(1); opacity: .9; }
+      100% { transform: translate(-8vw, -10vh) scale(.8); opacity: 0; }
+    }
+    @keyframes dot3Move {
+      0%   { transform: translate(-15vw, 25vh) scale(.3); opacity: 0; }
+      50%  { transform: translate(0, 0) scale(1); opacity: .85; }
+      72%  { transform: translate(0, 0) scale(1); opacity: .85; }
+      100% { transform: translate(10vw, -14vh) scale(.7); opacity: 0; }
+    }
+    @keyframes arcThinMove {
+      0%   { transform: translate(30vw, -30vh) rotate(120deg) scale(.5); opacity: 0; }
+      50%  { transform: translate(0, 0) rotate(0deg) scale(1); opacity: .8; }
+      72%  { transform: translate(0, 0) rotate(0deg) scale(1); opacity: .8; }
+      100% { transform: translate(-12vw, 14vh) rotate(-60deg) scale(.7); opacity: 0; }
+    }
+
+    /* card hover bumps companion shape forward */
+    .card[data-step="1"]:hover ~ .canvas .s-mustardArc,
+    .card[data-step="1"]:hover ~ .canvas .s-checker {
+      filter: drop-shadow(0 0 18px rgba(240, 193, 75, .35));
+    }
+    .card[data-step="2"]:hover ~ .canvas .s-cobaltCirc,
+    .card[data-step="2"]:hover ~ .canvas .s-bigCircle {
+      filter: drop-shadow(0 0 18px rgba(44, 90, 160, .35));
+    }
+    .card[data-step="3"]:hover ~ .canvas .s-vermTri,
+    .card[data-step="3"]:hover ~ .canvas .s-line3 {
+      filter: drop-shadow(0 0 18px rgba(214, 58, 47, .35));
+    }
+  }
+
+  /* ---------- fallback: render final composed state statically ---------- */
+  @supports not (animation-timeline: view()) {
+    .canvas { opacity: 1; }
+    .shape { opacity: .85; }
+    .s-grid { opacity: .55; }
+  }
+
+  /* ---------- reduced motion ---------- */
+  @media (prefers-reduced-motion: reduce) {
+    .canvas, .shape {
+      animation: none !important;
+      opacity: 1 !important;
+      transform: none !important;
+    }
+    .s-grid { opacity: .5 !important; }
+    .card { transition: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="pre-spacer"><span class="spacer-mark"></span></div>
+
+<section class="section" aria-labelledby="three-steps-h2">
+  <div class="wrap">
+
+    <p class="eyebrow">How it works</p>
+
+    <h2 class="heading" id="three-steps-h2">
+      Three steps. You stay in the <span class="ital">driver's seat.</span>
+    </h2>
+
+    <p class="sub">You decide what Claude can see, you decide what Claude writes, you ask later.</p>
+
+    <div class="cards">
+      <article class="card" data-step="1">
+        <span class="num" aria-hidden="true">1</span>
+        <h3>Give it a folder.</h3>
+        <p>Point Margins at one folder on your computer. Your Obsidian vault, a project directory, anything. Claude only ever sees what's inside that folder. Nothing else on your machine.</p>
+      </article>
+
+      <article class="card" data-step="2">
+        <span class="num" aria-hidden="true">2</span>
+        <h3>Drop your stuff in.</h3>
+        <p>Drag in notes, writing, PDFs, meeting transcripts, anything you want Claude to know about. Ask Claude to compile it. Margins stages a clean source page in <code>proposed/</code> for you to accept.</p>
+      </article>
+
+      <article class="card" data-step="3">
+        <span class="num" aria-hidden="true">3</span>
+        <h3>Ask anything. Connect everything.</h3>
+        <p>Claude searches the sources you've built, cites where each fact came from, and surfaces connections you didn't make: a meeting that overlaps with another, a thread you forgot was open, a pattern across months of notes. New edits go in <code>proposed/</code> for your review.</p>
+      </article>
+    </div>
+
+    <p class="foot">Want the longer version? <a href="/how-it-works.html">See the full walkthrough</a> — folder layouts, the connection diagram, every tool Claude can call, and what the first month looks like.</p>
+
+  </div>
+
+  <!-- composition canvas -->
+  <div class="canvas" aria-hidden="true">
+    <svg viewBox="0 0 1200 900" preserveAspectRatio="xMidYMid slice">
+      <!-- faint grid scaffold (Bauhaus geometric base) -->
+      <g class="shape s-grid" stroke="var(--line-strong)" stroke-width="1" fill="none" opacity="1">
+        <line x1="200" y1="120" x2="200" y2="780" />
+        <line x1="600" y1="80"  x2="600" y2="820" />
+        <line x1="1000" y1="120" x2="1000" y2="780" />
+        <line x1="120" y1="450" x2="1080" y2="450" />
+      </g>
+
+      <!-- big violet circle, upper-left counterweight -->
+      <circle class="shape s-bigCircle" cx="240" cy="260" r="170"
+              fill="var(--violet)" opacity=".55"/>
+
+      <!-- cobalt mid circle -->
+      <circle class="shape s-cobaltCirc" cx="980" cy="280" r="95"
+              fill="var(--cobalt)" opacity=".82"/>
+
+      <!-- vermillion triangle, lower-right energy -->
+      <polygon class="shape s-vermTri" points="950,640 1110,720 940,780"
+               fill="var(--vermillion)" opacity=".92"/>
+
+      <!-- mustard arc / quarter-disc, lower-left -->
+      <path class="shape s-mustardArc"
+            d="M 120 760 A 220 220 0 0 1 340 540 L 340 760 Z"
+            fill="var(--mustard)" opacity="1"/>
+
+      <!-- supporting violet small triangle -->
+      <polygon class="shape s-violetTri" points="500,720 600,640 600,760"
+               fill="var(--violet)" opacity=".7"/>
+
+      <!-- green polychrome chip -->
+      <rect class="shape s-greenChip" x="780" y="520" width="70" height="70"
+            fill="var(--green-poly)" opacity=".85" transform="rotate(12 815 555)"/>
+
+      <!-- diagonal lines slicing the composition -->
+      <line class="shape s-line1" x1="80"  y1="180" x2="560" y2="420"
+            stroke="var(--ink)" stroke-width="2" opacity=".85"/>
+      <line class="shape s-line2" x1="640" y1="500" x2="1140" y2="220"
+            stroke="var(--ink)" stroke-width="2" opacity=".85"/>
+      <line class="shape s-line3" x1="380" y1="800" x2="900" y2="420"
+            stroke="var(--vermillion)" stroke-width="3" opacity=".85"/>
+
+      <!-- thin black arc, signature Kandinsky element -->
+      <path class="shape s-arcThin"
+            d="M 320 380 A 280 280 0 0 1 880 380"
+            fill="none" stroke="var(--ink)" stroke-width="1.5" opacity=".6"/>
+
+      <!-- checkerboard fragment -->
+      <g class="shape s-checker">
+        <rect x="60"  y="540" width="22" height="22" fill="var(--ink)"/>
+        <rect x="82"  y="540" width="22" height="22" fill="var(--paper)" stroke="var(--ink)" stroke-width="1"/>
+        <rect x="60"  y="562" width="22" height="22" fill="var(--paper)" stroke="var(--ink)" stroke-width="1"/>
+        <rect x="82"  y="562" width="22" height="22" fill="var(--ink)"/>
+        <rect x="104" y="540" width="22" height="22" fill="var(--paper)" stroke="var(--ink)" stroke-width="1"/>
+        <rect x="104" y="562" width="22" height="22" fill="var(--ink)"/>
+      </g>
+
+      <!-- floating dots / planets -->
+      <circle class="shape s-dot1" cx="430" cy="160" r="14" fill="var(--vermillion)"/>
+      <circle class="shape s-dot2" cx="1100" cy="540" r="9"  fill="var(--ink)"/>
+      <circle class="shape s-dot3" cx="160" cy="660" r="11" fill="var(--cobalt)"/>
+    </svg>
+  </div>
+</section>
+
+<div class="post-spacer"><span class="spacer-mark up"></span></div>
+
+</body>
+</html>

@@ -1,0 +1,843 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Install Margins — Live Canvas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #faf7f2; --paper: #ffffff; --paper-soft: #f5f1ea;
+    --ink: #1a1612; --ink-2: #4a423a; --ink-3: #847a6b; --ink-4: #b0a99b;
+    --line: #ece6d9; --line-strong: #d8d0bf;
+    --vermillion: #d63a2f; --cobalt: #2c5aa0; --mustard: #f0c14b;
+    --violet: #6a4f8c; --green-poly: #6fa863;
+    --shadow: 0 1px 2px rgba(26,22,18,0.04), 0 12px 40px rgba(26,22,18,0.08);
+    --shadow-lift: 0 1px 2px rgba(26,22,18,0.05), 0 18px 50px rgba(26,22,18,0.14);
+    --blend: multiply;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #15110d; --paper: #1F1A14; --paper-soft: #1A1612;
+      --ink: #E8E2D6; --ink-2: #C8C2B5; --ink-3: #8A857A; --ink-4: #5C574F;
+      --line: #2E281F; --line-strong: #3D362B;
+      --vermillion: #E04B3F; --cobalt: #5B86C9; --mustard: #F0C14B;
+      --violet: #9A7FBE; --green-poly: #8AC078;
+      --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 12px 40px rgba(0,0,0,0.45);
+      --shadow-lift: 0 1px 2px rgba(0,0,0,0.5), 0 18px 50px rgba(0,0,0,0.55);
+      --blend: screen;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; background: var(--bg); color: var(--ink);
+    font-family: 'Manrope', system-ui, -apple-system, sans-serif;
+    font-feature-settings: "ss01", "cv11";
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ─── Section ─────────────────────────────────────── */
+  .section {
+    position: relative;
+    min-height: 100vh;
+    padding: 80vh 24px 80vh;
+    overflow: hidden;
+    isolation: isolate;
+  }
+  .section .canvas-wrap {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+  }
+  .section canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%; height: 100%;
+    display: block;
+  }
+  .container {
+    position: relative;
+    z-index: 1;
+    max-width: 1100px;
+    margin: 0 auto;
+    pointer-events: none;
+  }
+  .container > * { pointer-events: auto; }
+
+  /* ─── Heading block ───────────────────────────────── */
+  .eyebrow {
+    font: 500 11px/1 'Manrope', sans-serif;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin-bottom: 18px;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .eyebrow::before {
+    content: "";
+    width: 22px; height: 1px; background: var(--line-strong);
+  }
+  h2.section-h {
+    font-family: 'Newsreader', Georgia, serif;
+    font-weight: 500;
+    font-size: clamp(40px, 6vw, 68px);
+    line-height: 1.02;
+    letter-spacing: -0.022em;
+    margin: 0 0 14px;
+    color: var(--ink);
+  }
+  h2.section-h em {
+    font-style: italic;
+    font-weight: 400;
+    color: var(--ink-2);
+  }
+  .sub {
+    font-family: 'Newsreader', Georgia, serif;
+    font-style: italic;
+    font-weight: 400;
+    font-size: clamp(18px, 2vw, 22px);
+    color: var(--ink-3);
+    margin: 0 0 40px;
+    max-width: 560px;
+  }
+
+  /* ─── Card ────────────────────────────────────────── */
+  .card {
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    max-width: 720px;
+    transition: box-shadow 240ms ease, transform 240ms ease;
+  }
+  .card:hover { box-shadow: var(--shadow-lift); }
+
+  /* ─── Tab switcher ────────────────────────────────── */
+  .tabs {
+    position: relative;
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--line);
+    padding: 0 8px;
+    background: var(--paper-soft);
+  }
+  .tab {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    color: var(--ink-2);
+    font: 500 13px/1 'Manrope', sans-serif;
+    letter-spacing: 0.01em;
+    padding: 18px 18px 16px;
+    cursor: pointer;
+    position: relative;
+    transition: color 180ms ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .tab:hover { color: var(--ink); }
+  .tab[aria-selected="true"] { color: var(--ink); font-weight: 600; }
+  .tab .badge {
+    font-size: 10px;
+    color: var(--ink-3);
+    background: transparent;
+    border: 1px solid var(--line-strong);
+    border-radius: 99px;
+    padding: 2px 6px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+  }
+  .tab-spacer { flex: 1; }
+  .help-btn {
+    appearance: none;
+    background: transparent;
+    border: 1px solid var(--line-strong);
+    color: var(--ink-3);
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    align-self: center;
+    margin-right: 6px;
+    cursor: pointer;
+    font: 600 11px/1 'Manrope', sans-serif;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    transition: all 160ms ease;
+  }
+  .help-btn:hover { color: var(--ink); border-color: var(--ink-3); }
+  .help-btn:focus-visible { outline: 2px solid var(--cobalt); outline-offset: 2px; }
+  .tooltip {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    width: 320px;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    box-shadow: var(--shadow-lift);
+    padding: 14px 16px;
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--ink-2);
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-4px);
+    transition: opacity 160ms ease, transform 160ms ease;
+    z-index: 5;
+  }
+  .tooltip.show {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+  }
+  .tooltip strong { color: var(--ink); font-weight: 600; }
+  .tooltip p { margin: 0 0 8px; }
+  .tooltip p:last-child { margin: 0; }
+
+  .tab-underline {
+    position: absolute;
+    bottom: -1px;
+    height: 2px;
+    background: var(--cobalt);
+    transition: left 320ms cubic-bezier(.6,.05,.2,1), width 320ms cubic-bezier(.6,.05,.2,1);
+  }
+
+  /* ─── Panels ──────────────────────────────────────── */
+  .panel {
+    padding: 36px 36px 34px;
+    display: none;
+  }
+  .panel[data-active="true"] {
+    display: block;
+    animation: fadeUp 280ms ease both;
+  }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .panel h3 {
+    font-family: 'Newsreader', Georgia, serif;
+    font-weight: 500;
+    font-size: 28px;
+    line-height: 1.1;
+    letter-spacing: -0.012em;
+    margin: 0 0 8px;
+    color: var(--ink);
+  }
+  .panel .meta {
+    font: 500 12px/1.4 'Manrope', sans-serif;
+    color: var(--ink-3);
+    letter-spacing: 0.02em;
+    margin-bottom: 26px;
+  }
+  .panel .meta .dot { color: var(--ink-4); margin: 0 8px; }
+  .panel .body {
+    font-size: 15px;
+    line-height: 1.65;
+    color: var(--ink-2);
+    margin-top: 24px;
+    max-width: 540px;
+  }
+  .panel .body strong { color: var(--ink); font-weight: 600; }
+  .panel .body code {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 13px;
+    background: var(--paper-soft);
+    border: 1px solid var(--line);
+    padding: 1px 6px;
+    border-radius: 4px;
+    color: var(--ink);
+  }
+
+  /* ─── Primary CTA ─────────────────────────────────── */
+  .cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--vermillion);
+    color: #fff;
+    text-decoration: none;
+    font: 600 15px/1 'Manrope', sans-serif;
+    letter-spacing: -0.005em;
+    padding: 16px 26px;
+    border-radius: 10px;
+    border: 0;
+    cursor: pointer;
+    transition: transform 180ms cubic-bezier(.2,.8,.2,1), box-shadow 180ms ease, filter 180ms ease;
+    box-shadow: 0 1px 0 rgba(0,0,0,0.06), 0 8px 22px -8px rgba(214,58,47,0.6);
+  }
+  @media (prefers-color-scheme: dark) {
+    .cta { color: #15110d; }
+  }
+  .cta:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 1px 0 rgba(0,0,0,0.06), 0 14px 30px -10px rgba(214,58,47,0.7);
+    filter: brightness(1.04);
+  }
+  .cta:active { transform: translateY(0); }
+  .cta:focus-visible { outline: 2px solid var(--cobalt); outline-offset: 3px; }
+  .cta .arrow {
+    font-family: 'Newsreader', Georgia, serif;
+    font-size: 18px;
+    line-height: 1;
+    transition: transform 200ms ease;
+  }
+  .cta:hover .arrow { transform: translateY(2px); }
+
+  /* ─── Command pills ───────────────────────────────── */
+  .pill {
+    display: flex;
+    align-items: stretch;
+    background: var(--paper-soft);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 12px;
+    transition: border-color 160ms ease;
+  }
+  .pill:hover { border-color: var(--line-strong); }
+  .pill .cmd {
+    flex: 1;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 13.5px;
+    color: var(--ink);
+    padding: 14px 16px;
+    overflow-x: auto;
+    white-space: nowrap;
+    line-height: 1.4;
+  }
+  .pill .cmd::before {
+    content: "$ ";
+    color: var(--ink-4);
+    user-select: none;
+  }
+  .pill .copy {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    border-left: 1px solid var(--line);
+    color: var(--ink-3);
+    font: 500 11px/1 'Manrope', sans-serif;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 0 18px;
+    cursor: pointer;
+    transition: color 140ms ease, background 140ms ease;
+    min-width: 84px;
+  }
+  .pill .copy:hover { color: var(--ink); background: rgba(0,0,0,0.02); }
+  @media (prefers-color-scheme: dark) {
+    .pill .copy:hover { background: rgba(255,255,255,0.04); }
+  }
+  .pill .copy.copied { color: var(--green-poly); }
+  .pill .copy:focus-visible { outline: 2px solid var(--cobalt); outline-offset: -2px; }
+
+  /* ─── Hovering card amplifies canvas ──────────────── */
+  .card { will-change: transform; }
+
+  @media (max-width: 720px) {
+    .section { padding: 60vh 16px; }
+    .panel { padding: 28px 22px 26px; }
+    .tab { padding: 16px 12px 14px; font-size: 12px; }
+    .panel h3 { font-size: 24px; }
+    .tab .badge { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<section class="section" id="install-section">
+  <div class="canvas-wrap" aria-hidden="true">
+    <canvas id="bauhaus"></canvas>
+  </div>
+
+  <div class="container">
+    <div class="eyebrow">Get started</div>
+    <h2 class="section-h">Install <em>Margins.</em></h2>
+    <p class="sub">You saw it. Now run it on your files.</p>
+
+    <div class="card" id="install-card">
+      <div class="tabs" role="tablist" aria-label="Install path">
+        <button class="tab" role="tab" id="tab-desktop" aria-controls="panel-desktop" aria-selected="true" tabindex="0" data-tab="desktop">
+          Claude Desktop
+          <span class="badge">.mcpb</span>
+        </button>
+        <button class="tab" role="tab" id="tab-cli" aria-controls="panel-cli" aria-selected="false" tabindex="-1" data-tab="cli">
+          Claude Code / CLI
+          <span class="badge">npm</span>
+        </button>
+        <div class="tab-spacer"></div>
+        <button class="help-btn" id="help-btn" aria-label="What's the difference?" aria-expanded="false">?</button>
+        <div class="tooltip" id="tooltip" role="tooltip">
+          <p><strong>Desktop:</strong> double-click install with the .mcpb bundle. Works on macOS &amp; Windows.</p>
+          <p><strong>CLI:</strong> npm package, works with Claude Code or anywhere you have Node. Linux too.</p>
+        </div>
+        <div class="tab-underline" id="tab-underline"></div>
+      </div>
+
+      <!-- Panel: Desktop -->
+      <div class="panel" id="panel-desktop" role="tabpanel" aria-labelledby="tab-desktop" data-active="true">
+        <h3>Install for Claude Desktop.</h3>
+        <div class="meta">~28 MB <span class="dot">·</span> macOS &amp; Windows <span class="dot">·</span> MIT</div>
+        <a class="cta" href="https://github.com/cflorczyk9/Margins/releases/latest/download/margins-mcp.mcpb" download>
+          Download for Claude Desktop
+          <span class="arrow">↓</span>
+        </a>
+        <p class="body">
+          <strong>Double-click. Pick a folder. Ask Claude.</strong>
+          Margins shows up in your Connector list with its logo.
+        </p>
+      </div>
+
+      <!-- Panel: CLI -->
+      <div class="panel" id="panel-cli" role="tabpanel" aria-labelledby="tab-cli" data-active="false">
+        <h3>Install via npm.</h3>
+        <div class="meta">Node 18+ <span class="dot">·</span> macOS, Windows, Linux <span class="dot">·</span> MIT</div>
+
+        <div class="pill">
+          <div class="cmd" id="cmd-1">npm install -g margins-mcp</div>
+          <button class="copy" data-copy-target="cmd-1" aria-label="Copy install command">Copy</button>
+        </div>
+        <div class="pill">
+          <div class="cmd" id="cmd-2">margins-mcp install --vault /absolute/path/to/your/files</div>
+          <button class="copy" data-copy-target="cmd-2" aria-label="Copy setup command">Copy</button>
+        </div>
+
+        <p class="body">
+          The installer writes configs for Claude Desktop and Claude Code, scaffolds <code>raw/</code>, <code>proposed/</code>, and <code>.margins</code> in your folder, and verifies. To update later: <code>margins-mcp install --update</code>.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+(function() {
+  // ─── Tabs ─────────────────────────────────────────
+  const tabs = Array.from(document.querySelectorAll('.tab'));
+  const panels = {
+    desktop: document.getElementById('panel-desktop'),
+    cli: document.getElementById('panel-cli'),
+  };
+  const underline = document.getElementById('tab-underline');
+
+  function positionUnderline(tab) {
+    const tabRect = tab.getBoundingClientRect();
+    const parentRect = tab.parentElement.getBoundingClientRect();
+    underline.style.left = (tabRect.left - parentRect.left) + 'px';
+    underline.style.width = tabRect.width + 'px';
+  }
+
+  function activate(tab) {
+    tabs.forEach(t => {
+      const sel = t === tab;
+      t.setAttribute('aria-selected', sel ? 'true' : 'false');
+      t.setAttribute('tabindex', sel ? '0' : '-1');
+    });
+    Object.entries(panels).forEach(([k, p]) => {
+      p.setAttribute('data-active', k === tab.dataset.tab ? 'true' : 'false');
+    });
+    positionUnderline(tab);
+  }
+
+  tabs.forEach((tab, i) => {
+    tab.addEventListener('click', () => { activate(tab); tab.focus(); });
+    tab.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+        e.preventDefault();
+        const dir = e.key === 'ArrowRight' ? 1 : -1;
+        const next = tabs[(i + dir + tabs.length) % tabs.length];
+        activate(next);
+        next.focus();
+      } else if (e.key === 'Home') {
+        e.preventDefault();
+        activate(tabs[0]); tabs[0].focus();
+      } else if (e.key === 'End') {
+        e.preventDefault();
+        activate(tabs[tabs.length - 1]); tabs[tabs.length - 1].focus();
+      }
+    });
+  });
+
+  // Initial underline
+  requestAnimationFrame(() => positionUnderline(tabs[0]));
+  window.addEventListener('resize', () => {
+    const sel = tabs.find(t => t.getAttribute('aria-selected') === 'true');
+    if (sel) positionUnderline(sel);
+  });
+
+  // ─── Tooltip ──────────────────────────────────────
+  const helpBtn = document.getElementById('help-btn');
+  const tooltip = document.getElementById('tooltip');
+  let tooltipOpen = false;
+  function setTooltip(open) {
+    tooltipOpen = open;
+    tooltip.classList.toggle('show', open);
+    helpBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  helpBtn.addEventListener('click', (e) => { e.stopPropagation(); setTooltip(!tooltipOpen); });
+  helpBtn.addEventListener('mouseenter', () => setTooltip(true));
+  document.addEventListener('click', (e) => {
+    if (tooltipOpen && !tooltip.contains(e.target) && e.target !== helpBtn) setTooltip(false);
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && tooltipOpen) setTooltip(false); });
+
+  // ─── Copy buttons ─────────────────────────────────
+  document.querySelectorAll('.copy').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const target = document.getElementById(btn.dataset.copyTarget);
+      if (!target) return;
+      const text = target.textContent.trim();
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch (_) {
+        // Fallback
+        const ta = document.createElement('textarea');
+        ta.value = text; document.body.appendChild(ta); ta.select();
+        try { document.execCommand('copy'); } catch (_) {}
+        document.body.removeChild(ta);
+      }
+      const orig = btn.textContent;
+      btn.textContent = 'Copied';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.textContent = orig;
+        btn.classList.remove('copied');
+      }, 1200);
+    });
+  });
+
+  // ─── Bauhaus Live Canvas ─────────────────────────
+  const canvas = document.getElementById('bauhaus');
+  const section = document.getElementById('install-section');
+  const card = document.getElementById('install-card');
+  const ctx = canvas.getContext('2d');
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  let DPR = Math.min(window.devicePixelRatio || 1, 2);
+  let W = 0, H = 0;
+  let shapes = [];
+  let mouse = { x: -9999, y: -9999, active: false };
+  let cardHovered = false;
+  let running = false;
+  let visible = false;
+  let rafId = null;
+  let blendMode = 'multiply';
+  let palette = {};
+
+  function readPalette() {
+    const cs = getComputedStyle(document.documentElement);
+    palette = {
+      vermillion: cs.getPropertyValue('--vermillion').trim() || '#d63a2f',
+      cobalt:     cs.getPropertyValue('--cobalt').trim()     || '#2c5aa0',
+      mustard:    cs.getPropertyValue('--mustard').trim()    || '#f0c14b',
+      violet:     cs.getPropertyValue('--violet').trim()     || '#6a4f8c',
+      green:      cs.getPropertyValue('--green-poly').trim() || '#6fa863',
+      ink:        cs.getPropertyValue('--ink').trim()        || '#1a1612',
+      ink3:       cs.getPropertyValue('--ink-3').trim()      || '#847a6b',
+      paper:      cs.getPropertyValue('--paper').trim()      || '#fff',
+    };
+    const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    blendMode = dark ? 'screen' : 'multiply';
+  }
+
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    const rect = section.getBoundingClientRect();
+    W = rect.width;
+    H = rect.height;
+    canvas.width = Math.floor(W * DPR);
+    canvas.height = Math.floor(H * DPR);
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+
+  function rand(a, b) { return a + Math.random() * (b - a); }
+  function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+  function buildShapes() {
+    shapes = [];
+    const colors = [palette.vermillion, palette.cobalt, palette.mustard, palette.violet, palette.green];
+
+    // ~10 circles
+    for (let i = 0; i < 10; i++) {
+      const filled = i < 3;
+      shapes.push({
+        type: 'circle',
+        x: rand(0, W), y: rand(0, H),
+        r: filled ? rand(14, 36) : rand(28, 110),
+        vx: rand(-0.06, 0.06), vy: rand(-0.06, 0.06),
+        rot: 0, vrot: 0,
+        color: pick(colors),
+        filled,
+        lineW: filled ? 0 : rand(1.0, 2.2),
+        alpha: filled ? rand(0.55, 0.85) : rand(0.45, 0.75),
+        baseColor: null,
+      });
+    }
+    // ~5 thin triangles
+    for (let i = 0; i < 5; i++) {
+      shapes.push({
+        type: 'triangle',
+        x: rand(0, W), y: rand(0, H),
+        r: rand(36, 96),
+        vx: rand(-0.05, 0.05), vy: rand(-0.05, 0.05),
+        rot: rand(0, Math.PI * 2),
+        vrot: rand(-0.0018, 0.0018),
+        color: pick([palette.ink, palette.cobalt, palette.violet, palette.vermillion]),
+        lineW: rand(1.0, 1.6),
+        alpha: rand(0.5, 0.8),
+      });
+    }
+    // ~5 short straight lines
+    for (let i = 0; i < 5; i++) {
+      shapes.push({
+        type: 'line',
+        x: rand(0, W), y: rand(0, H),
+        len: rand(60, 140),
+        vx: rand(-0.04, 0.04), vy: rand(-0.04, 0.04),
+        rot: rand(0, Math.PI * 2),
+        vrot: rand(-0.0012, 0.0012),
+        color: pick([palette.ink, palette.mustard, palette.cobalt]),
+        lineW: rand(1.2, 2.0),
+        alpha: rand(0.5, 0.8),
+      });
+    }
+    // ~4 tiny solid dots
+    for (let i = 0; i < 4; i++) {
+      shapes.push({
+        type: 'dot',
+        x: rand(0, W), y: rand(0, H),
+        r: rand(3, 6),
+        vx: rand(-0.07, 0.07), vy: rand(-0.07, 0.07),
+        rot: 0, vrot: 0,
+        color: pick([palette.vermillion, palette.cobalt, palette.ink]),
+        alpha: rand(0.7, 0.95),
+      });
+    }
+    // store base colors so we can re-tint on hover
+    shapes.forEach(s => { s.baseColor = s.color; });
+  }
+
+  function hexToRgb(hex) {
+    hex = hex.replace('#', '');
+    if (hex.length === 3) hex = hex.split('').map(c => c+c).join('');
+    const n = parseInt(hex, 16);
+    return { r: (n>>16)&255, g: (n>>8)&255, b: n&255 };
+  }
+  function rgbStr(c, a) { return `rgba(${c.r},${c.g},${c.b},${a})`; }
+  function lerp(a,b,t){ return a + (b-a)*t; }
+  function tintToward(baseHex, towardHex, t) {
+    const a = hexToRgb(baseHex), b = hexToRgb(towardHex);
+    return { r: Math.round(lerp(a.r,b.r,t)), g: Math.round(lerp(a.g,b.g,t)), b: Math.round(lerp(a.b,b.b,t)) };
+  }
+
+  function step() {
+    // Find nearest shape to cursor (for amplification on card hover)
+    let nearestIdx = -1;
+    let nearestDist = Infinity;
+    if (cardHovered && mouse.active) {
+      for (let i = 0; i < shapes.length; i++) {
+        const s = shapes[i];
+        const d = Math.hypot(s.x - mouse.x, s.y - mouse.y);
+        if (d < nearestDist) { nearestDist = d; nearestIdx = i; }
+      }
+    }
+
+    for (let i = 0; i < shapes.length; i++) {
+      const s = shapes[i];
+
+      // drift
+      s.x += s.vx;
+      s.y += s.vy;
+      if (s.vrot) s.rot += s.vrot;
+
+      // soft cursor attraction within 180px
+      if (mouse.active) {
+        const dx = mouse.x - s.x;
+        const dy = mouse.y - s.y;
+        const d = Math.hypot(dx, dy);
+        if (d < 180 && d > 0.001) {
+          const force = (1 - d / 180) * 0.04;
+          s.vx += (dx / d) * force;
+          s.vy += (dy / d) * force;
+        }
+      }
+
+      // damping
+      s.vx *= 0.985; s.vy *= 0.985;
+      // drift floor so they keep moving
+      const sp = Math.hypot(s.vx, s.vy);
+      if (sp < 0.02) {
+        s.vx += rand(-0.01, 0.01);
+        s.vy += rand(-0.01, 0.01);
+      }
+      // soft bounds wrap
+      const margin = 120;
+      if (s.x < -margin) s.x = W + margin;
+      if (s.x > W + margin) s.x = -margin;
+      if (s.y < -margin) s.y = H + margin;
+      if (s.y > H + margin) s.y = -margin;
+    }
+
+    // ── render ─────────────────────────────────────
+    ctx.clearRect(0, 0, W, H);
+    ctx.globalCompositeOperation = blendMode;
+
+    for (let i = 0; i < shapes.length; i++) {
+      const s = shapes[i];
+      let color = s.baseColor;
+      let amp = 1;
+      if (i === nearestIdx) {
+        // tint toward vermillion
+        const tinted = tintToward(s.baseColor, palette.vermillion, 0.55);
+        color = `rgb(${tinted.r},${tinted.g},${tinted.b})`;
+        amp = 1.18;
+      }
+      const rgb = (typeof color === 'string' && color.startsWith('rgb'))
+        ? (() => { const m = color.match(/\d+/g); return { r:+m[0], g:+m[1], b:+m[2] }; })()
+        : hexToRgb(color);
+
+      ctx.save();
+      ctx.translate(s.x, s.y);
+      if (s.rot) ctx.rotate(s.rot);
+
+      if (s.type === 'circle') {
+        if (s.filled) {
+          ctx.fillStyle = rgbStr(rgb, s.alpha);
+          ctx.beginPath();
+          ctx.arc(0, 0, s.r * amp, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          ctx.strokeStyle = rgbStr(rgb, s.alpha);
+          ctx.lineWidth = s.lineW;
+          ctx.beginPath();
+          ctx.arc(0, 0, s.r * amp, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      } else if (s.type === 'triangle') {
+        ctx.strokeStyle = rgbStr(rgb, s.alpha);
+        ctx.lineWidth = s.lineW;
+        ctx.lineJoin = 'miter';
+        const r = s.r * amp;
+        ctx.beginPath();
+        for (let k = 0; k < 3; k++) {
+          const a = -Math.PI / 2 + k * (Math.PI * 2 / 3);
+          const x = Math.cos(a) * r;
+          const y = Math.sin(a) * r;
+          if (k === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+        ctx.stroke();
+      } else if (s.type === 'line') {
+        ctx.strokeStyle = rgbStr(rgb, s.alpha);
+        ctx.lineWidth = s.lineW;
+        ctx.lineCap = 'round';
+        const half = (s.len * amp) / 2;
+        ctx.beginPath();
+        ctx.moveTo(-half, 0);
+        ctx.lineTo(half, 0);
+        ctx.stroke();
+      } else if (s.type === 'dot') {
+        ctx.fillStyle = rgbStr(rgb, s.alpha);
+        ctx.beginPath();
+        ctx.arc(0, 0, s.r * amp, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.restore();
+    }
+
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  function tick() {
+    step();
+    if (running) rafId = requestAnimationFrame(tick);
+  }
+
+  function start() {
+    if (running || reduced) return;
+    running = true;
+    rafId = requestAnimationFrame(tick);
+  }
+  function stop() {
+    running = false;
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = null;
+  }
+
+  // ── pointer ────────────────────────────────────
+  section.addEventListener('pointermove', (e) => {
+    const rect = section.getBoundingClientRect();
+    mouse.x = e.clientX - rect.left;
+    mouse.y = e.clientY - rect.top;
+    mouse.active = true;
+  });
+  section.addEventListener('pointerleave', () => { mouse.active = false; mouse.x = -9999; mouse.y = -9999; });
+  card.addEventListener('pointerenter', () => { cardHovered = true; });
+  card.addEventListener('pointerleave', () => { cardHovered = false; });
+
+  // ── observers ──────────────────────────────────
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      visible = e.isIntersecting;
+      if (visible && !document.hidden) start(); else stop();
+    });
+  }, { threshold: 0.05 });
+  io.observe(section);
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) stop();
+    else if (visible) start();
+  });
+
+  // ── theme switch ───────────────────────────────
+  const themeMq = window.matchMedia('(prefers-color-scheme: dark)');
+  themeMq.addEventListener?.('change', () => {
+    readPalette();
+    buildShapes();
+    if (reduced) renderFrozen();
+  });
+
+  // ── resize ─────────────────────────────────────
+  let rT;
+  window.addEventListener('resize', () => {
+    clearTimeout(rT);
+    rT = setTimeout(() => {
+      resize();
+      buildShapes();
+      if (reduced) renderFrozen();
+    }, 120);
+  });
+
+  function renderFrozen() {
+    // single composition for reduced motion
+    step();
+  }
+
+  // ── init ───────────────────────────────────────
+  readPalette();
+  resize();
+  buildShapes();
+
+  if (reduced) {
+    renderFrozen();
+  } else {
+    // Pre-warm a couple of frames so the first paint isn't blank
+    step(); step();
+    // start gated on intersection
+  }
+})();
+</script>
+</body>
+</html>
