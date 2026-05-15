@@ -17,7 +17,8 @@ const SKIP_PATH_SEGMENTS = new Set([
   ".margins",
   ".obsidian",
   ".git",
-  "node_modules"
+  "node_modules",
+  ".playwright-mcp"
 ]);
 
 export async function buildVaultIndex(vault, options = {}) {

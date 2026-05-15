@@ -194,7 +194,9 @@ async function diagnoseTracker(vault, index) {
         severity: "warn",
         message:
           `Source page ${sourcePage} references ${rawRel}, but the tracker has no row for it. ` +
-          `Re-running resolve_proposal on the source page would add the row. Otherwise the tracker is silently behind reality.`
+          `Source pages authored before Margins's auto-append landed (or imported from another tool) need a manual tracker row. ` +
+          `Add the line directly to wiki/ingest-tracker.md, or compile any new file to trigger an auto-update of the surrounding rows. ` +
+          `resolve_proposal only updates the tracker for proposals it accepts — it cannot retroactively fill rows for pages already in the vault.`
       });
     }
   }

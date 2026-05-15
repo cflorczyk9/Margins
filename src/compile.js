@@ -42,17 +42,26 @@ export function createCompile(vault, proposals) {
     const fileName = path.basename(absRaw);
     const force = Boolean(review && review.force);
 
-    if (!force) {
-      const index = await buildVaultIndex(vault);
-      const existingPath = index.referenced.get(rel);
-      if (existingPath) {
-        return {
-          status: "already-filed",
-          rawFile: rel,
-          existingPath,
-          message: `Source page already exists at ${existingPath} for raw file ${rel}. Pass force=true to compile again and replace it.`
-        };
-      }
+    // Look up existing source page even when force=true. With force, we
+    // continue rather than return — but if the user didn't specify a bucket
+    // or destination_path override, we replace IN PLACE at the existing
+    // path. Without this, force=true silently creates a duplicate when the
+    // existing page is in a non-default bucket (the bug surfaced in
+    // pressure testing: force-recompile of an Ex Machina source page in
+    // wiki/ideas/ landed in wiki/sources/ instead of replacing).
+    const index = await buildVaultIndex(vault);
+    const existingPath = index.referenced.get(rel);
+    if (existingPath && !force) {
+      return {
+        status: "already-filed",
+        rawFile: rel,
+        existingPath,
+        message: `Source page already exists at ${existingPath} for raw file ${rel}. Pass force=true to compile again and replace it.`
+      };
+    }
+    if (existingPath && force && !(review && (review.bucket || review.destination_path))) {
+      // No explicit bucket/destination override — respect existing location.
+      review = { ...(review || {}), destination_path: existingPath };
     }
 
     let text;
