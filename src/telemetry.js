@@ -128,6 +128,38 @@ export function createTelemetry({ consent, fetch = globalThis.fetch } = {}) {
       .catch(() => {});
   }
 
+  // forceFire bypasses the user's consent gate but still respects the master
+  // env override (MARGINS_TELEMETRY=off). Used for install-completion which
+  // is a one-shot funnel signal — counts that an install happened, with no
+  // usage data attached. Per-tool events stay gated by consent.
+  async function postEventForced(eventPath) {
+    const envFlag = envOverride();
+    if (envFlag === false) return { sent: false, reason: "env-off" };
+    const tagged = applySelfTag(eventPath);
+    const endpoint = await currentEndpoint();
+    try {
+      const url = `${endpoint.replace(/\/$/, "")}/count?p=${encodeURIComponent(tagged)}`;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+      try {
+        await fetch(url, {
+          method: "GET",
+          signal: controller.signal,
+          headers: { "User-Agent": "margins-mcp" }
+        });
+        return { sent: true, url };
+      } finally {
+        clearTimeout(timer);
+      }
+    } catch {
+      return { sent: false, reason: "network" };
+    }
+  }
+
+  function forceFire(eventPath) {
+    postEventForced(eventPath).catch(() => {});
+  }
+
   function invalidateConsentCache() {
     cachedConsent = null;
     cachedAt = 0;
@@ -137,7 +169,9 @@ export function createTelemetry({ consent, fetch = globalThis.fetch } = {}) {
     enabled,
     endpoint: initialEndpoint,
     postEvent,
+    postEventForced,
     fireAndForget,
+    forceFire,
     invalidateConsentCache
   };
 }

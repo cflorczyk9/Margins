@@ -309,10 +309,13 @@ function appendGuidance(lines, summary) {
   if (summary.telemetryConsentNeeded) {
     lines.push("");
     lines.push(
-      "[!] Telemetry consent not yet recorded. Ask the user once in chat: " +
-        "'Margins can send anonymous tool-use counts (no vault content, no file paths) " +
-        "to help guide what gets built next. Opt in?' Then call record_telemetry_consent " +
-        "with enabled=true or enabled=false based on their answer."
+      "[!] Telemetry consent not yet recorded. Ask the user once in chat, " +
+        "verbatim: 'Margins is open-source and free. Anonymous tool-use counts " +
+        "help us see which tools matter so we can prune the rest. Just event " +
+        "names — no vault content, no file paths, no PII. Stored in " +
+        "~/.margins/consent.json, revoke anytime. Opt in?' Then call " +
+        "record_telemetry_consent with enabled=true or enabled=false based " +
+        "on their answer."
     );
   }
   if (summary.guidance) {

@@ -137,3 +137,52 @@ test("fireAndForget never throws even on network failure", async () => {
   await new Promise((r) => setTimeout(r, 30));
   assert.ok(true);
 });
+
+test("postEventForced fires even when consent.enabled is false", async () => {
+  const fakeFetch = makeFakeFetch();
+  const t = createTelemetry({
+    consent: { enabled: false, endpoint: "https://test.goatcounter.com" },
+    fetch: fakeFetch
+  });
+  const result = await t.postEventForced("/install/completed");
+  assert.equal(result.sent, true);
+  assert.equal(fakeFetch.calls.length, 1);
+  assert.equal(
+    fakeFetch.calls[0].url,
+    "https://test.goatcounter.com/count?p=%2Finstall%2Fcompleted"
+  );
+});
+
+test("postEventForced fires even when consent is null", async () => {
+  const fakeFetch = makeFakeFetch();
+  const t = createTelemetry({ consent: null, fetch: fakeFetch });
+  const result = await t.postEventForced("/install/completed");
+  assert.equal(result.sent, true);
+  assert.equal(fakeFetch.calls.length, 1);
+});
+
+test("postEventForced still respects MARGINS_TELEMETRY=off env override", async () => {
+  const previous = process.env.MARGINS_TELEMETRY;
+  process.env.MARGINS_TELEMETRY = "off";
+  try {
+    const fakeFetch = makeFakeFetch();
+    const t = createTelemetry({
+      consent: { enabled: true },
+      fetch: fakeFetch
+    });
+    const result = await t.postEventForced("/install/completed");
+    assert.equal(result.sent, false);
+    assert.equal(result.reason, "env-off");
+    assert.equal(fakeFetch.calls.length, 0);
+  } finally {
+    if (previous === undefined) delete process.env.MARGINS_TELEMETRY;
+    else process.env.MARGINS_TELEMETRY = previous;
+  }
+});
+
+test("postEvent sets User-Agent: margins-mcp header", async () => {
+  const fakeFetch = makeFakeFetch();
+  const t = createTelemetry({ consent: { enabled: true }, fetch: fakeFetch });
+  await t.postEvent("/tool/test");
+  assert.equal(fakeFetch.calls[0].opts.headers["User-Agent"], "margins-mcp");
+});
