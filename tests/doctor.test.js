@@ -82,6 +82,35 @@ test("tracker-orphan-row: tracker points to a slug with no source page", async (
   assert.equal(orphan[0].slug, "source-deleted");
 });
 
+test("tracker-summary-stale: tracker prose disagrees with live counts", async () => {
+  await touch("raw/a.md", "alpha");
+  await touch(
+    "wiki/sources/source-a.md",
+    `---\ntype: source\nraw_file: raw/a.md\n---\n# A\n`
+  );
+  await touch(
+    "wiki/ingest-tracker.md",
+    [
+      "---",
+      "type: tracker",
+      "---",
+      "",
+      "# Ingest Tracker",
+      "",
+      "**Reconciled 2026-05-14.** 175 raw files mapped to canonical source pages across all bucket dirs; 3 pending.",
+      "",
+      "| Source file | Status | Canonical page | Convention | Words |",
+      "|---|---|---|---|---:|",
+      "| raw/a.md | ingested | [[source-a]] | raw_file_fm | 1 |"
+    ].join("\n")
+  );
+  const report = await diagnoseVault(vault);
+  const stale = report.issues.filter((i) => i.kind === "tracker-summary-stale");
+  assert.equal(stale.length, 1);
+  assert.match(stale[0].message, /says 175 raw files mapped and 3 pending/);
+  assert.match(stale[0].message, /live index has 1 mapped and 0 pending/);
+});
+
 test("summary reports ingest roots and counts", async () => {
   await touch("raw/a.md", "alpha");
   await touch("raw/b.md", "beta");
@@ -94,6 +123,17 @@ test("summary reports ingest roots and counts", async () => {
   assert.equal(report.summary.filed, 1);
   assert.equal(report.summary.pending, 1);
   assert.deepEqual(report.summary.ingest_roots, ["raw"]);
+});
+
+test("summary counts info findings separately from warnings and errors", async () => {
+  await mkdir(path.join(tmpRoot, "raw"), { recursive: true });
+  await writeFile(path.join(tmpRoot, "raw/large.md"), Buffer.alloc(11 * 1024 * 1024, "x"));
+  const report = await diagnoseVault(vault);
+  assert.equal(report.summary.issues_found, 1);
+  assert.equal(report.summary.errors, 0);
+  assert.equal(report.summary.warnings, 0);
+  assert.equal(report.summary.infos, 1);
+  assert.equal(report.issues[0].kind, "large-raw");
 });
 
 test("stale-source: source page records a sha that no longer matches raw", async () => {

@@ -73,12 +73,14 @@ test("populated linked vault classified as A1 with structure-aware suggestions",
 });
 
 test("formatSummary renders text without throwing for both empty and non-empty vaults", async () => {
-  await touch("a.md");
+  await touch("raw/a.md", "alpha");
+  await touch("wiki/sources/source-a.md", "---\ntype: source\nraw_file: raw/a.md\n---\n# A");
   const vault = createVault(tmpRoot);
   const primer = createPrimer(vault);
   const summary = await primer.summarize();
   const text = formatSummary(summary);
-  assert.match(text, /1 markdown files/);
+  assert.match(text, /2 markdown files/);
+  assert.match(text, /Unprocessed files: 0/);
   assert.match(text, /Try asking me/);
 });
 

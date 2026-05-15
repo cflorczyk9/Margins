@@ -64,6 +64,20 @@ test("searchVault finds body and filename matches", async () => {
   assert.ok(pathHits.find((h) => h.path === "wiki/career.md"));
 });
 
+test("searchVault returns non-text filename matches without extracting", async () => {
+  const tmpRoot = await mkdtemp(path.join(os.tmpdir(), "margins-search-filename-"));
+  try {
+    await writeFixture(tmpRoot, "raw/broken-smoke.pdf", "not actually a pdf");
+    const vault = createVault(tmpRoot);
+    const hits = await vault.searchVault("broken-smoke.pdf", 10);
+    assert.equal(hits.length, 1);
+    assert.equal(hits[0].path, "raw/broken-smoke.pdf");
+    assert.equal(hits[0].snippet, "Filename match.");
+  } finally {
+    await rm(tmpRoot, { recursive: true, force: true });
+  }
+});
+
 test("readPage returns body and rejects traversal", async () => {
   const vault = createVault(FIXTURE);
   const page = await vault.readPage("wiki/career.md");

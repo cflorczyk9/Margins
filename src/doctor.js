@@ -5,6 +5,7 @@ import { hashFile } from "./hash.js";
 
 const LARGE_RAW_THRESHOLD = 10 * 1024 * 1024;
 const TRACKER_PATH = "wiki/ingest-tracker.md";
+const TRACKER_SUMMARY_RE = /(\d+)\s+raw files mapped\b[\s\S]*?;\s*(\d+)\s+pending\b/i;
 // Match a tracker row regardless of spaces or special characters in the raw
 // filename. The path is "anything between '| ' and ' |' that contains a slash."
 // `[^|\n]+?` is non-greedy and pipe-excluding so the column boundary is hard.
@@ -88,7 +89,8 @@ export async function diagnoseVault(vault) {
       ingest_roots: index.ingestRoots,
       issues_found: issues.length,
       errors: issues.filter((i) => i.severity === "error").length,
-      warnings: issues.filter((i) => i.severity === "warn").length
+      warnings: issues.filter((i) => i.severity === "warn").length,
+      infos: issues.filter((i) => i.severity === "info").length
     },
     issues
   };
@@ -183,6 +185,22 @@ async function diagnoseTracker(vault, index) {
   }
 
   const issues = [];
+  const summaryClaim = parseTrackerSummaryClaim(body);
+  if (summaryClaim) {
+    const actualMapped = index.candidates.length - index.pending.length;
+    const actualPending = index.pending.length;
+    if (summaryClaim.mapped !== actualMapped || summaryClaim.pending !== actualPending) {
+      issues.push({
+        kind: "tracker-summary-stale",
+        path: TRACKER_PATH,
+        severity: "warn",
+        message:
+          `${TRACKER_PATH} says ${summaryClaim.mapped} raw files mapped and ${summaryClaim.pending} pending, ` +
+          `but the live index has ${actualMapped} mapped and ${actualPending} pending. ` +
+          `Update the tracker prose/header so it matches the table and live vault state.`
+      });
+    }
+  }
 
   for (const rawRel of index.referenced.keys()) {
     if (!trackerRefs.has(rawRel)) {
@@ -220,4 +238,13 @@ async function diagnoseTracker(vault, index) {
   }
 
   return issues;
+}
+
+function parseTrackerSummaryClaim(body) {
+  const match = body.match(TRACKER_SUMMARY_RE);
+  if (!match) return null;
+  return {
+    mapped: Number(match[1]),
+    pending: Number(match[2])
+  };
 }

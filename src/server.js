@@ -59,7 +59,7 @@ EFFICIENCY: when answering a question that spans multiple pages, fire read_page 
 
 TOOL INVENTORY: if you're unsure whether a Margins tool exists or what parameters it accepts, search/list available tools rather than asserting from prior turn state. Optional parameters like propose_compile_from_raw's force=true are easy to overlook; check the schema when a workflow calls for one.
 
-TESTING MODE: when the user explicitly frames an action as testing or pressure-testing (e.g., "fire both calls back-to-back", "this is a test", "validate the reject path"), the propose-then-review pattern can be batched without breaking trust — they have consented to the merged flow. Default-on for production interactions; off when the user names it as a test.
+TESTING MODE: when the user explicitly frames an action as testing or pressure-testing (e.g., "fire both calls back-to-back", "this is a test", "validate the reject path"), the propose-then-review pattern can be batched without breaking trust — they have consented to the merged flow. If they provide exact tool parameters and say not to accept a staged proposal, execute that tool call as specified after at most one clarification. Default production review remains on; test batching is allowed only when the user names it as a test.
 
 TOOLS:
 - Context: margins_start, recall_preferences
@@ -260,7 +260,9 @@ export function buildServer(vault, options = {}) {
         structuredContent: {
           path: page.path,
           mtimeMs: page.mtimeMs,
-          size: page.size
+          size: page.size,
+          textLength: page.textLength,
+          truncated: page.truncated
         }
       };
     }
@@ -410,7 +412,7 @@ export function buildServer(vault, options = {}) {
     "append_to",
     {
       description:
-        "Append content to the end of a page. If the page doesn't exist, it's created. If a pending proposal exists for the path, the append stacks on top of it. Result is staged at proposed/<path>.",
+        "Append content to the end of a page. If the page doesn't exist, it's created. If a pending proposal exists for the path, the append stacks on top of it. Result is staged at proposed/<path>. If the user asks for final proposed content, read proposed/<path> after appending instead of inferring.",
       inputSchema: {
         path: z.string().describe("Page path relative to vault root."),
         content: z.string().describe("Content to append. A newline separator is added if needed.")
@@ -438,7 +440,7 @@ export function buildServer(vault, options = {}) {
       inputSchema: {
         rawPath: z
           .string()
-          .describe("Vault-relative path of the source file. Examples: 'raw/foo.pdf', 'meetings/march-7.md', 'lawyer/contract.pdf'. A bare filename (e.g. 'foo.pdf') is auto-prefixed with 'raw/' for back-compat."),
+          .describe("Vault-relative path of the source file. Examples: 'raw/foo.pdf', 'meetings/march-7.md', 'lawyer/contract.pdf'. Pass list_unprocessed paths directly. For back-compat, a bare filename (e.g. 'foo.pdf') resolves to raw/foo.pdf unless an actual root-level foo.pdf exists and raw/foo.pdf does not."),
         summary: z.string().describe("1-3 sentence summary of what this source is about."),
         title: z.string().optional().describe("Title for the source page. Defaults to titlecased filename."),
         bucket: z.string().optional().describe("Wiki bucket. Default 'sources'. Try 'projects', 'career', 'ideas', etc."),
@@ -517,8 +519,9 @@ export function buildServer(vault, options = {}) {
     async () => {
       const report = await diagnoseVault(vault);
       const { summary, issues } = report;
+      const findingLabel = summary.issues_found === 1 ? "finding" : "findings";
       const lines = [
-        `Vault health: ${summary.issues_found} issue${summary.issues_found === 1 ? "" : "s"} (${summary.errors} error, ${summary.warnings} warning).`,
+        `Vault health: ${summary.issues_found} ${findingLabel} (${summary.errors} error, ${summary.warnings} warning, ${summary.infos} info).`,
         `Candidates: ${summary.candidates} | filed: ${summary.filed} | pending: ${summary.pending} | source pages: ${summary.source_pages}.`,
         `Ingest roots: ${summary.ingest_roots.join(", ")}.`
       ];
@@ -717,7 +720,12 @@ export function buildServer(vault, options = {}) {
         title: titleFromPath(page.path),
         text: page.body,
         url: `margins://${page.path}`,
-        metadata: { mtimeMs: page.mtimeMs, size: page.size }
+        metadata: {
+          mtimeMs: page.mtimeMs,
+          size: page.size,
+          textLength: page.textLength,
+          truncated: page.truncated
+        }
       };
       return {
         content: [{ type: "text", text: JSON.stringify(payload) }],

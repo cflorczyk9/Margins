@@ -81,7 +81,7 @@ export function createVault(rootArg, options = {}) {
     const body = truncated
       ? fullBody.slice(0, READ_PAGE_MAX_CHARS) +
         `\n\n[Truncated at ${READ_PAGE_MAX_CHARS} characters; full extracted text is ${fullBody.length} characters. ` +
-        `Use search_vault to query specific terms in this file, or read_page again to re-fetch.]`
+        `Use search_vault to query specific terms in this file, or inspect the original file outside MCP for the full text.]`
       : fullBody;
     return {
       path: rel,
@@ -111,23 +111,33 @@ export function createVault(rootArg, options = {}) {
   async function searchVault(query, limit) {
     const needle = String(query ?? "").trim().toLowerCase();
     if (!needle) return [];
+    const filenameLike = looksLikeFilenameQuery(needle);
     const files = await listFiles();
     const hits = [];
     for (const abs of files) {
-      let body;
-      try {
-        body = await extractDocumentText(abs, toRel(abs), { allowEmpty: isTextDocumentPath(abs) });
-      } catch {
-        continue;
-      }
-      const lower = body.toLowerCase();
       const rel = toRel(abs);
       const baseHit = rel.toLowerCase().includes(needle);
-      const idx = lower.indexOf(needle);
+      let body = "";
+      let idx = -1;
+      let extractionError = null;
+      const textDoc = isTextDocumentPath(abs);
+      const shouldExtract = textDoc || (!baseHit && !filenameLike);
+      if (shouldExtract) {
+        try {
+          body = await extractDocumentText(abs, rel, { allowEmpty: textDoc });
+          idx = body.toLowerCase().indexOf(needle);
+        } catch (err) {
+          extractionError = err;
+        }
+      }
       if (!baseHit && idx < 0) continue;
       const snippet = idx >= 0
         ? extractSnippet(body, idx, needle.length)
-        : firstNonEmptyLine(body);
+        : extractionError
+          ? `Filename match; text extraction failed: ${extractionError.message}`
+          : baseHit
+            ? "Filename match."
+            : firstNonEmptyLine(body);
       hits.push({
         path: rel,
         score: baseHit ? 2 : 1,
@@ -182,6 +192,10 @@ export function createVault(rootArg, options = {}) {
     searchVault,
     getBacklinks
   };
+}
+
+function looksLikeFilenameQuery(needle) {
+  return needle.includes("/") || /\.[a-z0-9]{2,8}$/i.test(needle);
 }
 
 function extractSnippet(body, idx, matchLen) {
