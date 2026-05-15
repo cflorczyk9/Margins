@@ -7,6 +7,8 @@ import {
 } from "./document-text.js";
 import { DEFAULT_SKIP_DIRS } from "./index-roots.js";
 
+const READ_PAGE_MAX_CHARS = 250 * 1024;  // 250KB extracted-text cap per read_page call
+
 export function createVault(rootArg, options = {}) {
   const root = path.resolve(rootArg);
   const indexRoots = options.indexRoots && options.indexRoots.length
@@ -69,9 +71,26 @@ export function createVault(rootArg, options = {}) {
   async function readPage(relPath) {
     const abs = resolveInside(relPath);
     const rel = toRel(abs);
-    const body = await extractDocumentText(abs, rel, { allowEmpty: isTextDocumentPath(abs) });
+    const fullBody = await extractDocumentText(abs, rel, { allowEmpty: isTextDocumentPath(abs) });
     const info = await stat(abs);
-    return { path: rel, body, mtimeMs: info.mtimeMs, size: info.size };
+    // Cap extracted text at READ_PAGE_MAX_CHARS so a 22MB PDF doesn't return
+    // 465KB+ of text through the MCP transport. Some MCP clients choke on
+    // very large tool responses, and most readers don't need the whole thing
+    // — they want a chunk and the option to query for more.
+    const truncated = fullBody.length > READ_PAGE_MAX_CHARS;
+    const body = truncated
+      ? fullBody.slice(0, READ_PAGE_MAX_CHARS) +
+        `\n\n[Truncated at ${READ_PAGE_MAX_CHARS} characters; full extracted text is ${fullBody.length} characters. ` +
+        `Use search_vault to query specific terms in this file, or read_page again to re-fetch.]`
+      : fullBody;
+    return {
+      path: rel,
+      body,
+      mtimeMs: info.mtimeMs,
+      size: info.size,
+      textLength: fullBody.length,
+      truncated
+    };
   }
 
   async function listRecent(limit) {

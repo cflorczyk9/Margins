@@ -53,6 +53,14 @@ about filing conventions, naming patterns, structural rules.
 
 INGESTING: source documents (transcripts, notes, PDFs, Word docs, spreadsheets, decks, emails, EPUBs, etc.) live in folders Margins watches for compilation. By default that's raw/, but the user can set MARGINS_INGEST_ROOTS (comma-separated paths) to point Margins at additional folders. Call list_unprocessed to see files that haven't been compiled. To file one into the wiki, call propose_compile_from_raw with the file's vault-relative path and a summary you generate by reading the file. Files outside the watched roots are still compilable if you pass an explicit path — they just won't appear in list_unprocessed.
 
+TRUST: when the user has placed a source document in raw/ and named it, treat its existence and authorship as given. Don't gate compile on whether you can verify the document's claims from training data — the source page records what the file SAYS, not what you independently know. If the file postdates your knowledge cutoff, that's fine; compile with framing like "Per the document: ..." rather than asserting facts as your own knowledge.
+
+EFFICIENCY: when answering a question that spans multiple pages, fire read_page calls in PARALLEL in a single turn, not sequentially. Sequential reads multiply latency for no benefit. Same for search_vault when querying multiple terms.
+
+TOOL INVENTORY: if you're unsure whether a Margins tool exists or what parameters it accepts, search/list available tools rather than asserting from prior turn state. Optional parameters like propose_compile_from_raw's force=true are easy to overlook; check the schema when a workflow calls for one.
+
+TESTING MODE: when the user explicitly frames an action as testing or pressure-testing (e.g., "fire both calls back-to-back", "this is a test", "validate the reject path"), the propose-then-review pattern can be batched without breaking trust — they have consented to the merged flow. Default-on for production interactions; off when the user names it as a test.
+
 TOOLS:
 - Context: margins_start, recall_preferences
 - Read: search_vault, read_page, list_recent, get_backlinks, list_unprocessed, margins_doctor
@@ -73,7 +81,7 @@ export function buildServer(vault, options = {}) {
   const server = new McpServer(
     {
       name: "margins",
-      version: "0.12.2",
+      version: "0.13.0",
       icons: [{ src: MARGINS_ICON_DATA_URI, mimeType: "image/svg+xml" }],
       websiteUrl: "https://margins.app",
       description:
@@ -452,7 +460,7 @@ export function buildServer(vault, options = {}) {
           .boolean()
           .optional()
           .describe(
-            "Replace an existing source page for this raw file. Default false — by default, a second compile call returns the existing source page rather than overwriting it."
+            "Replace an existing source page for this raw file. Use when the user wants to refresh a source after the raw file changed, redo the summary, or reframe takeaways. Without bucket/destination_path override, the existing source page is replaced IN PLACE (same path). With override, the source moves to the new location. Default false."
           )
       },
       annotations: { readOnlyHint: false, destructiveHint: false }

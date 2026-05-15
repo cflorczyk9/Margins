@@ -348,3 +348,61 @@ test("slug collision: same basename in different folders gets disambiguator", as
   assert.notEqual(second.destinationPath, first.destinationPath);
   assert.match(second.destinationPath, /source-foo-[0-9a-f]{8}\.md$/);
 });
+
+test("custom bucket like 'finance' routes correctly (not silently to sources)", async () => {
+  await touch("raw/finance-note.md", "A finance note long enough to clear the empty-extraction threshold for this test fixture.");
+  const result = await compile.proposeCompileFromRaw("raw/finance-note.md", {
+    summary: "Test",
+    bucket: "finance"
+  });
+  assert.equal(result.bucket, "finance");
+  assert.ok(result.destinationPath.startsWith("wiki/finance/"), `expected wiki/finance/* but got ${result.destinationPath}`);
+});
+
+test("custom bucket like 'entertainment' also works (was previously routed to sources)", async () => {
+  await touch("raw/movie-note.md", "A movie note with enough body to clear the empty-extraction threshold.");
+  const result = await compile.proposeCompileFromRaw("raw/movie-note.md", {
+    summary: "Test",
+    bucket: "entertainment"
+  });
+  assert.ok(result.destinationPath.startsWith("wiki/entertainment/"), `expected wiki/entertainment/* but got ${result.destinationPath}`);
+});
+
+test("bucket with traversal attempt is rejected and falls back to sources", async () => {
+  await touch("raw/safety-test.md", "Content for the bucket safety test that needs to clear the empty-extraction threshold.");
+  const result = await compile.proposeCompileFromRaw("raw/safety-test.md", {
+    summary: "Test",
+    bucket: "../../etc"
+  });
+  assert.ok(result.destinationPath.startsWith("wiki/sources/"));
+});
+
+test("force=true on existing page in non-default bucket replaces in place (not at default)", async () => {
+  await touch("raw/film-essay.md", "Original film essay content long enough to clear the empty-extraction threshold.");
+  const first = await compile.proposeCompileFromRaw("raw/film-essay.md", {
+    summary: "v1",
+    bucket: "ideas"
+  });
+  await proposals.resolveProposal(first.destinationPath, "accept");
+  assert.ok(first.destinationPath.startsWith("wiki/ideas/"), `setup: first should be in ideas, got ${first.destinationPath}`);
+
+  // Force-recompile WITHOUT specifying bucket — should land at the existing path
+  const second = await compile.proposeCompileFromRaw("raw/film-essay.md", {
+    summary: "v2 refreshed",
+    force: true
+  });
+  assert.equal(second.destinationPath, first.destinationPath, "force=true should replace at existing path, not default to wiki/sources/");
+});
+
+test("force=true WITH explicit bucket override moves to new bucket", async () => {
+  await touch("raw/migrating.md", "Content for the migration test, with enough body to clear the empty-extraction threshold.");
+  const first = await compile.proposeCompileFromRaw("raw/migrating.md", { summary: "v1", bucket: "ideas" });
+  await proposals.resolveProposal(first.destinationPath, "accept");
+
+  const second = await compile.proposeCompileFromRaw("raw/migrating.md", {
+    summary: "v2 in projects",
+    force: true,
+    bucket: "projects"
+  });
+  assert.ok(second.destinationPath.startsWith("wiki/projects/"), `expected move to wiki/projects/, got ${second.destinationPath}`);
+});

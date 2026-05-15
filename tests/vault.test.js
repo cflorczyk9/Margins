@@ -139,3 +139,34 @@ function xmlEscape(text) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 }
+
+test("read_page caps extracted text at 250KB and reports truncation", async () => {
+  const tmpRoot = await mkdtemp(path.join(os.tmpdir(), "margins-readpage-cap-"));
+  try {
+    await mkdir(path.join(tmpRoot, "raw"), { recursive: true });
+    const big = "x".repeat(300 * 1024);
+    await writeFile(path.join(tmpRoot, "raw/huge.txt"), big);
+    const vault = createVault(tmpRoot);
+    const result = await vault.readPage("raw/huge.txt");
+    assert.equal(result.truncated, true);
+    assert.equal(result.textLength, 300 * 1024);
+    assert.ok(result.body.length < big.length, "body should be truncated below original length");
+    assert.match(result.body, /Truncated at \d+ characters/);
+  } finally {
+    await rm(tmpRoot, { recursive: true, force: true });
+  }
+});
+
+test("read_page on normal-size file returns full text without truncation flag", async () => {
+  const tmpRoot = await mkdtemp(path.join(os.tmpdir(), "margins-readpage-normal-"));
+  try {
+    await mkdir(path.join(tmpRoot, "raw"), { recursive: true });
+    await writeFile(path.join(tmpRoot, "raw/normal.md"), "A normal-sized markdown file.");
+    const vault = createVault(tmpRoot);
+    const result = await vault.readPage("raw/normal.md");
+    assert.equal(result.truncated, false);
+    assert.equal(result.body, "A normal-sized markdown file.");
+  } finally {
+    await rm(tmpRoot, { recursive: true, force: true });
+  }
+});

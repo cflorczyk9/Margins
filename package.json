@@ -1,6 +1,6 @@
 {
   "name": "margins-mcp",
-  "version": "0.12.2",
+  "version": "0.13.0",
   "private": false,
   "description": "Use your Claude Pro/Max subscription on your Obsidian vault. MCP connector that reads your markdown and proposes writes back, with all inference paid for by your existing subscription.",
   "keywords": [

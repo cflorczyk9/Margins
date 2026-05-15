@@ -578,11 +578,21 @@ export function entityPinnedBody(body, shouldPin) {
 // Path normalization (wiki bucket resolution)
 // ---------------------------------------------------------------------
 
+// Buckets we suggest in docs / installer / Claude-facing prompts. Kept for
+// reference and tooling that wants a "did you mean..." hint. NOT a gate on
+// what users can actually create — Margins-managed vaults routinely have
+// other buckets (finance, entertainment, health, travel, activities, etc.).
 export const WIKI_SOURCE_BUCKETS = new Set(["sources", "coding", "ideas", "projects", "career", "personal", "school"]);
+
+// A bucket name is valid if it's a safe single directory segment: lowercase
+// alphanumeric with dashes/underscores, 1-40 chars, starts with a letter.
+// This rejects path-traversal attempts (.., /, \) and whitespace while
+// allowing every user-defined bucket name people actually use.
+const SAFE_BUCKET_RE = /^[a-z][a-z0-9_-]{0,40}$/;
 
 export function cleanBucket(value) {
   const bucket = cleanTag(value).replace(/^wiki\//, "").split("/")[0];
-  return WIKI_SOURCE_BUCKETS.has(bucket) ? bucket : "";
+  return SAFE_BUCKET_RE.test(bucket) ? bucket : "";
 }
 
 export function sourceSlugForFile(name) {
@@ -606,7 +616,7 @@ export function normalizeFilingPath(path, bucket = "sources") {
   if (!normalized.startsWith("wiki/")) normalized = `wiki/${normalized}`;
   if (!normalized.endsWith(".md")) normalized = `${normalized}.md`;
   const folder = normalized.split("/")[1] || "";
-  if (!WIKI_SOURCE_BUCKETS.has(folder)) {
+  if (!SAFE_BUCKET_RE.test(folder)) {
     normalized = sourcePathForBucket(basename(normalized).replace(/\.md$/, ""), bucket);
   }
   const filename = basename(normalized);
