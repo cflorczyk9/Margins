@@ -13,17 +13,18 @@ import { loadTelemetry, writeConsent, selfTagEnabled } from "./telemetry.js";
 import { createPreferences } from "./preferences.js";
 import { createWikilinks } from "./wikilinks.js";
 
-// Inline SVG of the Margins mark (Kandinsky-inspired disc + ink bar). Embedded
-// as a base64 data URI so the icon renders in MCP clients without requiring a
-// network fetch — works offline, no dependency on margins.app being deployed.
-// 421-byte SVG → ~600 bytes encoded; negligible against the handshake size.
-const MARGINS_ICON_SVG =
-  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">' +
-  '<rect x="4" y="4" width="3" height="24" fill="#1a1612"/>' +
-  '<circle cx="20" cy="16" r="11" fill="#f0c14b"/>' +
-  '<circle cx="20" cy="16" r="7" fill="#d63a2f"/>' +
-  '<circle cx="20" cy="16" r="2.5" fill="#1a1612"/>' +
-  "</svg>";
+// Inline SVG of the Margins dark-mode mark. Embedded as a base64 data URI so
+// the icon renders in MCP clients without requiring a network fetch.
+const MARGINS_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <g fill="none" fill-rule="evenodd" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="8" y="8" width="48" height="48" rx="11" fill="#15110d" stroke="#e8e2d6" stroke-width="4"/>
+    <path stroke="#e8e2d6" stroke-width="7" d="M19 15v34"/>
+    <path fill="#5b86c9" d="M30.8 18.4c7.4-4.6 17.5-.2 19.4 8.2 2.1 9.1-5.2 19.6-14.8 19.6-8.5 0-14.9-8.3-12.9-16.3 1.1-4.7 4.4-9.1 8.3-11.5Z"/>
+    <path fill="#f0c14b" d="M33.1 23.3c5.1-3.4 12.1-.8 13.9 4.9 1.8 6.2-3 13.7-9.5 13.8-5.8.1-10.4-5.4-9.4-11 .5-3.3 2.3-6 5-7.7Z"/>
+    <path fill="#e04b3f" d="M36.2 27.4c2.8-1.9 6.8-.5 7.8 2.7 1 3.4-1.8 7.5-5.4 7.5-3.1.1-5.8-2.8-5.3-5.9.3-1.8 1.3-3.3 2.9-4.3Z"/>
+    <circle cx="39" cy="33" r="2.4" fill="#15110d"/>
+  </g>
+</svg>`;
 const MARGINS_ICON_DATA_URI =
   "data:image/svg+xml;base64," + Buffer.from(MARGINS_ICON_SVG).toString("base64");
 
