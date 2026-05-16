@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Margins one-paster install.
 #
-#   curl -fsSL https://margins.app/install | bash
+#   curl -fsSL https://marginsmcp.com/install | bash
 #
 # Or inspect first (recommended for any script you pipe to bash):
 #
-#   curl -fsSL https://margins.app/install > install.sh
+#   curl -fsSL https://marginsmcp.com/install > install.sh
 #   less install.sh
 #   bash install.sh
 #

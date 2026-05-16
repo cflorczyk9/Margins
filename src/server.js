@@ -105,7 +105,7 @@ export function buildServer(vault, options = {}) {
       name: "margins",
       version: "0.13.0",
       icons: [{ src: MARGINS_ICON_DATA_URI, mimeType: "image/svg+xml" }],
-      websiteUrl: "https://margins.app",
+      websiteUrl: "https://marginsmcp.com",
       description:
         "Use your Claude Pro/Max subscription on your Obsidian vault. Reads markdown, " +
         "proposes writes, and compiles raw source files into wiki source pages."

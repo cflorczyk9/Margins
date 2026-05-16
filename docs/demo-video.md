@@ -1,7 +1,7 @@
 # 30-second demo video — recording brief
 
 This is the script + recording spec for the demo video that gets embedded in
-the README hero, on margins.app, and in the r/ObsidianMD post. The brief is
+the README hero, on marginsmcp.com, and in the r/ObsidianMD post. The brief is
 short on purpose. Aim to record this in one take if possible — the unedited
 feel is the point.
 
@@ -77,7 +77,7 @@ output feel like Claude actually knows the user.
    ```markdown
    ![Margins demo — Claude reading and citing files from your vault](web/demo.webp)
    ```
-2. **margins.app**: drop a `<video autoplay muted loop playsinline>` into the
+2. **marginsmcp.com**: drop a `<video autoplay muted loop playsinline>` into the
    hero or just below it. The Kandinsky composition stays — the demo lives
    under the hero, not replacing it.
 3. **r/ObsidianMD post**: upload the GIF/WebP directly. Reddit renders it
@@ -108,6 +108,6 @@ If the video doesn't answer those three things implicitly, re-shoot.
 ## Stretch
 
 If 30s feels too sparse: a 5-second pre-roll showing the
-`curl -fsSL margins.app/install | bash` command in a terminal, then cut
+`curl -fsSL marginsmcp.com/install | bash` command in a terminal, then cut
 to Claude Desktop. Adds the "this was one command" anchor before the magic
 moment.

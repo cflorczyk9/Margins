@@ -71,7 +71,7 @@ cd "$REPO_ROOT"
 rm -rf "$STAGE_DIR"
 
 # Also produce an unversioned copy. The unversioned name is what the
-# "Download" button on margins.app links to, via GitHub's stable URL:
+# "Download" button on marginsmcp.com links to, via GitHub's stable URL:
 #   https://github.com/cflorczyk9/Margins/releases/latest/download/margins-mcp.mcpb
 # The versioned copy is kept for archival use (multiple versions in Downloads/).
 cp "$DIST_DIR/$BUNDLE_NAME" "$DIST_DIR/margins-mcp.mcpb"

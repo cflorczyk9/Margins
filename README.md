@@ -187,7 +187,7 @@ Both files live in the vault, so they travel with it. Switch machines, switch ho
 
 ## Roadmap
 
-- v0.6: web onboarding at margins.app — pick a folder via File System Access, scaffold a vault, get the install command. Closes B2/B3 personas without requiring CLI fluency.
+- v0.6: web onboarding at marginsmcp.com — pick a folder via File System Access, scaffold a vault, get the install command. Closes B2/B3 personas without requiring CLI fluency.
 - v0.6: `get_citations` (semantic embedding search, opt-in dep).
 - v0.6: OCR/image, legacy Office binary, and audio/video ingestion for `propose_compile_from_raw`.
 - v0.7: HTTP / Streamable transport for claude.ai web and ChatGPT custom connectors.

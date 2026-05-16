@@ -31,4 +31,4 @@ Allow: /
 User-agent: Applebot-Extended
 Allow: /
 
-Sitemap: https://margins.app/sitemap.xml
+Sitemap: https://marginsmcp.com/sitemap.xml

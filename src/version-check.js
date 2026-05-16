@@ -8,7 +8,7 @@
 //
 // Works for both distribution channels:
 //   - npm install: hint suggests `margins-mcp install --update`
-//   - .mcpb double-click: hint suggests re-downloading from margins.app
+//   - .mcpb double-click: hint suggests re-downloading from marginsmcp.com
 
 import { mkdir, readFile, writeFile, stat } from "node:fs/promises";
 import path from "node:path";
@@ -129,7 +129,7 @@ export function detectInstallChannel(serverBin) {
 
 function hintFor(installVia) {
   if (installVia === "mcpb") {
-    return "Download the latest .mcpb from https://margins.app and double-click to update.";
+    return "Download the latest .mcpb from https://marginsmcp.com and double-click to update.";
   }
   return "Run `margins-mcp install --update` to upgrade to the latest version.";
 }
