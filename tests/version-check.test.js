@@ -69,7 +69,7 @@ test("checkForUpdate hint shape differs for mcpb install", async () => {
       json: async () => ({ version: "0.9.0" })
     })
   });
-  assert.match(result.hint, /margins\.app/);
+  assert.match(result.hint, /marginsmcp\.com/);
   assert.match(result.hint, /\.mcpb/);
 });
 
