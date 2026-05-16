@@ -74,7 +74,7 @@ async function ensureVaultDirs(vaultPath) {
 export { ensureVaultDirs };
 
 async function detectVaultDefault(cwd) {
-  // Web onboarding (margins.app) creates ~/Margins/. Auto-detect it so the
+  // Web onboarding (marginsmcp.com) creates ~/Margins/. Auto-detect it so the
   // CLI install handoff is seamless: user clicks through the web flow,
   // pastes `margins-mcp install`, installer finds the new vault without
   // a path prompt.
@@ -101,7 +101,7 @@ export async function runInstaller(argv = [], { log = console.log, errlog = cons
         stdio: "inherit"
       });
       if (npmResult.status !== 0) {
-        errlog("npm install failed. If you installed via .mcpb (double-click), download the latest from https://margins.app instead.");
+        errlog("npm install failed. If you installed via .mcpb (double-click), download the latest from https://marginsmcp.com instead.");
         result.errors.push({ kind: "update-failed", exitCode: npmResult.status });
         prompter.close();
         return result;

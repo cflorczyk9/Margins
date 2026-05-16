@@ -1,4 +1,4 @@
-# Netlify deploy config for margins.app.
+# Netlify deploy config for marginsmcp.com.
 #
 # Static site. Single HTML landing + one shell install script. No build step,
 # no node_modules to ship, no asset pipeline.
@@ -7,7 +7,7 @@
   publish = "web"
 
 # Bare `/install` serves the shell script so users can do:
-#   curl -fsSL https://margins.app/install | bash
+#   curl -fsSL https://marginsmcp.com/install | bash
 [[redirects]]
   from = "/install"
   to = "/install.sh"

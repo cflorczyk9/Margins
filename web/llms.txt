@@ -41,7 +41,7 @@ Free. MIT-licensed. The only ongoing cost is your existing Claude Pro or Max sub
 
 ## Links
 
-- Site: https://margins.app/
+- Site: https://marginsmcp.com/
 - Source: https://github.com/cflorczyk9/Margins
 - npm package: https://www.npmjs.com/package/margins-mcp
 - License: MIT
