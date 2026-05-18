@@ -13,6 +13,12 @@ import { loadTelemetry, writeConsent, selfTagEnabled } from "./telemetry.js";
 import { createPreferences } from "./preferences.js";
 import { createWikilinks } from "./wikilinks.js";
 import { scanEntityCandidates } from "./entity-scan.js";
+import {
+  createEntityStubs,
+  readEntityRejections,
+  recordEntityRejection,
+  maybeReadEntityStubSlug
+} from "./entity-stubs.js";
 import { createVaultContext } from "./vault-context.js";
 
 // Inline SVG of the Margins mark. Embedded as a base64 data URI so the icon
@@ -88,7 +94,7 @@ TOOLS:
 - Read: search_vault, read_page, list_recent, get_backlinks, list_unprocessed, margins_doctor
 - Propose writes: propose_page, propose_edit, append_to, propose_compile_from_raw (supports split mode for multi-section docs)
 - Suggest: propose_wikilinks (single-page or scope=glob for A3/B3 vaults with few links; apply=true stages rewritten pages)
-- Discover: scan_entity_candidates (find recurring capitalized phrases with no matching slug — A3 cold-start)
+- Discover: scan_entity_candidates (find recurring capitalized phrases with no matching slug — A3 cold-start), propose_entity_stubs (stage stub entity pages from scan output; reject events feed .margins/entity-rejections.md so the same slugs don't reappear next scan)
 - Manage proposals: list_proposals (pattern/limit/sortBy), resolve_proposal (path OR pattern for bulk, dryRun, maxCount), margins_reset_proposals
 - Learn: record_preference
 - ChatGPT Deep Research: search, fetch`;
@@ -99,6 +105,7 @@ export function buildServer(vault, options = {}) {
   const primer = createPrimer(vault, { proposals, preferences });
   const compile = createCompile(vault, proposals);
   const wikilinks = createWikilinks(vault, { proposals });
+  const entityStubs = createEntityStubs(vault, proposals);
   const vaultContext = createVaultContext(vault);
   const telemetry = options.telemetry || { fireAndForget: () => {}, enabled: false };
   const trackToolCall = (toolName) => telemetry.fireAndForget(`/tool/${toolName}`);
@@ -539,9 +546,20 @@ export function buildServer(vault, options = {}) {
       annotations: { readOnlyHint: true }
     },
     async ({ scope, minMentions, minFileSpread, domain, limit, excludeUserRejections, minPhraseWords }) => {
+      // Auto-load entity rejections from .margins/entity-rejections.md so
+      // candidates the user previously declined don't keep showing up. If
+      // the caller passes excludeUserRejections explicitly, merge the two
+      // (user's ad-hoc list extends the persistent file, never replaces it).
+      const persistedRejections = await readEntityRejections(vault);
+      const effectiveExclusions = Array.from(new Set([
+        ...(persistedRejections || []),
+        ...(excludeUserRejections || [])
+      ]));
       const result = await scanEntityCandidates(vault, {
-        scope, minMentions, minFileSpread, domain, limit, excludeUserRejections, minPhraseWords
+        scope, minMentions, minFileSpread, domain, limit,
+        excludeUserRejections: effectiveExclusions, minPhraseWords
       });
+      result.persistedRejectionsLoaded = persistedRejections.length;
       const lines = [
         `Scanned ${result.filesScanned} files under '${result.scope}' (domain: ${result.domain}).`,
         `Found ${result.candidatesFound} candidate${result.candidatesFound === 1 ? "" : "s"} above thresholds.`,
@@ -558,6 +576,63 @@ export function buildServer(vault, options = {}) {
         }
         lines.push("");
         lines.push("Stub the ones worth keeping with propose_entity_stubs (v0.16) — or for now, propose_page individual entity pages.");
+      }
+      return {
+        content: [{ type: "text", text: lines.join("\n") }],
+        structuredContent: result
+      };
+    }
+  );
+
+  register(
+    "propose_entity_stubs",
+    {
+      description:
+        "Stage stub entity pages for a list of candidate slugs (typically from scan_entity_candidates). Each stub becomes a proposed page at wiki/<bucket>/<slug>.md (default bucket 'entities') with frontmatter type:entity + a from_scan marker, an auto-built '## Mentioned in' block linking source files when snippets/files are provided, and a '## Next' checklist.\n" +
+        "Skips slugs whose destination page already exists in the vault — edit those directly instead of overwriting them.\n" +
+        "Closes the cold-start loop: scan finds names with no page; this stages the pages; resolve_proposal accepts the ones the user wants. Reject events on a stub (single or bulk) automatically append the slug to .margins/entity-rejections.md so it doesn't re-surface in the next scan.",
+      inputSchema: {
+        candidates: z
+          .array(z.union([
+            z.string(),
+            z.object({
+              slug: z.string().optional(),
+              phrase: z.string().optional(),
+              mentionCount: z.number().optional(),
+              fileCount: z.number().optional(),
+              snippets: z.array(z.object({
+                file: z.string().optional(),
+                snippet: z.string().optional()
+              })).optional(),
+              files: z.array(z.string()).optional()
+            })
+          ]))
+          .min(1)
+          .max(200)
+          .describe("Array of candidate slugs (strings) or candidate objects (forward the scan_entity_candidates payload verbatim for the richest stub bodies). Limit 200 per call to keep the proposal queue reviewable."),
+        bucket: z
+          .string()
+          .optional()
+          .describe("Bucket folder for the stubs. Default 'entities'. Pick a topical bucket if the candidates share a theme ('people', 'cases', 'firms').")
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false }
+    },
+    async ({ candidates, bucket }) => {
+      const result = await entityStubs.proposeEntityStubs(candidates, { bucket });
+      vaultContext.invalidate();
+      const lines = [
+        `Staged ${result.staged}/${result.total} stub${result.total === 1 ? "" : "s"} in wiki/${result.bucket}/.`,
+        result.skipped ? `Skipped ${result.skipped} (page already exists at destination).` : null,
+        result.errored ? `Errored ${result.errored}.` : null
+      ].filter(Boolean);
+      lines.push("");
+      for (const r of result.results) {
+        const tag = r.status === "staged" ? "✓" : r.status === "exists" ? "·" : "✗";
+        lines.push(`  ${tag} ${r.destinationPath}${r.status === "error" ? ` — ${r.error}` : ""}`);
+      }
+      if (result.staged) {
+        lines.push("");
+        lines.push(`Review with list_proposals pattern: 'wiki/${result.bucket}/*'. Reject any unwanted slug to record it in .margins/entity-rejections.md so it doesn't reappear next scan.`);
       }
       return {
         content: [{ type: "text", text: lines.join("\n") }],
@@ -955,18 +1030,54 @@ export function buildServer(vault, options = {}) {
       }
 
       if (hasPath) {
+        // Capture entity-stub slug BEFORE rejection so we can record it
+        // even after the proposal file is deleted.
+        const stubSlug = action === "reject"
+          ? await maybeReadEntityStubSlug(vault, normalizePath(rel))
+          : null;
         const result = await proposals.resolveProposal(rel, action);
         vaultContext.invalidate();
+        let rejectionRecorded = null;
+        if (action === "reject" && stubSlug) {
+          rejectionRecorded = await recordEntityRejection(vault, stubSlug);
+          result.entityRejectionRecorded = rejectionRecorded;
+        }
+        const suffix = rejectionRecorded && rejectionRecorded.recorded
+          ? ` (entity rejection recorded: ${rejectionRecorded.slug})`
+          : "";
         return {
           content: [
-            { type: "text", text: `${result.destinationPath}: ${result.action}.` }
+            { type: "text", text: `${result.destinationPath}: ${result.action}.${suffix}` }
           ],
           structuredContent: result
         };
       }
 
+      // Bulk path. Capture every stub slug among matched paths BEFORE the
+      // resolve so the proposal files are still readable. After the bulk
+      // succeeds, record rejections for each path that actually rejected.
+      let preBulkStubSlugs = null;
+      if (action === "reject") {
+        preBulkStubSlugs = new Map();
+        const preview = await proposals.listProposals({ pattern, includeDelta: false });
+        for (const item of preview) {
+          const slug = await maybeReadEntityStubSlug(vault, item.destinationPath);
+          if (slug) preBulkStubSlugs.set(item.destinationPath, slug);
+        }
+      }
       const bulkResult = await proposals.resolveProposalsBulk(pattern, action, { dryRun, maxCount });
       if (!dryRun) vaultContext.invalidate();
+      if (action === "reject" && !dryRun && preBulkStubSlugs && preBulkStubSlugs.size) {
+        const recorded = [];
+        for (const r of bulkResult.results) {
+          if (!r.ok) continue;
+          const slug = preBulkStubSlugs.get(r.path);
+          if (!slug) continue;
+          const rec = await recordEntityRejection(vault, slug);
+          if (rec.recorded) recorded.push(slug);
+        }
+        bulkResult.entityRejectionsRecorded = recorded;
+      }
       if (bulkResult.dryRun) {
         const overflowNote = bulkResult.wouldOverflow
           ? ` (capped at maxCount=${maxCount}; ${bulkResult.totalMatched} total matched)`
@@ -986,9 +1097,14 @@ export function buildServer(vault, options = {}) {
       const failureLines = bulkResult.results
         .filter((r) => !r.ok)
         .map((r) => `  ✗ ${r.path}: ${r.error}`);
-      const text = failureLines.length
-        ? [summary, "Failures:", ...failureLines].join("\n")
-        : summary;
+      const lines = [summary];
+      if (Array.isArray(bulkResult.entityRejectionsRecorded) && bulkResult.entityRejectionsRecorded.length) {
+        lines.push(`Recorded ${bulkResult.entityRejectionsRecorded.length} entity rejection${bulkResult.entityRejectionsRecorded.length === 1 ? "" : "s"} → .margins/entity-rejections.md.`);
+      }
+      if (failureLines.length) {
+        lines.push("Failures:", ...failureLines);
+      }
+      const text = lines.join("\n");
       return {
         content: [{ type: "text", text }],
         structuredContent: bulkResult
@@ -1094,6 +1210,14 @@ export function buildServer(vault, options = {}) {
   );
 
   return server;
+}
+
+// Strip an optional "proposed/" prefix from a path so the rejection-memory
+// lookup can find the right proposal file regardless of how the caller
+// wrote the path (with or without prefix, both accepted by resolve_proposal).
+function normalizePath(p) {
+  if (typeof p !== "string") return p;
+  return p.startsWith("proposed/") ? p.slice("proposed/".length) : p;
 }
 
 function formatSplitResponse(result) {

@@ -181,6 +181,95 @@ test("stdio: parallel resolveProposal accepts preserve both tracker rows", async
   assert.match(tracker, /\| raw\/c\.md \| ingested \| \[\[source-c\]\]/);
 });
 
+test("stdio: closed loop — scan → propose stubs → reject → re-scan excludes via memory", async (t) => {
+  const vault = await makeVault(t);
+  await mkdir(path.join(vault, "wiki/notes"), { recursive: true });
+  for (let i = 0; i < 5; i++) {
+    await writeFile(
+      path.join(vault, "wiki/notes", `n-${i}.md`),
+      "Mark Loh sent the email. Mark Loh signed. Mark Loh approved.",
+      "utf8"
+    );
+  }
+  const client = await startClient(t, vault);
+
+  // 1. First scan surfaces mark-loh.
+  const scan1 = await client.callTool("scan_entity_candidates", {
+    minMentions: 5, minFileSpread: 3
+  });
+  const slugs1 = scan1.result.structuredContent.candidates.map((c) => c.slug);
+  assert.ok(slugs1.includes("mark-loh"));
+
+  // 2. Stage stubs for the candidate set.
+  const stubs = await client.callTool("propose_entity_stubs", {
+    candidates: scan1.result.structuredContent.candidates.map((c) => ({
+      slug: c.slug, phrase: c.phrase, mentionCount: c.mentionCount,
+      fileCount: c.fileCount, snippets: c.snippets, files: c.files
+    }))
+  });
+  assert.notEqual(stubs.result?.isError, true);
+  assert.ok(stubs.result.structuredContent.staged >= 1);
+
+  // 3. Reject the mark-loh stub — server.js wrapper should record the slug
+  //    to .margins/entity-rejections.md.
+  const reject = await client.callTool("resolve_proposal", {
+    path: "wiki/entities/mark-loh.md",
+    action: "reject"
+  });
+  assert.notEqual(reject.result?.isError, true);
+  const recorded = reject.result.structuredContent.entityRejectionRecorded;
+  assert.ok(recorded && recorded.recorded === true,
+    `expected entity rejection to be recorded, got: ${JSON.stringify(recorded)}`);
+  assert.equal(recorded.slug, "mark-loh");
+
+  // 4. Re-scan — mark-loh must NOT reappear (auto-loaded from rejections file).
+  const scan2 = await client.callTool("scan_entity_candidates", {
+    minMentions: 5, minFileSpread: 3
+  });
+  const slugs2 = scan2.result.structuredContent.candidates.map((c) => c.slug);
+  assert.ok(!slugs2.includes("mark-loh"),
+    `expected mark-loh excluded on re-scan, got: ${slugs2.join(", ")}`);
+  assert.ok(scan2.result.structuredContent.persistedRejectionsLoaded >= 1);
+
+  // 5. Verify the rejection file is hand-readable Markdown.
+  const rejFile = await readFile(path.join(vault, ".margins/entity-rejections.md"), "utf8");
+  assert.match(rejFile, /^# Entity rejections/);
+  assert.match(rejFile, /- mark-loh$/m);
+});
+
+test("stdio: bulk reject of entity stubs records every slug", async (t) => {
+  const vault = await makeVault(t);
+  await mkdir(path.join(vault, "wiki/notes"), { recursive: true });
+  for (let i = 0; i < 5; i++) {
+    await writeFile(
+      path.join(vault, "wiki/notes", `n-${i}.md`),
+      "Project Aurora and Project Borealis launched. Project Cascade pending.",
+      "utf8"
+    );
+  }
+  const client = await startClient(t, vault);
+
+  const stubs = await client.callTool("propose_entity_stubs", {
+    candidates: ["project-aurora", "project-borealis", "project-cascade"]
+  });
+  assert.equal(stubs.result.structuredContent.staged, 3);
+
+  // Bulk-reject all three via pattern.
+  const rejected = await client.callTool("resolve_proposal", {
+    pattern: "wiki/entities/project-*",
+    action: "reject"
+  });
+  assert.notEqual(rejected.result?.isError, true);
+  const recorded = rejected.result.structuredContent.entityRejectionsRecorded || [];
+  assert.deepEqual(recorded.sort(),
+    ["project-aurora", "project-borealis", "project-cascade"]);
+
+  const rejList = await readFile(path.join(vault, ".margins/entity-rejections.md"), "utf8");
+  for (const slug of ["project-aurora", "project-borealis", "project-cascade"]) {
+    assert.match(rejList, new RegExp(`- ${slug}$`, "m"));
+  }
+});
+
 test("stdio: scan_entity_candidates surfaces unlinked recurring names", async (t) => {
   const vault = await makeVault(t);
   await mkdir(path.join(vault, "wiki/notes"), { recursive: true });
