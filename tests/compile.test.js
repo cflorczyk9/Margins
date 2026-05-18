@@ -151,6 +151,67 @@ test("compiles common text-like document formats", async () => {
   assert.ok(result.termsExtracted.includes("gamma"));
 });
 
+test("default destination uses source-YYYY-MM-DD-{slug}.md from title", async () => {
+  await touch("raw/Productivity-Report_03 (1).pdf", "stub").catch(() => {});
+  await writeRaw("raw/Productivity-Report_03 (1).pdf", await makePdf("Anthropic productivity index report content goes here so extraction passes the threshold."));
+  const result = await compile.proposeCompileFromRaw("Productivity-Report_03 (1).pdf", {
+    summary: "Anthropic Economic Index productivity research.",
+    title: "Anthropic Productivity Index"
+  });
+  assert.match(
+    result.destinationPath,
+    /^wiki\/sources\/source-\d{4}-\d{2}-\d{2}-anthropic-productivity-index\.md$/,
+    `expected ISO-date+kebab slug from title, got ${result.destinationPath}`
+  );
+});
+
+test("default destination falls back to cleaned raw filename when no title", async () => {
+  await touch("raw/Some Messy File (1).md", "Content long enough to clear the empty-extraction threshold for this test.");
+  const result = await compile.proposeCompileFromRaw("Some Messy File (1).md", { summary: "s" });
+  assert.match(
+    result.destinationPath,
+    /^wiki\/sources\/source-\d{4}-\d{2}-\d{2}-some-messy-file-1\.md$/,
+    `expected ISO-date prefix and cleaned slug, got ${result.destinationPath}`
+  );
+});
+
+test("default destination preserves raw filename that already starts with ISO date", async () => {
+  await touch("raw/2026-05-13-board-call.md", "Content long enough to clear the empty-extraction threshold for this fixture.");
+  const result = await compile.proposeCompileFromRaw("2026-05-13-board-call.md", { summary: "s" });
+  assert.equal(
+    result.destinationPath,
+    "wiki/sources/source-2026-05-13-board-call.md",
+    `expected pre-dated raw filename to be preserved, got ${result.destinationPath}`
+  );
+});
+
+test("recompiling same raw file at different destination supersedes prior proposal", async () => {
+  await touch("raw/note.md", "Body content long enough to clear the empty-extraction threshold for this dedup test fixture.");
+  const first = await compile.proposeCompileFromRaw("note.md", {
+    summary: "First pass with default naming"
+  });
+  // First proposal is staged with default ISO-dated slug
+  assert.ok(first.proposalPath.startsWith("proposed/wiki/"));
+
+  // Recompile the same raw to a different destination via destination_path
+  const second = await compile.proposeCompileFromRaw("note.md", {
+    summary: "Renamed pass",
+    destination_path: "wiki/projects/source-2026-05-17-renamed-note.md",
+    force: true
+  });
+  assert.equal(second.destinationPath, "wiki/projects/source-2026-05-17-renamed-note.md");
+  assert.deepEqual(
+    second.supersededProposals,
+    [first.destinationPath],
+    "first proposal should have been auto-rejected"
+  );
+
+  // Verify only the new proposal remains
+  const remaining = await proposals.listProposals();
+  assert.equal(remaining.length, 1);
+  assert.equal(remaining[0].destinationPath, second.destinationPath);
+});
+
 test("supports destination_path override", async () => {
   await touch("raw/note.md", "Test fixture content for the compile idempotency tests, deliberately long enough to clear the empty-extraction threshold.");
   const result = await compile.proposeCompileFromRaw("note.md", {
@@ -373,7 +434,7 @@ test("slug collision: same basename in different folders gets disambiguator", as
   const second = await compile.proposeCompileFromRaw("contracts/foo.md", { summary: "second" });
   // Should NOT be the same destination path as first
   assert.notEqual(second.destinationPath, first.destinationPath);
-  assert.match(second.destinationPath, /source-foo-[0-9a-f]{8}\.md$/);
+  assert.match(second.destinationPath, /source-\d{4}-\d{2}-\d{2}-foo-[0-9a-f]{8}\.md$/);
 });
 
 test("custom bucket like 'finance' routes correctly (not silently to sources)", async () => {

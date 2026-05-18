@@ -130,6 +130,18 @@ export function createCompile(vault, proposals) {
     const markdown = rewriteSourceMetadata(sourceNode.markdown, fileName, rel, rawSha, info.size);
 
     const destPath = sourceNode.path;
+
+    // Dedup: if any other pending proposal already references this raw_sha256
+    // at a different destination, reject it so re-compiling the same raw file
+    // (e.g. with a renamed slug) supersedes the prior proposal instead of
+    // stacking a duplicate in proposed/.
+    const superseded = await rejectProposalsWithSameRawSha(
+      vault,
+      proposals,
+      rawSha,
+      destPath
+    );
+
     const proposalResult = await proposals.proposePage(destPath, markdown, { force });
     return {
       ...proposalResult,
@@ -142,11 +154,37 @@ export function createCompile(vault, proposals) {
       summary: sourceNode.summary,
       termsExtracted: sourceNode.terms,
       entitiesExtracted: sourceNode.entities,
+      supersededProposals: superseded,
       markdown
     };
   }
 
   return { proposeCompileFromRaw };
+}
+
+async function rejectProposalsWithSameRawSha(vault, proposals, rawSha, excludePath) {
+  if (!rawSha || typeof rawSha !== "string") return [];
+  const items = await proposals.listProposals();
+  const superseded = [];
+  for (const item of items) {
+    if (item.destinationPath === excludePath) continue;
+    let body;
+    try {
+      body = await readFile(vault.resolveInside(item.proposalPath), "utf8");
+    } catch {
+      continue;
+    }
+    const parsed = parseFrontmatter(body);
+    const sha = parsed && parsed.data ? parsed.data.raw_sha256 : null;
+    if (typeof sha !== "string" || sha !== rawSha) continue;
+    try {
+      await proposals.resolveProposal(item.destinationPath, "reject");
+      superseded.push(item.destinationPath);
+    } catch {
+      // skip ones we can't reject (concurrent delete, etc.)
+    }
+  }
+  return superseded;
 }
 
 async function disambiguateDestPath(vault, candidatePath, currentRawRel) {
@@ -220,9 +258,8 @@ function buildReview(input, fileName) {
   const bucket = placement.bucket || input.bucket || "sources";
   const placementPath =
     placement.path ||
-    (input.destination_path
-      ? input.destination_path
-      : `wiki/${bucket === "sources" ? "sources" : bucket}/source-${inferredSlug}.md`);
+    input.destination_path ||
+    defaultDestPath({ title: input.title, eventDate: input.eventDate, inferredSlug, bucket });
 
   return {
     source: "api",
@@ -338,6 +375,41 @@ function titleize(slug) {
   return slug
     .replace(/[-_]+/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function defaultDestPath({ title, eventDate, inferredSlug, bucket }) {
+  // Source-page filenames default to source-YYYY-MM-DD-{slug}.md. The slug is
+  // derived from the title when the caller passes one, otherwise from the raw
+  // filename. The old default (source-{rawfilename}.md) preserved messy
+  // human-named files including spaces, parens, and version markers like " (1)"
+  // — wrong for almost every user. Pass destination_path or placement.path to
+  // override.
+  const trimmedTitle = typeof title === "string" ? title.trim() : "";
+  const rawSlug = trimmedTitle || inferredSlug;
+  // If the raw filename already starts with an ISO date (a common Obsidian
+  // convention), keep it as-is rather than double-prefixing today's date.
+  if (!trimmedTitle && /^\d{4}-\d{2}-\d{2}-/.test(inferredSlug)) {
+    return `wiki/${bucket}/source-${kebabSlug(inferredSlug)}.md`;
+  }
+  const trimmedDate = typeof eventDate === "string" ? eventDate.trim() : "";
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(trimmedDate) ? trimmedDate : isoToday();
+  const slug = kebabSlug(rawSlug);
+  return `wiki/${bucket}/source-${date}-${slug}.md`;
+}
+
+function isoToday() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function kebabSlug(value) {
+  const slug = String(value || "")
+    .toLowerCase()
+    .replace(/['"]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+  return slug || "untitled";
 }
 
 async function buildNotFoundError(vault, rel) {

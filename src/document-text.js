@@ -118,11 +118,13 @@ export async function extractDocumentText(absPath, displayPath = absPath, option
 async function extractPdfText(buffer, displayPath) {
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   configurePdfWorker(pdfjs);
+  silencePdfWarnings(pdfjs);
   let pdfDocument;
   try {
     const loadingTask = pdfjs.getDocument({
       data: new Uint8Array(buffer),
       disableWorker: true,
+      verbosity: 0,
       standardFontDataUrl: pdfStandardFontDataPath()
     });
     pdfDocument = await loadingTask.promise;
@@ -138,6 +140,19 @@ async function extractPdfText(buffer, displayPath) {
     throw new Error(`could not extract text from ${displayPath}: ${error.message}`);
   } finally {
     if (pdfDocument) await pdfDocument.destroy();
+  }
+}
+
+function silencePdfWarnings(pdfjs) {
+  // pdf.js emits warnings (fake-worker setup, missing standard fonts for glyphs
+  // that aren't actually used, malformed TrueType tables in valid-enough PDFs)
+  // via console.warn → stderr. Claude Desktop's MCP host surfaces every stderr
+  // line as a popup, so warnings that don't affect extraction become user-
+  // visible noise. ERRORS-only verbosity silences warnings without hiding real
+  // failures, which still throw and bubble up through the try/catch above.
+  if (typeof pdfjs.setVerbosityLevel === "function") {
+    const ERRORS = pdfjs.VerbosityLevel?.ERRORS ?? 0;
+    pdfjs.setVerbosityLevel(ERRORS);
   }
 }
 
