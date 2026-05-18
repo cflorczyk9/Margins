@@ -160,13 +160,14 @@ test("stdio full proposal lifecycle preserves custom bucket and force replace-in
     summary: "Alpha meeting source.",
     bucket: "finance"
   });
-  assert.equal(compiled.result.structuredContent.destinationPath, "wiki/finance/source-alpha.md");
+  const firstDest = compiled.result.structuredContent.destinationPath;
+  assert.match(firstDest, /^wiki\/finance\/source-\d{4}-\d{2}-\d{2}-alpha\.md$/);
   assert.equal(compiled.result.structuredContent.bucket, "finance");
 
   const proposals = await client.callTool("list_proposals");
   assert.deepEqual(
     proposals.result.structuredContent.items.map((item) => item.destinationPath),
-    ["wiki/finance/source-alpha.md"]
+    [firstDest]
   );
 
   const accepted = await client.callTool("resolve_proposal", {
@@ -175,7 +176,7 @@ test("stdio full proposal lifecycle preserves custom bucket and force replace-in
   });
   assert.equal(accepted.result.structuredContent.action, "accepted");
   assert.equal(accepted.result.structuredContent.trackerUpdated.rawFile, "raw/alpha.md");
-  const sourceBody = await readFile(path.join(vault, "wiki/finance/source-alpha.md"), "utf8");
+  const sourceBody = await readFile(path.join(vault, firstDest), "utf8");
   assert.match(sourceBody, /^raw_file: raw\/alpha\.md$/m);
 
   const secondCompile = await client.callTool("propose_compile_from_raw", {
@@ -183,14 +184,14 @@ test("stdio full proposal lifecycle preserves custom bucket and force replace-in
     summary: "Second compile should be idempotent."
   });
   assert.equal(secondCompile.result.structuredContent.status, "already-filed");
-  assert.equal(secondCompile.result.structuredContent.existingPath, "wiki/finance/source-alpha.md");
+  assert.equal(secondCompile.result.structuredContent.existingPath, firstDest);
 
   const forced = await client.callTool("propose_compile_from_raw", {
     rawPath: "raw/alpha.md",
     summary: "Retake summary.",
     force: true
   });
-  assert.equal(forced.result.structuredContent.destinationPath, "wiki/finance/source-alpha.md");
+  assert.equal(forced.result.structuredContent.destinationPath, firstDest);
   assert.equal(forced.result.structuredContent.bucket, "finance");
   assert.equal(forced.result.structuredContent.replacesVaultFile, true);
 
@@ -221,7 +222,10 @@ test("stdio list_unprocessed root path can be passed directly to compile", async
     bucket: "projects"
   });
   assert.equal(compiled.result.structuredContent.rawFile, "meeting-root.md");
-  assert.equal(compiled.result.structuredContent.destinationPath, "wiki/projects/source-meeting-root.md");
+  assert.match(
+    compiled.result.structuredContent.destinationPath,
+    /^wiki\/projects\/source-\d{4}-\d{2}-\d{2}-meeting-root\.md$/
+  );
 });
 
 test("stdio read_page exposes truncation metadata for large extracted text", async (t) => {
