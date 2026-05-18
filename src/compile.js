@@ -46,7 +46,31 @@ export function createCompile(vault, proposals) {
     // Split mode: one raw file → N segment source pages + 1 hub page.
     // Branches off here so it doesn't share the single-source dedupe path
     // (which would otherwise reject sibling segments as same-sha duplicates).
+    // BUT we still need to honor the no-duplicate-compile contract: if a
+    // normal single-source page already exists for this raw file, calling
+    // split mode without force=true would stage a hub + segments alongside
+    // it, leaving two source artifacts for the same raw. Check the index
+    // first and short-circuit with already-filed unless force=true.
     if (review && review.split) {
+      if (!review.force) {
+        // Only short-circuit when the existing page is a single-source
+        // page (NOT a hub from a prior split). An existing hub falls
+        // through to runSplitCompile which has its own already-split
+        // dedupe and returns the correct status.
+        const preIndex = await buildVaultIndex(vault);
+        const existingPath = preIndex.referenced.get(rel);
+        if (existingPath) {
+          const isHub = await isHubPage(vault, existingPath);
+          if (!isHub) {
+            return {
+              status: "already-filed",
+              rawFile: rel,
+              existingPath,
+              message: `${rel} already has a single-source page at ${existingPath}. Pass force=true to re-compile in split mode (will clear the existing page and stage a hub + segments).`
+            };
+          }
+        }
+      }
       return await runSplitCompile({
         vault, proposals, rel, absRaw, info, fileName, review
       });
@@ -194,6 +218,21 @@ export function createCompile(vault, proposals) {
   }
 
   return { proposeCompileFromRaw };
+}
+
+async function isHubPage(vault, pagePath) {
+  // pagePath may carry a 'proposed/' prefix (pending source proposals).
+  const abs = pagePath.startsWith("proposed/")
+    ? vault.resolveInside(pagePath)
+    : vault.resolveInside(pagePath);
+  let body;
+  try { body = await readFile(abs, "utf8"); }
+  catch { return false; }
+  let parsed;
+  try { parsed = parseFrontmatter(body); }
+  catch { return false; }
+  if (!parsed) return false;
+  return parsed.data.is_hub === true || String(parsed.data.is_hub).toLowerCase() === "true";
 }
 
 async function rejectProposalsWithSameRawSha(vault, proposals, rawSha, excludePath) {

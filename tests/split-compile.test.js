@@ -272,6 +272,59 @@ test("raw-index treats source_segment as referenced (raw file not listed as pend
     `expected raw/filed.md to be filed via segment proposals, pending: ${index.pending.join(", ")}`);
 });
 
+test("split mode refuses to stage alongside an existing single-source page (no duplicate raw_file artifacts)", async () => {
+  // Regression for codex round-5 P2: split mode bypassed the
+  // single-source dedupe path, so calling split on a raw that already
+  // had a normal source page would stage a hub + segments next to the
+  // existing page — two source artifacts for the same raw_file.
+  await writeRaw("dual.md",
+    "Body text that talks about Bob Casey opening the Riviera deal in some detail."
+  );
+  // Single-source compile, then accept so the page lands.
+  const first = await compile.proposeCompileFromRaw("raw/dual.md", { summary: "Initial single-source compile of dual.md." });
+  assert.equal(first.status, "proposal-staged");
+  await proposals.resolveProposal(first.destinationPath, "accept");
+
+  // Now mutate the raw and try a split. Without force=true, split must
+  // recognize the existing single-source page and short-circuit.
+  await writeFile(path.join(tmpRoot, "raw/dual.md"),
+    "# Alpha\n\nFirst section with sufficient body content.\n\n# Beta\n\nSecond section with sufficient body content.\n",
+    "utf8"
+  );
+  const blocked = await compile.proposeCompileFromRaw("raw/dual.md", { split: "heading-h1" });
+  assert.equal(blocked.status, "already-filed");
+  assert.equal(blocked.existingPath, first.destinationPath);
+});
+
+test("raw-index prefers source hub over source_segment when both reference same raw_file", async () => {
+  // Regression for codex round-5 P2: filesystem walk order can put a
+  // segment ahead of the hub. First-writer-wins on referenced map would
+  // then record the segment, making doctor/tracker treat the hub as
+  // orphaned. Precedence walk (source → synthesis → source_segment)
+  // ensures the hub wins regardless of walk order.
+  async function seed(rel, body) {
+    const abs = path.join(tmpRoot, rel);
+    await mkdir(path.dirname(abs), { recursive: true });
+    await writeFile(abs, body, "utf8");
+  }
+  await seed("raw/multi.md", "raw body");
+  await seed("wiki/sources/source-multi-s01-alpha.md",
+    `---\ntype: source_segment\nraw_file: raw/multi.md\nhub: "[[multi-hub]]"\nsegment_index: 0\n---\n# Segment Alpha\n`
+  );
+  await seed("wiki/sources/source-multi-s02-beta.md",
+    `---\ntype: source_segment\nraw_file: raw/multi.md\nhub: "[[multi-hub]]"\nsegment_index: 1\n---\n# Segment Beta\n`
+  );
+  // Hub (walked later alphabetically — but should still win the referenced slot).
+  await seed("wiki/sources/multi-hub.md",
+    `---\ntype: source\nraw_file: raw/multi.md\nsegments_count: 2\nis_hub: true\n---\n# multi\n`
+  );
+
+  const index = await buildVaultIndex(vault);
+  const canonical = index.referenced.get("raw/multi.md");
+  assert.equal(canonical, "wiki/sources/multi-hub.md",
+    `expected hub to be canonical referenced page, got ${canonical}`);
+});
+
 test("split mode survives a sibling vault file with malformed YAML frontmatter", async () => {
   // Regression for codex round-3 P2: readHubMatching called
   // parseFrontmatter without a try/catch. A single bad-YAML file

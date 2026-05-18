@@ -74,8 +74,19 @@ export async function buildVaultIndex(vault, options = {}) {
   // duplicate compiles of the same raw file return already-filed.
   await collectProposedSourcePages(vault, sourcePages);
 
+  // Prefer the canonical source page over segment pages when multiple
+  // pages share a raw_file (split mode produces a hub `type: source` plus
+  // N `type: source_segment` pages, all referencing the same raw). Without
+  // this prioritization, filesystem walk order can record a segment as
+  // the canonical referenced page, making doctor/tracker checks treat
+  // the real hub as orphaned. Walk sources first, then synthesis, then
+  // segments — fill-by-precedence so the highest-priority page wins.
   const referenced = new Map();
-  for (const page of sourcePages) {
+  const PRECEDENCE = { source: 0, synthesis: 1, source_segment: 2 };
+  const sortedPages = sourcePages
+    .map((p) => ({ ...p, _prio: PRECEDENCE[String(p.data?.type || "")] ?? 9 }))
+    .sort((a, b) => a._prio - b._prio);
+  for (const page of sortedPages) {
     const refs = extractRawFileRefs(page.data);
     for (const ref of refs) {
       const target = canonicalize(ref);
