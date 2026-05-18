@@ -329,3 +329,57 @@ test("tracker row matching tolerates spaces in raw filename (doctor regex)", asy
   const tracker = await read("wiki/ingest-tracker.md");
   assert.match(tracker, /\| raw\/Booth Original Resume\.docx \| ingested \| \[\[source-booth-resume\]\]/);
 });
+
+// --- Concurrency tests (per-destination mutex) ---
+// Without serialization, parallel appends would race: both read the same base
+// body, both compute base+content, both write — one append is silently lost.
+// With the per-path lock added in createProposals, every append must be
+// observable in the final staged body.
+
+test("parallel append_to calls on the same path do not lose updates", async () => {
+  const N = 10;
+  await Promise.all(
+    Array.from({ length: N }, (_, i) =>
+      proposals.appendTo("wiki/inbox.md", `line-${i}\n`)
+    )
+  );
+  const body = await read("proposed/wiki/inbox.md");
+  for (let i = 0; i < N; i++) {
+    assert.match(body, new RegExp(`^line-${i}$`, "m"), `missing line-${i} in staged body`);
+  }
+});
+
+test("parallel propose_edit calls on the same path do not clobber each other", async () => {
+  // Seed a vault file with two unique markers we'll edit in parallel.
+  const vaultAbs = path.join(tmpRoot, "wiki/dual.md");
+  await mkdir(path.dirname(vaultAbs), { recursive: true });
+  await writeFile(vaultAbs, "ALPHA\nBETA\n", "utf8");
+
+  await Promise.all([
+    proposals.proposeEdit("wiki/dual.md", "ALPHA", "alpha-edited"),
+    proposals.proposeEdit("wiki/dual.md", "BETA", "beta-edited")
+  ]);
+
+  const staged = await read("proposed/wiki/dual.md");
+  assert.match(staged, /alpha-edited/);
+  assert.match(staged, /beta-edited/);
+  // Both edits land; neither original marker survives.
+  assert.doesNotMatch(staged, /ALPHA/);
+  assert.doesNotMatch(staged, /BETA/);
+});
+
+test("parallel resolveProposal accepts do not lose tracker rows", async () => {
+  const bodyA = `---\ntype: source\nraw_file: raw/a.md\n---\n# A\n`;
+  const bodyB = `---\ntype: source\nraw_file: raw/b.md\n---\n# B\n`;
+  await proposals.proposePage("wiki/sources/source-a.md", bodyA);
+  await proposals.proposePage("wiki/sources/source-b.md", bodyB);
+
+  await Promise.all([
+    proposals.resolveProposal("wiki/sources/source-a.md", "accept"),
+    proposals.resolveProposal("wiki/sources/source-b.md", "accept")
+  ]);
+
+  const tracker = await read("wiki/ingest-tracker.md");
+  assert.match(tracker, /\| raw\/a\.md \| ingested \| \[\[source-a\]\]/);
+  assert.match(tracker, /\| raw\/b\.md \| ingested \| \[\[source-b\]\]/);
+});

@@ -99,6 +99,26 @@ test("readPage rejects absolute paths with a clear error", async () => {
   );
 });
 
+test("readPage refuses files over the 50MB cap before extraction", async () => {
+  const tmpRoot = await mkdtemp(path.join(os.tmpdir(), "margins-bigfile-"));
+  try {
+    await mkdir(path.join(tmpRoot, "raw"), { recursive: true });
+    // Sparse 51MB file — truncate writes a hole, no actual disk pressure.
+    const bigAbs = path.join(tmpRoot, "raw/huge.txt");
+    const { open } = await import("node:fs/promises");
+    const fh = await open(bigAbs, "w");
+    await fh.truncate(51 * 1024 * 1024);
+    await fh.close();
+    const vault = createVault(tmpRoot);
+    await assert.rejects(
+      () => vault.readPage("raw/huge.txt"),
+      /exceeds.*read_page cap/
+    );
+  } finally {
+    await rm(tmpRoot, { recursive: true, force: true });
+  }
+});
+
 test("readPage rejects symlinks pointing outside the vault root", async () => {
   const { symlink } = await import("node:fs/promises");
   const tmpRoot = await mkdtemp(path.join(os.tmpdir(), "margins-symlink-"));

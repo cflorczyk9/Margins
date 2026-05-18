@@ -5,7 +5,30 @@ import { canonicalize } from "./paths.js";
 
 const PROPOSED_DIR = "proposed";
 
+// Per-destination async mutex. All read-modify-write flows on a given
+// destination path (proposeEdit, appendTo, resolveProposal) must serialize so
+// two concurrent calls don't lose updates. Tracker writes share a dedicated
+// key so two accepts running in parallel don't clobber each other's row.
+// Pure-write paths (proposePage) also lock to keep ordering deterministic.
+function createPathLocks() {
+  const inflight = new Map();
+  return function withLock(key, fn) {
+    const prev = inflight.get(key) || Promise.resolve();
+    const next = prev.then(() => fn(), () => fn());
+    const settled = next.then(() => {}, () => {});
+    inflight.set(key, settled);
+    settled.then(() => {
+      if (inflight.get(key) === settled) inflight.delete(key);
+    });
+    return next;
+  };
+}
+
+const TRACKER_LOCK_KEY = "__tracker__";
+
 export function createProposals(vault) {
+  const withLock = createPathLocks();
+
   function resolveProposed(rel) {
     const safe = vault.toRel(vault.resolveInside(rel));
     return vault.resolveInside(`${PROPOSED_DIR}/${safe}`);
@@ -14,6 +37,13 @@ export function createProposals(vault) {
   function relProposal(rel) {
     const safe = vault.toRel(vault.resolveInside(rel));
     return `${PROPOSED_DIR}/${safe}`;
+  }
+
+  // Canonical lock key per destination — derived from the resolved relative
+  // path so callers passing the same logical path with slight string variation
+  // (leading "./", trailing "/", redundant segments) still hit the same lock.
+  function lockKeyFor(rel) {
+    return vault.toRel(vault.resolveInside(rel));
   }
 
   async function exists(abs) {
@@ -40,7 +70,9 @@ export function createProposals(vault) {
   async function writeProposal(rel, body) {
     const abs = resolveProposed(rel);
     await mkdir(path.dirname(abs), { recursive: true });
-    await writeFile(abs, body, "utf8");
+    // Atomic write so a crash mid-stage can't leave a torn proposal that the
+    // next read interprets as truncated truth.
+    await atomicWrite(abs, body);
     return { proposalPath: relProposal(rel), destinationPath: rel };
   }
 
@@ -51,16 +83,18 @@ export function createProposals(vault) {
     if (rel.startsWith(PROPOSED_DIR + "/") || rel === PROPOSED_DIR) {
       throw new Error(`destination path cannot start with ${PROPOSED_DIR}/`);
     }
-    const vaultAbs = vault.resolveInside(rel);
-    const replacesVaultFile = await exists(vaultAbs);
-    if (replacesVaultFile && !options.force) {
-      throw new Error(
-        `${rel} already exists in vault. Use propose_edit or append_to instead.`
-      );
-    }
-    const replaced = await exists(resolveProposed(rel));
-    const result = await writeProposal(rel, body);
-    return { ...result, replacedExisting: replaced, replacesVaultFile };
+    return withLock(lockKeyFor(rel), async () => {
+      const vaultAbs = vault.resolveInside(rel);
+      const replacesVaultFile = await exists(vaultAbs);
+      if (replacesVaultFile && !options.force) {
+        throw new Error(
+          `${rel} already exists in vault. Use propose_edit or append_to instead.`
+        );
+      }
+      const replaced = await exists(resolveProposed(rel));
+      const result = await writeProposal(rel, body);
+      return { ...result, replacedExisting: replaced, replacesVaultFile };
+    });
   }
 
   async function proposeEdit(rel, before, after) {
@@ -71,22 +105,24 @@ export function createProposals(vault) {
     if (rel.startsWith(PROPOSED_DIR + "/")) {
       throw new Error(`edit path cannot start with ${PROPOSED_DIR}/`);
     }
-    const { body, source } = await readCurrentBody(rel);
-    if (body === null) {
-      throw new Error(`${rel} does not exist. Use propose_page to create it.`);
-    }
-    const occurrences = countOccurrences(body, before);
-    if (occurrences === 0) {
-      throw new Error(`'before' text not found in ${rel}.`);
-    }
-    if (occurrences > 1) {
-      throw new Error(
-        `'before' appears ${occurrences} times in ${rel}; add surrounding context so it's unique.`
-      );
-    }
-    const newBody = body.replace(before, after);
-    const result = await writeProposal(rel, newBody);
-    return { ...result, readFrom: source };
+    return withLock(lockKeyFor(rel), async () => {
+      const { body, source } = await readCurrentBody(rel);
+      if (body === null) {
+        throw new Error(`${rel} does not exist. Use propose_page to create it.`);
+      }
+      const occurrences = countOccurrences(body, before);
+      if (occurrences === 0) {
+        throw new Error(`'before' text not found in ${rel}.`);
+      }
+      if (occurrences > 1) {
+        throw new Error(
+          `'before' appears ${occurrences} times in ${rel}; add surrounding context so it's unique.`
+        );
+      }
+      const newBody = body.replace(before, after);
+      const result = await writeProposal(rel, newBody);
+      return { ...result, readFrom: source };
+    });
   }
 
   async function appendTo(rel, content) {
@@ -94,11 +130,13 @@ export function createProposals(vault) {
     if (rel.startsWith(PROPOSED_DIR + "/")) {
       throw new Error(`append path cannot start with ${PROPOSED_DIR}/`);
     }
-    const { body } = await readCurrentBody(rel);
-    const base = body ?? "";
-    const separator = base.length === 0 || base.endsWith("\n") ? "" : "\n";
-    const newBody = base + separator + content;
-    return writeProposal(rel, newBody);
+    return withLock(lockKeyFor(rel), async () => {
+      const { body } = await readCurrentBody(rel);
+      const base = body ?? "";
+      const separator = base.length === 0 || base.endsWith("\n") ? "" : "\n";
+      const newBody = base + separator + content;
+      return writeProposal(rel, newBody);
+    });
   }
 
   async function listProposals() {
@@ -144,35 +182,42 @@ export function createProposals(vault) {
     if (rel.startsWith(PROPOSED_DIR + "/")) {
       rel = rel.slice(PROPOSED_DIR.length + 1);
     }
-    const proposalAbs = resolveProposed(rel);
-    if (!(await exists(proposalAbs))) {
-      throw new Error(`no pending proposal for ${rel}`);
-    }
-    if (action === "reject") {
-      await rm(proposalAbs, { force: true });
-      return { destinationPath: rel, action: "rejected" };
-    }
-    if (action === "accept") {
-      const destAbs = vault.resolveInside(rel);
-      const proposalBody = await readFile(proposalAbs, "utf8");
+    // Lock on the destination path so a concurrent propose_edit/append_to
+    // can't squeeze a write into proposed/<rel> between our read and delete.
+    // Tracker writes are wrapped in their own lock further in.
+    return withLock(lockKeyFor(rel), async () => {
+      const proposalAbs = resolveProposed(rel);
+      if (!(await exists(proposalAbs))) {
+        throw new Error(`no pending proposal for ${rel}`);
+      }
+      if (action === "reject") {
+        await rm(proposalAbs, { force: true });
+        return { destinationPath: rel, action: "rejected" };
+      }
+      if (action === "accept") {
+        const destAbs = vault.resolveInside(rel);
+        const proposalBody = await readFile(proposalAbs, "utf8");
 
-      // Order matters. Write destination first (atomically). If the tracker
-      // update fails, the source page exists but the tracker is out of sync —
-      // detectable and repairable via margins_doctor. If we wrote the tracker
-      // first and the destination write failed, the tracker would point to a
-      // non-existent file, which is harder to diagnose.
-      await mkdir(path.dirname(destAbs), { recursive: true });
-      await atomicWrite(destAbs, proposalBody);
+        // Order matters. Write destination first (atomically). If the tracker
+        // update fails, the source page exists but the tracker is out of sync —
+        // detectable and repairable via margins_doctor. If we wrote the tracker
+        // first and the destination write failed, the tracker would point to a
+        // non-existent file, which is harder to diagnose.
+        await mkdir(path.dirname(destAbs), { recursive: true });
+        await atomicWrite(destAbs, proposalBody);
 
-      const trackerUpdate = await maybeAppendTrackerRow(vault, rel, proposalBody);
+        const trackerUpdate = await withLock(TRACKER_LOCK_KEY, () =>
+          maybeAppendTrackerRow(vault, rel, proposalBody)
+        );
 
-      // Only delete the proposal after both writes succeeded. If the tracker
-      // step throws, the proposal stays — user can re-run resolve_proposal.
-      await rm(proposalAbs, { force: true });
+        // Only delete the proposal after both writes succeeded. If the tracker
+        // step throws, the proposal stays — user can re-run resolve_proposal.
+        await rm(proposalAbs, { force: true });
 
-      return { destinationPath: rel, action: "accepted", trackerUpdated: trackerUpdate };
-    }
-    throw new Error(`unknown action '${action}'; use 'accept' or 'reject'`);
+        return { destinationPath: rel, action: "accepted", trackerUpdated: trackerUpdate };
+      }
+      throw new Error(`unknown action '${action}'; use 'accept' or 'reject'`);
+    });
   }
 
   async function resetAllProposals() {

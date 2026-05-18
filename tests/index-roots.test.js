@@ -36,6 +36,40 @@ test("detects Margins vault when wiki/ exists", async () => {
   assert.deepEqual(result.roots, ["wiki"]);
 });
 
+test("includes raw/ alongside wiki/ when both exist (no .obsidian)", async () => {
+  await mkdir(path.join(tmpRoot, "wiki"), { recursive: true });
+  await mkdir(path.join(tmpRoot, "raw"), { recursive: true });
+  const result = await detectIndexRoots(tmpRoot);
+  assert.equal(result.source, "margins");
+  assert.deepEqual(result.roots, ["wiki", "raw"]);
+});
+
+test("does NOT add raw/ when .obsidian/ is present (whole-vault index already covers it)", async () => {
+  await mkdir(path.join(tmpRoot, ".obsidian"), { recursive: true });
+  await mkdir(path.join(tmpRoot, "wiki"), { recursive: true });
+  await mkdir(path.join(tmpRoot, "raw"), { recursive: true });
+  const result = await detectIndexRoots(tmpRoot);
+  assert.equal(result.source, "obsidian");
+  assert.deepEqual(result.roots, ["."]);
+});
+
+test("DEFAULT_SKIP_DIRS excludes agents/ and .agents/", async () => {
+  assert.ok(DEFAULT_SKIP_DIRS.has("agents"));
+  assert.ok(DEFAULT_SKIP_DIRS.has(".agents"));
+});
+
+test("vault skips agents/ and .agents/ in a default-index walk", async () => {
+  await touch("notes.md", "kept");
+  await touch("agents/openai.yaml", "skill prompt");
+  await touch(".agents/custom.md", "another agent");
+  const vault = createVault(tmpRoot, {
+    indexRoots: ["."],
+    skipDirs: DEFAULT_SKIP_DIRS
+  });
+  const rels = (await vault.listFiles()).map((f) => vault.toRel(f)).sort();
+  assert.deepEqual(rels, ["notes.md"]);
+});
+
 test("falls back to root when neither .obsidian/ nor wiki/ exist", async () => {
   const result = await detectIndexRoots(tmpRoot);
   assert.equal(result.source, "default");
