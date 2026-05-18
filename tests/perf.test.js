@@ -15,6 +15,8 @@ import { performance } from "node:perf_hooks";
 import { createVault } from "../src/vault.js";
 import { createProposals } from "../src/proposals.js";
 import { buildVaultIndex, _resetProposedFmCacheForTests } from "../src/raw-index.js";
+import { createWikilinks } from "../src/wikilinks.js";
+import { buildSlugIndex } from "../src/vault-slug-index.js";
 
 let tmpRoot;
 let vault;
@@ -78,6 +80,55 @@ test("perf: raw-index second build hits the proposed/ frontmatter cache", async 
     secondMs <= firstMs * 0.6,
     `Cached buildVaultIndex did not beat first build by 40%+. First: ${firstMs.toFixed(1)}ms, second: ${secondMs.toFixed(1)}ms`
   );
+});
+
+test("perf: scope-mode wikilinks beats N single-page calls (shared slug index)", async () => {
+  // Build a 100-page corpus with 5 entity targets. Single-page mode rebuilds
+  // the slug index per call → N walks. Scope mode builds it once. The
+  // multiplier should be at least ~2x even on a small fixture.
+  await mkdir(path.join(tmpRoot, "wiki/people"), { recursive: true });
+  await mkdir(path.join(tmpRoot, "wiki/notes"), { recursive: true });
+  for (const name of ["bob-casey", "alice-chen", "carol-singh", "dan-mehta", "elena-park"]) {
+    await writeFile(path.join(tmpRoot, "wiki/people", `${name}.md`), `# ${name}`, "utf8");
+  }
+  for (let i = 0; i < 100; i++) {
+    await writeFile(
+      path.join(tmpRoot, "wiki/notes", `n-${i}.md`),
+      `Met with Bob Casey and Alice Chen today. Carol Singh joined later.`,
+      "utf8"
+    );
+  }
+  const wikilinks = createWikilinks(vault, { proposals });
+
+  // Single-page: 100 invocations.
+  const t0 = performance.now();
+  for (let i = 0; i < 100; i++) {
+    await wikilinks.proposeWikilinks(`wiki/notes/n-${i}.md`);
+  }
+  const singleMs = performance.now() - t0;
+
+  // Scope: 1 invocation.
+  const t1 = performance.now();
+  const result = await wikilinks.proposeWikilinks(null, { scope: "wiki/notes/**", maxPages: 100 });
+  const scopeMs = performance.now() - t1;
+
+  assert.equal(result.pagesScanned, 100);
+  assert.ok(
+    scopeMs * 2 <= singleMs,
+    `scope mode did not beat single-page by 2x. single=${singleMs.toFixed(1)}ms, scope=${scopeMs.toFixed(1)}ms`
+  );
+});
+
+test("perf: buildSlugIndex on a 100-page vault completes in under 100ms", async () => {
+  await mkdir(path.join(tmpRoot, "wiki"), { recursive: true });
+  for (let i = 0; i < 100; i++) {
+    await writeFile(path.join(tmpRoot, "wiki", `p-${i}.md`), `# Page ${i}`, "utf8");
+  }
+  const t0 = performance.now();
+  const idx = await buildSlugIndex(vault);
+  const ms = performance.now() - t0;
+  assert.equal(idx.totalSlugs, 100);
+  assert.ok(ms < 100, `buildSlugIndex took ${ms.toFixed(1)}ms (budget: 100ms)`);
 });
 
 test("perf: raw-index cache invalidates when a proposal mtime changes", async () => {

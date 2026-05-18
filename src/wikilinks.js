@@ -1,11 +1,17 @@
 import path from "node:path";
 import { getType, parseFrontmatter } from "./frontmatter.js";
-import { pathPriority } from "./paths.js";
+import { buildSlugIndex } from "./vault-slug-index.js";
 
-// Lightweight wikilink suggester for A3/B3 personas: vaults that have lots of
-// markdown but few [[wikilinks]]. The model passes a target page; this scans
-// the body for entity-shaped phrases that match existing vault file slugs
-// and proposes a list of {original, replacement, slug, file} edits.
+// Wikilink suggester for A3/B3 personas: vaults with lots of markdown but
+// few [[wikilinks]]. Two modes:
+//   1. Single-page (the original): pass `path`, get a ranked list of
+//      candidate {phrase, wikilink, occurrences} suggestions.
+//   2. Scope (new in v0.15): pass `scope` glob/folder, get aggregated
+//      suggestions across every matching page using one shared slug
+//      index. With apply=true, stages one rewritten page per scanned
+//      page (replacing every candidate phrase with its wikilink in a
+//      single propose_page proposal, NOT N propose_edit calls — those
+//      collide on string uniqueness when phrases recur or stack).
 
 const STOPWORDS = new Set([
   "the", "and", "for", "with", "from", "this", "that", "have", "has", "had",
@@ -17,10 +23,25 @@ const STOPWORDS = new Set([
   "why", "how", "which"
 ]);
 
-export function createWikilinks(vault) {
-  async function proposeWikilinks(pagePath, options = {}) {
-    const maxSuggestions = options.maxSuggestions ?? 15;
+const DEFAULT_MAX_PAGES = 50;
+const DEFAULT_MAX_SUGGESTIONS = 15;
 
+export function createWikilinks(vault, options = {}) {
+  // proposals is optional; only required for apply mode.
+  const proposals = options.proposals || null;
+
+  async function proposeWikilinks(pagePath, callOptions = {}) {
+    // Branch: scope-mode (bulk) when scope is set OR path is missing
+    // alongside scope. Single-page mode remains the default to preserve
+    // the original tool contract.
+    if (callOptions.scope) {
+      return await runScopeMode(pagePath, callOptions);
+    }
+    return await runSinglePageMode(pagePath, callOptions);
+  }
+
+  async function runSinglePageMode(pagePath, callOptions) {
+    const maxSuggestions = callOptions.maxSuggestions ?? DEFAULT_MAX_SUGGESTIONS;
     const page = await vault.readPage(pagePath);
     const body = page.body;
     const skipReason = systemPageSkipReason(page.path, body);
@@ -34,59 +55,201 @@ export function createWikilinks(vault) {
         reason: skipReason
       };
     }
+    const index = await buildSlugIndex(vault, { excludePath: pagePath });
+    const ranked = scanPageForSuggestions(body, index.slugToFile, maxSuggestions);
+    return {
+      page: page.path,
+      candidatesScanned: ranked.totalCandidates,
+      vaultSlugsAvailable: index.totalSlugs,
+      suggestions: ranked.suggestions
+    };
+  }
 
-    const allFiles = await vault.listFiles();
-    const slugToFile = new Map();
-    for (const abs of allFiles) {
-      const rel = vault.toRel(abs);
-      if (rel === pagePath) continue;
-      const priority = pathPriority(rel);
-      // Skip test fixtures outright — never link a user's wiki to a fixture.
-      if (priority <= 0) continue;
-      const base = path.basename(abs, path.extname(abs));
-      // Skip "source-<slug>.md" prefixes — those are bucket-prefixed.
-      const slug = base.replace(/^source-/, "");
-      if (!slug || slug.length < 3) continue;
-      const key = slug.toLowerCase();
-      const existing = slugToFile.get(key);
-      // Highest-priority target wins. wiki/ beats raw/ beats margins/.
-      // On ties, the first-found path wins so behavior stays deterministic
-      // for a given vault layout.
-      if (!existing || priority > existing.priority) {
-        slugToFile.set(key, { slug, rel, priority });
+  async function runScopeMode(initialPath, callOptions) {
+    const scope = callOptions.scope;
+    const maxPages = clampMaxPages(callOptions.maxPages);
+    const maxSuggestions = callOptions.maxSuggestions ?? DEFAULT_MAX_SUGGESTIONS;
+    const apply = Boolean(callOptions.apply);
+
+    if (apply && !proposals) {
+      throw new Error("propose_wikilinks apply=true requires the proposals module — pass it to createWikilinks.");
+    }
+
+    // Build the slug index ONCE for the whole scope walk. This is the
+    // entire reason scope mode exists: per-call rebuild of the index is
+    // the dominant cost for folder-scale operations.
+    const index = await buildSlugIndex(vault);
+
+    const targets = await collectScopePages(vault, scope, maxPages);
+    if (!targets.length) {
+      return {
+        scope,
+        vaultSlugsAvailable: index.totalSlugs,
+        pagesScanned: 0,
+        pages: [],
+        aggregatedSuggestions: [],
+        apply,
+        applied: 0
+      };
+    }
+
+    const pageResults = [];
+    const aggregated = new Map(); // wikilink → {wikilink, targetPath, totalOccurrences, pageCount}
+
+    for (const target of targets) {
+      let page;
+      try {
+        page = await vault.readPage(target);
+      } catch {
+        continue;
+      }
+      const skip = systemPageSkipReason(page.path, page.body);
+      if (skip) {
+        pageResults.push({ page: page.path, skipped: true, reason: skip, suggestions: [] });
+        continue;
+      }
+      // Per-page slug index excludes the page itself so we don't suggest
+      // a self-link. The shared index is the slow part; this re-derivation
+      // is just a per-page Map filter.
+      const perPageIndex = filterIndexExcluding(index.slugToFile, page.path);
+      const ranked = scanPageForSuggestions(page.body, perPageIndex, maxSuggestions);
+      const entry = {
+        page: page.path,
+        suggestions: ranked.suggestions
+      };
+      pageResults.push(entry);
+
+      for (const s of ranked.suggestions) {
+        const key = s.wikilink;
+        const prior = aggregated.get(key);
+        if (prior) {
+          prior.totalOccurrences += s.occurrences;
+          prior.pageCount += 1;
+        } else {
+          aggregated.set(key, {
+            wikilink: s.wikilink,
+            targetPath: s.targetPath,
+            totalOccurrences: s.occurrences,
+            pageCount: 1
+          });
+        }
       }
     }
 
-    // Find candidate phrases in the body: capitalized multi-word names + slug-matches.
-    const alreadyLinked = collectExistingLinks(body);
-    const candidates = findCandidatePhrases(body, slugToFile, alreadyLinked);
-
-    // Score by frequency (how many times the phrase appears in the body).
-    const counts = new Map();
-    for (const c of candidates) {
-      const key = c.phrase + "→" + c.slug;
-      const entry = counts.get(key) || { ...c, count: 0 };
-      entry.count++;
-      counts.set(key, entry);
+    let appliedCount = 0;
+    const appliedPages = [];
+    if (apply) {
+      for (const pr of pageResults) {
+        if (pr.skipped || !pr.suggestions.length) continue;
+        const page = await vault.readPage(pr.page);
+        const rewritten = applyWikilinksToBody(page.body, pr.suggestions);
+        if (rewritten === page.body) continue;
+        const result = await proposals.proposePage(pr.page, rewritten, { force: true });
+        appliedCount += 1;
+        appliedPages.push({ page: pr.page, proposalPath: result.proposalPath, suggestionsApplied: pr.suggestions.length });
+      }
     }
-    const ranked = [...counts.values()]
-      .sort((a, b) => b.count - a.count)
-      .slice(0, maxSuggestions);
+
+    const aggregatedSuggestions = Array.from(aggregated.values())
+      .sort((a, b) => b.totalOccurrences - a.totalOccurrences || b.pageCount - a.pageCount);
 
     return {
-      page: page.path,
-      candidatesScanned: candidates.length,
-      vaultSlugsAvailable: slugToFile.size,
-      suggestions: ranked.map((r) => ({
-        phrase: r.phrase,
-        wikilink: `[[${r.slug}]]`,
-        targetPath: r.targetPath,
-        occurrences: r.count
-      }))
+      scope,
+      vaultSlugsAvailable: index.totalSlugs,
+      pagesScanned: pageResults.length,
+      pages: pageResults,
+      aggregatedSuggestions,
+      apply,
+      applied: appliedCount,
+      appliedPages
     };
   }
 
   return { proposeWikilinks };
+}
+
+function scanPageForSuggestions(body, slugToFile, maxSuggestions) {
+  const alreadyLinked = collectExistingLinks(body);
+  const candidates = findCandidatePhrases(body, slugToFile, alreadyLinked);
+  const counts = new Map();
+  for (const c of candidates) {
+    const key = c.phrase + "→" + c.slug;
+    const entry = counts.get(key) || { ...c, count: 0 };
+    entry.count++;
+    counts.set(key, entry);
+  }
+  const ranked = [...counts.values()]
+    .sort((a, b) => b.count - a.count)
+    .slice(0, maxSuggestions)
+    .map((r) => ({
+      phrase: r.phrase,
+      wikilink: `[[${r.slug}]]`,
+      targetPath: r.targetPath,
+      occurrences: r.count
+    }));
+  return { totalCandidates: candidates.length, suggestions: ranked };
+}
+
+function filterIndexExcluding(slugToFile, excludePath) {
+  // The shared index might contain a slug entry whose `rel` IS the page
+  // we're scanning. Drop those to avoid self-linking. Cheaper than
+  // rebuilding the whole index.
+  const filtered = new Map();
+  for (const [key, val] of slugToFile) {
+    if (val.rel === excludePath) continue;
+    filtered.set(key, val);
+  }
+  return filtered;
+}
+
+async function collectScopePages(vault, scope, maxPages) {
+  // Reuse the path-matching machinery from list_proposals.
+  const { globMatch } = await import("./paths.js");
+  const allFiles = await vault.listFiles();
+  const out = [];
+  for (const abs of allFiles) {
+    const rel = vault.toRel(abs);
+    if (!rel.endsWith(".md")) continue; // wikilinks only meaningful on markdown
+    if (!globMatch(scope, rel)) continue;
+    out.push(rel);
+    if (out.length >= maxPages) break;
+  }
+  return out;
+}
+
+function applyWikilinksToBody(body, suggestions) {
+  // Replace every occurrence of each suggestion phrase with its wikilink,
+  // honoring word boundaries so substring matches inside other words don't
+  // corrupt the body. Existing wikilinks are not touched — the suggestion
+  // set already excludes phrases inside [[ ... ]].
+  let out = body;
+  for (const s of suggestions) {
+    const phrase = s.phrase;
+    const link = s.wikilink;
+    // Escape regex specials in phrase; require word boundaries so
+    // "Bob" doesn't replace inside "Bobcat".
+    const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(`\\b${escaped}\\b`, "g");
+    // Don't replace inside an existing wikilink: lookbehind for "[[" is
+    // expensive across all engines; use a callback that checks context.
+    out = out.replace(re, (match, offset, full) => {
+      // If the match is already inside a wikilink (search left for "[["
+      // before any "]]"), skip it.
+      const prefix = full.slice(Math.max(0, offset - 50), offset);
+      const opens = (prefix.match(/\[\[/g) || []).length;
+      const closes = (prefix.match(/\]\]/g) || []).length;
+      if (opens > closes) return match;
+      return link;
+    });
+  }
+  return out;
+}
+
+function clampMaxPages(n) {
+  if (typeof n !== "number" || !Number.isFinite(n)) return DEFAULT_MAX_PAGES;
+  if (n < 1) return 1;
+  if (n > 500) return 500;
+  return Math.floor(n);
 }
 
 function systemPageSkipReason(pagePath, body) {
@@ -116,9 +279,6 @@ function collectExistingLinks(body) {
 
 function findCandidatePhrases(body, slugToFile, alreadyLinked) {
   const out = [];
-
-  // Strategy A: scan for capitalized multi-word phrases (potential entity names)
-  // and slugify them to check against vault slugs.
   const wordRe = /\b[A-Z][a-zA-Z0-9]+(?:\s+[A-Z][a-zA-Z0-9]+){0,3}\b/g;
   let m;
   while ((m = wordRe.exec(body)) !== null) {
@@ -128,15 +288,9 @@ function findCandidatePhrases(body, slugToFile, alreadyLinked) {
     if (alreadyLinked.has(slug)) continue;
     const match = slugToFile.get(slug);
     if (match) {
-      out.push({
-        phrase,
-        slug: match.slug,
-        targetPath: match.rel
-      });
+      out.push({ phrase, slug: match.slug, targetPath: match.rel });
     }
   }
-
-  // Strategy B: scan for kebab-case or snake_case strings that look like slugs.
   const slugRe = /\b[a-z][a-z0-9]+(?:[-_][a-z0-9]+)+\b/g;
   while ((m = slugRe.exec(body)) !== null) {
     const literal = m[0];
@@ -144,14 +298,9 @@ function findCandidatePhrases(body, slugToFile, alreadyLinked) {
     if (alreadyLinked.has(slug)) continue;
     const match = slugToFile.get(slug);
     if (match) {
-      out.push({
-        phrase: literal,
-        slug: match.slug,
-        targetPath: match.rel
-      });
+      out.push({ phrase: literal, slug: match.slug, targetPath: match.rel });
     }
   }
-
   return out;
 }
 

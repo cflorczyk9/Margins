@@ -181,6 +181,67 @@ test("stdio: parallel resolveProposal accepts preserve both tracker rows", async
   assert.match(tracker, /\| raw\/c\.md \| ingested \| \[\[source-c\]\]/);
 });
 
+test("stdio: scope-mode propose_wikilinks aggregates across folder", async (t) => {
+  const vault = await makeVault(t);
+  // Seed a tiny linked vault: two entity pages + three notes that mention them.
+  await mkdir(path.join(vault, "wiki/people"), { recursive: true });
+  await mkdir(path.join(vault, "wiki/notes"), { recursive: true });
+  await writeFile(path.join(vault, "wiki/people/bob-casey.md"), "# Bob Casey", "utf8");
+  await writeFile(path.join(vault, "wiki/people/alice-chen.md"), "# Alice Chen", "utf8");
+  await writeFile(path.join(vault, "wiki/notes/n-1.md"), "Met with Bob Casey today.", "utf8");
+  await writeFile(path.join(vault, "wiki/notes/n-2.md"), "Bob Casey and Alice Chen joined.", "utf8");
+  await writeFile(path.join(vault, "wiki/notes/n-3.md"), "Just prose without entities.", "utf8");
+  const client = await startClient(t, vault);
+
+  const r = await client.callTool("propose_wikilinks", { scope: "wiki/notes/**" });
+  assert.notEqual(r.result?.isError, true);
+  const sc = r.result.structuredContent;
+  assert.equal(sc.pagesScanned, 3);
+  const links = sc.aggregatedSuggestions.map((s) => s.wikilink);
+  assert.ok(links.includes("[[bob-casey]]"));
+  assert.ok(links.includes("[[alice-chen]]"));
+});
+
+test("stdio: scope-mode apply=true stages rewritten pages with wikilinks", async (t) => {
+  const vault = await makeVault(t);
+  await mkdir(path.join(vault, "wiki/people"), { recursive: true });
+  await mkdir(path.join(vault, "wiki/notes"), { recursive: true });
+  await writeFile(path.join(vault, "wiki/people/bob-casey.md"), "# Bob Casey", "utf8");
+  await writeFile(path.join(vault, "wiki/notes/n-1.md"), "Met with Bob Casey today.", "utf8");
+  await writeFile(path.join(vault, "wiki/notes/n-2.md"), "No matches here.", "utf8");
+  const client = await startClient(t, vault);
+
+  const r = await client.callTool("propose_wikilinks", {
+    scope: "wiki/notes/**",
+    apply: true
+  });
+  assert.notEqual(r.result?.isError, true);
+  assert.equal(r.result.structuredContent.applied, 1);
+
+  // The staged proposal exists and has the wikilink applied.
+  const staged = await client.callTool("list_proposals", { pattern: "wiki/notes/*" });
+  assert.equal(staged.result.structuredContent.totalMatched, 1);
+  const accepted = await client.callTool("resolve_proposal", {
+    path: "wiki/notes/n-1.md",
+    action: "accept"
+  });
+  assert.equal(accepted.result.structuredContent.action, "accepted");
+  const body = await readFile(path.join(vault, "wiki/notes/n-1.md"), "utf8");
+  assert.match(body, /\[\[bob-casey\]\]/);
+});
+
+test("stdio: propose_wikilinks rejects both-or-neither path+scope at tool boundary", async (t) => {
+  const vault = await makeVault(t);
+  const client = await startClient(t, vault);
+  const both = await client.callTool("propose_wikilinks", {
+    path: "wiki/foo.md",
+    scope: "wiki/**"
+  });
+  assert.equal(both.result.isError, true);
+  const neither = await client.callTool("propose_wikilinks", {});
+  assert.equal(neither.result.isError, true);
+});
+
 test("stdio: split mode stages N segments + 1 hub end-to-end over MCP", async (t) => {
   const vault = await makeVault(t);
   await mkdir(path.join(vault, "raw"), { recursive: true });

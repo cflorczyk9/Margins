@@ -96,7 +96,7 @@ export function buildServer(vault, options = {}) {
   const preferences = createPreferences(vault);
   const primer = createPrimer(vault, { proposals, preferences });
   const compile = createCompile(vault, proposals);
-  const wikilinks = createWikilinks(vault);
+  const wikilinks = createWikilinks(vault, { proposals });
   const vaultContext = createVaultContext(vault);
   const telemetry = options.telemetry || { fireAndForget: () => {}, enabled: false };
   const trackToolCall = (toolName) => telemetry.fireAndForget(`/tool/${toolName}`);
@@ -388,23 +388,84 @@ export function buildServer(vault, options = {}) {
     "propose_wikilinks",
     {
       description:
-        "Scan a page for entity-shaped phrases and propose wikilinks to other vault pages that share the same slug. Returns a ranked list of {phrase, wikilink, targetPath, occurrences}. Especially useful for A3/B3 personas (many files, few wikilinks). The model then chooses which suggestions to apply via propose_edit (one edit per phrase).",
+        "Scan vault pages for entity-shaped phrases and propose wikilinks to other vault pages that share the same slug. Two modes:\n" +
+        " (1) single-page — pass `path`, get a ranked list of {phrase, wikilink, occurrences} for that one page.\n" +
+        " (2) scope — pass `scope` (glob/folder), scan every matching page using one shared slug index (much faster than calling repeatedly), get aggregated suggestions across pages.\n" +
+        " With `apply: true` in scope mode, Margins stages one rewritten page per scanned page (a propose_page proposal that replaces every candidate phrase with its wikilink). Apply mode preserves the proposal-review contract — nothing lands until resolve_proposal accepts.\n" +
+        " Useful for A3/B3 personas (many files, few wikilinks): scope across a folder finds entity references that already have target pages.",
       inputSchema: {
         path: z
           .string()
-          .describe("Page path relative to vault root, e.g. 'wiki/career/career.md'."),
+          .optional()
+          .describe("Page path for single-page mode, e.g. 'wiki/career/career.md'. Mutually exclusive with scope."),
+        scope: z
+          .string()
+          .optional()
+          .describe("Glob for bulk-scope mode, e.g. 'wiki/sources/**' or 'Anatomy/*.md'. Mutually exclusive with path."),
         maxSuggestions: z
           .number()
           .int()
           .min(1)
           .max(50)
           .optional()
-          .describe("Cap on suggestions returned. Default 15.")
+          .describe("Cap on suggestions per page. Default 15."),
+        maxPages: z
+          .number()
+          .int()
+          .min(1)
+          .max(500)
+          .optional()
+          .describe("Cap on pages scanned in scope mode. Default 50."),
+        apply: z
+          .boolean()
+          .optional()
+          .describe("Only meaningful in scope mode. When true, stage a rewritten page per scanned page with all wikilink suggestions applied (one propose_page per page, NOT per phrase). Review/accept via list_proposals + resolve_proposal. Default false (suggest only).")
       },
-      annotations: { readOnlyHint: true }
+      annotations: { readOnlyHint: false, destructiveHint: false }
     },
-    async ({ path: rel, maxSuggestions }) => {
-      const result = await wikilinks.proposeWikilinks(rel, { maxSuggestions });
+    async ({ path: rel, scope, maxSuggestions, maxPages, apply }) => {
+      const hasPath = typeof rel === "string" && rel.length > 0;
+      const hasScope = typeof scope === "string" && scope.length > 0;
+      if (hasPath && hasScope) {
+        throw new Error("Pass exactly one of path or scope, not both.");
+      }
+      if (!hasPath && !hasScope) {
+        throw new Error("Pass either path (single page) or scope (bulk).");
+      }
+      if (apply && !hasScope) {
+        throw new Error("apply=true only applies in scope mode (requires the scope param).");
+      }
+
+      const result = await wikilinks.proposeWikilinks(rel || null, {
+        scope, maxSuggestions, maxPages, apply
+      });
+      if (apply) vaultContext.invalidate();
+
+      if (hasScope) {
+        const lines = [
+          `Scanned ${result.pagesScanned} page(s) under '${scope}' against ${result.vaultSlugsAvailable} vault slugs.`,
+          `Aggregated ${result.aggregatedSuggestions.length} unique link target(s):`,
+          ""
+        ];
+        for (const s of result.aggregatedSuggestions.slice(0, 30)) {
+          lines.push(`  ${s.wikilink} → ${s.targetPath}  (${s.totalOccurrences}x across ${s.pageCount} page${s.pageCount === 1 ? "" : "s"})`);
+        }
+        if (result.aggregatedSuggestions.length > 30) {
+          lines.push(`  ... and ${result.aggregatedSuggestions.length - 30} more (full list in structuredContent.aggregatedSuggestions)`);
+        }
+        if (apply) {
+          lines.push("");
+          lines.push(`Applied: ${result.applied} page(s) staged as proposals. Review with list_proposals pattern: '${scope}'.`);
+        } else if (result.aggregatedSuggestions.length) {
+          lines.push("");
+          lines.push("Re-run with apply=true to stage rewritten pages (one proposal per page).");
+        }
+        return {
+          content: [{ type: "text", text: lines.join("\n") }],
+          structuredContent: result
+        };
+      }
+
       const lines = [
         `Scanned ${result.page} against ${result.vaultSlugsAvailable} vault slugs.`,
         `Found ${result.suggestions.length} wikilink candidates:`,
