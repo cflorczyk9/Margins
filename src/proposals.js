@@ -124,12 +124,18 @@ export function createProposals(vault) {
       } else if (entry.isFile()) {
         const rel = path.relative(root, abs).split(path.sep).join("/");
         const vaultAbs = vault.resolveInside(rel);
-        out.push({
+        const willOverwrite = await exists(vaultAbs);
+        const proposalSize = (await stat(abs)).size;
+        const item = {
           proposalPath: `${PROPOSED_DIR}/${rel}`,
           destinationPath: rel,
-          willOverwrite: await exists(vaultAbs),
-          size: (await stat(abs)).size
-        });
+          willOverwrite,
+          size: proposalSize
+        };
+        if (willOverwrite) {
+          item.overwriteDelta = await buildOverwriteDelta(abs, vaultAbs, proposalSize);
+        }
+        out.push(item);
       }
     }
   }
@@ -300,4 +306,86 @@ function countOccurrences(haystack, needle) {
     idx += needle.length;
   }
   return count;
+}
+
+const DELTA_LINE_CAP = 200;
+
+// For proposals that will overwrite an existing vault file, surface a small
+// preview so a reviewer can tell at a glance whether accepting will clobber
+// real content. Without this, list_proposals just says "willOverwrite: true"
+// and a 22KB diff vanishes silently on accept.
+async function buildOverwriteDelta(proposalAbs, vaultAbs, proposalSize) {
+  let proposalBody;
+  let vaultBody;
+  try {
+    proposalBody = await readFile(proposalAbs, "utf8");
+  } catch {
+    return { error: "could-not-read-proposal" };
+  }
+  try {
+    vaultBody = await readFile(vaultAbs, "utf8");
+  } catch {
+    return { error: "could-not-read-destination" };
+  }
+  const vaultBytes = Buffer.byteLength(vaultBody, "utf8");
+  // Fast path for the very common case where re-staging regenerates the same
+  // page. Skip the line-by-line walk if the bytes are identical.
+  if (proposalBody === vaultBody) {
+    return {
+      destinationBytes: vaultBytes,
+      proposalBytes: proposalSize,
+      bytesDelta: 0,
+      destinationLines: countLines(vaultBody),
+      proposalLines: countLines(proposalBody),
+      identical: true,
+      firstDiff: null
+    };
+  }
+  const proposalLines = proposalBody.split(/\r?\n/);
+  const vaultLines = vaultBody.split(/\r?\n/);
+  const firstDiff = findFirstDiff(proposalLines, vaultLines);
+  return {
+    destinationBytes: vaultBytes,
+    proposalBytes: proposalSize,
+    bytesDelta: proposalSize - vaultBytes,
+    destinationLines: vaultLines.length,
+    proposalLines: proposalLines.length,
+    identical: firstDiff === null,
+    firstDiff: firstDiff
+      ? {
+          line: firstDiff.line,
+          fromVault: truncateForPreview(firstDiff.fromVault),
+          fromProposal: truncateForPreview(firstDiff.fromProposal)
+        }
+      : null
+  };
+}
+
+function findFirstDiff(proposalLines, vaultLines) {
+  const limit = Math.max(proposalLines.length, vaultLines.length);
+  for (let i = 0; i < limit; i++) {
+    const fromProposal = proposalLines[i];
+    const fromVault = vaultLines[i];
+    if (fromProposal !== fromVault) {
+      return {
+        line: i + 1,
+        fromProposal: fromProposal ?? null,
+        fromVault: fromVault ?? null
+      };
+    }
+  }
+  return null;
+}
+
+function countLines(s) {
+  if (!s) return 0;
+  let n = 1;
+  for (let i = 0; i < s.length; i++) if (s.charCodeAt(i) === 10) n++;
+  return n;
+}
+
+function truncateForPreview(line) {
+  if (line === null) return null;
+  if (line.length <= DELTA_LINE_CAP) return line;
+  return line.slice(0, DELTA_LINE_CAP) + "…";
 }
