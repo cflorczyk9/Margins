@@ -205,6 +205,11 @@ async function diagnoseTracker(vault, index) {
   for (const rawRel of index.referenced.keys()) {
     if (!trackerRefs.has(rawRel)) {
       const sourcePage = index.referenced.get(rawRel);
+      // Pending proposals haven't been accepted into the vault yet, so they
+      // legitimately have no tracker row. The tracker row is appended by
+      // resolve_proposal on accept; flagging proposals as drift produces a
+      // false positive on every stage.
+      if (sourcePage.startsWith("proposed/")) continue;
       issues.push({
         kind: "tracker-missing-row",
         sourcePage,

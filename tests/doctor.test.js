@@ -66,6 +66,27 @@ test("tracker-missing-row: source exists but tracker has no row for it", async (
   assert.equal(missing[0].rawFile, "raw/a.md");
 });
 
+test("tracker-missing-row: ignores pending proposals under proposed/", async () => {
+  await touch("raw/a.md", "alpha");
+  // Source page is only staged in proposed/ — not yet accepted into the vault.
+  // The tracker legitimately has no row for it; doctor should not flag this.
+  await touch(
+    "proposed/wiki/sources/source-a.md",
+    `---\ntype: source\nraw_file: raw/a.md\n---\n# A\n`
+  );
+  await touch(
+    "wiki/ingest-tracker.md",
+    `---\ntype: tracker\n---\n\n# Ingest Tracker\n\n| raw/other.md | ingested | [[source-other]] | - |  |  |\n`
+  );
+  const report = await diagnoseVault(vault);
+  const missing = report.issues.filter((i) => i.kind === "tracker-missing-row");
+  assert.equal(
+    missing.length,
+    0,
+    `expected no tracker-missing-row issues for proposed/ source pages, got: ${missing.map((m) => m.sourcePage).join(", ")}`
+  );
+});
+
 test("tracker-orphan-row: tracker points to a slug with no source page", async () => {
   await touch("raw/a.md", "alpha");
   await touch(
