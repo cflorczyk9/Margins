@@ -12,6 +12,13 @@ import { diagnoseVault } from "./doctor.js";
 import { loadTelemetry, writeConsent, selfTagEnabled } from "./telemetry.js";
 import { createPreferences } from "./preferences.js";
 import { createWikilinks } from "./wikilinks.js";
+import { scanEntityCandidates } from "./entity-scan.js";
+import {
+  createEntityStubs,
+  readEntityRejections,
+  recordEntityRejection,
+  maybeReadEntityStubSlug
+} from "./entity-stubs.js";
 import { createVaultContext } from "./vault-context.js";
 
 // Inline SVG of the Margins mark. Embedded as a base64 data URI so the icon
@@ -85,9 +92,10 @@ TESTING MODE: when the user explicitly frames an action as testing or pressure-t
 TOOLS:
 - Context: margins_start, recall_preferences, get_vault_context
 - Read: search_vault, read_page, list_recent, get_backlinks, list_unprocessed, margins_doctor
-- Propose writes: propose_page, propose_edit, append_to, propose_compile_from_raw
-- Suggest: propose_wikilinks (for A3/B3 vaults with few links)
-- Manage proposals: list_proposals, resolve_proposal, margins_reset_proposals
+- Propose writes: propose_page, propose_edit, append_to, propose_compile_from_raw (supports split mode for multi-section docs)
+- Suggest: propose_wikilinks (single-page or scope=glob for A3/B3 vaults with few links; apply=true stages rewritten pages)
+- Discover: scan_entity_candidates (find recurring capitalized phrases with no matching slug — A3 cold-start), propose_entity_stubs (stage stub entity pages from scan output; reject events feed .margins/entity-rejections.md so the same slugs don't reappear next scan)
+- Manage proposals: list_proposals (pattern/limit/sortBy), resolve_proposal (path OR pattern for bulk, dryRun, maxCount), margins_reset_proposals
 - Learn: record_preference
 - ChatGPT Deep Research: search, fetch`;
 
@@ -96,7 +104,8 @@ export function buildServer(vault, options = {}) {
   const preferences = createPreferences(vault);
   const primer = createPrimer(vault, { proposals, preferences });
   const compile = createCompile(vault, proposals);
-  const wikilinks = createWikilinks(vault);
+  const wikilinks = createWikilinks(vault, { proposals });
+  const entityStubs = createEntityStubs(vault, proposals);
   const vaultContext = createVaultContext(vault);
   const telemetry = options.telemetry || { fireAndForget: () => {}, enabled: false };
   const trackToolCall = (toolName) => telemetry.fireAndForget(`/tool/${toolName}`);
@@ -388,23 +397,94 @@ export function buildServer(vault, options = {}) {
     "propose_wikilinks",
     {
       description:
-        "Scan a page for entity-shaped phrases and propose wikilinks to other vault pages that share the same slug. Returns a ranked list of {phrase, wikilink, targetPath, occurrences}. Especially useful for A3/B3 personas (many files, few wikilinks). The model then chooses which suggestions to apply via propose_edit (one edit per phrase).",
+        "Scan vault pages for entity-shaped phrases and propose wikilinks to other vault pages that share the same slug. Two modes:\n" +
+        " (1) single-page — pass `path`, get a ranked list of {phrase, wikilink, occurrences} for that one page.\n" +
+        " (2) scope — pass `scope` (glob/folder), scan every matching page using one shared slug index (much faster than calling repeatedly), get aggregated suggestions across pages.\n" +
+        " With `apply: true` in scope mode, Margins stages one rewritten page per scanned page (a propose_page proposal that replaces every candidate phrase with its wikilink). Apply mode preserves the proposal-review contract — nothing lands until resolve_proposal accepts.\n" +
+        " Useful for A3/B3 personas (many files, few wikilinks): scope across a folder finds entity references that already have target pages.",
       inputSchema: {
         path: z
           .string()
-          .describe("Page path relative to vault root, e.g. 'wiki/career/career.md'."),
+          .optional()
+          .describe("Page path for single-page mode, e.g. 'wiki/career/career.md'. Mutually exclusive with scope."),
+        scope: z
+          .string()
+          .optional()
+          .describe("Glob for bulk-scope mode, e.g. 'wiki/sources/**' or 'Anatomy/*.md'. Mutually exclusive with path."),
         maxSuggestions: z
           .number()
           .int()
           .min(1)
           .max(50)
           .optional()
-          .describe("Cap on suggestions returned. Default 15.")
+          .describe("Cap on suggestions per page. Default 15."),
+        maxPages: z
+          .number()
+          .int()
+          .min(1)
+          .max(500)
+          .optional()
+          .describe("Cap on pages scanned in scope mode. Default 50."),
+        apply: z
+          .boolean()
+          .optional()
+          .describe("Only meaningful in scope mode. When true, stage a rewritten page per scanned page with all wikilink suggestions applied (one propose_page per page, NOT per phrase). Review/accept via list_proposals + resolve_proposal. Default false (suggest only).")
       },
-      annotations: { readOnlyHint: true }
+      annotations: { readOnlyHint: false, destructiveHint: false }
     },
-    async ({ path: rel, maxSuggestions }) => {
-      const result = await wikilinks.proposeWikilinks(rel, { maxSuggestions });
+    async ({ path: rel, scope, maxSuggestions, maxPages, apply }) => {
+      const hasPath = typeof rel === "string" && rel.length > 0;
+      const hasScope = typeof scope === "string" && scope.length > 0;
+      if (hasPath && hasScope) {
+        throw new Error("Pass exactly one of path or scope, not both.");
+      }
+      if (!hasPath && !hasScope) {
+        throw new Error("Pass either path (single page) or scope (bulk).");
+      }
+      if (apply && !hasScope) {
+        throw new Error("apply=true only applies in scope mode (requires the scope param).");
+      }
+
+      const result = await wikilinks.proposeWikilinks(rel || null, {
+        scope, maxSuggestions, maxPages, apply
+      });
+      if (apply) vaultContext.invalidate();
+
+      if (hasScope) {
+        const lines = [
+          `Scanned ${result.pagesScanned} page(s) under '${scope}' against ${result.vaultSlugsAvailable} vault slugs.`,
+          `Aggregated ${result.aggregatedSuggestions.length} unique link target(s):`,
+          ""
+        ];
+        for (const s of result.aggregatedSuggestions.slice(0, 30)) {
+          lines.push(`  ${s.wikilink} → ${s.targetPath}  (${s.totalOccurrences}x across ${s.pageCount} page${s.pageCount === 1 ? "" : "s"})`);
+        }
+        if (result.aggregatedSuggestions.length > 30) {
+          lines.push(`  ... and ${result.aggregatedSuggestions.length - 30} more (full list in structuredContent.aggregatedSuggestions)`);
+        }
+        if (apply) {
+          lines.push("");
+          lines.push(`Applied: ${result.applied} page(s) staged as proposals. Review with list_proposals pattern: '${scope}'.`);
+          if (Array.isArray(result.skippedDueToPending) && result.skippedDueToPending.length) {
+            lines.push(`Skipped ${result.skippedDueToPending.length} page(s) with pending proposals — resolve those first then re-run apply:`);
+            for (const p of result.skippedDueToPending.slice(0, 10)) lines.push(`  ${p}`);
+            if (result.skippedDueToPending.length > 10) lines.push(`  ... and ${result.skippedDueToPending.length - 10} more`);
+          }
+          if (Array.isArray(result.skippedDueToTruncation) && result.skippedDueToTruncation.length) {
+            lines.push(`Skipped ${result.skippedDueToTruncation.length} page(s) over the 250KB read_page cap — wikilink them manually or split first to avoid truncation:`);
+            for (const p of result.skippedDueToTruncation.slice(0, 10)) lines.push(`  ${p}`);
+            if (result.skippedDueToTruncation.length > 10) lines.push(`  ... and ${result.skippedDueToTruncation.length - 10} more`);
+          }
+        } else if (result.aggregatedSuggestions.length) {
+          lines.push("");
+          lines.push("Re-run with apply=true to stage rewritten pages (one proposal per page).");
+        }
+        return {
+          content: [{ type: "text", text: lines.join("\n") }],
+          structuredContent: result
+        };
+      }
+
       const lines = [
         `Scanned ${result.page} against ${result.vaultSlugsAvailable} vault slugs.`,
         `Found ${result.suggestions.length} wikilink candidates:`,
@@ -415,6 +495,154 @@ export function buildServer(vault, options = {}) {
       }
       if (result.suggestions.length === 0) {
         lines.push("(no candidate phrases matched existing vault slugs)");
+      }
+      return {
+        content: [{ type: "text", text: lines.join("\n") }],
+        structuredContent: result
+      };
+    }
+  );
+
+  register(
+    "scan_entity_candidates",
+    {
+      description:
+        "Find capitalized phrases that recur across vault pages but have no matching slug — i.e. entities the user keeps mentioning without having a page for them. This is the inverse query of propose_wikilinks: instead of 'where should I add a wikilink to an existing page?', it answers 'what page should exist that doesn't yet?'.\n" +
+        "Returns candidates ranked by file-spread × mention-count, with snippets and the list of files where each appears. Read-only — never stages. The companion tool propose_entity_stubs takes the slugs you choose from this list and stages stub entity pages.\n" +
+        "Layered filtering: a global English/structural stoplist, an optional domain pack ('med', 'realestate', 'law', 'generic'), and an optional excludeUserRejections list (slugs the user already rejected). Existing slugs are excluded automatically — the shared vault-slug index is the same one propose_wikilinks uses.\n" +
+        "Best used right after a fresh import or split-mode compile, when the corpus has many entity references but few entity pages.",
+      inputSchema: {
+        scope: z
+          .string()
+          .optional()
+          .describe("Glob to limit the walk. Default 'wiki/**'. Pass a folder glob like 'Path/**' to scope to one subject. Supports *, **, ?."),
+        minMentions: z
+          .number()
+          .int()
+          .min(1)
+          .max(1000)
+          .optional()
+          .describe("Minimum total mentions across the scope before a candidate qualifies. Default 5. Lower to surface more (noisier); raise for high-confidence only."),
+        minFileSpread: z
+          .number()
+          .int()
+          .min(1)
+          .max(500)
+          .optional()
+          .describe("Minimum number of distinct files a candidate must appear in. Default 3. Catches phrases that recur many times in one file (often boilerplate) and treats them as low-signal."),
+        domain: z
+          .enum(["generic", "med", "realestate", "law"])
+          .optional()
+          .describe("Domain pack to apply on top of the global stoplist. 'med' drops Step One / Gram Positive / Stage III etc; 'realestate' drops Class A / Phase II / Due Diligence; 'law' drops Section / Article / Chapter; 'generic' (default) applies only the global list."),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(500)
+          .optional()
+          .describe("Cap on candidates returned. Default 50. Total candidate count is in candidatesFound so callers can tell if there are more behind the cap."),
+        excludeUserRejections: z
+          .array(z.string())
+          .optional()
+          .describe("Slugs the user has previously declined. Wired by propose_entity_stubs in v0.16+ to read rejection memory from .margins/preferences.md; you can also pass it ad-hoc."),
+        minPhraseWords: z
+          .number()
+          .int()
+          .min(1)
+          .max(5)
+          .optional()
+          .describe("Minimum word count for a candidate to qualify. Default 2 — single-word sentence-start capitals are the dominant noise source on real vaults. Acronyms (AI / MBA / MCP, all-caps 2-6 letters) bypass this filter and surface regardless. Drop to 1 to also see single-word surnames like 'Holmes' or 'Cardozo' (raises recall, raises noise).")
+      },
+      annotations: { readOnlyHint: true }
+    },
+    async ({ scope, minMentions, minFileSpread, domain, limit, excludeUserRejections, minPhraseWords }) => {
+      // Auto-load entity rejections from .margins/entity-rejections.md so
+      // candidates the user previously declined don't keep showing up. If
+      // the caller passes excludeUserRejections explicitly, merge the two
+      // (user's ad-hoc list extends the persistent file, never replaces it).
+      const persistedRejections = await readEntityRejections(vault);
+      const effectiveExclusions = Array.from(new Set([
+        ...(persistedRejections || []),
+        ...(excludeUserRejections || [])
+      ]));
+      const result = await scanEntityCandidates(vault, {
+        scope, minMentions, minFileSpread, domain, limit,
+        excludeUserRejections: effectiveExclusions, minPhraseWords
+      });
+      result.persistedRejectionsLoaded = persistedRejections.length;
+      const lines = [
+        `Scanned ${result.filesScanned} files under '${result.scope}' (domain: ${result.domain}).`,
+        `Found ${result.candidatesFound} candidate${result.candidatesFound === 1 ? "" : "s"} above thresholds.`,
+        `Excluded: ${result.excludedExistingSlugs} existing slugs, ${result.excludedStoplist} stoplisted, ${result.excludedBelowThreshold} below threshold.`,
+        ""
+      ];
+      if (result.candidates.length === 0) {
+        lines.push("(no candidates returned — try lowering minMentions / minFileSpread, or scope to a different folder)");
+      } else {
+        lines.push(`Top ${result.candidates.length}${result.truncated ? ` of ${result.candidatesFound}` : ""}:`);
+        for (const c of result.candidates) {
+          lines.push(`  ${c.phrase} (slug: ${c.slug}) — ${c.mentionCount}x across ${c.fileCount} file${c.fileCount === 1 ? "" : "s"}`);
+          if (c.snippets[0]) lines.push(`      ${c.snippets[0].file}: ${c.snippets[0].snippet}`);
+        }
+        lines.push("");
+        lines.push("Stub the ones worth keeping with propose_entity_stubs (pass the full candidate objects from structuredContent.candidates for richest stub bodies). Reject any noise via resolve_proposal — the slug is auto-recorded so it won't reappear next scan.");
+      }
+      return {
+        content: [{ type: "text", text: lines.join("\n") }],
+        structuredContent: result
+      };
+    }
+  );
+
+  register(
+    "propose_entity_stubs",
+    {
+      description:
+        "Stage stub entity pages for a list of candidate slugs (typically from scan_entity_candidates). Each stub becomes a proposed page at wiki/<bucket>/<slug>.md (default bucket 'entities') with frontmatter type:entity + a from_scan marker, an auto-built '## Mentioned in' block linking source files when snippets/files are provided, and a '## Next' checklist.\n" +
+        "Skips slugs whose destination page already exists in the vault — edit those directly instead of overwriting them.\n" +
+        "Closes the cold-start loop: scan finds names with no page; this stages the pages; resolve_proposal accepts the ones the user wants. Reject events on a stub (single or bulk) automatically append the slug to .margins/entity-rejections.md so it doesn't re-surface in the next scan.",
+      inputSchema: {
+        candidates: z
+          .array(z.union([
+            z.string(),
+            z.object({
+              slug: z.string().optional(),
+              phrase: z.string().optional(),
+              mentionCount: z.number().optional(),
+              fileCount: z.number().optional(),
+              snippets: z.array(z.object({
+                file: z.string().optional(),
+                snippet: z.string().optional()
+              })).optional(),
+              files: z.array(z.string()).optional()
+            })
+          ]))
+          .min(1)
+          .max(200)
+          .describe("Array of candidate slugs (strings) or candidate objects (forward the scan_entity_candidates payload verbatim for the richest stub bodies). Limit 200 per call to keep the proposal queue reviewable."),
+        bucket: z
+          .string()
+          .optional()
+          .describe("Bucket folder for the stubs. Default 'entities'. Pick a topical bucket if the candidates share a theme ('people', 'cases', 'firms').")
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false }
+    },
+    async ({ candidates, bucket }) => {
+      const result = await entityStubs.proposeEntityStubs(candidates, { bucket });
+      vaultContext.invalidate();
+      const lines = [
+        `Staged ${result.staged}/${result.total} stub${result.total === 1 ? "" : "s"} in wiki/${result.bucket}/.`,
+        result.skipped ? `Skipped ${result.skipped} (page already exists at destination).` : null,
+        result.errored ? `Errored ${result.errored}.` : null
+      ].filter(Boolean);
+      lines.push("");
+      for (const r of result.results) {
+        const tag = r.status === "staged" ? "✓" : r.status === "exists" ? "·" : "✗";
+        lines.push(`  ${tag} ${r.destinationPath}${r.status === "error" ? ` — ${r.error}` : ""}`);
+      }
+      if (result.staged) {
+        lines.push("");
+        lines.push(`Review with list_proposals pattern: 'wiki/${result.bucket}/*'. Reject any unwanted slug to record it in .margins/entity-rejections.md so it doesn't reappear next scan.`);
       }
       return {
         content: [{ type: "text", text: lines.join("\n") }],
@@ -516,7 +744,7 @@ export function buildServer(vault, options = {}) {
         rawPath: z
           .string()
           .describe("Vault-relative path of the source file. Examples: 'raw/foo.pdf', 'meetings/march-7.md'. Pass list_unprocessed paths directly. Bare filename (e.g. 'foo.pdf') resolves to raw/foo.pdf unless an actual root-level foo.pdf exists and raw/foo.pdf does not."),
-        summary: z.string().describe("Rich multi-clause summary (NOT 1-3 sentences). Should describe WHO the page is about, WHAT happened/was discussed, and the SO-WHAT (decisions, takeaways, where it lands in active threads). This becomes the frontmatter summary used by retrieval."),
+        summary: z.string().optional().describe("Rich multi-clause summary (NOT 1-3 sentences). REQUIRED unless split mode is set — in split mode each segment is auto-titled from its heading and no summary is needed. For single-source compile this becomes the frontmatter summary used by retrieval."),
         title: z.string().optional().describe("Title for the page. Defaults to titlecased filename."),
         bucket: z.string().optional().describe("Wiki bucket folder. 'sources', 'projects', 'ideas', 'meetings', 'career'. Pick by topic, not page-type."),
         destination_path: z.string().optional().describe("Override destination path, e.g. 'wiki/career/source-2026-05-13-something.md'."),
@@ -551,7 +779,14 @@ export function buildServer(vault, options = {}) {
           .array(z.union([z.string(), z.object({ point: z.string(), evidence: z.string().optional() })]))
           .optional()
           .describe("LEGACY — for the simple template only. If you provide `sections`, this is unused. Either strings or {point, evidence} objects."),
-        summaryBullets: z.array(z.string()).optional().describe("LEGACY — for the simple template only. If you provide `sections`, this is unused.")
+        summaryBullets: z.array(z.string()).optional().describe("LEGACY — for the simple template only. If you provide `sections`, this is unused."),
+
+        quiet: z.boolean().optional().describe("Omit the full staged markdown from the response. The page still lands at proposed/<destinationPath> — set quiet=true when compiling many files in one turn so the response payload stays small. Default false."),
+
+        // ---- Split mode (one raw file → N segment source pages + 1 hub) ----
+        split: z.enum(["heading-h1", "heading-h2", "sheet", "auto"]).optional().describe("Split-mode trigger. When set, the raw file is segmented at the chosen boundary and Margins stages one source page per segment plus a hub page that wikilinks them. 'heading-h1' / 'heading-h2' segment by Markdown-style heading level (works for MD/HTML and any extractor that emits H markers like XLSX/PPTX). 'sheet' is alias for h2 splits, ergonomic for spreadsheets. 'auto' picks h2 for spreadsheets and h1 elsewhere. Summary is not required in split mode."),
+        maxSegments: z.number().int().min(2).max(200).optional().describe("Cap on segments staged in a single split call. Default 50. Extra headings beyond the cap are noted in the hub but not staged."),
+        hubBucket: z.string().optional().describe("Bucket folder for the hub + segment pages when split mode is set. Defaults to bucket if provided, else 'sources'.")
       },
       annotations: { readOnlyHint: false, destructiveHint: false }
     },
@@ -560,15 +795,31 @@ export function buildServer(vault, options = {}) {
       pageType, tags, keyLinks, eventDate, sourceUrl, participants, sources,
       headerNote, sourceCaveat, sections, relevanceCallout, applications,
       propagationNotes, related,
-      takeaways, summaryBullets
+      takeaways, summaryBullets, quiet,
+      split, maxSegments, hubBucket
     }) => {
+      // Summary is required for single-source compile but not for split mode.
+      // The compiler's downstream error if summary is empty is confusing
+      // ("compiler returned no source node"); fail fast with a clearer message.
+      if (!split && (typeof summary !== "string" || summary.length === 0)) {
+        throw new Error(
+          "`summary` is required for single-source compile. Provide a rich multi-clause summary, or pass `split` to compile in segments without a summary."
+        );
+      }
       const result = await compile.proposeCompileFromRaw(rawPath, {
         summary, title, bucket, destination_path, force,
         pageType, tags, keyLinks, eventDate, sourceUrl, participants, sources,
         headerNote, sourceCaveat, sections, relevanceCallout, applications,
         propagationNotes, related,
-        takeaways, summaryBullets
+        takeaways, summaryBullets, quiet,
+        split, maxSegments, hubBucket
       });
+
+      // Split-mode response shape differs — render its own summary block.
+      if (result.status === "split-staged" || result.status === "already-split") {
+        return formatSplitResponse(result);
+      }
+
       if (result.status === "already-filed") {
         return {
           content: [
@@ -582,17 +833,29 @@ export function buildServer(vault, options = {}) {
           structuredContent: result
         };
       }
-      const headerLines = [
-        `Compiled ${result.rawFile} → staged at ${result.proposalPath}`,
-        `Title: ${result.title}`,
-        `Bucket: ${result.bucket}`,
-        "",
-        "--- Staged page ---",
-        result.markdown || "(markdown not returned)",
-        "--- End staged page ---",
-        "",
-        "Run resolve_proposal to accept or reject."
-      ];
+      // Quiet mode: skip the full staged markdown in the response so bulk
+      // compile doesn't blast hundreds of KB through the MCP transport.
+      const headerLines = quiet
+        ? [
+            `Compiled ${result.rawFile} → staged at ${result.proposalPath}`,
+            `Title: ${result.title}`,
+            `Bucket: ${result.bucket}`,
+            "",
+            "(markdown omitted — quiet=true. Read it from proposed/<destinationPath> if needed.)",
+            "",
+            "Run resolve_proposal to accept or reject."
+          ]
+        : [
+            `Compiled ${result.rawFile} → staged at ${result.proposalPath}`,
+            `Title: ${result.title}`,
+            `Bucket: ${result.bucket}`,
+            "",
+            "--- Staged page ---",
+            result.markdown || "(markdown not returned)",
+            "--- End staged page ---",
+            "",
+            "Run resolve_proposal to accept or reject."
+          ];
       return {
         content: [{ type: "text", text: headerLines.join("\n") }],
         structuredContent: result
@@ -680,16 +943,41 @@ export function buildServer(vault, options = {}) {
     "list_proposals",
     {
       description:
-        "List every pending proposal. Each entry has its proposal path, its destination path, and whether accepting would overwrite an existing vault file.",
-      inputSchema: {},
+        "List pending proposals with optional filtering. Each entry has proposal path, destination path, whether accepting overwrites an existing vault file, size, and (for overwrites under default settings) a small first-diff preview. Use the pattern filter to scope to a folder or file shape when the queue is large.",
+      inputSchema: {
+        pattern: z
+          .string()
+          .optional()
+          .describe("Glob to filter destinationPath. Supports *, **, ?. Example: 'wiki/sources/*.md' or 'wiki/projects/briefly-**'."),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(500)
+          .optional()
+          .describe("Maximum proposals to return. Response includes totalMatched + truncated flag when results are capped."),
+        sortBy: z
+          .enum(["path", "age", "size"])
+          .optional()
+          .describe("Sort order. 'path' (default) is lexical; 'age' is newest mtime first; 'size' is largest first."),
+        includeDelta: z
+          .boolean()
+          .optional()
+          .describe("Include per-overwrite first-diff preview. Default true. Set false when scanning a large queue — saves N pairs of file reads.")
+      },
       annotations: { readOnlyHint: true }
     },
-    async () => {
-      const items = await proposals.listProposals();
+    async ({ pattern, limit, sortBy, includeDelta }) => {
+      const items = await proposals.listProposals({ pattern, limit, sortBy, includeDelta });
+      const totalMatched = items.__totalMatched ?? items.length;
+      const truncated = Boolean(items.__truncated);
       if (!items.length) {
+        const text = pattern
+          ? `No proposals matching '${pattern}'.`
+          : "No pending proposals.";
         return {
-          content: [{ type: "text", text: "No pending proposals." }],
-          structuredContent: { items: [] }
+          content: [{ type: "text", text }],
+          structuredContent: { items: [], totalMatched: 0, truncated: false }
         };
       }
       const lines = items.map(
@@ -698,9 +986,16 @@ export function buildServer(vault, options = {}) {
           (i.willOverwrite ? " (would overwrite existing)" : " (new)") +
           ` — ${i.size} bytes`
       );
+      if (truncated) {
+        lines.push("", `(showing ${items.length} of ${totalMatched} matched; raise limit to see more)`);
+      }
       return {
         content: [{ type: "text", text: lines.join("\n") }],
-        structuredContent: { items }
+        structuredContent: {
+          items: Array.from(items),
+          totalMatched,
+          truncated
+        }
       };
     }
   );
@@ -709,23 +1004,120 @@ export function buildServer(vault, options = {}) {
     "resolve_proposal",
     {
       description:
-        "Accept or reject a pending proposal. Accept moves the proposal from proposed/<path> to <path> (overwriting any existing vault file at the destination). Reject deletes the proposal without touching the vault.",
+        "Accept or reject pending proposals. Two modes: (1) single — pass `path` to apply the action to exactly one proposal; (2) bulk — pass `pattern` (glob) to apply the action to every matching proposal. Exactly one of path/pattern is required. Accept moves proposal to its destination atomically (overwriting any existing file at the destination); reject deletes the proposal without touching the vault. Per-destination lock guarantees concurrent edits on the same path serialize. Use `dryRun: true` with a pattern to preview which proposals would be touched without applying anything.",
       inputSchema: {
         path: z
           .string()
-          .describe("Destination path of the proposal, with or without the 'proposed/' prefix."),
-        action: z.enum(["accept", "reject"]).describe("Whether to apply or discard.")
+          .optional()
+          .describe("Destination path of a single proposal, with or without the 'proposed/' prefix. Mutually exclusive with pattern."),
+        pattern: z
+          .string()
+          .optional()
+          .describe("Glob to match destinationPath of multiple proposals. Supports *, **, ?. Mutually exclusive with path."),
+        action: z.enum(["accept", "reject"]).describe("Whether to apply or discard the matched proposal(s)."),
+        dryRun: z
+          .boolean()
+          .optional()
+          .describe("Only meaningful with pattern. When true, return the list of paths that WOULD be affected without applying the action."),
+        maxCount: z
+          .number()
+          .int()
+          .min(1)
+          .max(500)
+          .optional()
+          .describe("Only meaningful with pattern. Cap the number of proposals processed in a single call.")
       },
       annotations: { readOnlyHint: false, destructiveHint: true }
     },
-    async ({ path: rel, action }) => {
-      const result = await proposals.resolveProposal(rel, action);
-      vaultContext.invalidate();
+    async ({ path: rel, pattern, action, dryRun, maxCount }) => {
+      const hasPath = typeof rel === "string" && rel.length > 0;
+      const hasPattern = typeof pattern === "string" && pattern.length > 0;
+      if (hasPath && hasPattern) {
+        throw new Error("Pass exactly one of path or pattern, not both.");
+      }
+      if (!hasPath && !hasPattern) {
+        throw new Error("Pass either path (single proposal) or pattern (bulk).");
+      }
+
+      if (hasPath) {
+        // Capture entity-stub slug BEFORE rejection so we can record it
+        // even after the proposal file is deleted.
+        const stubSlug = action === "reject"
+          ? await maybeReadEntityStubSlug(vault, normalizePath(rel))
+          : null;
+        const result = await proposals.resolveProposal(rel, action);
+        vaultContext.invalidate();
+        let rejectionRecorded = null;
+        if (action === "reject" && stubSlug) {
+          rejectionRecorded = await recordEntityRejection(vault, stubSlug);
+          result.entityRejectionRecorded = rejectionRecorded;
+        }
+        const suffix = rejectionRecorded && rejectionRecorded.recorded
+          ? ` (entity rejection recorded: ${rejectionRecorded.slug})`
+          : "";
+        return {
+          content: [
+            { type: "text", text: `${result.destinationPath}: ${result.action}.${suffix}` }
+          ],
+          structuredContent: result
+        };
+      }
+
+      // Bulk path. Capture every stub slug among matched paths BEFORE the
+      // resolve so the proposal files are still readable. After the bulk
+      // succeeds, record rejections for each path that actually rejected.
+      let preBulkStubSlugs = null;
+      if (action === "reject") {
+        preBulkStubSlugs = new Map();
+        const preview = await proposals.listProposals({ pattern, includeDelta: false });
+        for (const item of preview) {
+          const slug = await maybeReadEntityStubSlug(vault, item.destinationPath);
+          if (slug) preBulkStubSlugs.set(item.destinationPath, slug);
+        }
+      }
+      const bulkResult = await proposals.resolveProposalsBulk(pattern, action, { dryRun, maxCount });
+      if (!dryRun) vaultContext.invalidate();
+      if (action === "reject" && !dryRun && preBulkStubSlugs && preBulkStubSlugs.size) {
+        const recorded = [];
+        for (const r of bulkResult.results) {
+          if (!r.ok) continue;
+          const slug = preBulkStubSlugs.get(r.path);
+          if (!slug) continue;
+          const rec = await recordEntityRejection(vault, slug);
+          if (rec.recorded) recorded.push(slug);
+        }
+        bulkResult.entityRejectionsRecorded = recorded;
+      }
+      if (bulkResult.dryRun) {
+        const overflowNote = bulkResult.wouldOverflow
+          ? ` (capped at maxCount=${maxCount}; ${bulkResult.totalMatched} total matched)`
+          : "";
+        const lines = [
+          `Would ${action} ${bulkResult.matched} proposal${bulkResult.matched === 1 ? "" : "s"}${overflowNote}:`,
+          ...bulkResult.paths.map((p) => `  ${p}`),
+          "",
+          `Re-run without dryRun to apply.`
+        ];
+        return {
+          content: [{ type: "text", text: lines.join("\n") }],
+          structuredContent: bulkResult
+        };
+      }
+      const summary = `${action === "accept" ? "Accepted" : "Rejected"} ${bulkResult.succeeded}/${bulkResult.processed} proposal${bulkResult.processed === 1 ? "" : "s"} matching '${pattern}'.`;
+      const failureLines = bulkResult.results
+        .filter((r) => !r.ok)
+        .map((r) => `  ✗ ${r.path}: ${r.error}`);
+      const lines = [summary];
+      if (Array.isArray(bulkResult.entityRejectionsRecorded) && bulkResult.entityRejectionsRecorded.length) {
+        lines.push(`Recorded ${bulkResult.entityRejectionsRecorded.length} entity rejection${bulkResult.entityRejectionsRecorded.length === 1 ? "" : "s"} → .margins/entity-rejections.md.`);
+      }
+      if (failureLines.length) {
+        lines.push("Failures:", ...failureLines);
+      }
+      const text = lines.join("\n");
       return {
-        content: [
-          { type: "text", text: `${result.destinationPath}: ${result.action}.` }
-        ],
-        structuredContent: result
+        content: [{ type: "text", text }],
+        structuredContent: bulkResult
       };
     }
   );
@@ -828,6 +1220,59 @@ export function buildServer(vault, options = {}) {
   );
 
   return server;
+}
+
+// Strip an optional "proposed/" prefix from a path so the rejection-memory
+// lookup can find the right proposal file regardless of how the caller
+// wrote the path (with or without prefix, both accepted by resolve_proposal).
+function normalizePath(p) {
+  if (typeof p !== "string") return p;
+  return p.startsWith("proposed/") ? p.slice("proposed/".length) : p;
+}
+
+function formatSplitResponse(result) {
+  if (result.status === "already-split") {
+    return {
+      content: [
+        {
+          type: "text",
+          text:
+            `${result.rawFile} is already split — hub at ${result.hubPath} (${result.hubLocation}). ` +
+            "Pass force=true to re-stage every segment + hub."
+        }
+      ],
+      structuredContent: result
+    };
+  }
+  const overflowNote = result.overflow
+    ? ` (capped at maxSegments; ${result.overflowDropped} additional headings dropped)`
+    : "";
+  // Build two precise patterns rather than one broad `*<base>*` glob.
+  // A broad pattern would accidentally match unrelated proposals when the
+  // base slug is short or common (e.g., a raw named `q1.md` would catch
+  // every proposal whose path contains "q1"). Segments share the
+  // `source-<base>-s` prefix; the hub has its own exact path. Two
+  // operations, no false matches.
+  const baseSlug = result.hubPath.split("/").pop().replace(/-hub\.md$/, "");
+  const segmentPattern = `wiki/${result.bucket}/source-${baseSlug}-s*`;
+  const lines = [
+    `Split ${result.rawFile} into ${result.segmentsCount} segments${overflowNote}.`,
+    `Hub staged: ${result.hubProposalPath} → would land at ${result.hubPath}`,
+    `Bucket: ${result.bucket}, splitOn: ${result.splitOn}`,
+    "",
+    "Segments:"
+  ];
+  for (const seg of result.segments) {
+    lines.push(`  ${seg.proposalPath} — ${seg.heading}`);
+  }
+  lines.push("");
+  lines.push("Accept all of it via two calls (segments pattern + hub path — narrower than a wildcard so unrelated proposals don't get swept in):");
+  lines.push(`  resolve_proposal pattern: '${segmentPattern}' action: accept`);
+  lines.push(`  resolve_proposal path: '${result.hubPath}' action: accept`);
+  return {
+    content: [{ type: "text", text: lines.join("\n") }],
+    structuredContent: result
+  };
 }
 
 function formatSearchHits(hits, query) {

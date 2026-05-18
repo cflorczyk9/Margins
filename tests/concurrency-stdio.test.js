@@ -181,6 +181,366 @@ test("stdio: parallel resolveProposal accepts preserve both tracker rows", async
   assert.match(tracker, /\| raw\/c\.md \| ingested \| \[\[source-c\]\]/);
 });
 
+test("stdio: closed loop — scan → propose stubs → reject → re-scan excludes via memory", async (t) => {
+  const vault = await makeVault(t);
+  await mkdir(path.join(vault, "wiki/notes"), { recursive: true });
+  for (let i = 0; i < 5; i++) {
+    await writeFile(
+      path.join(vault, "wiki/notes", `n-${i}.md`),
+      "Mark Loh sent the email. Mark Loh signed. Mark Loh approved.",
+      "utf8"
+    );
+  }
+  const client = await startClient(t, vault);
+
+  // 1. First scan surfaces mark-loh.
+  const scan1 = await client.callTool("scan_entity_candidates", {
+    minMentions: 5, minFileSpread: 3
+  });
+  const slugs1 = scan1.result.structuredContent.candidates.map((c) => c.slug);
+  assert.ok(slugs1.includes("mark-loh"));
+
+  // 2. Stage stubs for the candidate set.
+  const stubs = await client.callTool("propose_entity_stubs", {
+    candidates: scan1.result.structuredContent.candidates.map((c) => ({
+      slug: c.slug, phrase: c.phrase, mentionCount: c.mentionCount,
+      fileCount: c.fileCount, snippets: c.snippets, files: c.files
+    }))
+  });
+  assert.notEqual(stubs.result?.isError, true);
+  assert.ok(stubs.result.structuredContent.staged >= 1);
+
+  // 3. Reject the mark-loh stub — server.js wrapper should record the slug
+  //    to .margins/entity-rejections.md.
+  const reject = await client.callTool("resolve_proposal", {
+    path: "wiki/entities/mark-loh.md",
+    action: "reject"
+  });
+  assert.notEqual(reject.result?.isError, true);
+  const recorded = reject.result.structuredContent.entityRejectionRecorded;
+  assert.ok(recorded && recorded.recorded === true,
+    `expected entity rejection to be recorded, got: ${JSON.stringify(recorded)}`);
+  assert.equal(recorded.slug, "mark-loh");
+
+  // 4. Re-scan — mark-loh must NOT reappear (auto-loaded from rejections file).
+  const scan2 = await client.callTool("scan_entity_candidates", {
+    minMentions: 5, minFileSpread: 3
+  });
+  const slugs2 = scan2.result.structuredContent.candidates.map((c) => c.slug);
+  assert.ok(!slugs2.includes("mark-loh"),
+    `expected mark-loh excluded on re-scan, got: ${slugs2.join(", ")}`);
+  assert.ok(scan2.result.structuredContent.persistedRejectionsLoaded >= 1);
+
+  // 5. Verify the rejection file is hand-readable Markdown.
+  const rejFile = await readFile(path.join(vault, ".margins/entity-rejections.md"), "utf8");
+  assert.match(rejFile, /^# Entity rejections/);
+  assert.match(rejFile, /- mark-loh$/m);
+});
+
+test("stdio: bulk reject of entity stubs records every slug", async (t) => {
+  const vault = await makeVault(t);
+  await mkdir(path.join(vault, "wiki/notes"), { recursive: true });
+  for (let i = 0; i < 5; i++) {
+    await writeFile(
+      path.join(vault, "wiki/notes", `n-${i}.md`),
+      "Project Aurora and Project Borealis launched. Project Cascade pending.",
+      "utf8"
+    );
+  }
+  const client = await startClient(t, vault);
+
+  const stubs = await client.callTool("propose_entity_stubs", {
+    candidates: ["project-aurora", "project-borealis", "project-cascade"]
+  });
+  assert.equal(stubs.result.structuredContent.staged, 3);
+
+  // Bulk-reject all three via pattern.
+  const rejected = await client.callTool("resolve_proposal", {
+    pattern: "wiki/entities/project-*",
+    action: "reject"
+  });
+  assert.notEqual(rejected.result?.isError, true);
+  const recorded = rejected.result.structuredContent.entityRejectionsRecorded || [];
+  assert.deepEqual(recorded.sort(),
+    ["project-aurora", "project-borealis", "project-cascade"]);
+
+  const rejList = await readFile(path.join(vault, ".margins/entity-rejections.md"), "utf8");
+  for (const slug of ["project-aurora", "project-borealis", "project-cascade"]) {
+    assert.match(rejList, new RegExp(`- ${slug}$`, "m"));
+  }
+});
+
+test("stdio: scan_entity_candidates surfaces unlinked recurring names", async (t) => {
+  const vault = await makeVault(t);
+  await mkdir(path.join(vault, "wiki/notes"), { recursive: true });
+  await mkdir(path.join(vault, "wiki/people"), { recursive: true });
+  // One entity has a page (excluded); another doesn't (should surface).
+  await writeFile(path.join(vault, "wiki/people/alice-chen.md"), "# Alice Chen", "utf8");
+  for (let i = 0; i < 5; i++) {
+    await writeFile(
+      path.join(vault, "wiki/notes", `n-${i}.md`),
+      "Met with Alice Chen and Bob Casey today. Bob Casey signed.",
+      "utf8"
+    );
+  }
+  const client = await startClient(t, vault);
+
+  const r = await client.callTool("scan_entity_candidates", {
+    minMentions: 5,
+    minFileSpread: 3
+  });
+  assert.notEqual(r.result?.isError, true);
+  const sc = r.result.structuredContent;
+  const slugs = sc.candidates.map((c) => c.slug);
+  assert.ok(slugs.includes("bob-casey"), `expected bob-casey in candidates, got: ${slugs.join(", ")}`);
+  assert.ok(!slugs.includes("alice-chen"), "alice-chen has a page so should be excluded");
+  const bob = sc.candidates.find((c) => c.slug === "bob-casey");
+  assert.ok(bob.snippets.length >= 1);
+});
+
+test("stdio: scan_entity_candidates honors domain pack via MCP", async (t) => {
+  const vault = await makeVault(t);
+  await mkdir(path.join(vault, "wiki/notes"), { recursive: true });
+  for (let i = 0; i < 5; i++) {
+    await writeFile(
+      path.join(vault, "wiki/notes", `n-${i}.md`),
+      "Class A asset, Phase II underway, Due Diligence ongoing. Mark Loh signed.",
+      "utf8"
+    );
+  }
+  const client = await startClient(t, vault);
+
+  const r = await client.callTool("scan_entity_candidates", {
+    minMentions: 3,
+    minFileSpread: 3,
+    domain: "realestate"
+  });
+  const slugs = r.result.structuredContent.candidates.map((c) => c.slug);
+  assert.ok(!slugs.includes("class-a"));
+  assert.ok(!slugs.includes("phase-ii"));
+  assert.ok(!slugs.includes("due-diligence"));
+  assert.ok(slugs.includes("mark-loh"));
+});
+
+test("stdio: scope-mode propose_wikilinks aggregates across folder", async (t) => {
+  const vault = await makeVault(t);
+  // Seed a tiny linked vault: two entity pages + three notes that mention them.
+  await mkdir(path.join(vault, "wiki/people"), { recursive: true });
+  await mkdir(path.join(vault, "wiki/notes"), { recursive: true });
+  await writeFile(path.join(vault, "wiki/people/bob-casey.md"), "# Bob Casey", "utf8");
+  await writeFile(path.join(vault, "wiki/people/alice-chen.md"), "# Alice Chen", "utf8");
+  await writeFile(path.join(vault, "wiki/notes/n-1.md"), "Met with Bob Casey today.", "utf8");
+  await writeFile(path.join(vault, "wiki/notes/n-2.md"), "Bob Casey and Alice Chen joined.", "utf8");
+  await writeFile(path.join(vault, "wiki/notes/n-3.md"), "Just prose without entities.", "utf8");
+  const client = await startClient(t, vault);
+
+  const r = await client.callTool("propose_wikilinks", { scope: "wiki/notes/**" });
+  assert.notEqual(r.result?.isError, true);
+  const sc = r.result.structuredContent;
+  assert.equal(sc.pagesScanned, 3);
+  const links = sc.aggregatedSuggestions.map((s) => s.wikilink);
+  assert.ok(links.includes("[[bob-casey]]"));
+  assert.ok(links.includes("[[alice-chen]]"));
+});
+
+test("stdio: scope-mode apply=true stages rewritten pages with wikilinks", async (t) => {
+  const vault = await makeVault(t);
+  await mkdir(path.join(vault, "wiki/people"), { recursive: true });
+  await mkdir(path.join(vault, "wiki/notes"), { recursive: true });
+  await writeFile(path.join(vault, "wiki/people/bob-casey.md"), "# Bob Casey", "utf8");
+  await writeFile(path.join(vault, "wiki/notes/n-1.md"), "Met with Bob Casey today.", "utf8");
+  await writeFile(path.join(vault, "wiki/notes/n-2.md"), "No matches here.", "utf8");
+  const client = await startClient(t, vault);
+
+  const r = await client.callTool("propose_wikilinks", {
+    scope: "wiki/notes/**",
+    apply: true
+  });
+  assert.notEqual(r.result?.isError, true);
+  assert.equal(r.result.structuredContent.applied, 1);
+
+  // The staged proposal exists and has the wikilink applied.
+  const staged = await client.callTool("list_proposals", { pattern: "wiki/notes/*" });
+  assert.equal(staged.result.structuredContent.totalMatched, 1);
+  const accepted = await client.callTool("resolve_proposal", {
+    path: "wiki/notes/n-1.md",
+    action: "accept"
+  });
+  assert.equal(accepted.result.structuredContent.action, "accepted");
+  const body = await readFile(path.join(vault, "wiki/notes/n-1.md"), "utf8");
+  assert.match(body, /\[\[bob-casey\]\]/);
+});
+
+test("stdio: propose_wikilinks rejects both-or-neither path+scope at tool boundary", async (t) => {
+  const vault = await makeVault(t);
+  const client = await startClient(t, vault);
+  const both = await client.callTool("propose_wikilinks", {
+    path: "wiki/foo.md",
+    scope: "wiki/**"
+  });
+  assert.equal(both.result.isError, true);
+  const neither = await client.callTool("propose_wikilinks", {});
+  assert.equal(neither.result.isError, true);
+});
+
+test("stdio: split mode stages N segments + 1 hub end-to-end over MCP", async (t) => {
+  const vault = await makeVault(t);
+  await mkdir(path.join(vault, "raw"), { recursive: true });
+  const rawBody = [
+    "# Project Aurora",
+    "Aurora has a 24-month timeline and a $45M cap stack.",
+    "Partner: Goldman Sachs.",
+    "",
+    "# Project Borealis",
+    "Borealis is the 18-unit infill play near Lincoln Park.",
+    "Partner: KKR.",
+    "",
+    "# Project Cascade",
+    "Cascade is the Class A office tower we passed on last quarter.",
+    "Partner: Brookfield."
+  ].join("\n");
+  await writeFile(path.join(vault, "raw/deals.md"), rawBody, "utf8");
+  const client = await startClient(t, vault);
+
+  // Fire split-mode compile with quiet=true (the bulk-mode default we ship).
+  const compiled = await client.callTool("propose_compile_from_raw", {
+    rawPath: "raw/deals.md",
+    split: "heading-h1",
+    quiet: true
+  });
+  assert.notEqual(compiled.result?.isError, true,
+    `split compile failed: ${JSON.stringify(compiled.result?.content)}`);
+  const sc = compiled.result.structuredContent;
+  assert.equal(sc.status, "split-staged");
+  assert.equal(sc.segmentsCount, 3);
+  assert.equal(sc.segments.length, 3);
+  assert.match(sc.hubPath, /^wiki\/sources\/deals-hub\.md$/);
+
+  // list_proposals with the bucket pattern returns all 4 (3 segments + hub).
+  const listed = await client.callTool("list_proposals", { pattern: "wiki/sources/**" });
+  assert.equal(listed.result.structuredContent.totalMatched, 4);
+
+  // Bulk-accept everything matching the bucket pattern.
+  const applied = await client.callTool("resolve_proposal", {
+    pattern: "wiki/sources/**",
+    action: "accept"
+  });
+  assert.equal(applied.result.structuredContent.succeeded, 4);
+
+  // Verify the hub body links every segment slug. Wikilinks must include
+  // the `source-` prefix to resolve to the actual segment filenames.
+  const hubBody = await readFile(path.join(vault, "wiki/sources/deals-hub.md"), "utf8");
+  assert.match(hubBody, /is_hub: true/);
+  assert.match(hubBody, /segments_count: 3/);
+  assert.match(hubBody, /\[\[source-deals-s01-project-aurora\]\]/);
+  assert.match(hubBody, /\[\[source-deals-s02-project-borealis\]\]/);
+  assert.match(hubBody, /\[\[source-deals-s03-project-cascade\]\]/);
+
+  // Verify a segment body has the right frontmatter.
+  const seg1Body = await readFile(path.join(vault, "wiki/sources/source-deals-s01-project-aurora.md"), "utf8");
+  assert.match(seg1Body, /type: source_segment/);
+  assert.match(seg1Body, /hub: "\[\[deals-hub\]\]"/);
+  assert.match(seg1Body, /Goldman Sachs/);
+
+  // Second split call returns already-split (idempotent over MCP).
+  const second = await client.callTool("propose_compile_from_raw", {
+    rawPath: "raw/deals.md",
+    split: "heading-h1"
+  });
+  assert.equal(second.result.structuredContent.status, "already-split");
+});
+
+test("stdio: bulk resolve_proposal via pattern accepts every match", async (t) => {
+  const vault = await makeVault(t);
+  const client = await startClient(t, vault);
+
+  // Stage 5 source proposals plus an unrelated project proposal.
+  const make = (raw, body) => `---\ntype: source\nraw_file: raw/${raw}\n---\n# ${body}\n`;
+  for (let i = 0; i < 5; i++) {
+    const stage = await client.callTool("propose_page", {
+      path: `wiki/sources/source-${i}.md`,
+      body: make(`r-${i}.md`, `Body ${i}`)
+    });
+    assert.notEqual(stage.result?.isError, true);
+  }
+  await client.callTool("propose_page", { path: "wiki/projects/keep.md", body: "untouched" });
+
+  // Dry-run preview matches 5 paths but does not apply.
+  const dry = await client.callTool("resolve_proposal", {
+    pattern: "wiki/sources/source-*.md",
+    action: "accept",
+    dryRun: true
+  });
+  assert.notEqual(dry.result?.isError, true);
+  assert.equal(dry.result.structuredContent.dryRun, true);
+  assert.equal(dry.result.structuredContent.matched, 5);
+
+  // The project proposal is still pending after the dry-run.
+  const stillPending = await client.callTool("list_proposals", {});
+  assert.equal(stillPending.result.structuredContent.totalMatched, 6);
+
+  // Apply the bulk accept.
+  const applied = await client.callTool("resolve_proposal", {
+    pattern: "wiki/sources/source-*.md",
+    action: "accept"
+  });
+  assert.notEqual(applied.result?.isError, true);
+  assert.equal(applied.result.structuredContent.succeeded, 5);
+
+  // Vault now has the 5 source pages, the project proposal is still staged.
+  for (let i = 0; i < 5; i++) {
+    const body = await readFile(path.join(vault, `wiki/sources/source-${i}.md`), "utf8");
+    assert.match(body, new RegExp(`raw_file: raw/r-${i}\\.md`));
+  }
+  const remaining = await client.callTool("list_proposals", {});
+  assert.deepEqual(
+    remaining.result.structuredContent.items.map((i) => i.destinationPath),
+    ["wiki/projects/keep.md"]
+  );
+
+  // Tracker has every row.
+  const tracker = await readFile(path.join(vault, "wiki/ingest-tracker.md"), "utf8");
+  for (let i = 0; i < 5; i++) {
+    assert.match(tracker, new RegExp(`\\| raw/r-${i}\\.md \\| ingested \\| \\[\\[source-${i}\\]\\]`));
+  }
+});
+
+test("stdio: list_proposals pattern + limit pagination", async (t) => {
+  const vault = await makeVault(t);
+  const client = await startClient(t, vault);
+
+  for (let i = 0; i < 10; i++) {
+    await client.callTool("propose_page", { path: `wiki/inbox/n-${i}.md`, body: `b-${i}` });
+  }
+  await client.callTool("propose_page", { path: "wiki/projects/other.md", body: "x" });
+
+  const r = await client.callTool("list_proposals", { pattern: "wiki/inbox/**", limit: 3 });
+  const sc = r.result.structuredContent;
+  assert.equal(sc.items.length, 3);
+  assert.equal(sc.totalMatched, 10);
+  assert.equal(sc.truncated, true);
+  for (const item of sc.items) {
+    assert.match(item.destinationPath, /^wiki\/inbox\//);
+  }
+});
+
+test("stdio: resolve_proposal errors on both path and pattern (or neither)", async (t) => {
+  const vault = await makeVault(t);
+  const client = await startClient(t, vault);
+
+  const both = await client.callTool("resolve_proposal", {
+    path: "wiki/foo.md",
+    pattern: "wiki/*.md",
+    action: "accept"
+  });
+  assert.equal(both.result.isError, true);
+  assert.match(both.result.content[0].text, /exactly one of path or pattern/i);
+
+  const neither = await client.callTool("resolve_proposal", { action: "accept" });
+  assert.equal(neither.result.isError, true);
+  assert.match(neither.result.content[0].text, /either path.*or pattern/i);
+});
+
 test("stdio: interleaved append + edit on same path do not drop the append", async (t) => {
   const vault = await makeVault(t);
   await mkdir(path.join(vault, "wiki"), { recursive: true });

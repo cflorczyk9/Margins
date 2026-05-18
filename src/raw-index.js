@@ -55,7 +55,7 @@ export async function buildVaultIndex(vault, options = {}) {
 
     const fmType = parsed ? getType(parsed.data) : null;
 
-    if (fmType === "source" || fmType === "synthesis") {
+    if (fmType === "source" || fmType === "synthesis" || fmType === "source_segment") {
       sourcePages.push({ abs, rel, data: parsed.data });
       continue;
     }
@@ -74,8 +74,19 @@ export async function buildVaultIndex(vault, options = {}) {
   // duplicate compiles of the same raw file return already-filed.
   await collectProposedSourcePages(vault, sourcePages);
 
+  // Prefer the canonical source page over segment pages when multiple
+  // pages share a raw_file (split mode produces a hub `type: source` plus
+  // N `type: source_segment` pages, all referencing the same raw). Without
+  // this prioritization, filesystem walk order can record a segment as
+  // the canonical referenced page, making doctor/tracker checks treat
+  // the real hub as orphaned. Walk sources first, then synthesis, then
+  // segments — fill-by-precedence so the highest-priority page wins.
   const referenced = new Map();
-  for (const page of sourcePages) {
+  const PRECEDENCE = { source: 0, synthesis: 1, source_segment: 2 };
+  const sortedPages = sourcePages
+    .map((p) => ({ ...p, _prio: PRECEDENCE[String(p.data?.type || "")] ?? 9 }))
+    .sort((a, b) => a._prio - b._prio);
+  for (const page of sortedPages) {
     const refs = extractRawFileRefs(page.data);
     for (const ref of refs) {
       const target = canonicalize(ref);
@@ -137,6 +148,23 @@ function isInSkipDir(rel) {
   return false;
 }
 
+// Parsed-frontmatter cache for proposed/ source pages. Keyed by absolute path
+// with the file's mtimeMs stored alongside the parsed entry. Without this,
+// every buildVaultIndex call re-reads + re-parses every staged source page
+// in proposed/. Under bulk compile (50+ segments), the index is rebuilt per
+// compile, so the same N proposed pages are parsed O(N^2) times. The cache
+// turns that into O(N) reads on the first walk plus stat-only walks after.
+//
+// Invalidation: stat returns a different mtimeMs (or the file is gone) → re-
+// parse. Stale entries for files that no longer exist accumulate until the
+// process exits, but the working set is naturally bounded by the proposal
+// queue (rarely > a few hundred entries).
+const _proposedFmCache = new Map();
+
+export function _resetProposedFmCacheForTests() {
+  _proposedFmCache.clear();
+}
+
 async function collectProposedSourcePages(vault, out) {
   const proposedRoot = vault.resolveInside("proposed");
   await walkForSourcePages(vault, proposedRoot, out);
@@ -157,17 +185,50 @@ async function walkForSourcePages(vault, dir, out) {
     }
     if (!entry.isFile()) continue;
     if (!isSupportedDocumentPath(entry.name)) continue;
+
+    let info;
+    try {
+      info = await stat(abs);
+    } catch {
+      _proposedFmCache.delete(abs);
+      continue;
+    }
+
+    const cached = _proposedFmCache.get(abs);
+    if (cached && cached.mtimeMs === info.mtimeMs) {
+      if (cached.entry) out.push(cached.entry);
+      continue;
+    }
+
     let body;
     try {
       body = await readFile(abs, "utf8");
     } catch {
+      _proposedFmCache.delete(abs);
       continue;
     }
-    const parsed = parseFrontmatter(body);
-    if (!parsed) continue;
+    // Catch parseFrontmatter throws so a single malformed pending proposal
+    // doesn't crash every buildVaultIndex caller (margins_start,
+    // list_unprocessed, doctor, compile dedupe). Cache as a null entry so
+    // we don't re-attempt the parse on every walk until the file changes.
+    let parsed;
+    try { parsed = parseFrontmatter(body); }
+    catch {
+      _proposedFmCache.set(abs, { mtimeMs: info.mtimeMs, entry: null });
+      continue;
+    }
+    if (!parsed) {
+      _proposedFmCache.set(abs, { mtimeMs: info.mtimeMs, entry: null });
+      continue;
+    }
     const fmType = getType(parsed.data);
-    if (fmType !== "source" && fmType !== "synthesis") continue;
-    out.push({ abs, rel: canonicalize(vault.toRel(abs)), data: parsed.data });
+    if (fmType !== "source" && fmType !== "synthesis" && fmType !== "source_segment") {
+      _proposedFmCache.set(abs, { mtimeMs: info.mtimeMs, entry: null });
+      continue;
+    }
+    const entryRecord = { abs, rel: canonicalize(vault.toRel(abs)), data: parsed.data };
+    _proposedFmCache.set(abs, { mtimeMs: info.mtimeMs, entry: entryRecord });
+    out.push(entryRecord);
   }
 }
 

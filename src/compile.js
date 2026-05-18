@@ -7,6 +7,7 @@ import { canonicalize } from "./paths.js";
 import { hashFile, shortHash } from "./hash.js";
 import { parseFrontmatter, extractRawFileRefs } from "./frontmatter.js";
 import { readFile } from "node:fs/promises";
+import { runSplitCompile } from "./split-compile.js";
 
 const MAX_RAW_BYTES = 50 * 1024 * 1024;       // 50MB cap on extraction inputs
 const MIN_MEANINGFUL_CHARS = 20;              // below this, treat as empty (catches image-only PDFs)
@@ -42,6 +43,47 @@ export function createCompile(vault, proposals) {
     const fileName = path.basename(absRaw);
     const force = Boolean(review && review.force);
 
+    // Split mode: one raw file → N segment source pages + 1 hub page.
+    // Branches off here so it doesn't share the single-source dedupe path
+    // (which would otherwise reject sibling segments as same-sha duplicates).
+    // BUT we still need to honor the no-duplicate-compile contract: if a
+    // normal single-source page already exists for this raw file, calling
+    // split mode without force=true would stage a hub + segments alongside
+    // it, leaving two source artifacts for the same raw. Check the index
+    // first and short-circuit with already-filed unless force=true.
+    if (review && review.split) {
+      if (!review.force) {
+        // Only short-circuit when the existing page is a single-source
+        // page (NOT a hub from a prior split). An existing hub falls
+        // through to runSplitCompile which has its own already-split
+        // dedupe and returns the correct status.
+        const preIndex = await buildVaultIndex(vault);
+        const existingPath = preIndex.referenced.get(rel);
+        if (existingPath) {
+          const isHub = await isHubPage(vault, existingPath);
+          if (!isHub) {
+            return {
+              status: "already-filed",
+              rawFile: rel,
+              existingPath,
+              message: `${rel} already has a single-source page at ${existingPath}. Pass force=true to re-compile in split mode (will clear the existing page and stage a hub + segments).`
+            };
+          }
+        }
+      }
+      return await runSplitCompile({
+        vault, proposals, rel, absRaw, info, fileName, review
+      });
+    }
+
+    // Single-source compile requires a summary. The downstream compiler emits
+    // a confusing "no source node" error when summary is empty; fail fast.
+    if (!review || typeof review.summary !== "string" || review.summary.length === 0) {
+      throw new Error(
+        "`summary` is required for single-source compile. Provide a rich multi-clause summary, or pass `split` to compile in segments without a summary."
+      );
+    }
+
     // Look up existing source page even when force=true. With force, we
     // continue rather than return — but if the user didn't specify a bucket
     // or destination_path override, we replace IN PLACE at the existing
@@ -61,7 +103,15 @@ export function createCompile(vault, proposals) {
     }
     if (existingPath && force && !(review && (review.bucket || review.destination_path))) {
       // No explicit bucket/destination override — respect existing location.
-      review = { ...(review || {}), destination_path: existingPath };
+      // existingPath may carry a 'proposed/' prefix when the source is staged
+      // but not yet accepted; strip it before reusing as destination_path
+      // because proposals.proposePage rejects destinations starting with
+      // 'proposed/'. Without this, force=true on a pending compile proposal
+      // fails with "destination path cannot start with proposed/".
+      const cleanPath = existingPath.startsWith("proposed/")
+        ? existingPath.slice("proposed/".length)
+        : existingPath;
+      review = { ...(review || {}), destination_path: cleanPath };
     }
 
     let text;
@@ -143,7 +193,7 @@ export function createCompile(vault, proposals) {
     );
 
     const proposalResult = await proposals.proposePage(destPath, markdown, { force });
-    return {
+    const result = {
       ...proposalResult,
       status: "proposal-staged",
       rawFile: rel,
@@ -154,12 +204,35 @@ export function createCompile(vault, proposals) {
       summary: sourceNode.summary,
       termsExtracted: sourceNode.terms,
       entitiesExtracted: sourceNode.entities,
-      supersededProposals: superseded,
-      markdown
+      supersededProposals: superseded
     };
+    // Embedding the full staged markdown in the response is convenient for
+    // a single compile (Claude can show it), but ruinous for bulk: 50
+    // segments × ~5KB each blasts 250KB through the MCP transport per call.
+    // quiet=true (typed by the caller) omits the markdown and lets the
+    // caller read it back from `proposed/<destinationPath>` if needed.
+    if (!(review && review.quiet)) {
+      result.markdown = markdown;
+    }
+    return result;
   }
 
   return { proposeCompileFromRaw };
+}
+
+async function isHubPage(vault, pagePath) {
+  // pagePath may carry a 'proposed/' prefix (pending source proposals).
+  const abs = pagePath.startsWith("proposed/")
+    ? vault.resolveInside(pagePath)
+    : vault.resolveInside(pagePath);
+  let body;
+  try { body = await readFile(abs, "utf8"); }
+  catch { return false; }
+  let parsed;
+  try { parsed = parseFrontmatter(body); }
+  catch { return false; }
+  if (!parsed) return false;
+  return parsed.data.is_hub === true || String(parsed.data.is_hub).toLowerCase() === "true";
 }
 
 async function rejectProposalsWithSameRawSha(vault, proposals, rawSha, excludePath) {
@@ -174,7 +247,11 @@ async function rejectProposalsWithSameRawSha(vault, proposals, rawSha, excludePa
     } catch {
       continue;
     }
-    const parsed = parseFrontmatter(body);
+    // Pending proposal with bad YAML — skip it rather than crashing the
+    // compile dedupe walk. doctor surfaces parse failures separately.
+    let parsed;
+    try { parsed = parseFrontmatter(body); }
+    catch { continue; }
     const sha = parsed && parsed.data ? parsed.data.raw_sha256 : null;
     if (typeof sha !== "string" || sha !== rawSha) continue;
     try {
@@ -200,7 +277,11 @@ async function disambiguateDestPath(vault, candidatePath, currentRawRel) {
   } catch {
     return candidatePath; // destination doesn't exist, no collision
   }
-  const parsed = parseFrontmatter(body);
+  // Defensive: if the existing destination has bad YAML, treat as
+  // no-collision and let proposals.proposePage handle the rest.
+  let parsed;
+  try { parsed = parseFrontmatter(body); }
+  catch { return candidatePath; }
   if (!parsed) return candidatePath;
   const existingRefs = extractRawFileRefs(parsed.data).map((r) => canonicalize(r));
   if (existingRefs.includes(canonicalize(currentRawRel))) return candidatePath; // same raw, idempotent

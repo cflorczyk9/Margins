@@ -69,6 +69,53 @@ export function supportedExtensionsList() {
   return SUPPORTED_EXTENSIONS.join(", ");
 }
 
+/**
+ * Split an already-extracted document text into segments at a given heading
+ * level. Works for any format whose extractor emits `# Heading` / `## Heading`
+ * markers — that covers Markdown natively, XLSX (`## Sheet: ...`), PPTX
+ * (`## <slide>`), and HTML once converted. DOCX via extractRawText loses
+ * heading info; pass it through a heading-preserving extractor first if you
+ * want H-based splits on Word docs.
+ *
+ * Returns [{ heading, body, index }] where heading is the literal text of
+ * the heading line (without the leading hashes) and body is everything up
+ * to the next heading at the same or higher level. Content above the first
+ * heading is dropped — segments are headed sections only.
+ */
+export function splitTextByHeading(text, level = "h1") {
+  if (typeof text !== "string" || !text.length) return [];
+  const hashes = level === "h2" ? 2 : 1;
+  // Match a line that begins with exactly `hashes` # characters, followed
+  // by a space and content. Lines with more #s are deeper headings inside
+  // the segment and should not split.
+  const splitRe = new RegExp(`^#{${hashes}}\\s+(.+)$`, "gm");
+  const segments = [];
+  let match;
+  const boundaries = [];
+  while ((match = splitRe.exec(text)) !== null) {
+    boundaries.push({ start: match.index, heading: match[1].trim(), lineEnd: splitRe.lastIndex });
+  }
+  for (let i = 0; i < boundaries.length; i++) {
+    const cur = boundaries[i];
+    const next = boundaries[i + 1];
+    const bodyStart = cur.lineEnd;
+    const bodyEnd = next ? next.start : text.length;
+    const body = text.slice(bodyStart, bodyEnd).replace(/^\n+/, "").replace(/\s+$/, "");
+    segments.push({ heading: cur.heading, body, index: i });
+  }
+  return segments;
+}
+
+/**
+ * Sheet-based split for spreadsheet text emitted by extractXlsxText /
+ * extractOdsText. Looks for `## Sheet: <name>` markers and returns one
+ * segment per sheet. Falls back to splitTextByHeading(level="h2") so callers
+ * always get an array; sheet text uses h2 anyway.
+ */
+export function splitTextBySheet(text) {
+  return splitTextByHeading(text, "h2");
+}
+
 export async function extractDocumentText(absPath, displayPath = absPath, options = {}) {
   const ext = path.extname(absPath).toLowerCase();
   if (TEXT_EXTENSIONS.has(ext)) {

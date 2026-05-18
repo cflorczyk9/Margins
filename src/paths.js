@@ -51,6 +51,39 @@ export function pathsEqual(a, b) {
  *    1  margins/, gstack/, agents/ (project source, not user notes)
  *    0  any path under tests/fixtures/ or test/fixtures/ (fixtures)
  */
+/**
+ * Minimal shell-style glob matcher for vault-relative paths. No external dep.
+ *
+ *   *   matches any run of chars except "/"
+ *   **  matches any run of chars including "/"
+ *   ?   matches a single char except "/"
+ *
+ * Everything else is taken literally. Used by list_proposals and
+ * resolve_proposal to filter the proposal queue without forcing the model
+ * to call list_proposals first and post-filter in chat.
+ */
+export function globMatch(pattern, str) {
+  if (pattern == null || pattern === "") return false;
+  if (pattern === "*" || pattern === "**") return true;
+  const canon = canonicalize(str);
+  let re = "^";
+  for (let i = 0; i < pattern.length; i++) {
+    const c = pattern[i];
+    if (c === "*") {
+      if (pattern[i + 1] === "*") { re += ".*"; i++; }
+      else re += "[^/]*";
+    } else if (c === "?") {
+      re += "[^/]";
+    } else if (/[.+\\^$(){}|[\]]/.test(c)) {
+      re += "\\" + c;
+    } else {
+      re += c;
+    }
+  }
+  re += "$";
+  return new RegExp(re).test(canon);
+}
+
 export function pathPriority(rel) {
   const r = canonicalize(rel);
   if (!r) return 0;

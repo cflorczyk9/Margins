@@ -170,6 +170,104 @@ test("stale-source: source page records a sha that no longer matches raw", async
   assert.equal(stale[0].reason, "size-mismatch");
 });
 
+// --- Split-mode hub completeness ---
+
+test("hub-segment-mismatch: hub expects 3 segments, only 2 found", async () => {
+  await touch("raw/big.md", "raw body");
+  // Tracker row so tracker checks pass.
+  await touch(
+    "wiki/ingest-tracker.md",
+    `---\ntype: tracker\n---\n\n# Ingest Tracker\n\n| raw/big.md | ingested | [[big-hub]] | - |  |  |\n`
+  );
+  // Hub claims 3 segments.
+  await touch(
+    "wiki/sources/big-hub.md",
+    [
+      "---",
+      "type: source",
+      "raw_file: raw/big.md",
+      "segments_count: 3",
+      "is_hub: true",
+      "---",
+      "# big"
+    ].join("\n")
+  );
+  // Only 2 segment pages exist linking back to the hub.
+  for (let i = 1; i <= 2; i++) {
+    await touch(
+      `wiki/sources/source-big-s0${i}-section.md`,
+      `---\ntype: source_segment\nraw_file: raw/big.md\nhub: "[[big-hub]]"\nsegment_index: ${i - 1}\n---\n# section ${i}\n`
+    );
+  }
+
+  const report = await diagnoseVault(vault);
+  const mismatch = report.issues.filter((i) => i.kind === "hub-segment-mismatch");
+  assert.equal(mismatch.length, 1);
+  assert.equal(mismatch[0].expected, 3);
+  assert.equal(mismatch[0].found, 2);
+  assert.match(mismatch[0].message, /Missing 1/);
+});
+
+test("doctor does not crash when a vault file has malformed frontmatter", async () => {
+  // Regression for codex re-review P2: the hub-segment walk called
+  // parseFrontmatter outside a try/catch. A single bad-YAML file would
+  // crash the entire doctor run instead of just being reported via the
+  // pre-existing parse-failure check.
+  await touch("wiki/sources/source-ok.md",
+    "---\ntype: source\nraw_file: raw/ok.md\n---\n# OK\n"
+  );
+  await touch("raw/ok.md", "ok");
+  await touch(
+    "wiki/ingest-tracker.md",
+    "---\ntype: tracker\n---\n\n| raw/ok.md | ingested | [[source-ok]] | - |  |  |\n"
+  );
+  // This file has frontmatter delimiters but the YAML is malformed in a
+  // way that survives the permissive fallback as null (no recoverable
+  // type/raw_file). Should be reported as parse-failure, not crash doctor.
+  await touch("wiki/sources/broken.md",
+    "---\nsummary: This has: an unquoted colon-space: that wrecks: parsing: badly\nrandom-key\n  - nested but with bad indent:\n---\n# Broken\n"
+  );
+  const report = await diagnoseVault(vault);
+  // Doctor returned a real report rather than throwing.
+  assert.ok(report.summary);
+  // The hub-segment walk still ran and produced 0 mismatches for the OK file.
+  const mismatches = report.issues.filter((i) => i.kind === "hub-segment-mismatch");
+  assert.equal(mismatches.length, 0);
+});
+
+test("hub-segment-mismatch: extra orphan segments link to the hub", async () => {
+  await touch("raw/big.md", "raw body");
+  await touch(
+    "wiki/ingest-tracker.md",
+    `---\ntype: tracker\n---\n\n# Ingest Tracker\n\n| raw/big.md | ingested | [[big-hub]] | - |  |  |\n`
+  );
+  await touch(
+    "wiki/sources/big-hub.md",
+    [
+      "---",
+      "type: source",
+      "raw_file: raw/big.md",
+      "segments_count: 2",
+      "is_hub: true",
+      "---",
+      "# big"
+    ].join("\n")
+  );
+  for (let i = 1; i <= 4; i++) {
+    await touch(
+      `wiki/sources/source-big-s0${i}-section.md`,
+      `---\ntype: source_segment\nraw_file: raw/big.md\nhub: "[[big-hub]]"\nsegment_index: ${i - 1}\n---\n# section ${i}\n`
+    );
+  }
+
+  const report = await diagnoseVault(vault);
+  const mismatch = report.issues.filter((i) => i.kind === "hub-segment-mismatch");
+  assert.equal(mismatch.length, 1);
+  assert.equal(mismatch[0].expected, 2);
+  assert.equal(mismatch[0].found, 4);
+  assert.match(mismatch[0].message, /Extra segments/);
+});
+
 test("clean vault with matching raw_sha256 reports no staleness", async () => {
   // Compile via the real flow to get accurate sha
   const fileBody = "Body that will be hashed and recorded so the doctor sees no drift.";
