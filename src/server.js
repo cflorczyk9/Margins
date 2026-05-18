@@ -103,7 +103,7 @@ export function buildServer(vault, options = {}) {
   const server = new McpServer(
     {
       name: "margins",
-      version: "0.13.0",
+      version: "0.13.2",
       icons: [{ src: MARGINS_ICON_DATA_URI, mimeType: "image/svg+xml" }],
       websiteUrl: "https://marginsmcp.com",
       description:
