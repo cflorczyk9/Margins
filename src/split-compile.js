@@ -66,10 +66,8 @@ export async function runSplitCompile({ vault, proposals, rel, absRaw, info, fil
   const used = overflow ? segments.slice(0, maxSegments) : segments;
 
   const force = Boolean(review.force);
-  const bucket = review.bucket || review.hubBucket || "sources";
   const baseSlug = slugifyBase(fileName);
   const hubSlug = `${baseSlug}-hub`;
-  const hubDest = `wiki/${bucket}/${hubSlug}.md`;
 
   // Idempotency: any landed/staged hub for this raw_sha256?
   const existingHub = await findExistingHubForRaw(vault, proposals, rel, rawSha);
@@ -83,6 +81,24 @@ export async function runSplitCompile({ vault, proposals, rel, absRaw, info, fil
       message: `${rel} is already split — hub at ${existingHub.path}. Pass force=true to re-stage all segments and hub.`
     };
   }
+
+  // Bucket resolution order:
+  //   1. explicit review.bucket / review.hubBucket
+  //   2. landed hub's bucket (when force=true rebuilding an existing split)
+  //   3. default 'sources'
+  // Without step 2, force=true on a hub that landed under wiki/projects/
+  // would re-stage everything under wiki/sources/ and leave the old hub
+  // orphaned in the original bucket — duplicate hubs for the same raw file.
+  let bucket = review.bucket || review.hubBucket;
+  if (!bucket && existingHub && existingHub.location === "vault") {
+    const parts = existingHub.path.split("/");
+    if (parts.length >= 3 && parts[0] === "wiki") {
+      bucket = parts[1];
+    }
+  }
+  bucket = bucket || "sources";
+  const hubDest = `wiki/${bucket}/${hubSlug}.md`;
+
   if (existingHub && force) {
     await clearExistingSplit(vault, proposals, rel, rawSha, existingHub);
   }
@@ -225,7 +241,11 @@ function buildHubBody({ title, rawFile, rawSha256, rawSize, segmentsCount, total
   const intro = overflow
     ? `Hub for the split of ${rawFile}. ${segmentsCount} segments staged; ${totalHeadingsFound - segmentsCount} additional headings dropped due to maxSegments cap.`
     : `Hub for the split of ${rawFile}. ${segmentsCount} segments staged.`;
-  const lines = segments.map((s) => `- [[${s.slug}]] — ${s.heading}`);
+  // Segment files land at wiki/<bucket>/source-<segSlug>.md, so the
+  // Obsidian-style wikilink must include the `source-` prefix to resolve
+  // to the real basename. Previously linked [[<segSlug>]] which pointed at
+  // a non-existent page, breaking the hub's main navigation block.
+  const lines = segments.map((s) => `- [[source-${s.slug}]] — ${s.heading}`);
   return `${fm}\n\n# ${title}\n\n${intro}\n\n## Segments\n\n${lines.join("\n")}\n`;
 }
 

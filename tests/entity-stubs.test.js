@@ -184,6 +184,19 @@ test("closed loop: scan_entity_candidates auto-excludes rejected slugs on re-sca
     "rejected slug should not reappear in second scan");
 });
 
+test("recordEntityRejection serializes concurrent writes (no lost-update race)", async () => {
+  // Regression for the codex-review P2: prior implementation did
+  // read/modify/write of the rejections file without a lock, so two
+  // concurrent rejections could both read the same body and the second
+  // writeFile would clobber the first — silently losing a rejection.
+  const slugs = ["slug-1", "slug-2", "slug-3", "slug-4", "slug-5", "slug-6", "slug-7", "slug-8"];
+  await Promise.all(slugs.map((s) => recordEntityRejection(vault, s)));
+  const persisted = await readEntityRejections(vault);
+  for (const s of slugs) {
+    assert.ok(persisted.includes(s), `expected ${s} to survive concurrent rejection storm, got: ${persisted.join(", ")}`);
+  }
+});
+
 test("readEntityRejections handles a missing file gracefully", async () => {
   const list = await readEntityRejections(vault);
   assert.deepEqual(list, []);

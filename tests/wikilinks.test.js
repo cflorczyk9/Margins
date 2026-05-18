@@ -180,6 +180,41 @@ test("scope mode skips pages whose mentions are already wikilinked", async () =>
   assert.deepEqual(staged, ["wiki/notes/n-2.md"]);
 });
 
+test("scope mode apply preserves long aliased wikilinks (no 50-char lookbehind miss)", async () => {
+  // Regression test for the codex-review P2: the prior implementation looked
+  // 50 chars to the left of a match to detect [[...]] context. When the
+  // target side of an aliased wikilink exceeded that window, the alias text
+  // got re-wrapped into a nested [[acme]], corrupting the page.
+  await touch("wiki/people/acme.md", "# Acme");
+  await touch("wiki/notes/n.md",
+    "Earlier note: [[some-very-long-canonical-target-name-that-exceeds-fifty-characters-easily|Acme]] handled the deal. Acme also signed."
+  );
+  await wikilinks.proposeWikilinks(null, { scope: "wiki/notes/**", apply: true });
+  const staged = await readFile(path.join(tmpRoot, "proposed/wiki/notes/n.md"), "utf8");
+  // The aliased wikilink stays intact — the alias inside it must NOT be
+  // re-wrapped as a separate [[acme]].
+  assert.match(staged, /\[\[some-very-long-canonical-target-name-that-exceeds-fifty-characters-easily\|Acme\]\]/);
+  assert.doesNotMatch(staged, /\[\[\[\[acme\]\]/);
+  // The standalone "Acme" outside any wikilink should still get linked.
+  assert.match(staged, /\[\[acme\]\] also signed/);
+});
+
+test("scope mode apply does not overwrite a pending proposal on the same path", async () => {
+  // Regression: previously runScopeMode read vault body then propose_page'd
+  // with force=true, clobbering any pending proposal on the same path with
+  // a rewrite of the stale vault content.
+  await touch("wiki/people/bob.md", "# Bob");
+  await touch("wiki/notes/p.md", "Bob did things earlier.");
+  // Stage an unrelated proposal on the same page FIRST.
+  await proposals.proposePage("wiki/notes/p.md", "DIFFERENT BODY THAT MUST SURVIVE\n", { force: true });
+
+  const result = await wikilinks.proposeWikilinks(null, { scope: "wiki/notes/**", apply: true });
+  assert.deepEqual(result.skippedDueToPending, ["wiki/notes/p.md"]);
+  // The pending proposal's body is untouched.
+  const stagedBody = await readFile(path.join(tmpRoot, "proposed/wiki/notes/p.md"), "utf8");
+  assert.equal(stagedBody, "DIFFERENT BODY THAT MUST SURVIVE\n");
+});
+
 test("scope mode apply guards against double-wrapping when phrase appears inside brackets", async () => {
   // Edge case: a phrase like "Bob Casey" written inside square brackets
   // for some other reason (e.g., source citation [Bob Casey, 2024]) should

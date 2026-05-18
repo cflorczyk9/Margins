@@ -465,6 +465,11 @@ export function buildServer(vault, options = {}) {
         if (apply) {
           lines.push("");
           lines.push(`Applied: ${result.applied} page(s) staged as proposals. Review with list_proposals pattern: '${scope}'.`);
+          if (Array.isArray(result.skippedDueToPending) && result.skippedDueToPending.length) {
+            lines.push(`Skipped ${result.skippedDueToPending.length} page(s) with pending proposals — resolve those first then re-run apply:`);
+            for (const p of result.skippedDueToPending.slice(0, 10)) lines.push(`  ${p}`);
+            if (result.skippedDueToPending.length > 10) lines.push(`  ... and ${result.skippedDueToPending.length - 10} more`);
+          }
         } else if (result.aggregatedSuggestions.length) {
           lines.push("");
           lines.push("Re-run with apply=true to stage rewritten pages (one proposal per page).");
@@ -575,7 +580,7 @@ export function buildServer(vault, options = {}) {
           if (c.snippets[0]) lines.push(`      ${c.snippets[0].file}: ${c.snippets[0].snippet}`);
         }
         lines.push("");
-        lines.push("Stub the ones worth keeping with propose_entity_stubs (v0.16) — or for now, propose_page individual entity pages.");
+        lines.push("Stub the ones worth keeping with propose_entity_stubs (pass the full candidate objects from structuredContent.candidates for richest stub bodies). Reject any noise via resolve_proposal — the slug is auto-recorded so it won't reappear next scan.");
       }
       return {
         content: [{ type: "text", text: lines.join("\n") }],

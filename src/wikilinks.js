@@ -1,4 +1,5 @@
 import path from "node:path";
+import { stat } from "node:fs/promises";
 import { getType, parseFrontmatter } from "./frontmatter.js";
 import { buildSlugIndex } from "./vault-slug-index.js";
 
@@ -138,9 +139,22 @@ export function createWikilinks(vault, options = {}) {
 
     let appliedCount = 0;
     const appliedPages = [];
+    const skippedDueToPending = [];
     if (apply) {
       for (const pr of pageResults) {
         if (pr.skipped || !pr.suggestions.length) continue;
+        // Refuse to rewrite a page that already has a pending proposal. If
+        // we proceeded, force:true would overwrite that proposal with a
+        // rewrite of the LANDED vault body — silently dropping whatever
+        // staged edits were waiting for review. Let the user resolve the
+        // existing proposal first.
+        const pendingAbs = vault.resolveInside(`proposed/${pr.page}`);
+        const hasPending = await pathExists(pendingAbs);
+        if (hasPending) {
+          pr.skippedDueToPendingProposal = true;
+          skippedDueToPending.push(pr.page);
+          continue;
+        }
         const page = await vault.readPage(pr.page);
         const rewritten = applyWikilinksToBody(page.body, pr.suggestions);
         if (rewritten === page.body) continue;
@@ -161,8 +175,14 @@ export function createWikilinks(vault, options = {}) {
       aggregatedSuggestions,
       apply,
       applied: appliedCount,
-      appliedPages
+      appliedPages,
+      skippedDueToPending
     };
+  }
+
+  async function pathExists(abs) {
+    try { await stat(abs); return true; }
+    catch { return false; }
   }
 
   return { proposeWikilinks };
@@ -221,28 +241,60 @@ function applyWikilinksToBody(body, suggestions) {
   // Replace every occurrence of each suggestion phrase with its wikilink,
   // honoring word boundaries so substring matches inside other words don't
   // corrupt the body. Existing wikilinks are not touched — the suggestion
-  // set already excludes phrases inside [[ ... ]].
+  // set already excludes phrases inside [[ ... ]], but the body may contain
+  // wikilinks to OTHER targets that contain a phrase we'd otherwise rewrite
+  // (e.g., the alias inside [[long-target-name|Bob Casey]]).
+  //
+  // Precompute the exact [[…]] ranges in the current body for each pass.
+  // Previously used a 50-char lookbehind which broke for long target/alias
+  // pairs (`[[very-long-target-name-over-50-chars|Acme]]` would let "Acme"
+  // get re-wrapped into `[[acme]]`, producing nested wikilinks). Range-based
+  // checking is O(N+matches) per suggestion and exact.
   let out = body;
   for (const s of suggestions) {
     const phrase = s.phrase;
     const link = s.wikilink;
-    // Escape regex specials in phrase; require word boundaries so
-    // "Bob" doesn't replace inside "Bobcat".
     const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const re = new RegExp(`\\b${escaped}\\b`, "g");
-    // Don't replace inside an existing wikilink: lookbehind for "[[" is
-    // expensive across all engines; use a callback that checks context.
-    out = out.replace(re, (match, offset, full) => {
-      // If the match is already inside a wikilink (search left for "[["
-      // before any "]]"), skip it.
-      const prefix = full.slice(Math.max(0, offset - 50), offset);
-      const opens = (prefix.match(/\[\[/g) || []).length;
-      const closes = (prefix.match(/\]\]/g) || []).length;
-      if (opens > closes) return match;
-      return link;
-    });
+
+    const ranges = findWikilinkRanges(out);
+    const matches = [];
+    let m;
+    while ((m = re.exec(out)) !== null) {
+      if (!isInsideAnyRange(ranges, m.index)) {
+        matches.push({ start: m.index, end: m.index + m[0].length });
+      }
+    }
+    // Apply in reverse so earlier substitutions don't shift later offsets.
+    for (let i = matches.length - 1; i >= 0; i--) {
+      const { start, end } = matches[i];
+      out = out.slice(0, start) + link + out.slice(end);
+    }
   }
   return out;
+}
+
+function findWikilinkRanges(body) {
+  const ranges = [];
+  // Greedy [[…]] match — pairs of brackets with nothing closing in between.
+  // Tolerates pipes (aliases) and any non-]] content. If a [[ has no closing
+  // ]], it's malformed; we skip it (range list excludes it, so substitutions
+  // inside the unfinished link can happen — acceptable degradation for
+  // pathological input).
+  const re = /\[\[[^\]]*?\]\]/g;
+  let m;
+  while ((m = re.exec(body)) !== null) {
+    ranges.push([m.index, m.index + m[0].length]);
+  }
+  return ranges;
+}
+
+function isInsideAnyRange(ranges, offset) {
+  for (const [start, end] of ranges) {
+    if (offset >= start && offset < end) return true;
+    if (start > offset) return false; // ranges are ordered; short-circuit
+  }
+  return false;
 }
 
 function clampMaxPages(n) {

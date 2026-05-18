@@ -10,3 +10,4 @@ dist/
 *.mcpb
 *.tgz
 .gstack/
+.context/

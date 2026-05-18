@@ -427,13 +427,14 @@ test("stdio: split mode stages N segments + 1 hub end-to-end over MCP", async (t
   });
   assert.equal(applied.result.structuredContent.succeeded, 4);
 
-  // Verify the hub body links every segment slug.
+  // Verify the hub body links every segment slug. Wikilinks must include
+  // the `source-` prefix to resolve to the actual segment filenames.
   const hubBody = await readFile(path.join(vault, "wiki/sources/deals-hub.md"), "utf8");
   assert.match(hubBody, /is_hub: true/);
   assert.match(hubBody, /segments_count: 3/);
-  assert.match(hubBody, /\[\[deals-s01-project-aurora\]\]/);
-  assert.match(hubBody, /\[\[deals-s02-project-borealis\]\]/);
-  assert.match(hubBody, /\[\[deals-s03-project-cascade\]\]/);
+  assert.match(hubBody, /\[\[source-deals-s01-project-aurora\]\]/);
+  assert.match(hubBody, /\[\[source-deals-s02-project-borealis\]\]/);
+  assert.match(hubBody, /\[\[source-deals-s03-project-cascade\]\]/);
 
   // Verify a segment body has the right frontmatter.
   const seg1Body = await readFile(path.join(vault, "wiki/sources/source-deals-s01-project-aurora.md"), "utf8");

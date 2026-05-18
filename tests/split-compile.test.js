@@ -108,9 +108,36 @@ test("split mode stages N segment proposals + 1 hub from a Markdown raw", async 
   assert.match(hubBody, /type: source/);
   assert.match(hubBody, /is_hub: true/);
   assert.match(hubBody, /segments_count: 3/);
-  assert.match(hubBody, /\[\[big-deals-s01-project-aurora\]\]/);
-  assert.match(hubBody, /\[\[big-deals-s02-project-borealis\]\]/);
-  assert.match(hubBody, /\[\[big-deals-s03-project-cascade\]\]/);
+  // Hub wikilinks must include the `source-` prefix so they resolve to
+  // the actual segment filenames (wiki/<bucket>/source-<slug>.md).
+  assert.match(hubBody, /\[\[source-big-deals-s01-project-aurora\]\]/);
+  assert.match(hubBody, /\[\[source-big-deals-s02-project-borealis\]\]/);
+  assert.match(hubBody, /\[\[source-big-deals-s03-project-cascade\]\]/);
+});
+
+test("hub wikilinks resolve to actual staged segment proposal files", async () => {
+  await writeRaw("nav.md",
+    "# Alpha\n\nFirst section with enough body to clear the floor.\n\n" +
+    "# Beta\n\nSecond section with enough body to clear the floor.\n\n" +
+    "# Gamma\n\nThird section with enough body to clear the floor.\n"
+  );
+  const result = await compile.proposeCompileFromRaw("raw/nav.md", { split: "heading-h1" });
+  const hubBody = await readProposal(result.hubPath);
+  // Every wikilink in the hub's segment block must point at a slug whose
+  // proposal file actually exists in proposed/. Catches the source- prefix
+  // drift that the codex review caught — hub links to [[nav-s01-alpha]]
+  // would have no corresponding wiki/sources/nav-s01-alpha.md file because
+  // segments land as source-prefixed.
+  const linkRe = /\[\[([^\]|]+)\]\]/g;
+  const links = Array.from(hubBody.matchAll(linkRe)).map((m) => m[1]);
+  const segmentLinks = links.filter((l) => l.startsWith("source-"));
+  assert.ok(segmentLinks.length === 3, `expected 3 segment links in hub, got ${segmentLinks.length}: ${segmentLinks.join(", ")}`);
+  for (const slug of segmentLinks) {
+    const expectedProposal = path.join(tmpRoot, "proposed/wiki/sources", `${slug}.md`);
+    const { stat } = await import("node:fs/promises");
+    const info = await stat(expectedProposal).catch(() => null);
+    assert.ok(info, `hub links to [[${slug}]] but proposed/wiki/sources/${slug}.md does not exist`);
+  }
 });
 
 test("split mode rejects a doc with no headings at requested level", async () => {
@@ -184,6 +211,42 @@ test("split mode with force=true clears prior segment proposals and re-stages", 
   assert.ok(slugs.some((s) => /rev-s03-z\.md$/.test(s)));
   assert.equal(slugs.filter((s) => /rev-s\d+-a\.md$/.test(s)).length, 0);
   assert.equal(slugs.filter((s) => /rev-s\d+-b\.md$/.test(s)).length, 0);
+});
+
+test("split mode force=true preserves the landed hub's bucket when no override is given", async () => {
+  // Regression for codex-review P2: prior implementation defaulted bucket
+  // to 'sources' before consulting existingHub, so a force re-split of a
+  // hub that lives in wiki/projects/ would create duplicate hubs (the
+  // new staging in wiki/sources/, the old landed in wiki/projects/).
+  await writeRaw("biz.md",
+    "# Q1\n\nQ1 details with sufficient body to clear the floor.\n\n# Q2\n\nQ2 details with sufficient body to clear the floor.\n"
+  );
+  // First split — land it under wiki/projects/ via hubBucket override.
+  const first = await compile.proposeCompileFromRaw("raw/biz.md", {
+    split: "heading-h1",
+    hubBucket: "projects"
+  });
+  // Accept everything so the hub lands in wiki/projects/.
+  for (const seg of first.segments) {
+    await proposals.resolveProposal(seg.destinationPath, "accept");
+  }
+  await proposals.resolveProposal(first.hubPath, "accept");
+
+  // Now mutate the raw and force re-split WITHOUT a bucket override.
+  await writeFile(path.join(tmpRoot, "raw/biz.md"),
+    "# Q3\n\nNew Q3 details with sufficient body for split mode.\n\n# Q4\n\nNew Q4 details with sufficient body for split mode.\n",
+    "utf8"
+  );
+  const second = await compile.proposeCompileFromRaw("raw/biz.md", {
+    split: "heading-h1",
+    force: true
+  });
+  assert.equal(second.status, "split-staged");
+  // The re-stage must land in wiki/projects/, NOT wiki/sources/.
+  assert.match(second.hubPath, /^wiki\/projects\/biz-hub\.md$/);
+  for (const seg of second.segments) {
+    assert.match(seg.destinationPath, /^wiki\/projects\/source-biz-/);
+  }
 });
 
 test("split mode honors hubBucket override", async () => {

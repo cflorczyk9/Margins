@@ -16,6 +16,21 @@ import path from "node:path";
 import { parseFrontmatter, getType } from "./frontmatter.js";
 
 const REJECTIONS_REL = ".margins/entity-rejections.md";
+
+// Module-level chain to serialize all read/modify/write cycles against the
+// rejection memory file. Without this, two concurrent recordEntityRejection
+// calls can both read the same body, both append their slug to their own
+// in-memory copy, and the second writeFile clobbers the first — silently
+// losing one rejection so the slug reappears on the next scan. Same pattern
+// proposals.js uses for per-destination proposal locking; here a single
+// chain is enough because there's only one rejection file to guard.
+const _rejectionWriteChain = { p: Promise.resolve() };
+function withRejectionLock(fn) {
+  const prev = _rejectionWriteChain.p;
+  const next = prev.then(() => fn(), () => fn());
+  _rejectionWriteChain.p = next.then(() => {}, () => {});
+  return next;
+}
 const REJECTIONS_HEADER = `# Entity rejections
 
 Slugs the user has rejected via propose_entity_stubs. scan_entity_candidates
@@ -215,32 +230,41 @@ export async function readEntityRejections(vault) {
 export async function recordEntityRejection(vault, slug) {
   const cleanSlug = slugify(slug);
   if (!cleanSlug) return { recorded: false, reason: "invalid-slug" };
-  const abs = vault.resolveInside(REJECTIONS_REL);
-  let body;
-  try { body = await readFile(abs, "utf8"); }
-  catch { body = REJECTIONS_HEADER; }
+  // All reads + the writeFile happen inside the lock so two concurrent
+  // rejections don't race: the second waiter sees the first's writeFile
+  // and short-circuits via the already-recorded check.
+  return withRejectionLock(async () => {
+    const abs = vault.resolveInside(REJECTIONS_REL);
+    let body;
+    try { body = await readFile(abs, "utf8"); }
+    catch { body = REJECTIONS_HEADER; }
 
-  // Already recorded? Skip — keep file dedup'd.
-  const existing = await readEntityRejections(vault);
-  if (existing.includes(cleanSlug)) {
-    return { recorded: false, reason: "already-rejected", slug: cleanSlug };
-  }
+    if (existingSlugInBody(body, cleanSlug)) {
+      return { recorded: false, reason: "already-rejected", slug: cleanSlug };
+    }
 
-  const today = new Date().toISOString().slice(0, 10);
-  const heading = `## ${today}`;
-  const bullet = `- ${cleanSlug}`;
-  if (body.includes(`\n${heading}\n`) || body.startsWith(`${heading}\n`)) {
-    body = body.replace(
-      new RegExp(`(${escapeRegExp(heading)}\\n[\\s\\S]*?)(?=\\n## |$)`),
-      (match) => `${match.trimEnd()}\n${bullet}\n`
-    );
-  } else {
-    body = body.trimEnd() + `\n\n${heading}\n${bullet}\n`;
-  }
+    const today = new Date().toISOString().slice(0, 10);
+    const heading = `## ${today}`;
+    const bullet = `- ${cleanSlug}`;
+    if (body.includes(`\n${heading}\n`) || body.startsWith(`${heading}\n`)) {
+      body = body.replace(
+        new RegExp(`(${escapeRegExp(heading)}\\n[\\s\\S]*?)(?=\\n## |$)`),
+        (match) => `${match.trimEnd()}\n${bullet}\n`
+      );
+    } else {
+      body = body.trimEnd() + `\n\n${heading}\n${bullet}\n`;
+    }
 
-  await mkdir(path.dirname(abs), { recursive: true });
-  await writeFile(abs, body, "utf8");
-  return { recorded: true, slug: cleanSlug, path: REJECTIONS_REL };
+    await mkdir(path.dirname(abs), { recursive: true });
+    await writeFile(abs, body, "utf8");
+    return { recorded: true, slug: cleanSlug, path: REJECTIONS_REL };
+  });
+}
+
+function existingSlugInBody(body, slug) {
+  // Match bullet form `- slug` per the readEntityRejections parser.
+  const re = new RegExp(`^-\\s+${escapeRegExp(slug)}\\s*$`, "m");
+  return re.test(body);
 }
 
 // Inspect a proposal body and return its slug iff it's an entity stub
