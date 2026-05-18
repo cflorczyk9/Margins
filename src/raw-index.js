@@ -196,7 +196,16 @@ async function walkForSourcePages(vault, dir, out) {
       _proposedFmCache.delete(abs);
       continue;
     }
-    const parsed = parseFrontmatter(body);
+    // Catch parseFrontmatter throws so a single malformed pending proposal
+    // doesn't crash every buildVaultIndex caller (margins_start,
+    // list_unprocessed, doctor, compile dedupe). Cache as a null entry so
+    // we don't re-attempt the parse on every walk until the file changes.
+    let parsed;
+    try { parsed = parseFrontmatter(body); }
+    catch {
+      _proposedFmCache.set(abs, { mtimeMs: info.mtimeMs, entry: null });
+      continue;
+    }
     if (!parsed) {
       _proposedFmCache.set(abs, { mtimeMs: info.mtimeMs, entry: null });
       continue;

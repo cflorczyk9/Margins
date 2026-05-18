@@ -208,7 +208,11 @@ async function rejectProposalsWithSameRawSha(vault, proposals, rawSha, excludePa
     } catch {
       continue;
     }
-    const parsed = parseFrontmatter(body);
+    // Pending proposal with bad YAML — skip it rather than crashing the
+    // compile dedupe walk. doctor surfaces parse failures separately.
+    let parsed;
+    try { parsed = parseFrontmatter(body); }
+    catch { continue; }
     const sha = parsed && parsed.data ? parsed.data.raw_sha256 : null;
     if (typeof sha !== "string" || sha !== rawSha) continue;
     try {
@@ -234,7 +238,11 @@ async function disambiguateDestPath(vault, candidatePath, currentRawRel) {
   } catch {
     return candidatePath; // destination doesn't exist, no collision
   }
-  const parsed = parseFrontmatter(body);
+  // Defensive: if the existing destination has bad YAML, treat as
+  // no-collision and let proposals.proposePage handle the rest.
+  let parsed;
+  try { parsed = parseFrontmatter(body); }
+  catch { return candidatePath; }
   if (!parsed) return candidatePath;
   const existingRefs = extractRawFileRefs(parsed.data).map((r) => canonicalize(r));
   if (existingRefs.includes(canonicalize(currentRawRel))) return candidatePath; // same raw, idempotent

@@ -180,6 +180,25 @@ test("scope mode skips pages whose mentions are already wikilinked", async () =>
   assert.deepEqual(staged, ["wiki/notes/n-2.md"]);
 });
 
+test("scope mode apply does not rewrite YAML frontmatter values", async () => {
+  // Regression for codex round-3 P2: apply mode operated on the full
+  // readPage body, so a YAML field like `title: Bob Casey meeting` got
+  // rewritten to `title: [[bob-casey]] meeting`, breaking frontmatter
+  // parsing on subsequent reads.
+  await touch("wiki/people/bob-casey.md", "# Bob Casey");
+  await touch(
+    "wiki/notes/n.md",
+    "---\ntitle: Bob Casey meeting\ntype: note\n---\n\nBody mentioning Bob Casey here.\n"
+  );
+  await wikilinks.proposeWikilinks(null, { scope: "wiki/notes/**", apply: true });
+  const staged = await readFile(path.join(tmpRoot, "proposed/wiki/notes/n.md"), "utf8");
+  // Frontmatter survived verbatim.
+  assert.match(staged, /title: Bob Casey meeting/);
+  assert.match(staged, /^type: note$/m);
+  // Body mention got linked.
+  assert.match(staged, /Body mentioning \[\[bob-casey\]\] here\./);
+});
+
 test("scope mode apply preserves long aliased wikilinks (no 50-char lookbehind miss)", async () => {
   // Regression test for the codex-review P2: the prior implementation looked
   // 50 chars to the left of a match to detect [[...]] context. When the

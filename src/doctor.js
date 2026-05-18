@@ -108,7 +108,11 @@ async function diagnoseStaleSources(vault, index) {
     } catch {
       continue;
     }
-    const parsed = parseFrontmatter(body);
+    // Bad YAML is reported via the upstream parse-failure issue; here we
+    // just skip the staleness check rather than crash the whole doctor run.
+    let parsed;
+    try { parsed = parseFrontmatter(body); }
+    catch { continue; }
     if (!parsed) continue;
     const knownSha = typeof parsed.data.raw_sha256 === "string" ? parsed.data.raw_sha256 : null;
     const knownSize = typeof parsed.data.raw_size === "number" ? parsed.data.raw_size : null;

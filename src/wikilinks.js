@@ -245,12 +245,18 @@ function applyWikilinksToBody(body, suggestions) {
   // wikilinks to OTHER targets that contain a phrase we'd otherwise rewrite
   // (e.g., the alias inside [[long-target-name|Bob Casey]]).
   //
+  // Frontmatter is preserved verbatim. Without this guard, a page whose
+  // YAML had `title: Bob Casey meeting` would get rewritten to
+  // `title: [[bob-casey]] meeting`, breaking frontmatter parsing on the
+  // next read.
+  //
   // Precompute the exact [[…]] ranges in the current body for each pass.
   // Previously used a 50-char lookbehind which broke for long target/alias
   // pairs (`[[very-long-target-name-over-50-chars|Acme]]` would let "Acme"
   // get re-wrapped into `[[acme]]`, producing nested wikilinks). Range-based
   // checking is O(N+matches) per suggestion and exact.
-  let out = body;
+  const { frontmatter, body: bodyOnly } = splitFrontmatter(body);
+  let out = bodyOnly;
   for (const s of suggestions) {
     const phrase = s.phrase;
     const link = s.wikilink;
@@ -271,7 +277,20 @@ function applyWikilinksToBody(body, suggestions) {
       out = out.slice(0, start) + link + out.slice(end);
     }
   }
-  return out;
+  return frontmatter + out;
+}
+
+// Split a page into (frontmatter-block-including-delimiters, body). If the
+// page has no frontmatter (no leading '---' or unterminated), frontmatter
+// is the empty string and body is the full input.
+function splitFrontmatter(text) {
+  if (!text.startsWith("---")) return { frontmatter: "", body: text };
+  // Look for the closing '---' line. Permissive — accept either '\n---\n' or
+  // '\n---' at EOF.
+  const closeMatch = text.match(/\n---(\r?\n|$)/);
+  if (!closeMatch) return { frontmatter: "", body: text };
+  const end = closeMatch.index + closeMatch[0].length;
+  return { frontmatter: text.slice(0, end), body: text.slice(end) };
 }
 
 function findWikilinkRanges(body) {

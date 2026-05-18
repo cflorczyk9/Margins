@@ -272,6 +272,25 @@ test("raw-index treats source_segment as referenced (raw file not listed as pend
     `expected raw/filed.md to be filed via segment proposals, pending: ${index.pending.join(", ")}`);
 });
 
+test("split mode survives a sibling vault file with malformed YAML frontmatter", async () => {
+  // Regression for codex round-3 P2: readHubMatching called
+  // parseFrontmatter without a try/catch. A single bad-YAML file
+  // anywhere in the vault crashed split mode before it could find
+  // (or not find) an existing hub.
+  await mkdir(path.join(tmpRoot, "wiki"), { recursive: true });
+  await writeFile(path.join(tmpRoot, "wiki/broken.md"),
+    "---\nsummary: This has: an unquoted: colon-space: chain: that fails\nrandom-key without value\n  - bad-nested-indent:\n---\n# Broken\n",
+    "utf8"
+  );
+  await writeRaw("clean.md",
+    "# Section A\n\nFirst section body with enough content.\n\n# Section B\n\nSecond section body with enough content.\n"
+  );
+  // Split should succeed — the bad-YAML file is unrelated to this raw.
+  const result = await compile.proposeCompileFromRaw("raw/clean.md", { split: "heading-h1" });
+  assert.equal(result.status, "split-staged");
+  assert.equal(result.segmentsCount, 2);
+});
+
 test("force=true on a pending compile proposal replaces it instead of failing", async () => {
   // Regression for codex re-review P2: raw-index returns existingPath with
   // 'proposed/' prefix when the source is staged but not yet accepted.

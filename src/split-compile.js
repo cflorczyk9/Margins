@@ -284,7 +284,13 @@ async function readHubMatching(abs, canonRel, rawSha) {
   try {
     body = await readFile(abs, "utf8");
   } catch { return false; }
-  const parsed = parseFrontmatter(body);
+  // Bad YAML in an unrelated vault file must not crash split mode — it's
+  // walking every md file looking for a hub for the SPECIFIC raw we're
+  // compiling. The parse-failure issue is surfaced by doctor; here we
+  // just skip and keep scanning.
+  let parsed;
+  try { parsed = parseFrontmatter(body); }
+  catch { return false; }
   if (!parsed) return false;
   if (getType(parsed.data) !== "source") return false;
   if (parsed.data.is_hub !== true && String(parsed.data.is_hub).toLowerCase() !== "true") return false;
@@ -302,7 +308,9 @@ async function clearExistingSplit(vault, proposals, rel, rawSha, existingHub) {
     const abs = vault.resolveInside(item.proposalPath);
     let body;
     try { body = await readFile(abs, "utf8"); } catch { continue; }
-    const parsed = parseFrontmatter(body);
+    let parsed;
+    try { parsed = parseFrontmatter(body); }
+    catch { continue; }
     if (!parsed) continue;
     const fmType = getType(parsed.data);
     const ties =
