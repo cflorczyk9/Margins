@@ -7,6 +7,7 @@ import { canonicalize } from "./paths.js";
 import { hashFile, shortHash } from "./hash.js";
 import { parseFrontmatter, extractRawFileRefs } from "./frontmatter.js";
 import { readFile } from "node:fs/promises";
+import { runSplitCompile } from "./split-compile.js";
 
 const MAX_RAW_BYTES = 50 * 1024 * 1024;       // 50MB cap on extraction inputs
 const MIN_MEANINGFUL_CHARS = 20;              // below this, treat as empty (catches image-only PDFs)
@@ -41,6 +42,23 @@ export function createCompile(vault, proposals) {
 
     const fileName = path.basename(absRaw);
     const force = Boolean(review && review.force);
+
+    // Split mode: one raw file → N segment source pages + 1 hub page.
+    // Branches off here so it doesn't share the single-source dedupe path
+    // (which would otherwise reject sibling segments as same-sha duplicates).
+    if (review && review.split) {
+      return await runSplitCompile({
+        vault, proposals, rel, absRaw, info, fileName, review
+      });
+    }
+
+    // Single-source compile requires a summary. The downstream compiler emits
+    // a confusing "no source node" error when summary is empty; fail fast.
+    if (!review || typeof review.summary !== "string" || review.summary.length === 0) {
+      throw new Error(
+        "`summary` is required for single-source compile. Provide a rich multi-clause summary, or pass `split` to compile in segments without a summary."
+      );
+    }
 
     // Look up existing source page even when force=true. With force, we
     // continue rather than return — but if the user didn't specify a bucket

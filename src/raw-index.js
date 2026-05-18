@@ -55,7 +55,7 @@ export async function buildVaultIndex(vault, options = {}) {
 
     const fmType = parsed ? getType(parsed.data) : null;
 
-    if (fmType === "source" || fmType === "synthesis") {
+    if (fmType === "source" || fmType === "synthesis" || fmType === "source_segment") {
       sourcePages.push({ abs, rel, data: parsed.data });
       continue;
     }
@@ -202,7 +202,7 @@ async function walkForSourcePages(vault, dir, out) {
       continue;
     }
     const fmType = getType(parsed.data);
-    if (fmType !== "source" && fmType !== "synthesis") {
+    if (fmType !== "source" && fmType !== "synthesis" && fmType !== "source_segment") {
       _proposedFmCache.set(abs, { mtimeMs: info.mtimeMs, entry: null });
       continue;
     }

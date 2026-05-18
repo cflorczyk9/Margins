@@ -181,6 +181,72 @@ test("stdio: parallel resolveProposal accepts preserve both tracker rows", async
   assert.match(tracker, /\| raw\/c\.md \| ingested \| \[\[source-c\]\]/);
 });
 
+test("stdio: split mode stages N segments + 1 hub end-to-end over MCP", async (t) => {
+  const vault = await makeVault(t);
+  await mkdir(path.join(vault, "raw"), { recursive: true });
+  const rawBody = [
+    "# Project Aurora",
+    "Aurora has a 24-month timeline and a $45M cap stack.",
+    "Partner: Goldman Sachs.",
+    "",
+    "# Project Borealis",
+    "Borealis is the 18-unit infill play near Lincoln Park.",
+    "Partner: KKR.",
+    "",
+    "# Project Cascade",
+    "Cascade is the Class A office tower we passed on last quarter.",
+    "Partner: Brookfield."
+  ].join("\n");
+  await writeFile(path.join(vault, "raw/deals.md"), rawBody, "utf8");
+  const client = await startClient(t, vault);
+
+  // Fire split-mode compile with quiet=true (the bulk-mode default we ship).
+  const compiled = await client.callTool("propose_compile_from_raw", {
+    rawPath: "raw/deals.md",
+    split: "heading-h1",
+    quiet: true
+  });
+  assert.notEqual(compiled.result?.isError, true,
+    `split compile failed: ${JSON.stringify(compiled.result?.content)}`);
+  const sc = compiled.result.structuredContent;
+  assert.equal(sc.status, "split-staged");
+  assert.equal(sc.segmentsCount, 3);
+  assert.equal(sc.segments.length, 3);
+  assert.match(sc.hubPath, /^wiki\/sources\/deals-hub\.md$/);
+
+  // list_proposals with the bucket pattern returns all 4 (3 segments + hub).
+  const listed = await client.callTool("list_proposals", { pattern: "wiki/sources/**" });
+  assert.equal(listed.result.structuredContent.totalMatched, 4);
+
+  // Bulk-accept everything matching the bucket pattern.
+  const applied = await client.callTool("resolve_proposal", {
+    pattern: "wiki/sources/**",
+    action: "accept"
+  });
+  assert.equal(applied.result.structuredContent.succeeded, 4);
+
+  // Verify the hub body links every segment slug.
+  const hubBody = await readFile(path.join(vault, "wiki/sources/deals-hub.md"), "utf8");
+  assert.match(hubBody, /is_hub: true/);
+  assert.match(hubBody, /segments_count: 3/);
+  assert.match(hubBody, /\[\[deals-s01-project-aurora\]\]/);
+  assert.match(hubBody, /\[\[deals-s02-project-borealis\]\]/);
+  assert.match(hubBody, /\[\[deals-s03-project-cascade\]\]/);
+
+  // Verify a segment body has the right frontmatter.
+  const seg1Body = await readFile(path.join(vault, "wiki/sources/source-deals-s01-project-aurora.md"), "utf8");
+  assert.match(seg1Body, /type: source_segment/);
+  assert.match(seg1Body, /hub: "\[\[deals-hub\]\]"/);
+  assert.match(seg1Body, /Goldman Sachs/);
+
+  // Second split call returns already-split (idempotent over MCP).
+  const second = await client.callTool("propose_compile_from_raw", {
+    rawPath: "raw/deals.md",
+    split: "heading-h1"
+  });
+  assert.equal(second.result.structuredContent.status, "already-split");
+});
+
 test("stdio: bulk resolve_proposal via pattern accepts every match", async (t) => {
   const vault = await makeVault(t);
   const client = await startClient(t, vault);

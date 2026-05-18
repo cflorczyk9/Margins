@@ -516,7 +516,7 @@ export function buildServer(vault, options = {}) {
         rawPath: z
           .string()
           .describe("Vault-relative path of the source file. Examples: 'raw/foo.pdf', 'meetings/march-7.md'. Pass list_unprocessed paths directly. Bare filename (e.g. 'foo.pdf') resolves to raw/foo.pdf unless an actual root-level foo.pdf exists and raw/foo.pdf does not."),
-        summary: z.string().describe("Rich multi-clause summary (NOT 1-3 sentences). Should describe WHO the page is about, WHAT happened/was discussed, and the SO-WHAT (decisions, takeaways, where it lands in active threads). This becomes the frontmatter summary used by retrieval."),
+        summary: z.string().optional().describe("Rich multi-clause summary (NOT 1-3 sentences). REQUIRED unless split mode is set — in split mode each segment is auto-titled from its heading and no summary is needed. For single-source compile this becomes the frontmatter summary used by retrieval."),
         title: z.string().optional().describe("Title for the page. Defaults to titlecased filename."),
         bucket: z.string().optional().describe("Wiki bucket folder. 'sources', 'projects', 'ideas', 'meetings', 'career'. Pick by topic, not page-type."),
         destination_path: z.string().optional().describe("Override destination path, e.g. 'wiki/career/source-2026-05-13-something.md'."),
@@ -553,7 +553,12 @@ export function buildServer(vault, options = {}) {
           .describe("LEGACY — for the simple template only. If you provide `sections`, this is unused. Either strings or {point, evidence} objects."),
         summaryBullets: z.array(z.string()).optional().describe("LEGACY — for the simple template only. If you provide `sections`, this is unused."),
 
-        quiet: z.boolean().optional().describe("Omit the full staged markdown from the response. The page still lands at proposed/<destinationPath> — set quiet=true when compiling many files in one turn so the response payload stays small. Default false.")
+        quiet: z.boolean().optional().describe("Omit the full staged markdown from the response. The page still lands at proposed/<destinationPath> — set quiet=true when compiling many files in one turn so the response payload stays small. Default false."),
+
+        // ---- Split mode (one raw file → N segment source pages + 1 hub) ----
+        split: z.enum(["heading-h1", "heading-h2", "sheet", "auto"]).optional().describe("Split-mode trigger. When set, the raw file is segmented at the chosen boundary and Margins stages one source page per segment plus a hub page that wikilinks them. 'heading-h1' / 'heading-h2' segment by Markdown-style heading level (works for MD/HTML and any extractor that emits H markers like XLSX/PPTX). 'sheet' is alias for h2 splits, ergonomic for spreadsheets. 'auto' picks h2 for spreadsheets and h1 elsewhere. Summary is not required in split mode."),
+        maxSegments: z.number().int().min(2).max(200).optional().describe("Cap on segments staged in a single split call. Default 50. Extra headings beyond the cap are noted in the hub but not staged."),
+        hubBucket: z.string().optional().describe("Bucket folder for the hub + segment pages when split mode is set. Defaults to bucket if provided, else 'sources'.")
       },
       annotations: { readOnlyHint: false, destructiveHint: false }
     },
@@ -562,15 +567,31 @@ export function buildServer(vault, options = {}) {
       pageType, tags, keyLinks, eventDate, sourceUrl, participants, sources,
       headerNote, sourceCaveat, sections, relevanceCallout, applications,
       propagationNotes, related,
-      takeaways, summaryBullets, quiet
+      takeaways, summaryBullets, quiet,
+      split, maxSegments, hubBucket
     }) => {
+      // Summary is required for single-source compile but not for split mode.
+      // The compiler's downstream error if summary is empty is confusing
+      // ("compiler returned no source node"); fail fast with a clearer message.
+      if (!split && (typeof summary !== "string" || summary.length === 0)) {
+        throw new Error(
+          "`summary` is required for single-source compile. Provide a rich multi-clause summary, or pass `split` to compile in segments without a summary."
+        );
+      }
       const result = await compile.proposeCompileFromRaw(rawPath, {
         summary, title, bucket, destination_path, force,
         pageType, tags, keyLinks, eventDate, sourceUrl, participants, sources,
         headerNote, sourceCaveat, sections, relevanceCallout, applications,
         propagationNotes, related,
-        takeaways, summaryBullets, quiet
+        takeaways, summaryBullets, quiet,
+        split, maxSegments, hubBucket
       });
+
+      // Split-mode response shape differs — render its own summary block.
+      if (result.status === "split-staged" || result.status === "already-split") {
+        return formatSplitResponse(result);
+      }
+
       if (result.status === "already-filed") {
         return {
           content: [
@@ -930,6 +951,40 @@ export function buildServer(vault, options = {}) {
   );
 
   return server;
+}
+
+function formatSplitResponse(result) {
+  if (result.status === "already-split") {
+    return {
+      content: [
+        {
+          type: "text",
+          text:
+            `${result.rawFile} is already split — hub at ${result.hubPath} (${result.hubLocation}). ` +
+            "Pass force=true to re-stage every segment + hub."
+        }
+      ],
+      structuredContent: result
+    };
+  }
+  const overflowNote = result.overflow
+    ? ` (capped at maxSegments; ${result.overflowDropped} additional headings dropped)`
+    : "";
+  const lines = [
+    `Split ${result.rawFile} into ${result.segmentsCount} segments${overflowNote}.`,
+    `Hub staged: ${result.hubProposalPath} → would land at ${result.hubPath}`,
+    `Bucket: ${result.bucket}, splitOn: ${result.splitOn}`,
+    "",
+    "Segments:"
+  ];
+  for (const seg of result.segments) {
+    lines.push(`  ${seg.proposalPath} — ${seg.heading}`);
+  }
+  lines.push("", "Review with `list_proposals pattern: 'wiki/" + result.bucket + "/source-*'` then accept all via `resolve_proposal pattern + action: accept`.");
+  return {
+    content: [{ type: "text", text: lines.join("\n") }],
+    structuredContent: result
+  };
 }
 
 function formatSearchHits(hits, query) {

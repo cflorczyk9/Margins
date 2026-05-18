@@ -80,6 +80,9 @@ export async function diagnoseVault(vault) {
   const staleIssues = await diagnoseStaleSources(vault, index);
   issues.push(...staleIssues);
 
+  const hubIssues = await diagnoseSplitHubs(vault, index);
+  issues.push(...hubIssues);
+
   return {
     summary: {
       candidates: index.candidates.length,
@@ -240,6 +243,76 @@ async function diagnoseTracker(vault, index) {
           `The source page may have been deleted or renamed. Remove the tracker row to keep the index honest.`
       });
     }
+  }
+
+  return issues;
+}
+
+// Split-mode hub: type:source with is_hub:true and segments_count:N. Walk
+// every hub in the vault, count segment pages whose frontmatter hub: points
+// at this hub, warn if mismatch. Catches deleted segments, half-resolved
+// proposal queues, or hub/segment drift after manual edits.
+async function diagnoseSplitHubs(vault, index) {
+  const issues = [];
+  const hubs = [];
+  const segmentsByHubSlug = new Map();
+
+  for (const [, sourcePagePath] of index.referenced) {
+    if (sourcePagePath.startsWith("proposed/")) continue;
+    let body;
+    try {
+      body = await readFile(vault.resolveInside(sourcePagePath), "utf8");
+    } catch {
+      continue;
+    }
+    const parsed = parseFrontmatter(body);
+    if (!parsed) continue;
+    const isHub = parsed.data.is_hub === true || String(parsed.data.is_hub).toLowerCase() === "true";
+    if (isHub && typeof parsed.data.segments_count === "number") {
+      const slug = sourcePagePath.split("/").pop().replace(/\.md$/i, "");
+      hubs.push({ path: sourcePagePath, slug, expected: parsed.data.segments_count });
+    }
+  }
+
+  // Walk vault again for type:source_segment pages. They aren't in
+  // index.referenced (which maps raw_file -> page) but they are listed in the
+  // sourcePagesCount because raw-index treats them as referenced. To find
+  // them, walk the whole file list and look for the marker.
+  const allFiles = await vault.listFiles();
+  for (const abs of allFiles) {
+    let body;
+    try {
+      body = await readFile(abs, "utf8");
+    } catch { continue; }
+    const parsed = parseFrontmatter(body);
+    if (!parsed) continue;
+    const type = parsed.data.type;
+    if (type !== "source_segment") continue;
+    const hubLink = String(parsed.data.hub || "").trim();
+    const m = hubLink.match(/^\[\[(.+?)\]\]$/);
+    if (!m) continue;
+    const hubSlug = m[1].trim();
+    const list = segmentsByHubSlug.get(hubSlug) || [];
+    list.push(vault.toRel(abs));
+    segmentsByHubSlug.set(hubSlug, list);
+  }
+
+  for (const hub of hubs) {
+    const found = segmentsByHubSlug.get(hub.slug) || [];
+    if (found.length === hub.expected) continue;
+    issues.push({
+      kind: "hub-segment-mismatch",
+      hubPath: hub.path,
+      expected: hub.expected,
+      found: found.length,
+      severity: "warn",
+      message:
+        `Hub ${hub.path} expects ${hub.expected} segment${hub.expected === 1 ? "" : "s"} but ${found.length} ` +
+        `segment page${found.length === 1 ? "" : "s"} link${found.length === 1 ? "s" : ""} back to it. ` +
+        (found.length < hub.expected
+          ? `Missing ${hub.expected - found.length}. Possible causes: segments were deleted, the hub was re-staged with fewer segments, or some segment proposals never landed.`
+          : `Extra segments are linking to this hub — likely from a prior split that wasn't cleaned up. Reject the orphan segments or re-run propose_compile_from_raw with force=true to re-stage cleanly.`)
+    });
   }
 
   return issues;
