@@ -181,6 +181,58 @@ test("stdio: parallel resolveProposal accepts preserve both tracker rows", async
   assert.match(tracker, /\| raw\/c\.md \| ingested \| \[\[source-c\]\]/);
 });
 
+test("stdio: scan_entity_candidates surfaces unlinked recurring names", async (t) => {
+  const vault = await makeVault(t);
+  await mkdir(path.join(vault, "wiki/notes"), { recursive: true });
+  await mkdir(path.join(vault, "wiki/people"), { recursive: true });
+  // One entity has a page (excluded); another doesn't (should surface).
+  await writeFile(path.join(vault, "wiki/people/alice-chen.md"), "# Alice Chen", "utf8");
+  for (let i = 0; i < 5; i++) {
+    await writeFile(
+      path.join(vault, "wiki/notes", `n-${i}.md`),
+      "Met with Alice Chen and Bob Casey today. Bob Casey signed.",
+      "utf8"
+    );
+  }
+  const client = await startClient(t, vault);
+
+  const r = await client.callTool("scan_entity_candidates", {
+    minMentions: 5,
+    minFileSpread: 3
+  });
+  assert.notEqual(r.result?.isError, true);
+  const sc = r.result.structuredContent;
+  const slugs = sc.candidates.map((c) => c.slug);
+  assert.ok(slugs.includes("bob-casey"), `expected bob-casey in candidates, got: ${slugs.join(", ")}`);
+  assert.ok(!slugs.includes("alice-chen"), "alice-chen has a page so should be excluded");
+  const bob = sc.candidates.find((c) => c.slug === "bob-casey");
+  assert.ok(bob.snippets.length >= 1);
+});
+
+test("stdio: scan_entity_candidates honors domain pack via MCP", async (t) => {
+  const vault = await makeVault(t);
+  await mkdir(path.join(vault, "wiki/notes"), { recursive: true });
+  for (let i = 0; i < 5; i++) {
+    await writeFile(
+      path.join(vault, "wiki/notes", `n-${i}.md`),
+      "Class A asset, Phase II underway, Due Diligence ongoing. Mark Loh signed.",
+      "utf8"
+    );
+  }
+  const client = await startClient(t, vault);
+
+  const r = await client.callTool("scan_entity_candidates", {
+    minMentions: 3,
+    minFileSpread: 3,
+    domain: "realestate"
+  });
+  const slugs = r.result.structuredContent.candidates.map((c) => c.slug);
+  assert.ok(!slugs.includes("class-a"));
+  assert.ok(!slugs.includes("phase-ii"));
+  assert.ok(!slugs.includes("due-diligence"));
+  assert.ok(slugs.includes("mark-loh"));
+});
+
 test("stdio: scope-mode propose_wikilinks aggregates across folder", async (t) => {
   const vault = await makeVault(t);
   // Seed a tiny linked vault: two entity pages + three notes that mention them.

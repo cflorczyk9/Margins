@@ -12,6 +12,7 @@ import { diagnoseVault } from "./doctor.js";
 import { loadTelemetry, writeConsent, selfTagEnabled } from "./telemetry.js";
 import { createPreferences } from "./preferences.js";
 import { createWikilinks } from "./wikilinks.js";
+import { scanEntityCandidates } from "./entity-scan.js";
 import { createVaultContext } from "./vault-context.js";
 
 // Inline SVG of the Margins mark. Embedded as a base64 data URI so the icon
@@ -85,9 +86,10 @@ TESTING MODE: when the user explicitly frames an action as testing or pressure-t
 TOOLS:
 - Context: margins_start, recall_preferences, get_vault_context
 - Read: search_vault, read_page, list_recent, get_backlinks, list_unprocessed, margins_doctor
-- Propose writes: propose_page, propose_edit, append_to, propose_compile_from_raw
-- Suggest: propose_wikilinks (for A3/B3 vaults with few links)
-- Manage proposals: list_proposals, resolve_proposal, margins_reset_proposals
+- Propose writes: propose_page, propose_edit, append_to, propose_compile_from_raw (supports split mode for multi-section docs)
+- Suggest: propose_wikilinks (single-page or scope=glob for A3/B3 vaults with few links; apply=true stages rewritten pages)
+- Discover: scan_entity_candidates (find recurring capitalized phrases with no matching slug — A3 cold-start)
+- Manage proposals: list_proposals (pattern/limit/sortBy), resolve_proposal (path OR pattern for bulk, dryRun, maxCount), margins_reset_proposals
 - Learn: record_preference
 - ChatGPT Deep Research: search, fetch`;
 
@@ -476,6 +478,86 @@ export function buildServer(vault, options = {}) {
       }
       if (result.suggestions.length === 0) {
         lines.push("(no candidate phrases matched existing vault slugs)");
+      }
+      return {
+        content: [{ type: "text", text: lines.join("\n") }],
+        structuredContent: result
+      };
+    }
+  );
+
+  register(
+    "scan_entity_candidates",
+    {
+      description:
+        "Find capitalized phrases that recur across vault pages but have no matching slug — i.e. entities the user keeps mentioning without having a page for them. This is the inverse query of propose_wikilinks: instead of 'where should I add a wikilink to an existing page?', it answers 'what page should exist that doesn't yet?'.\n" +
+        "Returns candidates ranked by file-spread × mention-count, with snippets and the list of files where each appears. Read-only — never stages. The companion tool propose_entity_stubs takes the slugs you choose from this list and stages stub entity pages.\n" +
+        "Layered filtering: a global English/structural stoplist, an optional domain pack ('med', 'realestate', 'law', 'generic'), and an optional excludeUserRejections list (slugs the user already rejected). Existing slugs are excluded automatically — the shared vault-slug index is the same one propose_wikilinks uses.\n" +
+        "Best used right after a fresh import or split-mode compile, when the corpus has many entity references but few entity pages.",
+      inputSchema: {
+        scope: z
+          .string()
+          .optional()
+          .describe("Glob to limit the walk. Default 'wiki/**'. Pass a folder glob like 'Path/**' to scope to one subject. Supports *, **, ?."),
+        minMentions: z
+          .number()
+          .int()
+          .min(1)
+          .max(1000)
+          .optional()
+          .describe("Minimum total mentions across the scope before a candidate qualifies. Default 5. Lower to surface more (noisier); raise for high-confidence only."),
+        minFileSpread: z
+          .number()
+          .int()
+          .min(1)
+          .max(500)
+          .optional()
+          .describe("Minimum number of distinct files a candidate must appear in. Default 3. Catches phrases that recur many times in one file (often boilerplate) and treats them as low-signal."),
+        domain: z
+          .enum(["generic", "med", "realestate", "law"])
+          .optional()
+          .describe("Domain pack to apply on top of the global stoplist. 'med' drops Step One / Gram Positive / Stage III etc; 'realestate' drops Class A / Phase II / Due Diligence; 'law' drops Section / Article / Chapter; 'generic' (default) applies only the global list."),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(500)
+          .optional()
+          .describe("Cap on candidates returned. Default 50. Total candidate count is in candidatesFound so callers can tell if there are more behind the cap."),
+        excludeUserRejections: z
+          .array(z.string())
+          .optional()
+          .describe("Slugs the user has previously declined. Wired by propose_entity_stubs in v0.16+ to read rejection memory from .margins/preferences.md; you can also pass it ad-hoc."),
+        minPhraseWords: z
+          .number()
+          .int()
+          .min(1)
+          .max(5)
+          .optional()
+          .describe("Minimum word count for a candidate to qualify. Default 2 — single-word sentence-start capitals are the dominant noise source on real vaults. Acronyms (AI / MBA / MCP, all-caps 2-6 letters) bypass this filter and surface regardless. Drop to 1 to also see single-word surnames like 'Holmes' or 'Cardozo' (raises recall, raises noise).")
+      },
+      annotations: { readOnlyHint: true }
+    },
+    async ({ scope, minMentions, minFileSpread, domain, limit, excludeUserRejections, minPhraseWords }) => {
+      const result = await scanEntityCandidates(vault, {
+        scope, minMentions, minFileSpread, domain, limit, excludeUserRejections, minPhraseWords
+      });
+      const lines = [
+        `Scanned ${result.filesScanned} files under '${result.scope}' (domain: ${result.domain}).`,
+        `Found ${result.candidatesFound} candidate${result.candidatesFound === 1 ? "" : "s"} above thresholds.`,
+        `Excluded: ${result.excludedExistingSlugs} existing slugs, ${result.excludedStoplist} stoplisted, ${result.excludedBelowThreshold} below threshold.`,
+        ""
+      ];
+      if (result.candidates.length === 0) {
+        lines.push("(no candidates returned — try lowering minMentions / minFileSpread, or scope to a different folder)");
+      } else {
+        lines.push(`Top ${result.candidates.length}${result.truncated ? ` of ${result.candidatesFound}` : ""}:`);
+        for (const c of result.candidates) {
+          lines.push(`  ${c.phrase} (slug: ${c.slug}) — ${c.mentionCount}x across ${c.fileCount} file${c.fileCount === 1 ? "" : "s"}`);
+          if (c.snippets[0]) lines.push(`      ${c.snippets[0].file}: ${c.snippets[0].snippet}`);
+        }
+        lines.push("");
+        lines.push("Stub the ones worth keeping with propose_entity_stubs (v0.16) — or for now, propose_page individual entity pages.");
       }
       return {
         content: [{ type: "text", text: lines.join("\n") }],
