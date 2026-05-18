@@ -9,7 +9,12 @@ export const DEFAULT_SKIP_DIRS = new Set([
   ".claude",
   ".playwright-mcp",
   ".margins",
-  "proposed"
+  "proposed",
+  // Agent definition trees: prompt files for other AI systems that have no
+  // place in a notes index. Without these, an Obsidian-root index will happily
+  // search and surface skill prompts as if they were the user's own writing.
+  "agents",
+  ".agents"
 ]);
 
 async function pathExists(abs) {
@@ -40,7 +45,12 @@ export async function detectIndexRoots(vaultRoot, envValue) {
 
   const hasWiki = await pathExists(path.join(vaultRoot, "wiki"));
   if (hasWiki) {
-    return { roots: ["wiki"], skipDirs: DEFAULT_SKIP_DIRS, source: "margins" };
+    // If raw/ also exists, index it alongside wiki/. Without this, the
+    // README's "drop a file in raw/ and compile it" loop is broken by
+    // default for any vault that uses wiki/ + raw/ but has no .obsidian/.
+    const hasRaw = await pathExists(path.join(vaultRoot, "raw"));
+    const roots = hasRaw ? ["wiki", "raw"] : ["wiki"];
+    return { roots, skipDirs: DEFAULT_SKIP_DIRS, source: "margins" };
   }
 
   return { roots: ["."], skipDirs: DEFAULT_SKIP_DIRS, source: "default" };

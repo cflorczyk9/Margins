@@ -9,6 +9,7 @@ import { DEFAULT_SKIP_DIRS } from "./index-roots.js";
 import { pathPriority } from "./paths.js";
 
 const READ_PAGE_MAX_CHARS = 250 * 1024;  // 250KB extracted-text cap per read_page call
+const READ_PAGE_MAX_BYTES = 50 * 1024 * 1024;  // 50MB hard file-size cap before extraction
 
 // Multi-word search scoring weights. Hoisted so the ranking policy is readable
 // in one place. Must stay an order of magnitude apart so each higher signal
@@ -183,8 +184,20 @@ export function createVault(rootArg, options = {}) {
     const abs = resolveInside(relPath);
     await assertRealPathInside(abs);
     const rel = toRel(abs);
-    const fullBody = await extractDocumentText(abs, rel, { allowEmpty: isTextDocumentPath(abs) });
     const info = await stat(abs);
+    // File-size guard runs BEFORE extraction. Without it, a multi-hundred-MB
+    // PDF would be parsed and held in memory only to be truncated downstream;
+    // worse, an inflated zip-format file (DOCX/EPUB) could OOM the server.
+    // 50MB matches the compile-side cap so behavior is consistent.
+    if (info.size > READ_PAGE_MAX_BYTES) {
+      const mb = (info.size / (1024 * 1024)).toFixed(1);
+      const capMb = (READ_PAGE_MAX_BYTES / (1024 * 1024)).toFixed(0);
+      throw new Error(
+        `${rel} is ${mb}MB which exceeds the ${capMb}MB read_page cap. ` +
+        `Use search_vault to query specific terms inside this file, or inspect it directly outside MCP.`
+      );
+    }
+    const fullBody = await extractDocumentText(abs, rel, { allowEmpty: isTextDocumentPath(abs) });
     // Cap extracted text at READ_PAGE_MAX_CHARS so a 22MB PDF doesn't return
     // 465KB+ of text through the MCP transport. Some MCP clients choke on
     // very large tool responses, and most readers don't need the whole thing
