@@ -107,3 +107,54 @@ walk from segment → hub for completeness checking.
 This contract is added in v0.15.0 (cold-start arc). The `source_segment`
 type is new. Vaults that predate v0.15.0 only contain `type: source`
 pages, which continue to work unchanged through every path above.
+
+## Known limitations in v0.15.0 (planned v0.16 fixes)
+
+Two edge cases around `force=true` re-compiles leave the vault in a
+state that `margins_doctor` can detect but Margins doesn't auto-clean.
+Both fire only on user-triggered force operations and produce
+doctor-detectable state — not silent corruption.
+
+### force-split over an accepted single-source page
+
+If a raw file already has a landed `type: source` page (from an earlier
+single-source compile) and the user runs
+`propose_compile_from_raw(split: ..., force: true)`, the split mode
+stages a new hub + segments but does NOT remove the old single-source
+page. After accepting the split, the vault contains both:
+
+- `wiki/<bucket>/source-<base>.md` (the old single source)
+- `wiki/<bucket>/<base>-hub.md` + N segments (the new split)
+
+Both reference the same `raw_file`. raw-index's precedence walk prefers
+the hub, so retrieval points at the new structure; the old page stays
+as an orphan referencing the same raw.
+
+**Workaround:** after accepting the split, manually delete the old
+single-source page. Doctor will flag the duplicate as a tracker drift
+warning so it's visible.
+
+**v0.16 fix:** detect a landed non-hub source for the same raw_file
+during the split pre-check and either refuse the operation with a clear
+"delete the single-source first" error, or stage a removal proposal
+that the user can accept to clear the old page.
+
+### force re-split when segment slugs change
+
+If a raw file already has an accepted split (hub + N segments in the
+vault) and the user re-runs split with `force: true` after editing the
+raw such that segment headings have changed, the new segment slugs
+won't match the old slugs. `clearExistingSplit` only rejects PENDING
+proposals tied to the raw; it does NOT touch landed segment files. The
+user accepts the new staging; the old segment files remain in the vault
+linking to the same hub (whose `segments_count` now mismatches).
+
+**Workaround:** after accepting the new split, run `margins_doctor`.
+The `hub-segment-mismatch` check surfaces the extra segments with
+"Extra segments are linking to this hub" — manually delete those files.
+
+**v0.16 fix:** enumerate landed segments under each hub before
+re-splitting; stage replacement proposals at every old segment path
+that doesn't map to a new segment slug (overwriting with an empty
+marker or rewriting the hub link to remove the orphan). Either approach
+needs a clearer "stage delete" primitive that v0.15.0 doesn't have.

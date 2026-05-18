@@ -1247,12 +1247,14 @@ function formatSplitResponse(result) {
   const overflowNote = result.overflow
     ? ` (capped at maxSegments; ${result.overflowDropped} additional headings dropped)`
     : "";
-  // Derive the base slug from the hub path so we can build a glob that
-  // matches BOTH the hub (<base>-hub.md) and segment proposals
-  // (source-<base>-s01-*.md). A pattern like 'wiki/<bucket>/source-*'
-  // would only catch segments and leave the hub pending after bulk accept.
+  // Build two precise patterns rather than one broad `*<base>*` glob.
+  // A broad pattern would accidentally match unrelated proposals when the
+  // base slug is short or common (e.g., a raw named `q1.md` would catch
+  // every proposal whose path contains "q1"). Segments share the
+  // `source-<base>-s` prefix; the hub has its own exact path. Two
+  // operations, no false matches.
   const baseSlug = result.hubPath.split("/").pop().replace(/-hub\.md$/, "");
-  const acceptPattern = `wiki/${result.bucket}/*${baseSlug}*`;
+  const segmentPattern = `wiki/${result.bucket}/source-${baseSlug}-s*`;
   const lines = [
     `Split ${result.rawFile} into ${result.segmentsCount} segments${overflowNote}.`,
     `Hub staged: ${result.hubProposalPath} → would land at ${result.hubPath}`,
@@ -1263,7 +1265,10 @@ function formatSplitResponse(result) {
   for (const seg of result.segments) {
     lines.push(`  ${seg.proposalPath} — ${seg.heading}`);
   }
-  lines.push("", `Review with \`list_proposals pattern: '${acceptPattern}'\` then accept all via \`resolve_proposal pattern: '${acceptPattern}' action: accept\`. The pattern catches both segments and the hub.`);
+  lines.push("");
+  lines.push("Accept all of it via two calls (segments pattern + hub path — narrower than a wildcard so unrelated proposals don't get swept in):");
+  lines.push(`  resolve_proposal pattern: '${segmentPattern}' action: accept`);
+  lines.push(`  resolve_proposal path: '${result.hubPath}' action: accept`);
   return {
     content: [{ type: "text", text: lines.join("\n") }],
     structuredContent: result
