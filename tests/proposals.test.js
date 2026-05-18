@@ -116,6 +116,33 @@ test("list_proposals returns pending proposals with overwrite hint", async () =>
   const byPath = Object.fromEntries(items.map((i) => [i.destinationPath, i]));
   assert.equal(byPath["wiki/new1.md"].willOverwrite, false);
   assert.equal(byPath["wiki/career.md"].willOverwrite, true);
+  // New entries with willOverwrite=false should NOT carry a delta block.
+  assert.equal(byPath["wiki/new1.md"].overwriteDelta, undefined);
+});
+
+test("list_proposals exposes overwrite delta showing first diverging line", async () => {
+  // Replace wiki/career.md (fixture content) with a proposal that drops most lines.
+  const original = await read("wiki/career.md");
+  const trimmed = original.split("\n").slice(0, 2).join("\n") + "\n";
+  await proposals.proposePage("wiki/career.md", trimmed, { force: true });
+  const items = await proposals.listProposals();
+  const item = items.find((i) => i.destinationPath === "wiki/career.md");
+  assert.ok(item, "career.md proposal should be listed");
+  assert.equal(item.willOverwrite, true);
+  assert.ok(item.overwriteDelta, "overwriteDelta should be present");
+  assert.ok(item.overwriteDelta.bytesDelta < 0, "trimmed proposal should be smaller than original");
+  assert.equal(item.overwriteDelta.identical, false);
+  assert.ok(item.overwriteDelta.firstDiff, "firstDiff should be populated");
+  assert.ok(item.overwriteDelta.firstDiff.line >= 1);
+});
+
+test("list_proposals marks identical overwrite as identical=true", async () => {
+  const original = await read("wiki/career.md");
+  await proposals.proposePage("wiki/career.md", original, { force: true });
+  const items = await proposals.listProposals();
+  const item = items.find((i) => i.destinationPath === "wiki/career.md");
+  assert.equal(item.overwriteDelta.identical, true);
+  assert.equal(item.overwriteDelta.firstDiff, null);
 });
 
 test("resolve_proposal accept moves file from proposed/ to destination", async () => {

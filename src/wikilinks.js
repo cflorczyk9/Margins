@@ -1,5 +1,6 @@
 import path from "node:path";
 import { getType, parseFrontmatter } from "./frontmatter.js";
+import { pathPriority } from "./paths.js";
 
 // Lightweight wikilink suggester for A3/B3 personas: vaults that have lots of
 // markdown but few [[wikilinks]]. The model passes a target page; this scans
@@ -39,13 +40,20 @@ export function createWikilinks(vault) {
     for (const abs of allFiles) {
       const rel = vault.toRel(abs);
       if (rel === pagePath) continue;
+      const priority = pathPriority(rel);
+      // Skip test fixtures outright — never link a user's wiki to a fixture.
+      if (priority <= 0) continue;
       const base = path.basename(abs, path.extname(abs));
       // Skip "source-<slug>.md" prefixes — those are bucket-prefixed.
       const slug = base.replace(/^source-/, "");
       if (!slug || slug.length < 3) continue;
-      // First slug wins. Same slug in two folders -> we link to the first found.
-      if (!slugToFile.has(slug.toLowerCase())) {
-        slugToFile.set(slug.toLowerCase(), { slug, rel });
+      const key = slug.toLowerCase();
+      const existing = slugToFile.get(key);
+      // Highest-priority target wins. wiki/ beats raw/ beats margins/.
+      // On ties, the first-found path wins so behavior stays deterministic
+      // for a given vault layout.
+      if (!existing || priority > existing.priority) {
+        slugToFile.set(key, { slug, rel, priority });
       }
     }
 

@@ -35,3 +35,37 @@ export function canonicalize(rel) {
 export function pathsEqual(a, b) {
   return canonicalize(a) === canonicalize(b);
 }
+
+/**
+ * Content-priority for a vault-relative path.
+ *
+ * Higher = more likely to be the user's actual notes.
+ * Used to rank search hits, backlink results, and wikilink slug targets so
+ * that test fixtures, templates, and project source code don't drown out
+ * the wiki/ pages a real user wants.
+ *
+ *   10  wiki/ pages (the gold)
+ *    5  raw/ source documents
+ *    3  other top-level content
+ *    1  wiki/_templates/ (templates, not real pages)
+ *    1  margins/, gstack/, agents/ (project source, not user notes)
+ *    0  any path under tests/fixtures/ or test/fixtures/ (fixtures)
+ */
+export function pathPriority(rel) {
+  const r = canonicalize(rel);
+  if (!r) return 0;
+  if (/(^|\/)(tests?|spec)\/fixtures\//.test(r)) return 0;
+  if (/(^|\/)fixtures\//.test(r)) return 0;
+  if (r.startsWith("wiki/_templates/")) return 1;
+  if (r.startsWith("wiki/")) return 10;
+  if (r.startsWith("raw/")) return 5;
+  if (
+    r.startsWith("margins/") ||
+    r.startsWith("gstack/") ||
+    r.startsWith("agents/") ||
+    r.startsWith("code/")
+  ) {
+    return 1;
+  }
+  return 3;
+}

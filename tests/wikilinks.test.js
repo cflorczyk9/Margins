@@ -108,3 +108,23 @@ test("does not link a page to itself", async () => {
   const phrases = result.suggestions.map((s) => s.phrase);
   assert.ok(!phrases.includes("Bob Casey"));
 });
+
+test("prefers wiki/ targets over test-fixture and template duplicates", async () => {
+  // Two pages have the same slug. The wiki/ page must win; the fixture must
+  // never be picked as a wikilink target.
+  await touch("wiki/projects/briefly.md", "# Briefly (real)");
+  await touch("margins/tests/fixtures/wiki/briefly.md", "# Briefly (fixture stub)");
+  await touch("wiki/_templates/daily.md", "# Daily template");
+  await touch("wiki/daily/daily.md", "# Daily overview");
+  await touch(
+    "wiki/notes/today.md",
+    "Worked on Briefly today. Also updated the Daily page."
+  );
+  const result = await wikilinks.proposeWikilinks("wiki/notes/today.md");
+  const briefly = result.suggestions.find((s) => s.phrase === "Briefly");
+  const daily = result.suggestions.find((s) => s.phrase === "Daily");
+  assert.ok(briefly, "should suggest a Briefly link");
+  assert.equal(briefly.targetPath, "wiki/projects/briefly.md");
+  assert.ok(daily, "should suggest a Daily link");
+  assert.equal(daily.targetPath, "wiki/daily/daily.md");
+});

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { canonicalize, pathsEqual } from "../src/paths.js";
+import { canonicalize, pathsEqual, pathPriority } from "../src/paths.js";
 
 test("canonicalize strips leading ./", () => {
   assert.equal(canonicalize("./raw/foo.md"), "raw/foo.md");
@@ -36,4 +36,20 @@ test("canonicalize handles null and empty", () => {
   assert.equal(canonicalize(null), "");
   assert.equal(canonicalize(""), "");
   assert.equal(canonicalize(undefined), "");
+});
+
+test("pathPriority ranks wiki/ above raw/ above project source", () => {
+  assert.ok(pathPriority("wiki/career/career.md") > pathPriority("raw/foo.pdf"));
+  assert.ok(pathPriority("raw/foo.pdf") > pathPriority("gstack/SKILL.md"));
+  assert.ok(pathPriority("wiki/career/career.md") > pathPriority("margins/src/server.js"));
+});
+
+test("pathPriority drops test fixtures to zero", () => {
+  assert.equal(pathPriority("margins/tests/fixtures/wiki/briefly.md"), 0);
+  assert.equal(pathPriority("gstack/browse/test/fixtures/foo.json"), 0);
+  assert.equal(pathPriority("anywhere/spec/fixtures/foo.md"), 0);
+});
+
+test("pathPriority demotes templates below real wiki pages", () => {
+  assert.ok(pathPriority("wiki/daily/daily.md") > pathPriority("wiki/_templates/daily.md"));
 });
