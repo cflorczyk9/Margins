@@ -470,6 +470,11 @@ export function buildServer(vault, options = {}) {
             for (const p of result.skippedDueToPending.slice(0, 10)) lines.push(`  ${p}`);
             if (result.skippedDueToPending.length > 10) lines.push(`  ... and ${result.skippedDueToPending.length - 10} more`);
           }
+          if (Array.isArray(result.skippedDueToTruncation) && result.skippedDueToTruncation.length) {
+            lines.push(`Skipped ${result.skippedDueToTruncation.length} page(s) over the 250KB read_page cap — wikilink them manually or split first to avoid truncation:`);
+            for (const p of result.skippedDueToTruncation.slice(0, 10)) lines.push(`  ${p}`);
+            if (result.skippedDueToTruncation.length > 10) lines.push(`  ... and ${result.skippedDueToTruncation.length - 10} more`);
+          }
         } else if (result.aggregatedSuggestions.length) {
           lines.push("");
           lines.push("Re-run with apply=true to stage rewritten pages (one proposal per page).");

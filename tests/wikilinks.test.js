@@ -180,6 +180,32 @@ test("scope mode skips pages whose mentions are already wikilinked", async () =>
   assert.deepEqual(staged, ["wiki/notes/n-2.md"]);
 });
 
+test("scope mode apply skips pages over the read_page 250KB cap (no data loss)", async () => {
+  // Regression for codex round-4 P1: vault.readPage truncates extracted
+  // text at 250KB and appends a truncation notice. Staging that body as
+  // a full-file replacement would silently delete every byte past 250KB
+  // on accept — data loss on any large note. Apply must detect the
+  // truncated flag and skip.
+  await touch("wiki/people/bob-casey.md", "# Bob Casey");
+  // Build a > 250KB page with Bob Casey mentioned at the start.
+  const huge = "Bob Casey opened the meeting.\n\n" + "Filler content. ".repeat(20000);
+  await touch("wiki/notes/huge.md", huge);
+  // Sanity — confirm the test fixture actually exceeds the cap.
+  assert.ok(huge.length > 250 * 1024, `fixture should be >250KB, got ${huge.length}`);
+
+  const result = await wikilinks.proposeWikilinks(null, { scope: "wiki/notes/**", apply: true });
+  // The page should be in skippedDueToTruncation, NOT applied.
+  assert.ok(
+    result.skippedDueToTruncation.includes("wiki/notes/huge.md"),
+    `expected huge.md in skippedDueToTruncation, got: ${JSON.stringify(result.skippedDueToTruncation)}`
+  );
+  assert.equal(result.applied, 0);
+  // Critically — no proposal was staged for the huge page, so the
+  // original file cannot be silently truncated on accept.
+  const staged = await proposals.listProposals();
+  assert.equal(staged.find((s) => s.destinationPath === "wiki/notes/huge.md"), undefined);
+});
+
 test("scope mode apply does not rewrite YAML frontmatter values", async () => {
   // Regression for codex round-3 P2: apply mode operated on the full
   // readPage body, so a YAML field like `title: Bob Casey meeting` got

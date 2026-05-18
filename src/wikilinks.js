@@ -140,6 +140,7 @@ export function createWikilinks(vault, options = {}) {
     let appliedCount = 0;
     const appliedPages = [];
     const skippedDueToPending = [];
+    const skippedDueToTruncation = [];
     if (apply) {
       for (const pr of pageResults) {
         if (pr.skipped || !pr.suggestions.length) continue;
@@ -156,6 +157,17 @@ export function createWikilinks(vault, options = {}) {
           continue;
         }
         const page = await vault.readPage(pr.page);
+        // readPage truncates extracted text at 250KB and appends a
+        // truncation notice. Staging the truncated body as a full-file
+        // replacement would delete every byte past the cap when the user
+        // accepts — data loss on any Markdown page over 250KB. Skip and
+        // report; the user can wikilink large pages manually or split
+        // them first.
+        if (page.truncated) {
+          pr.skippedDueToTruncation = true;
+          skippedDueToTruncation.push(pr.page);
+          continue;
+        }
         const rewritten = applyWikilinksToBody(page.body, pr.suggestions);
         if (rewritten === page.body) continue;
         const result = await proposals.proposePage(pr.page, rewritten, { force: true });
@@ -176,7 +188,8 @@ export function createWikilinks(vault, options = {}) {
       apply,
       applied: appliedCount,
       appliedPages,
-      skippedDueToPending
+      skippedDueToPending,
+      skippedDueToTruncation
     };
   }
 
