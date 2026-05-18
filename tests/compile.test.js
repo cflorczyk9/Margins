@@ -185,6 +185,33 @@ test("default destination preserves raw filename that already starts with ISO da
   );
 });
 
+test("recompiling same raw file at different destination supersedes prior proposal", async () => {
+  await touch("raw/note.md", "Body content long enough to clear the empty-extraction threshold for this dedup test fixture.");
+  const first = await compile.proposeCompileFromRaw("note.md", {
+    summary: "First pass with default naming"
+  });
+  // First proposal is staged with default ISO-dated slug
+  assert.ok(first.proposalPath.startsWith("proposed/wiki/"));
+
+  // Recompile the same raw to a different destination via destination_path
+  const second = await compile.proposeCompileFromRaw("note.md", {
+    summary: "Renamed pass",
+    destination_path: "wiki/projects/source-2026-05-17-renamed-note.md",
+    force: true
+  });
+  assert.equal(second.destinationPath, "wiki/projects/source-2026-05-17-renamed-note.md");
+  assert.deepEqual(
+    second.supersededProposals,
+    [first.destinationPath],
+    "first proposal should have been auto-rejected"
+  );
+
+  // Verify only the new proposal remains
+  const remaining = await proposals.listProposals();
+  assert.equal(remaining.length, 1);
+  assert.equal(remaining[0].destinationPath, second.destinationPath);
+});
+
 test("supports destination_path override", async () => {
   await touch("raw/note.md", "Test fixture content for the compile idempotency tests, deliberately long enough to clear the empty-extraction threshold.");
   const result = await compile.proposeCompileFromRaw("note.md", {

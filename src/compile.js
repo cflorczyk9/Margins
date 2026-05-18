@@ -130,6 +130,18 @@ export function createCompile(vault, proposals) {
     const markdown = rewriteSourceMetadata(sourceNode.markdown, fileName, rel, rawSha, info.size);
 
     const destPath = sourceNode.path;
+
+    // Dedup: if any other pending proposal already references this raw_sha256
+    // at a different destination, reject it so re-compiling the same raw file
+    // (e.g. with a renamed slug) supersedes the prior proposal instead of
+    // stacking a duplicate in proposed/.
+    const superseded = await rejectProposalsWithSameRawSha(
+      vault,
+      proposals,
+      rawSha,
+      destPath
+    );
+
     const proposalResult = await proposals.proposePage(destPath, markdown, { force });
     return {
       ...proposalResult,
@@ -142,11 +154,37 @@ export function createCompile(vault, proposals) {
       summary: sourceNode.summary,
       termsExtracted: sourceNode.terms,
       entitiesExtracted: sourceNode.entities,
+      supersededProposals: superseded,
       markdown
     };
   }
 
   return { proposeCompileFromRaw };
+}
+
+async function rejectProposalsWithSameRawSha(vault, proposals, rawSha, excludePath) {
+  if (!rawSha || typeof rawSha !== "string") return [];
+  const items = await proposals.listProposals();
+  const superseded = [];
+  for (const item of items) {
+    if (item.destinationPath === excludePath) continue;
+    let body;
+    try {
+      body = await readFile(vault.resolveInside(item.proposalPath), "utf8");
+    } catch {
+      continue;
+    }
+    const parsed = parseFrontmatter(body);
+    const sha = parsed && parsed.data ? parsed.data.raw_sha256 : null;
+    if (typeof sha !== "string" || sha !== rawSha) continue;
+    try {
+      await proposals.resolveProposal(item.destinationPath, "reject");
+      superseded.push(item.destinationPath);
+    } catch {
+      // skip ones we can't reject (concurrent delete, etc.)
+    }
+  }
+  return superseded;
 }
 
 async function disambiguateDestPath(vault, candidatePath, currentRawRel) {
