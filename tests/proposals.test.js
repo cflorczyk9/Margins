@@ -368,6 +368,131 @@ test("parallel propose_edit calls on the same path do not clobber each other", a
   assert.doesNotMatch(staged, /BETA/);
 });
 
+// --- Batch primitives: listProposals filtering + resolveProposalsBulk ---
+
+test("listProposals filters by glob pattern", async () => {
+  await proposals.proposePage("wiki/sources/a.md", "a");
+  await proposals.proposePage("wiki/sources/b.md", "b");
+  await proposals.proposePage("wiki/projects/c.md", "c");
+  const sources = await proposals.listProposals({ pattern: "wiki/sources/*.md" });
+  assert.deepEqual(sources.map((s) => s.destinationPath).sort(), ["wiki/sources/a.md", "wiki/sources/b.md"]);
+  const projects = await proposals.listProposals({ pattern: "wiki/projects/**" });
+  assert.deepEqual(projects.map((s) => s.destinationPath), ["wiki/projects/c.md"]);
+});
+
+test("listProposals respects limit and reports truncation", async () => {
+  for (let i = 0; i < 5; i++) {
+    await proposals.proposePage(`wiki/inbox/n-${i}.md`, `body-${i}`);
+  }
+  const capped = await proposals.listProposals({ limit: 2 });
+  assert.equal(capped.length, 2);
+  assert.equal(capped.__truncated, true);
+  assert.equal(capped.__totalMatched, 5);
+});
+
+test("listProposals sortBy=size returns largest first", async () => {
+  await proposals.proposePage("wiki/x.md", "a".repeat(10));
+  await proposals.proposePage("wiki/y.md", "b".repeat(100));
+  await proposals.proposePage("wiki/z.md", "c".repeat(50));
+  const sorted = await proposals.listProposals({ sortBy: "size" });
+  assert.deepEqual(sorted.map((s) => s.destinationPath), ["wiki/y.md", "wiki/z.md", "wiki/x.md"]);
+});
+
+test("listProposals sortBy=age returns newest first", async () => {
+  await proposals.proposePage("wiki/older.md", "1");
+  // Small delay so mtimes differ at the OS resolution we get on macOS.
+  await new Promise((r) => setTimeout(r, 12));
+  await proposals.proposePage("wiki/newer.md", "2");
+  const sorted = await proposals.listProposals({ sortBy: "age" });
+  assert.equal(sorted[0].destinationPath, "wiki/newer.md");
+});
+
+test("listProposals with includeDelta=false skips overwrite diff to save IO", async () => {
+  // Seed an existing vault file so willOverwrite triggers a delta normally.
+  const abs = path.join(tmpRoot, "wiki/clash.md");
+  await mkdir(path.dirname(abs), { recursive: true });
+  await writeFile(abs, "OLD\n", "utf8");
+  await proposals.proposePage("wiki/clash.md", "NEW\n", { force: true });
+  const withDelta = await proposals.listProposals();
+  assert.ok(withDelta[0].overwriteDelta, "delta should be present by default");
+  const withoutDelta = await proposals.listProposals({ includeDelta: false });
+  assert.equal(withoutDelta[0].overwriteDelta, undefined);
+});
+
+test("resolveProposalsBulk dryRun previews matched paths without applying", async () => {
+  await proposals.proposePage("wiki/sources/a.md", "a");
+  await proposals.proposePage("wiki/sources/b.md", "b");
+  await proposals.proposePage("wiki/projects/c.md", "c");
+  const preview = await proposals.resolveProposalsBulk("wiki/sources/*.md", "accept", { dryRun: true });
+  assert.equal(preview.dryRun, true);
+  assert.equal(preview.matched, 2);
+  assert.deepEqual(preview.paths.sort(), ["wiki/sources/a.md", "wiki/sources/b.md"]);
+  // Nothing actually landed in the vault.
+  const aExists = await stat(path.join(tmpRoot, "wiki/sources/a.md")).then(() => true).catch(() => false);
+  assert.equal(aExists, false);
+});
+
+test("resolveProposalsBulk accept applies action across matched proposals", async () => {
+  await proposals.proposePage("wiki/sources/a.md", "alpha");
+  await proposals.proposePage("wiki/sources/b.md", "beta");
+  await proposals.proposePage("wiki/projects/c.md", "gamma");
+  const result = await proposals.resolveProposalsBulk("wiki/sources/*.md", "accept");
+  assert.equal(result.dryRun, false);
+  assert.equal(result.processed, 2);
+  assert.equal(result.succeeded, 2);
+  assert.equal(await read("wiki/sources/a.md"), "alpha");
+  assert.equal(await read("wiki/sources/b.md"), "beta");
+  // Untouched proposal stays staged.
+  const remaining = await proposals.listProposals();
+  assert.deepEqual(remaining.map((r) => r.destinationPath), ["wiki/projects/c.md"]);
+});
+
+test("resolveProposalsBulk reject discards matched proposals without writing the vault", async () => {
+  await proposals.proposePage("wiki/sources/a.md", "a");
+  await proposals.proposePage("wiki/sources/b.md", "b");
+  const result = await proposals.resolveProposalsBulk("wiki/sources/*.md", "reject");
+  assert.equal(result.succeeded, 2);
+  const aExists = await stat(path.join(tmpRoot, "wiki/sources/a.md")).then(() => true).catch(() => false);
+  const bExists = await stat(path.join(tmpRoot, "wiki/sources/b.md")).then(() => true).catch(() => false);
+  assert.equal(aExists, false);
+  assert.equal(bExists, false);
+  const remaining = await proposals.listProposals();
+  assert.equal(remaining.length, 0);
+});
+
+test("resolveProposalsBulk respects maxCount and flags overflow", async () => {
+  for (let i = 0; i < 5; i++) {
+    await proposals.proposePage(`wiki/inbox/n-${i}.md`, `b-${i}`);
+  }
+  const result = await proposals.resolveProposalsBulk("wiki/inbox/*", "accept", { maxCount: 2 });
+  assert.equal(result.processed, 2);
+  assert.equal(result.totalMatched, 5);
+  assert.equal(result.wouldOverflow, true);
+  // Three should remain staged.
+  const remaining = await proposals.listProposals();
+  assert.equal(remaining.length, 3);
+});
+
+test("resolveProposalsBulk errors on unknown action", async () => {
+  await assert.rejects(
+    () => proposals.resolveProposalsBulk("*", "delete"),
+    /unknown action/
+  );
+});
+
+test("resolveProposalsBulk preserves tracker rows when accepting multiple source pages", async () => {
+  const make = (slug, raw) => `---\ntype: source\nraw_file: raw/${raw}\n---\n# ${slug}\n`;
+  await proposals.proposePage("wiki/sources/source-a.md", make("A", "a.md"));
+  await proposals.proposePage("wiki/sources/source-b.md", make("B", "b.md"));
+  await proposals.proposePage("wiki/sources/source-c.md", make("C", "c.md"));
+  const r = await proposals.resolveProposalsBulk("wiki/sources/source-*.md", "accept");
+  assert.equal(r.succeeded, 3);
+  const tracker = await read("wiki/ingest-tracker.md");
+  assert.match(tracker, /\| raw\/a\.md \| ingested \| \[\[source-a\]\]/);
+  assert.match(tracker, /\| raw\/b\.md \| ingested \| \[\[source-b\]\]/);
+  assert.match(tracker, /\| raw\/c\.md \| ingested \| \[\[source-c\]\]/);
+});
+
 test("parallel resolveProposal accepts do not lose tracker rows", async () => {
   const bodyA = `---\ntype: source\nraw_file: raw/a.md\n---\n# A\n`;
   const bodyB = `---\ntype: source\nraw_file: raw/b.md\n---\n# B\n`;

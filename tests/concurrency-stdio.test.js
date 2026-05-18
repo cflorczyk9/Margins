@@ -181,6 +181,97 @@ test("stdio: parallel resolveProposal accepts preserve both tracker rows", async
   assert.match(tracker, /\| raw\/c\.md \| ingested \| \[\[source-c\]\]/);
 });
 
+test("stdio: bulk resolve_proposal via pattern accepts every match", async (t) => {
+  const vault = await makeVault(t);
+  const client = await startClient(t, vault);
+
+  // Stage 5 source proposals plus an unrelated project proposal.
+  const make = (raw, body) => `---\ntype: source\nraw_file: raw/${raw}\n---\n# ${body}\n`;
+  for (let i = 0; i < 5; i++) {
+    const stage = await client.callTool("propose_page", {
+      path: `wiki/sources/source-${i}.md`,
+      body: make(`r-${i}.md`, `Body ${i}`)
+    });
+    assert.notEqual(stage.result?.isError, true);
+  }
+  await client.callTool("propose_page", { path: "wiki/projects/keep.md", body: "untouched" });
+
+  // Dry-run preview matches 5 paths but does not apply.
+  const dry = await client.callTool("resolve_proposal", {
+    pattern: "wiki/sources/source-*.md",
+    action: "accept",
+    dryRun: true
+  });
+  assert.notEqual(dry.result?.isError, true);
+  assert.equal(dry.result.structuredContent.dryRun, true);
+  assert.equal(dry.result.structuredContent.matched, 5);
+
+  // The project proposal is still pending after the dry-run.
+  const stillPending = await client.callTool("list_proposals", {});
+  assert.equal(stillPending.result.structuredContent.totalMatched, 6);
+
+  // Apply the bulk accept.
+  const applied = await client.callTool("resolve_proposal", {
+    pattern: "wiki/sources/source-*.md",
+    action: "accept"
+  });
+  assert.notEqual(applied.result?.isError, true);
+  assert.equal(applied.result.structuredContent.succeeded, 5);
+
+  // Vault now has the 5 source pages, the project proposal is still staged.
+  for (let i = 0; i < 5; i++) {
+    const body = await readFile(path.join(vault, `wiki/sources/source-${i}.md`), "utf8");
+    assert.match(body, new RegExp(`raw_file: raw/r-${i}\\.md`));
+  }
+  const remaining = await client.callTool("list_proposals", {});
+  assert.deepEqual(
+    remaining.result.structuredContent.items.map((i) => i.destinationPath),
+    ["wiki/projects/keep.md"]
+  );
+
+  // Tracker has every row.
+  const tracker = await readFile(path.join(vault, "wiki/ingest-tracker.md"), "utf8");
+  for (let i = 0; i < 5; i++) {
+    assert.match(tracker, new RegExp(`\\| raw/r-${i}\\.md \\| ingested \\| \\[\\[source-${i}\\]\\]`));
+  }
+});
+
+test("stdio: list_proposals pattern + limit pagination", async (t) => {
+  const vault = await makeVault(t);
+  const client = await startClient(t, vault);
+
+  for (let i = 0; i < 10; i++) {
+    await client.callTool("propose_page", { path: `wiki/inbox/n-${i}.md`, body: `b-${i}` });
+  }
+  await client.callTool("propose_page", { path: "wiki/projects/other.md", body: "x" });
+
+  const r = await client.callTool("list_proposals", { pattern: "wiki/inbox/**", limit: 3 });
+  const sc = r.result.structuredContent;
+  assert.equal(sc.items.length, 3);
+  assert.equal(sc.totalMatched, 10);
+  assert.equal(sc.truncated, true);
+  for (const item of sc.items) {
+    assert.match(item.destinationPath, /^wiki\/inbox\//);
+  }
+});
+
+test("stdio: resolve_proposal errors on both path and pattern (or neither)", async (t) => {
+  const vault = await makeVault(t);
+  const client = await startClient(t, vault);
+
+  const both = await client.callTool("resolve_proposal", {
+    path: "wiki/foo.md",
+    pattern: "wiki/*.md",
+    action: "accept"
+  });
+  assert.equal(both.result.isError, true);
+  assert.match(both.result.content[0].text, /exactly one of path or pattern/i);
+
+  const neither = await client.callTool("resolve_proposal", { action: "accept" });
+  assert.equal(neither.result.isError, true);
+  assert.match(neither.result.content[0].text, /either path.*or pattern/i);
+});
+
 test("stdio: interleaved append + edit on same path do not drop the append", async (t) => {
   const vault = await makeVault(t);
   await mkdir(path.join(vault, "wiki"), { recursive: true });

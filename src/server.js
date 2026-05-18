@@ -680,16 +680,41 @@ export function buildServer(vault, options = {}) {
     "list_proposals",
     {
       description:
-        "List every pending proposal. Each entry has its proposal path, its destination path, and whether accepting would overwrite an existing vault file.",
-      inputSchema: {},
+        "List pending proposals with optional filtering. Each entry has proposal path, destination path, whether accepting overwrites an existing vault file, size, and (for overwrites under default settings) a small first-diff preview. Use the pattern filter to scope to a folder or file shape when the queue is large.",
+      inputSchema: {
+        pattern: z
+          .string()
+          .optional()
+          .describe("Glob to filter destinationPath. Supports *, **, ?. Example: 'wiki/sources/*.md' or 'wiki/projects/briefly-**'."),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(500)
+          .optional()
+          .describe("Maximum proposals to return. Response includes totalMatched + truncated flag when results are capped."),
+        sortBy: z
+          .enum(["path", "age", "size"])
+          .optional()
+          .describe("Sort order. 'path' (default) is lexical; 'age' is newest mtime first; 'size' is largest first."),
+        includeDelta: z
+          .boolean()
+          .optional()
+          .describe("Include per-overwrite first-diff preview. Default true. Set false when scanning a large queue — saves N pairs of file reads.")
+      },
       annotations: { readOnlyHint: true }
     },
-    async () => {
-      const items = await proposals.listProposals();
+    async ({ pattern, limit, sortBy, includeDelta }) => {
+      const items = await proposals.listProposals({ pattern, limit, sortBy, includeDelta });
+      const totalMatched = items.__totalMatched ?? items.length;
+      const truncated = Boolean(items.__truncated);
       if (!items.length) {
+        const text = pattern
+          ? `No proposals matching '${pattern}'.`
+          : "No pending proposals.";
         return {
-          content: [{ type: "text", text: "No pending proposals." }],
-          structuredContent: { items: [] }
+          content: [{ type: "text", text }],
+          structuredContent: { items: [], totalMatched: 0, truncated: false }
         };
       }
       const lines = items.map(
@@ -698,9 +723,16 @@ export function buildServer(vault, options = {}) {
           (i.willOverwrite ? " (would overwrite existing)" : " (new)") +
           ` — ${i.size} bytes`
       );
+      if (truncated) {
+        lines.push("", `(showing ${items.length} of ${totalMatched} matched; raise limit to see more)`);
+      }
       return {
         content: [{ type: "text", text: lines.join("\n") }],
-        structuredContent: { items }
+        structuredContent: {
+          items: Array.from(items),
+          totalMatched,
+          truncated
+        }
       };
     }
   );
@@ -709,23 +741,79 @@ export function buildServer(vault, options = {}) {
     "resolve_proposal",
     {
       description:
-        "Accept or reject a pending proposal. Accept moves the proposal from proposed/<path> to <path> (overwriting any existing vault file at the destination). Reject deletes the proposal without touching the vault.",
+        "Accept or reject pending proposals. Two modes: (1) single — pass `path` to apply the action to exactly one proposal; (2) bulk — pass `pattern` (glob) to apply the action to every matching proposal. Exactly one of path/pattern is required. Accept moves proposal to its destination atomically (overwriting any existing file at the destination); reject deletes the proposal without touching the vault. Per-destination lock guarantees concurrent edits on the same path serialize. Use `dryRun: true` with a pattern to preview which proposals would be touched without applying anything.",
       inputSchema: {
         path: z
           .string()
-          .describe("Destination path of the proposal, with or without the 'proposed/' prefix."),
-        action: z.enum(["accept", "reject"]).describe("Whether to apply or discard.")
+          .optional()
+          .describe("Destination path of a single proposal, with or without the 'proposed/' prefix. Mutually exclusive with pattern."),
+        pattern: z
+          .string()
+          .optional()
+          .describe("Glob to match destinationPath of multiple proposals. Supports *, **, ?. Mutually exclusive with path."),
+        action: z.enum(["accept", "reject"]).describe("Whether to apply or discard the matched proposal(s)."),
+        dryRun: z
+          .boolean()
+          .optional()
+          .describe("Only meaningful with pattern. When true, return the list of paths that WOULD be affected without applying the action."),
+        maxCount: z
+          .number()
+          .int()
+          .min(1)
+          .max(500)
+          .optional()
+          .describe("Only meaningful with pattern. Cap the number of proposals processed in a single call.")
       },
       annotations: { readOnlyHint: false, destructiveHint: true }
     },
-    async ({ path: rel, action }) => {
-      const result = await proposals.resolveProposal(rel, action);
-      vaultContext.invalidate();
+    async ({ path: rel, pattern, action, dryRun, maxCount }) => {
+      const hasPath = typeof rel === "string" && rel.length > 0;
+      const hasPattern = typeof pattern === "string" && pattern.length > 0;
+      if (hasPath && hasPattern) {
+        throw new Error("Pass exactly one of path or pattern, not both.");
+      }
+      if (!hasPath && !hasPattern) {
+        throw new Error("Pass either path (single proposal) or pattern (bulk).");
+      }
+
+      if (hasPath) {
+        const result = await proposals.resolveProposal(rel, action);
+        vaultContext.invalidate();
+        return {
+          content: [
+            { type: "text", text: `${result.destinationPath}: ${result.action}.` }
+          ],
+          structuredContent: result
+        };
+      }
+
+      const bulkResult = await proposals.resolveProposalsBulk(pattern, action, { dryRun, maxCount });
+      if (!dryRun) vaultContext.invalidate();
+      if (bulkResult.dryRun) {
+        const overflowNote = bulkResult.wouldOverflow
+          ? ` (capped at maxCount=${maxCount}; ${bulkResult.totalMatched} total matched)`
+          : "";
+        const lines = [
+          `Would ${action} ${bulkResult.matched} proposal${bulkResult.matched === 1 ? "" : "s"}${overflowNote}:`,
+          ...bulkResult.paths.map((p) => `  ${p}`),
+          "",
+          `Re-run without dryRun to apply.`
+        ];
+        return {
+          content: [{ type: "text", text: lines.join("\n") }],
+          structuredContent: bulkResult
+        };
+      }
+      const summary = `${action === "accept" ? "Accepted" : "Rejected"} ${bulkResult.succeeded}/${bulkResult.processed} proposal${bulkResult.processed === 1 ? "" : "s"} matching '${pattern}'.`;
+      const failureLines = bulkResult.results
+        .filter((r) => !r.ok)
+        .map((r) => `  ✗ ${r.path}: ${r.error}`);
+      const text = failureLines.length
+        ? [summary, "Failures:", ...failureLines].join("\n")
+        : summary;
       return {
-        content: [
-          { type: "text", text: `${result.destinationPath}: ${result.action}.` }
-        ],
-        structuredContent: result
+        content: [{ type: "text", text }],
+        structuredContent: bulkResult
       };
     }
   );

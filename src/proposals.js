@@ -1,7 +1,7 @@
 import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parseFrontmatter, extractRawFileRefs, getType } from "./frontmatter.js";
-import { canonicalize } from "./paths.js";
+import { canonicalize, globMatch } from "./paths.js";
 
 const PROPOSED_DIR = "proposed";
 
@@ -139,16 +139,42 @@ export function createProposals(vault) {
     });
   }
 
-  async function listProposals() {
+  async function listProposals(options = {}) {
     const root = vault.resolveInside(PROPOSED_DIR);
     if (!(await exists(root))) return [];
+    const { pattern, limit, sortBy = "path", includeDelta = true } = options;
     const out = [];
-    await walk(root, root, out);
-    out.sort((a, b) => a.destinationPath.localeCompare(b.destinationPath));
-    return out;
+    await walk(root, root, out, { includeDelta });
+    const filtered = pattern
+      ? out.filter((item) => globMatch(pattern, item.destinationPath))
+      : out;
+    sortItems(filtered, sortBy);
+    if (typeof limit === "number" && limit >= 0) {
+      const totalMatched = filtered.length;
+      const truncated = filtered.slice(0, limit);
+      truncated.__truncated = totalMatched > limit;
+      truncated.__totalMatched = totalMatched;
+      return truncated;
+    }
+    return filtered;
   }
 
-  async function walk(root, dir, out) {
+  function sortItems(items, sortBy) {
+    switch (sortBy) {
+      case "age":
+        // Newest first. Falls back to lexical so the sort is stable.
+        items.sort((a, b) => (b.mtimeMs ?? 0) - (a.mtimeMs ?? 0) || a.destinationPath.localeCompare(b.destinationPath));
+        return;
+      case "size":
+        items.sort((a, b) => (b.size ?? 0) - (a.size ?? 0) || a.destinationPath.localeCompare(b.destinationPath));
+        return;
+      case "path":
+      default:
+        items.sort((a, b) => a.destinationPath.localeCompare(b.destinationPath));
+    }
+  }
+
+  async function walk(root, dir, out, opts = {}) {
     let entries;
     try {
       entries = await readdir(dir, { withFileTypes: true });
@@ -158,20 +184,24 @@ export function createProposals(vault) {
     for (const entry of entries) {
       const abs = path.join(dir, entry.name);
       if (entry.isDirectory()) {
-        await walk(root, abs, out);
+        await walk(root, abs, out, opts);
       } else if (entry.isFile()) {
         const rel = path.relative(root, abs).split(path.sep).join("/");
         const vaultAbs = vault.resolveInside(rel);
         const willOverwrite = await exists(vaultAbs);
-        const proposalSize = (await stat(abs)).size;
+        const proposalStat = await stat(abs);
         const item = {
           proposalPath: `${PROPOSED_DIR}/${rel}`,
           destinationPath: rel,
           willOverwrite,
-          size: proposalSize
+          size: proposalStat.size,
+          mtimeMs: proposalStat.mtimeMs
         };
-        if (willOverwrite) {
-          item.overwriteDelta = await buildOverwriteDelta(abs, vaultAbs, proposalSize);
+        // Overwrite delta is expensive (two file reads). Skip when the caller
+        // is sorting hundreds of proposals — they likely don't need the diff
+        // for every item in a bulk-review flow.
+        if (willOverwrite && opts.includeDelta !== false) {
+          item.overwriteDelta = await buildOverwriteDelta(abs, vaultAbs, proposalStat.size);
         }
         out.push(item);
       }
@@ -220,6 +250,55 @@ export function createProposals(vault) {
     });
   }
 
+  // Bulk apply an action to every proposal whose destinationPath matches the
+  // glob. Returns either a dry-run preview (paths only) or an array of per-
+  // path results. Each underlying resolveProposal takes the per-destination
+  // lock so concurrent appendTo/proposeEdit on the same path serialize as
+  // they would for single-resolve calls. Across distinct destination paths,
+  // matches run in parallel — only tracker writes share the global lock.
+  async function resolveProposalsBulk(pattern, action, options = {}) {
+    if (!pattern || typeof pattern !== "string") {
+      throw new Error("pattern is required for bulk resolve");
+    }
+    if (action !== "accept" && action !== "reject") {
+      throw new Error(`unknown action '${action}'; use 'accept' or 'reject'`);
+    }
+    const { dryRun = false, maxCount } = options;
+    const all = await listProposals({ pattern, includeDelta: false });
+    const matched = typeof maxCount === "number" && maxCount >= 0 ? all.slice(0, maxCount) : all;
+    if (dryRun) {
+      return {
+        dryRun: true,
+        action,
+        matched: matched.length,
+        totalMatched: all.length,
+        wouldOverflow: typeof maxCount === "number" && all.length > maxCount,
+        paths: matched.map((m) => m.destinationPath)
+      };
+    }
+    const results = await Promise.all(
+      matched.map(async (m) => {
+        try {
+          const r = await resolveProposal(m.destinationPath, action);
+          return { path: m.destinationPath, ok: true, ...r };
+        } catch (err) {
+          return { path: m.destinationPath, ok: false, error: err.message };
+        }
+      })
+    );
+    const failed = results.filter((r) => !r.ok);
+    return {
+      dryRun: false,
+      action,
+      processed: results.length,
+      succeeded: results.length - failed.length,
+      failed: failed.length,
+      totalMatched: all.length,
+      wouldOverflow: typeof maxCount === "number" && all.length > maxCount,
+      results
+    };
+  }
+
   async function resetAllProposals() {
     const items = await listProposals();
     const deleted = [];
@@ -241,6 +320,7 @@ export function createProposals(vault) {
     appendTo,
     listProposals,
     resolveProposal,
+    resolveProposalsBulk,
     resetAllProposals
   };
 }
