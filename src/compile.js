@@ -143,7 +143,7 @@ export function createCompile(vault, proposals) {
     );
 
     const proposalResult = await proposals.proposePage(destPath, markdown, { force });
-    return {
+    const result = {
       ...proposalResult,
       status: "proposal-staged",
       rawFile: rel,
@@ -154,9 +154,17 @@ export function createCompile(vault, proposals) {
       summary: sourceNode.summary,
       termsExtracted: sourceNode.terms,
       entitiesExtracted: sourceNode.entities,
-      supersededProposals: superseded,
-      markdown
+      supersededProposals: superseded
     };
+    // Embedding the full staged markdown in the response is convenient for
+    // a single compile (Claude can show it), but ruinous for bulk: 50
+    // segments × ~5KB each blasts 250KB through the MCP transport per call.
+    // quiet=true (typed by the caller) omits the markdown and lets the
+    // caller read it back from `proposed/<destinationPath>` if needed.
+    if (!(review && review.quiet)) {
+      result.markdown = markdown;
+    }
+    return result;
   }
 
   return { proposeCompileFromRaw };

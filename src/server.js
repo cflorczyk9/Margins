@@ -551,7 +551,9 @@ export function buildServer(vault, options = {}) {
           .array(z.union([z.string(), z.object({ point: z.string(), evidence: z.string().optional() })]))
           .optional()
           .describe("LEGACY — for the simple template only. If you provide `sections`, this is unused. Either strings or {point, evidence} objects."),
-        summaryBullets: z.array(z.string()).optional().describe("LEGACY — for the simple template only. If you provide `sections`, this is unused.")
+        summaryBullets: z.array(z.string()).optional().describe("LEGACY — for the simple template only. If you provide `sections`, this is unused."),
+
+        quiet: z.boolean().optional().describe("Omit the full staged markdown from the response. The page still lands at proposed/<destinationPath> — set quiet=true when compiling many files in one turn so the response payload stays small. Default false.")
       },
       annotations: { readOnlyHint: false, destructiveHint: false }
     },
@@ -560,14 +562,14 @@ export function buildServer(vault, options = {}) {
       pageType, tags, keyLinks, eventDate, sourceUrl, participants, sources,
       headerNote, sourceCaveat, sections, relevanceCallout, applications,
       propagationNotes, related,
-      takeaways, summaryBullets
+      takeaways, summaryBullets, quiet
     }) => {
       const result = await compile.proposeCompileFromRaw(rawPath, {
         summary, title, bucket, destination_path, force,
         pageType, tags, keyLinks, eventDate, sourceUrl, participants, sources,
         headerNote, sourceCaveat, sections, relevanceCallout, applications,
         propagationNotes, related,
-        takeaways, summaryBullets
+        takeaways, summaryBullets, quiet
       });
       if (result.status === "already-filed") {
         return {
@@ -582,17 +584,29 @@ export function buildServer(vault, options = {}) {
           structuredContent: result
         };
       }
-      const headerLines = [
-        `Compiled ${result.rawFile} → staged at ${result.proposalPath}`,
-        `Title: ${result.title}`,
-        `Bucket: ${result.bucket}`,
-        "",
-        "--- Staged page ---",
-        result.markdown || "(markdown not returned)",
-        "--- End staged page ---",
-        "",
-        "Run resolve_proposal to accept or reject."
-      ];
+      // Quiet mode: skip the full staged markdown in the response so bulk
+      // compile doesn't blast hundreds of KB through the MCP transport.
+      const headerLines = quiet
+        ? [
+            `Compiled ${result.rawFile} → staged at ${result.proposalPath}`,
+            `Title: ${result.title}`,
+            `Bucket: ${result.bucket}`,
+            "",
+            "(markdown omitted — quiet=true. Read it from proposed/<destinationPath> if needed.)",
+            "",
+            "Run resolve_proposal to accept or reject."
+          ]
+        : [
+            `Compiled ${result.rawFile} → staged at ${result.proposalPath}`,
+            `Title: ${result.title}`,
+            `Bucket: ${result.bucket}`,
+            "",
+            "--- Staged page ---",
+            result.markdown || "(markdown not returned)",
+            "--- End staged page ---",
+            "",
+            "Run resolve_proposal to accept or reject."
+          ];
       return {
         content: [{ type: "text", text: headerLines.join("\n") }],
         structuredContent: result

@@ -137,6 +137,23 @@ function isInSkipDir(rel) {
   return false;
 }
 
+// Parsed-frontmatter cache for proposed/ source pages. Keyed by absolute path
+// with the file's mtimeMs stored alongside the parsed entry. Without this,
+// every buildVaultIndex call re-reads + re-parses every staged source page
+// in proposed/. Under bulk compile (50+ segments), the index is rebuilt per
+// compile, so the same N proposed pages are parsed O(N^2) times. The cache
+// turns that into O(N) reads on the first walk plus stat-only walks after.
+//
+// Invalidation: stat returns a different mtimeMs (or the file is gone) → re-
+// parse. Stale entries for files that no longer exist accumulate until the
+// process exits, but the working set is naturally bounded by the proposal
+// queue (rarely > a few hundred entries).
+const _proposedFmCache = new Map();
+
+export function _resetProposedFmCacheForTests() {
+  _proposedFmCache.clear();
+}
+
 async function collectProposedSourcePages(vault, out) {
   const proposedRoot = vault.resolveInside("proposed");
   await walkForSourcePages(vault, proposedRoot, out);
@@ -157,17 +174,41 @@ async function walkForSourcePages(vault, dir, out) {
     }
     if (!entry.isFile()) continue;
     if (!isSupportedDocumentPath(entry.name)) continue;
+
+    let info;
+    try {
+      info = await stat(abs);
+    } catch {
+      _proposedFmCache.delete(abs);
+      continue;
+    }
+
+    const cached = _proposedFmCache.get(abs);
+    if (cached && cached.mtimeMs === info.mtimeMs) {
+      if (cached.entry) out.push(cached.entry);
+      continue;
+    }
+
     let body;
     try {
       body = await readFile(abs, "utf8");
     } catch {
+      _proposedFmCache.delete(abs);
       continue;
     }
     const parsed = parseFrontmatter(body);
-    if (!parsed) continue;
+    if (!parsed) {
+      _proposedFmCache.set(abs, { mtimeMs: info.mtimeMs, entry: null });
+      continue;
+    }
     const fmType = getType(parsed.data);
-    if (fmType !== "source" && fmType !== "synthesis") continue;
-    out.push({ abs, rel: canonicalize(vault.toRel(abs)), data: parsed.data });
+    if (fmType !== "source" && fmType !== "synthesis") {
+      _proposedFmCache.set(abs, { mtimeMs: info.mtimeMs, entry: null });
+      continue;
+    }
+    const entryRecord = { abs, rel: canonicalize(vault.toRel(abs)), data: parsed.data };
+    _proposedFmCache.set(abs, { mtimeMs: info.mtimeMs, entry: entryRecord });
+    out.push(entryRecord);
   }
 }
 
