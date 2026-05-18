@@ -265,7 +265,9 @@ async function diagnoseSplitHubs(vault, index) {
     } catch {
       continue;
     }
-    const parsed = parseFrontmatter(body);
+    let parsed;
+    try { parsed = parseFrontmatter(body); }
+    catch { continue; }
     if (!parsed) continue;
     const isHub = parsed.data.is_hub === true || String(parsed.data.is_hub).toLowerCase() === "true";
     if (isHub && typeof parsed.data.segments_count === "number") {
@@ -278,13 +280,20 @@ async function diagnoseSplitHubs(vault, index) {
   // index.referenced (which maps raw_file -> page) but they are listed in the
   // sourcePagesCount because raw-index treats them as referenced. To find
   // them, walk the whole file list and look for the marker.
+  //
+  // parseFrontmatter is wrapped in try/catch because a single malformed-YAML
+  // page anywhere in the vault would otherwise crash the entire doctor run.
+  // The existing parse-failure issue (surfaced via index.parseFailures) is
+  // the right place to report those; here we just skip and keep walking.
   const allFiles = await vault.listFiles();
   for (const abs of allFiles) {
     let body;
     try {
       body = await readFile(abs, "utf8");
     } catch { continue; }
-    const parsed = parseFrontmatter(body);
+    let parsed;
+    try { parsed = parseFrontmatter(body); }
+    catch { continue; }
     if (!parsed) continue;
     const type = parsed.data.type;
     if (type !== "source_segment") continue;

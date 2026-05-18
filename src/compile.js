@@ -79,7 +79,15 @@ export function createCompile(vault, proposals) {
     }
     if (existingPath && force && !(review && (review.bucket || review.destination_path))) {
       // No explicit bucket/destination override — respect existing location.
-      review = { ...(review || {}), destination_path: existingPath };
+      // existingPath may carry a 'proposed/' prefix when the source is staged
+      // but not yet accepted; strip it before reusing as destination_path
+      // because proposals.proposePage rejects destinations starting with
+      // 'proposed/'. Without this, force=true on a pending compile proposal
+      // fails with "destination path cannot start with proposed/".
+      const cleanPath = existingPath.startsWith("proposed/")
+        ? existingPath.slice("proposed/".length)
+        : existingPath;
+      review = { ...(review || {}), destination_path: cleanPath };
     }
 
     let text;

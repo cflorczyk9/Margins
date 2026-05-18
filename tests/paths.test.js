@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { canonicalize, pathsEqual, pathPriority } from "../src/paths.js";
+import { canonicalize, pathsEqual, pathPriority, globMatch } from "../src/paths.js";
 
 test("canonicalize strips leading ./", () => {
   assert.equal(canonicalize("./raw/foo.md"), "raw/foo.md");
@@ -52,4 +52,32 @@ test("pathPriority drops test fixtures to zero", () => {
 
 test("pathPriority demotes templates below real wiki pages", () => {
   assert.ok(pathPriority("wiki/daily/daily.md") > pathPriority("wiki/_templates/daily.md"));
+});
+
+// --- globMatch ---
+
+test("globMatch '*' matches within a segment, not across slashes", () => {
+  assert.equal(globMatch("wiki/sources/*.md", "wiki/sources/foo.md"), true);
+  assert.equal(globMatch("wiki/sources/*.md", "wiki/sources/sub/foo.md"), false);
+});
+
+test("globMatch '**' matches across slashes", () => {
+  assert.equal(globMatch("wiki/**", "wiki/sources/foo.md"), true);
+  assert.equal(globMatch("wiki/**", "wiki/sources/sub/foo.md"), true);
+});
+
+test("globMatch '?' matches one char, not slash", () => {
+  assert.equal(globMatch("wiki/a?.md", "wiki/ab.md"), true);
+  assert.equal(globMatch("wiki/a?.md", "wiki/abc.md"), false);
+});
+
+test("globMatch split-mode pattern catches both hub and segments", () => {
+  // Regression check: the formatSplitResponse pattern
+  // 'wiki/<bucket>/*<baseSlug>*' must match both the hub
+  // (<baseSlug>-hub.md) and the segment proposals
+  // (source-<baseSlug>-s01-*.md). Without this, bulk accept leaves the
+  // hub pending and the split's navigation block lands incomplete.
+  assert.equal(globMatch("wiki/sources/*deals*", "wiki/sources/deals-hub.md"), true);
+  assert.equal(globMatch("wiki/sources/*deals*", "wiki/sources/source-deals-s01-aurora.md"), true);
+  assert.equal(globMatch("wiki/sources/*deals*", "wiki/sources/unrelated.md"), false);
 });

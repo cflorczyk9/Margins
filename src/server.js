@@ -1242,6 +1242,12 @@ function formatSplitResponse(result) {
   const overflowNote = result.overflow
     ? ` (capped at maxSegments; ${result.overflowDropped} additional headings dropped)`
     : "";
+  // Derive the base slug from the hub path so we can build a glob that
+  // matches BOTH the hub (<base>-hub.md) and segment proposals
+  // (source-<base>-s01-*.md). A pattern like 'wiki/<bucket>/source-*'
+  // would only catch segments and leave the hub pending after bulk accept.
+  const baseSlug = result.hubPath.split("/").pop().replace(/-hub\.md$/, "");
+  const acceptPattern = `wiki/${result.bucket}/*${baseSlug}*`;
   const lines = [
     `Split ${result.rawFile} into ${result.segmentsCount} segments${overflowNote}.`,
     `Hub staged: ${result.hubProposalPath} → would land at ${result.hubPath}`,
@@ -1252,7 +1258,7 @@ function formatSplitResponse(result) {
   for (const seg of result.segments) {
     lines.push(`  ${seg.proposalPath} — ${seg.heading}`);
   }
-  lines.push("", "Review with `list_proposals pattern: 'wiki/" + result.bucket + "/source-*'` then accept all via `resolve_proposal pattern + action: accept`.");
+  lines.push("", `Review with \`list_proposals pattern: '${acceptPattern}'\` then accept all via \`resolve_proposal pattern: '${acceptPattern}' action: accept\`. The pattern catches both segments and the hub.`);
   return {
     content: [{ type: "text", text: lines.join("\n") }],
     structuredContent: result

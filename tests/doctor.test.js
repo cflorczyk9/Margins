@@ -208,6 +208,33 @@ test("hub-segment-mismatch: hub expects 3 segments, only 2 found", async () => {
   assert.match(mismatch[0].message, /Missing 1/);
 });
 
+test("doctor does not crash when a vault file has malformed frontmatter", async () => {
+  // Regression for codex re-review P2: the hub-segment walk called
+  // parseFrontmatter outside a try/catch. A single bad-YAML file would
+  // crash the entire doctor run instead of just being reported via the
+  // pre-existing parse-failure check.
+  await touch("wiki/sources/source-ok.md",
+    "---\ntype: source\nraw_file: raw/ok.md\n---\n# OK\n"
+  );
+  await touch("raw/ok.md", "ok");
+  await touch(
+    "wiki/ingest-tracker.md",
+    "---\ntype: tracker\n---\n\n| raw/ok.md | ingested | [[source-ok]] | - |  |  |\n"
+  );
+  // This file has frontmatter delimiters but the YAML is malformed in a
+  // way that survives the permissive fallback as null (no recoverable
+  // type/raw_file). Should be reported as parse-failure, not crash doctor.
+  await touch("wiki/sources/broken.md",
+    "---\nsummary: This has: an unquoted colon-space: that wrecks: parsing: badly\nrandom-key\n  - nested but with bad indent:\n---\n# Broken\n"
+  );
+  const report = await diagnoseVault(vault);
+  // Doctor returned a real report rather than throwing.
+  assert.ok(report.summary);
+  // The hub-segment walk still ran and produced 0 mismatches for the OK file.
+  const mismatches = report.issues.filter((i) => i.kind === "hub-segment-mismatch");
+  assert.equal(mismatches.length, 0);
+});
+
 test("hub-segment-mismatch: extra orphan segments link to the hub", async () => {
   await touch("raw/big.md", "raw body");
   await touch(

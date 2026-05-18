@@ -272,6 +272,27 @@ test("raw-index treats source_segment as referenced (raw file not listed as pend
     `expected raw/filed.md to be filed via segment proposals, pending: ${index.pending.join(", ")}`);
 });
 
+test("force=true on a pending compile proposal replaces it instead of failing", async () => {
+  // Regression for codex re-review P2: raw-index returns existingPath with
+  // 'proposed/' prefix when the source is staged but not yet accepted.
+  // Without stripping that prefix, force=true on a pending compile fails
+  // with "destination path cannot start with proposed/".
+  await writeRaw("draft.md", "Draft notes about Bob Casey and the Riviera deal.");
+
+  // First compile — stage a proposal.
+  const first = await compile.proposeCompileFromRaw("raw/draft.md", { summary: "First version summary." });
+  assert.equal(first.status, "proposal-staged");
+
+  // Re-compile WITHOUT accepting the first proposal, force=true, no destination override.
+  const second = await compile.proposeCompileFromRaw("raw/draft.md", {
+    summary: "Second version summary with more detail than the first.",
+    force: true
+  });
+  assert.equal(second.status, "proposal-staged");
+  // The replacement landed where the first did — same destination path.
+  assert.equal(second.destinationPath, first.destinationPath);
+});
+
 test("single-source compile still errors clearly when summary is missing", async () => {
   await writeRaw("flat.md", "Just prose without any summary supplied.");
   await assert.rejects(
