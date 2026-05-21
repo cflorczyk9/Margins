@@ -1,9 +1,9 @@
 name: Release
 
-# Triggered on version tags. Builds the .mcpb bundle and attaches it to a
-# GitHub Release alongside the source tarball. The npm publish step is left
-# manual for now (requires OTP) — bump package.json + manifest.json, tag,
-# then run `npm publish` from a local terminal.
+# Triggered on version tags. Bump versions locally with `npm version <x>` (which
+# syncs package.json, mcpb/manifest.json, and server.json via the version
+# lifecycle), then push tags. This workflow does the rest: tests, npm publish
+# via trusted publishing, MCP registry publish via OIDC, and the .mcpb release.
 
 on:
   push:
@@ -11,10 +11,11 @@ on:
       - "v*.*.*"
 
 permissions:
-  contents: write
+  contents: write   # create GitHub Release
+  id-token: write   # OIDC for npm trusted publishing AND mcp-publisher
 
 jobs:
-  build-mcpb:
+  release:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -23,7 +24,10 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
+
+      - name: Upgrade npm for trusted publishing
+        run: npm install -g npm@latest
 
       - name: Install dependencies
         run: npm ci
@@ -31,18 +35,68 @@ jobs:
       - name: Run tests
         run: npm test
 
-      - name: Verify version sync
+      - name: Verify release metadata sync
+        run: npm run check:release-sync
+
+      - name: Verify tag matches package version
         run: |
           PKG_VER=$(node -p "require('./package.json').version")
-          MANIFEST_VER=$(node -p "require('./mcpb/manifest.json').version")
-          if [ "$PKG_VER" != "$MANIFEST_VER" ]; then
-            echo "package.json ($PKG_VER) and mcpb/manifest.json ($MANIFEST_VER) are out of sync"
+          TAG_VER="${GITHUB_REF_NAME#v}"
+          if [ "$PKG_VER" != "$TAG_VER" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package version $PKG_VER"
             exit 1
           fi
-          echo "Versions in sync: $PKG_VER"
+          echo "Tag and package version in sync: $PKG_VER"
+          echo "version=$PKG_VER" >> "$GITHUB_OUTPUT"
+        id: version
 
       - name: Build .mcpb bundle
         run: ./scripts/build-mcpb.sh
+
+      - name: Publish to npm (trusted publishing via OIDC)
+        run: npm publish --access public
+
+      - name: Verify npm package metadata is live
+        run: |
+          node <<'NODE'
+          const { readFileSync } = await import("node:fs");
+          const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+          const url = `https://registry.npmjs.org/${pkg.name}/${pkg.version}`;
+
+          for (let attempt = 1; attempt <= 24; attempt++) {
+            try {
+              const res = await fetch(url);
+              if (res.ok) {
+                const meta = await res.json();
+                if (meta.mcpName === pkg.mcpName) {
+                  console.log(`${pkg.name}@${pkg.version} is live with mcpName=${pkg.mcpName}`);
+                  process.exit(0);
+                }
+                console.log(`attempt ${attempt}: package live but mcpName=${meta.mcpName || "<missing>"}`);
+              } else {
+                console.log(`attempt ${attempt}: ${res.status} from npm registry`);
+              }
+            } catch (err) {
+              console.log(`attempt ${attempt}: ${err.message}`);
+            }
+
+            await new Promise((resolve) => setTimeout(resolve, 5000));
+          }
+
+          console.error(`npm metadata for ${pkg.name}@${pkg.version} did not become registry-ready`);
+          process.exit(1);
+          NODE
+
+      - name: Install mcp-publisher
+        run: |
+          curl -sL https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz \
+            | sudo tar -xz -C /usr/local/bin mcp-publisher
+          mcp-publisher --version
+
+      - name: Publish to MCP registry (GitHub OIDC)
+        run: |
+          mcp-publisher login github-oidc
+          mcp-publisher publish
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -59,6 +113,6 @@ jobs:
 
             **Claude Desktop (recommended):** download `margins-mcp-*.mcpb` below and double-click.
 
-            **Claude Code / CLI:** `npm install -g margins-mcp@${{ github.ref_name }}` then `margins-mcp install`.
+            **Claude Code / CLI:** `npm install -g margins-mcp@${{ steps.version.outputs.version }}` then `margins-mcp install`.
 
             **Already installed?** Margins surfaces an update hint in `margins_start` automatically. Run `margins-mcp install --update` (npm) or re-download the .mcpb (Desktop) when you see it.

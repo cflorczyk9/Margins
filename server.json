@@ -1,0 +1,22 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.cflorczyk9/margins",
+  "title": "Margins",
+  "description": "Use your Claude Pro/Max subscription on your Obsidian vault. Reads markdown, proposes writes.",
+  "repository": {
+    "url": "https://github.com/cflorczyk9/Margins",
+    "source": "github"
+  },
+  "version": "0.15.1",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "margins-mcp",
+      "version": "0.15.1",
+      "runtimeHint": "npx",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
