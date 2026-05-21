@@ -7,12 +7,13 @@
     "url": "https://github.com/cflorczyk9/Margins",
     "source": "github"
   },
-  "version": "0.15.2",
+  "websiteUrl": "https://marginsmcp.com/",
+  "version": "0.15.3",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "margins-mcp",
-      "version": "0.15.2",
+      "version": "0.15.3",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"

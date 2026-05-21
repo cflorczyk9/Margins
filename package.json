@@ -1,6 +1,6 @@
 {
   "name": "margins-mcp",
-  "version": "0.15.2",
+  "version": "0.15.3",
   "mcpName": "io.github.cflorczyk9/margins",
   "private": false,
   "description": "Use your Claude Pro/Max subscription on your Obsidian vault. MCP connector that reads your markdown and proposes writes back, with all inference paid for by your existing subscription.",
@@ -14,7 +14,7 @@
     "second-brain",
     "anthropic"
   ],
-  "homepage": "https://github.com/cflorczyk9/Margins",
+  "homepage": "https://marginsmcp.com/",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/cflorczyk9/Margins.git"
